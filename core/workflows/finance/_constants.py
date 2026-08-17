@@ -9,6 +9,9 @@ VIDEO_RADIO = "16:9"
 VISUAL_STYLE = "painterly"
 TTS_VOICE = "zh-CN-YunxiNeural"
 BGM_ID = "cinematic_inspirational_piano"
+DEFAULT_PUBLISH_ACCOUNT_GROUP = "心灵鸡汤"
+DRAFT_FILE_NAME = "draft.json"
+STORYBOARD_CONTEXT_FILE_NAME = "storyboard-context.json"
 
 _ROOT = Path(__file__).resolve().parent
 _PROJECT_ROOT = _ROOT.parents[2]

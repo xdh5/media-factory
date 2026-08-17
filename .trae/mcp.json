@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "media-factory-finance": {
+      "command": "py",
+      "args": [
+        "-m",
+        "apps.server.main"
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "PYTHONUTF8": "1"
+      },
+      "enabled": true
+    }
+  }
+}

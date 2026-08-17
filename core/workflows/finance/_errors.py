@@ -25,6 +25,14 @@ class WorkflowStepError(FinanceWorkflowError):
     code = "WORKFLOW_STEP_ERROR"
 
 
+class ConfirmationRequiredError(FinanceWorkflowError):
+    code = "CONFIRMATION_REQUIRED"
+
+
+class DraftNotFoundError(FinanceWorkflowError):
+    code = "DRAFT_NOT_FOUND"
+
+
 class ProductNotFoundError(FinanceWorkflowError):
     code = "PRODUCT_NOT_FOUND"
 

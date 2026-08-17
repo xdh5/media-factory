@@ -246,6 +246,7 @@ def run_finance_workflow(
     database_path: str | Path | None = None,
     draft_path: str | Path | None = None,
     article_confirmed: bool = False,
+    storyboard_text: str | None = None,
     force_shot_ids: list[str] | None = None,
     force_images: bool = False,
 ) -> dict:
@@ -345,7 +346,14 @@ def run_finance_workflow(
             radio=VIDEO_RADIO,
             size=VIDEO_SIZE,
         ) + "\n\n" + _timeline_table(tts_result["timeline"])
-        shots = _parse_storyboard(_agent_text("生成视频分镜", storyboard_prompt), tts_result["timeline"])
+        storyboard_output = (
+            str(storyboard_text).strip()
+            if storyboard_text is not None
+            else _agent_text("生成视频分镜", storyboard_prompt)
+        )
+        if not storyboard_output:
+            raise WorkflowStepError("storyboard_text 不能为空")
+        shots = _parse_storyboard(storyboard_output, tts_result["timeline"])
 
         forced = set(force_shot_ids or [])
         unknown_forced = forced.difference(shot["id"] for shot in shots)
