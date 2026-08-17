@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "media-factory-finance": {
-      "command": "py",
+      "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
       "args": [
         "-m",
         "apps.server.main"
