@@ -1,0 +1,42 @@
+"""开场动画（双向滑入 + 快门闪光）常量配置。"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+# 输出画面：1920x1080（ffmpeg scale/crop 用冒号，color 画布用 x）
+OUTPUT_SIZE = "1920:1080"
+CANVAS_SIZE = "1920x1080"
+RESOLUTION = "1920x1080"
+FPS = 30
+
+# 动画总时长（秒）：闪光结束后照片卡继续展示 ~0.27s 收尾
+TOTAL_SECONDS = 1.8
+
+# 滑入时序（秒）
+FIRST_SLIDE_SECONDS = 0.675       # 黑白全画幅自左滑入时长
+SECOND_SLIDE_START_SECONDS = 0.0  # 彩色照片卡开始滑入的时刻
+SLIDE_IN_SECONDS = 0.675          # 双向滑入动画总时长
+HOLD_SECONDS = 0.5                # 滑入完成后的停顿时长
+
+# 小图像（彩色照片卡）相对原图的比例
+CARD_SCALE = 0.5
+
+# 快门时序（秒）
+SHUTTER_START_SECONDS = SLIDE_IN_SECONDS + HOLD_SECONDS  # 快门/闪光时刻
+FLASH_SECONDS = 0.18              # 白色闪光时长
+
+# 照片卡柔和投影
+CARD_SHADOW_MARGIN = 48           # 投影外边距（像素）
+CARD_SHADOW_OFFSET_X = 12         # 投影水平偏移
+CARD_SHADOW_OFFSET_Y = 18         # 投影垂直偏移
+CARD_SHADOW_OPACITY = 0.52        # 投影不透明度
+CARD_SHADOW_BLUR = 20             # 投影高斯模糊半径
+
+# 开场音效（模块内 static 目录，随滤镜时序对齐）
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
+SFX_WHOOSH_PATH = _STATIC_DIR / "whoosh.wav"   # 滑入音效：从 0 播到 SLIDE_IN_SECONDS
+SFX_SHUTTER_PATH = _STATIC_DIR / "shutter.wav"  # 快门音效：SHUTTER_START_SECONDS 时刻播放
+SFX_WHOOSH_SECONDS = SLIDE_IN_SECONDS  # 滑入音效截取时长
+SFX_SHUTTER_SECONDS = 0.456       # 快门音效截取时长
+SFX_SHUTTER_GAIN = 1.8            # 快门音效增益

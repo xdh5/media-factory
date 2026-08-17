@@ -1,0 +1,45 @@
+"""生图工具常量。"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+AGENT_GENERATION_ATTEMPTS = 3
+IMAGE_CACHE_VERSION = 1
+ARK_IMAGE_MODEL = "doubao-seedream-4-5-251128"
+ARK_IMAGE_ENDPOINT = "https://ark.cn-beijing.volces.com/api/v3/images/generations"
+DEFAULT_OUTPUT_DIRECTORY = "outputs/images"
+
+SUPPORTED_STYLE_IDS = ["painterly", "realistic", "paper"]
+
+VISUAL_STYLE_LIBRARY: list[dict] = [
+    {
+        "id": "painterly",
+        "name": "电影感厚涂油画",
+        "description": (
+            "宽笔触、厚重颜料堆叠和方向性高光塑造体积；强烈自然的明暗对比、"
+            "深色阴影与少量高饱和强调色；保留手绘边缘与画布肌理。"
+        ),
+        "reference_image_path": str(_STATIC_DIR / "ref_painterly.png"),
+    },
+    {
+        "id": "realistic",
+        "name": "写实摄影",
+        "description": (
+            "照片级真实画面，物体比例与透视准确，材质纹理自然清晰；"
+            "自然柔和光线、真实阴影、克制配色与合理景深。"
+        ),
+        "reference_image_path": str(_STATIC_DIR / "ref_realistic.png"),
+    },
+    {
+        "id": "paper",
+        "name": "纸艺折纸",
+        "description": (
+            "手工折纸与纸雕微缩场景，主体由清晰的低多边形折面构成；"
+            "明显的折痕、锐利纸边缘、层叠纸层构建景深。"
+        ),
+        "reference_image_path": str(_STATIC_DIR / "ref_paper.png"),
+    },
+]

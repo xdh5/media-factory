@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 产物
+*.mp3
+*.wav
+!core/capabilities/bgm/static/
+!core/capabilities/bgm/static/*.mp3
+!core/capabilities/intro/static/
+!core/capabilities/intro/static/*.wav
+*.db
+*.sqlite
+*.sqlite3
+
+# MatrixMedia 的 Windows CLI 本地运行时体积较大，不进入版本库
+core/tools/matrixmedia/runtime/
+
+# 工作流运行数据由部署目录持久化，不进入版本库
+data/*/cache/
+data/*/outputs/
+
+# 本地发布登录态与 OAuth 凭据，不进入版本库
+data/matrixmedia/user-data/
+data/youtube/tokens/

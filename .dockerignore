@@ -1,0 +1,21 @@
+# 版本库与本地产物，不进镜像
+.git
+.gitignore
+.env
+**/__pycache__
+**/*.pyc
+tmp_audio/
+tmp_*.py
+core/tools/matrixmedia/runtime/
+data/*/cache/
+data/*/outputs/
+data/matrixmedia/user-data/
+data/youtube/tokens/
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# 输出产物（音效 wav 在 core/capabilities/intro/static/，不在此列，会进镜像）
+*.mp3
+!core/capabilities/bgm/static/*.mp3
+*.mp4
