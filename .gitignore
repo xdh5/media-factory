@@ -31,9 +31,6 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 
-# MatrixMedia 的 Windows CLI 本地运行时体积较大，不进入版本库
-core/tools/matrixmedia/runtime/
-
 # 工作流运行数据由部署目录持久化，不进入版本库
 data/*/cache/
 data/*/outputs/

@@ -6,7 +6,6 @@
 **/*.pyc
 tmp_audio/
 tmp_*.py
-core/tools/matrixmedia/runtime/
 data/*/cache/
 data/*/outputs/
 data/matrixmedia/user-data/
