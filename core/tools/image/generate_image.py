@@ -42,6 +42,11 @@ AgentImageGenerator = Callable[[dict], object]
 _agent_image_generator: AgentImageGenerator | None = None
 
 
+def _ark_image_model() -> str:
+    """读取方舟生图模型；未配置时使用项目默认模型。"""
+    return os.getenv("VOLC_ARK_IMAGE_MODEL", ARK_IMAGE_MODEL).strip() or ARK_IMAGE_MODEL
+
+
 def _set_agent_image_generator(generator: AgentImageGenerator | None) -> None:
     """由宿主注入当前 Agent 的生图适配器，不暴露给 Agent Tool Schema。"""
     global _agent_image_generator
@@ -102,7 +107,7 @@ def _cache_key(prompt: str, style: dict, radio: str, size: str) -> str:
     reference_path = Path(style["reference_image_path"])
     payload = {
         "cache_version": IMAGE_CACHE_VERSION,
-        "fallback_model": ARK_IMAGE_MODEL,
+        "fallback_model": _ark_image_model(),
         "prompt": prompt,
         "style": style["id"],
         "reference_sha256": _hash_file(reference_path),
@@ -263,7 +268,7 @@ def _generate_with_ai(prompt: str, reference_path: Path, size: str) -> bytes:
         raise AIConfigurationError("缺少环境变量 VOLC_ARK_API_KEY，无法使用方舟生图兜底")
     endpoint = os.getenv("VOLC_ARK_IMAGE_URL", ARK_IMAGE_ENDPOINT).strip() or ARK_IMAGE_ENDPOINT
     payload = {
-        "model": ARK_IMAGE_MODEL,
+        "model": _ark_image_model(),
         "prompt": prompt,
         "image": [_reference_data_url(reference_path)],
         "size": size,
@@ -360,7 +365,7 @@ def generate_image(
     result = {
         "output_path": str(output_path),
         "provider": "volc_ark",
-        "model": ARK_IMAGE_MODEL,
+        "model": _ark_image_model(),
         "style": selected_style["id"],
         "radio": normalized_radio,
         "size": normalized_size,
