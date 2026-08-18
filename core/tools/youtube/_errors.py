@@ -27,7 +27,3 @@ class CredentialError(YouTubeToolError):
 
 class UploadError(YouTubeToolError):
     code = "YOUTUBE_UPLOAD_FAILED"
-
-
-class MigrationError(YouTubeToolError):
-    code = "YOUTUBE_MIGRATION_FAILED"

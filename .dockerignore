@@ -1,3 +1,6 @@
+# MatrixMedia 是 Windows Electron 客户端，不进 Docker 镜像
+integrations/MatrixMedia/
+
 # 版本库与本地产物，不进镜像
 .git
 .gitignore
@@ -8,7 +11,6 @@ tmp_audio/
 tmp_*.py
 data/*/cache/
 data/*/outputs/
-data/matrixmedia/user-data/
 data/youtube/tokens/
 **/*.db
 **/*.sqlite

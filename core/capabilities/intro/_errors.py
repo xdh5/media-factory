@@ -12,6 +12,7 @@ __all__ = [
     "InvalidParameterError",
     "FFMPEGNotFoundError",
     "RenderError",
+    "RenderTimeoutError",
 ]
 
 
@@ -49,3 +50,15 @@ class RenderError(VideoRenderError):
     """ffmpeg 渲染失败。message 携带 stderr 摘要。"""
 
     code = "RENDER_FAILED"
+
+
+class RenderTimeoutError(VideoRenderError):
+    """开场动画 FFmpeg 执行超时。"""
+
+    code = "RENDER_TIMEOUT"
+
+    def __init__(self, timeout_seconds: float):
+        super().__init__(
+            f"开场动画超过 {timeout_seconds:.1f} 秒仍未完成，已终止 FFmpeg 子进程",
+            {"timeout_seconds": timeout_seconds},
+        )

@@ -71,8 +71,19 @@ class RenderError(VideoToolError):
     code = "RENDER_FAILED"
 
 
+class RenderTimeoutError(VideoToolError):
+    """FFmpeg 执行超过允许时间。"""
+
+    code = "RENDER_TIMEOUT"
+
+    def __init__(self, context: str, timeout_seconds: float):
+        super().__init__(
+            f"{context}超过 {timeout_seconds:.1f} 秒仍未完成，已终止 FFmpeg 子进程",
+            {"context": context, "timeout_seconds": timeout_seconds},
+        )
+
+
 class CacheError(VideoToolError):
     """镜头缓存读写或校验失败。"""
 
     code = "CACHE_FAILED"
-

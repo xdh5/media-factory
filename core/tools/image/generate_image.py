@@ -1,98 +1,84 @@
-"""优先使用当前 Agent 能力、失败三次后使用方舟兜底的生图功能。"""
+"""把任意工作流的图片任务交给当前宿主 Agent 生图，并接收本地结果。"""
 
 from __future__ import annotations
 
-import base64
-import hashlib
 import json
-import os
+import hashlib
 import re
-from io import BytesIO
 from pathlib import Path
-from typing import Callable
-from urllib.parse import urlparse
 from uuid import uuid4
 
-import requests
-from dotenv import load_dotenv
 from PIL import Image
 
 from ._constants import (
-    AGENT_GENERATION_ATTEMPTS,
-    ARK_IMAGE_ENDPOINT,
-    ARK_IMAGE_MODEL,
-    DEFAULT_OUTPUT_DIRECTORY,
-    IMAGE_CACHE_VERSION,
+    AGENT_IMAGE_CONTEXT_NAME,
+    AGENT_IMAGE_MANIFEST_NAME,
+    AGENT_IMAGE_TASK_VERSION,
+    COVER_REFERENCE_IMAGE_PATH,
 )
-from ._errors import (
-    AIConfigurationError,
-    AIGenerationError,
-    AgentGenerationError,
-    ImageGenerationError,
-    InvalidParameterError,
-    ReferenceImageError,
-)
+from ._errors import AgentImageTaskError, InvalidParameterError, ReferenceImageError
 from ._select_style import _select_style
+from ._ark import _fit_image, _generate_with_ai, _save_image, _validate_dimensions, _write_png
 
-__all__ = ["generate_image"]
-
-load_dotenv()
-
-AgentImageGenerator = Callable[[dict], object]
-_agent_image_generator: AgentImageGenerator | None = None
+__all__ = ["prepare_agent_image_tasks", "submit_agent_image_tasks"]
 
 
-def _ark_image_model() -> str:
-    """读取方舟生图模型；未配置时使用项目默认模型。"""
-    return os.getenv("VOLC_ARK_IMAGE_MODEL", ARK_IMAGE_MODEL).strip() or ARK_IMAGE_MODEL
+def _agent_path(path: Path) -> str:
+    """返回适合跨 Agent JSON Tool 调用的绝对路径，避免 Windows 反斜杠二次转义。"""
+    return path.resolve().as_posix()
 
 
-def _set_agent_image_generator(generator: AgentImageGenerator | None) -> None:
-    """由宿主注入当前 Agent 的生图适配器，不暴露给 Agent Tool Schema。"""
-    global _agent_image_generator
-    if generator is not None and not callable(generator):
-        raise TypeError("当前 Agent 生图适配器必须可调用")
-    _agent_image_generator = generator
+def _valid_image(path: Path, width: int, height: int, cache_signature: str | None = None) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        with Image.open(path) as image:
+            image.verify()
+        with Image.open(path) as image:
+            if image.size != (width, height):
+                return False
+        if cache_signature is None:
+            return True
+        metadata_path = path.with_suffix(".json")
+        if not metadata_path.is_file():
+            return False
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        return metadata.get("cache_signature") == cache_signature
+    except (OSError, ValueError):
+        return False
 
 
-def _parse_size(size: str) -> tuple[int, int, str]:
-    matched = re.fullmatch(r"\s*(\d+)\s*[xX×]\s*(\d+)\s*", str(size or ""))
-    if not matched:
-        raise InvalidParameterError("size", "size 必须使用 WIDTHxHEIGHT 格式，例如 2560x1440")
-    width, height = (int(value) for value in matched.groups())
-    if width < 64 or height < 64:
-        raise InvalidParameterError("size", "size 的宽高都必须不小于 64 像素")
-    return width, height, f"{width}x{height}"
-
-
-def _parse_radio(radio: str) -> tuple[int, int, str]:
-    matched = re.fullmatch(r"\s*(\d+)\s*:\s*(\d+)\s*", str(radio or ""))
-    if not matched:
-        raise InvalidParameterError("radio", "radio 必须使用 WIDTH:HEIGHT 格式，例如 16:9")
-    width, height = (int(value) for value in matched.groups())
-    if width <= 0 or height <= 0:
-        raise InvalidParameterError("radio", "radio 的两个数字都必须大于 0")
-    return width, height, f"{width}:{height}"
-
-
-def _validate_dimensions(radio: str, size: str) -> tuple[int, int, str, str]:
-    width, height, normalized_size = _parse_size(size)
-    ratio_width, ratio_height, normalized_radio = _parse_radio(radio)
-    if width * ratio_height != height * ratio_width:
-        raise InvalidParameterError(
-            "radio",
-            f"radio={normalized_radio} 与 size={normalized_size} 的宽高比不一致，请修改其中一个",
+def _final_prompt(
+    prompt: str,
+    style: dict | None,
+    radio: str,
+    size: str,
+    kind: str,
+    *,
+    has_references: bool,
+    exact_size: bool,
+) -> str:
+    parts = [prompt.strip()]
+    if style:
+        parts.append(f"画风要求：{style['description']}")
+    if has_references:
+        cover_reference_rule = (
+            "第二张图片是公共封面参考图，用于参考标题艺术字、标题层级、人物与标题的关系、"
+            "油画材质和整体封面完成度；只参考视觉语言，不得复制其中的具体标题、人物、物体或构图。\n"
+            if kind == "cover" else ""
         )
-    return width, height, normalized_radio, normalized_size
-
-
-def _build_prompt(prompt: str, style: dict, radio: str, size: str) -> str:
-    return (
-        f"{prompt.strip()}\n\n"
-        f"画风要求：{style['description']}\n"
-        f"严格参考随附图片的画法、笔触、材质、光影和配色，但不要复制参考图中的人物、物体或构图。\n"
-        f"画面比例：{radio}；输出尺寸：{size}。"
-    )
+        parts.append(
+            "随附图片均为视觉参考图。"
+            + ("第一张用于参考画法、笔触、材质、光影和配色；" if style else "")
+            + cover_reference_rule
+            + "其余图片如有，用于参考业务指定的人物气质、服饰和场景。"
+            "不得复制参考图中的具体人物身份、物体摆放或构图。"
+        )
+    size_rule = f"画面比例：{radio}；输出尺寸：{size}。"
+    if not exact_size:
+        size_rule += f"像素不必正好是 {size}，保持比例即可，程序会缩放。"
+    parts.append(size_rule)
+    return "\n\n".join(parts)
 
 
 def _hash_file(path: Path) -> str:
@@ -103,14 +89,11 @@ def _hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _cache_key(prompt: str, style: dict, radio: str, size: str) -> str:
-    reference_path = Path(style["reference_image_path"])
+def _cache_signature(prompt: str, reference_paths: list[Path], radio: str, size: str) -> str:
     payload = {
-        "cache_version": IMAGE_CACHE_VERSION,
-        "fallback_model": _ark_image_model(),
+        "version": AGENT_IMAGE_TASK_VERSION,
         "prompt": prompt,
-        "style": style["id"],
-        "reference_sha256": _hash_file(reference_path),
+        "reference_sha256": [_hash_file(path) for path in reference_paths],
         "radio": radio,
         "size": size,
     }
@@ -118,260 +101,294 @@ def _cache_key(prompt: str, style: dict, radio: str, size: str) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _read_cache(image_path: Path, metadata_path: Path, width: int, height: int, cache_key: str) -> dict | None:
-    if not image_path.is_file() or not metadata_path.is_file():
-        return None
-    try:
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        with Image.open(image_path) as image:
-            image.verify()
-            image_size = image.size
-    except (OSError, ValueError, KeyError, json.JSONDecodeError):
-        return None
-    required_metadata = {"provider", "model", "style", "radio", "size"}
-    if (
-        metadata.get("cache_key") != cache_key
-        or image_size != (width, height)
-        or not required_metadata.issubset(metadata)
-    ):
-        return None
-    return {
-        "output_path": str(image_path),
-        "provider": metadata["provider"],
-        "model": metadata["model"],
-        "style": metadata["style"],
-        "radio": metadata["radio"],
-        "size": metadata["size"],
-        "agent_attempts": 0,
-        "cache_hit": True,
-        "cache_key": cache_key,
-    }
-
-
-def _write_cache_metadata(metadata_path: Path, result: dict) -> None:
-    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+def _write_cache_metadata(path: Path, cache_signature: str) -> None:
+    metadata_path = path.with_suffix(".json")
     temporary = metadata_path.with_name(f".{metadata_path.stem}-{uuid4().hex}.tmp.json")
     temporary.write_text(
-        json.dumps(
-            {key: result[key] for key in ("cache_key", "provider", "model", "style", "radio", "size")},
-            ensure_ascii=False,
-            sort_keys=True,
-        ),
+        json.dumps({"cache_signature": cache_signature}, ensure_ascii=False, sort_keys=True),
         encoding="utf-8",
     )
     temporary.replace(metadata_path)
 
 
-def _read_remote_image(url: str) -> bytes:
-    try:
-        response = requests.get(url, timeout=(20, 180))
-        response.raise_for_status()
-        return response.content
-    except requests.RequestException as exc:
-        raise AgentGenerationError(f"当前 Agent 返回的图片地址下载失败：{exc}") from exc
-
-
-def _result_bytes(result: object) -> bytes:
-    if isinstance(result, bytes):
-        return result
-    if isinstance(result, Path):
-        if not result.is_file():
-            raise AgentGenerationError(f"当前 Agent 返回的图片不存在：{result}")
-        return result.read_bytes()
-    if isinstance(result, str):
-        value = result.strip()
-        if value.startswith("data:image/") and "," in value:
-            try:
-                return base64.b64decode(value.split(",", 1)[1], validate=True)
-            except ValueError as exc:
-                raise AgentGenerationError("当前 Agent 返回了无效的图片 Data URL") from exc
-        parsed = urlparse(value)
-        if parsed.scheme in {"http", "https"}:
-            return _read_remote_image(value)
-        return _result_bytes(Path(value))
-    if isinstance(result, dict):
-        for key in ("path", "image_path", "image_url", "url"):
-            if result.get(key):
-                return _result_bytes(result[key])
-        for key in ("b64_json", "base64", "data"):
-            if isinstance(result.get(key), str) and result[key]:
-                try:
-                    return base64.b64decode(result[key], validate=True)
-                except ValueError as exc:
-                    raise AgentGenerationError(f"当前 Agent 返回的 {key} 不是有效 Base64") from exc
-    raise AgentGenerationError(
-        "当前 Agent 生图适配器必须返回图片字节、本地路径、图片 URL、Data URL 或包含这些字段的字典"
-    )
-
-
-def _save_image(
-    image_bytes: bytes,
-    output_path: Path,
-    width: int,
-    height: int,
-    source: str,
-    error_type: type[AgentGenerationError] | type[AIGenerationError] = AgentGenerationError,
-) -> None:
-    try:
-        with Image.open(BytesIO(image_bytes)) as image:
-            image.load()
-            if image.size != (width, height):
-                raise error_type(
-                    f"{source} 返回尺寸为 {image.width}x{image.height}，要求尺寸为 {width}x{height}"
-                )
-            converted = image.convert("RGB")
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = output_path.with_name(f".{output_path.stem}-{uuid4().hex}.tmp.png")
-            converted.save(temporary, format="PNG", optimize=True)
-            temporary.replace(output_path)
-    except (AgentGenerationError, AIGenerationError):
-        raise
-    except (OSError, ValueError) as exc:
-        raise error_type(f"{source} 返回的内容不是有效图片") from exc
-
-
-def _reference_data_url(reference_path: Path) -> str:
-    if not reference_path.is_file():
-        raise ReferenceImageError(f"风格参考图不存在：{reference_path}")
-    try:
-        with Image.open(reference_path) as source:
-            output = BytesIO()
-            source.convert("RGB").save(output, format="JPEG", quality=92, optimize=True)
-    except (OSError, ValueError) as exc:
-        raise ReferenceImageError(f"风格参考图不是有效图片：{reference_path}") from exc
-    return f"data:image/jpeg;base64,{base64.b64encode(output.getvalue()).decode('ascii')}"
-
-
-def _ark_image_bytes(payload: dict) -> bytes:
-    items = payload.get("data") or []
-    if not items or not isinstance(items[0], dict):
-        raise AIGenerationError("方舟响应中没有生成图片")
-    item = items[0]
-    if isinstance(item.get("b64_json"), str) and item["b64_json"]:
-        try:
-            return base64.b64decode(item["b64_json"], validate=True)
-        except ValueError as exc:
-            raise AIGenerationError("方舟返回了无效的 Base64 图片") from exc
-    if isinstance(item.get("url"), str) and item["url"]:
-        try:
-            response = requests.get(item["url"], timeout=(20, 180))
-            response.raise_for_status()
-            return response.content
-        except requests.RequestException as exc:
-            raise AIGenerationError(f"方舟结果图片下载失败：{exc}") from exc
-    raise AIGenerationError("方舟响应中没有可用的图片数据")
-
-
-def _generate_with_ai(prompt: str, reference_path: Path, size: str) -> bytes:
-    api_key = os.getenv("VOLC_ARK_API_KEY", "").strip()
-    if not api_key:
-        raise AIConfigurationError("缺少环境变量 VOLC_ARK_API_KEY，无法使用方舟生图兜底")
-    endpoint = os.getenv("VOLC_ARK_IMAGE_URL", ARK_IMAGE_ENDPOINT).strip() or ARK_IMAGE_ENDPOINT
-    payload = {
-        "model": _ark_image_model(),
-        "prompt": prompt,
-        "image": [_reference_data_url(reference_path)],
-        "size": size,
-        "sequential_image_generation": "disabled",
-        "response_format": "b64_json",
-        "watermark": False,
-    }
-    try:
-        response = requests.post(
-            endpoint,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            timeout=(20, 600),
+def _validate_task(task: dict, seen: set[str]) -> tuple[str, str, str]:
+    if not isinstance(task, dict):
+        raise AgentImageTaskError("每个生图任务都必须是对象")
+    image_id = str(task.get("image_id") or "").strip()
+    prompt = str(task.get("prompt") or "").strip()
+    kind = str(task.get("kind") or "image").strip()
+    if not image_id or not re.fullmatch(r"[A-Za-z0-9_-]+", image_id):
+        raise AgentImageTaskError(
+            "image_id 只能包含英文字母、数字、下划线和连字符",
+            {"image_id": image_id},
         )
-        response.raise_for_status()
-        return _ark_image_bytes(response.json())
-    except requests.HTTPError as exc:
-        details = response.text.strip()[:2000]
-        raise AIGenerationError(
-            f"方舟生图请求失败（HTTP {response.status_code}）：{details or '服务端没有返回错误详情'}"
-        ) from exc
-    except requests.RequestException as exc:
-        raise AIGenerationError(f"方舟生图网络请求失败：{type(exc).__name__}: {exc}") from exc
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise AIGenerationError("方舟返回的响应不是有效 JSON") from exc
+    if image_id in seen:
+        raise AgentImageTaskError(f"image_id 重复：{image_id}")
+    if not prompt:
+        raise AgentImageTaskError(f"生图任务 {image_id} 的 prompt 不能为空")
+    seen.add(image_id)
+    return image_id, prompt, kind
 
 
-def generate_image(
-    prompt: str,
-    style: str,
+def prepare_agent_image_tasks(
+    tasks: list[dict],
+    style: str | None,
     radio: str,
     size: str,
+    cache_dir: str | Path,
     *,
-    force_regenerate: bool = False,
-    cache_dir: str | Path | None = None,
+    additional_reference_image_paths: list[str | Path] | None = None,
+    context_path: str | Path | None = None,
+    force_image_ids: list[str] | None = None,
+    force_images: bool = False,
+    exact_size: bool = True,
+    metadata: dict | None = None,
 ) -> dict:
-    """生成图片；Agent 无生图能力时直走方舟，有能力时失败三次再走方舟。"""
-    if not isinstance(prompt, str) or not prompt.strip():
-        raise InvalidParameterError("prompt", "prompt 必须是非空字符串")
-    if not isinstance(force_regenerate, bool):
-        raise InvalidParameterError("force_regenerate", "force_regenerate 必须是布尔值")
-    if cache_dir is not None and (not isinstance(cache_dir, (str, Path)) or not str(cache_dir).strip()):
-        raise InvalidParameterError("cache_dir", "cache_dir 必须是非空路径或不传")
+    """生成与具体工作流无关的宿主 Agent 生图任务和缓存状态。"""
+    if not isinstance(tasks, list) or not tasks:
+        raise InvalidParameterError("tasks", "tasks 必须是非空生图任务列表")
+    if not isinstance(force_images, bool):
+        raise InvalidParameterError("force_images", "force_images 必须是布尔值")
+    if not isinstance(exact_size, bool):
+        raise InvalidParameterError("exact_size", "exact_size 必须是布尔值")
     width, height, normalized_radio, normalized_size = _validate_dimensions(radio, size)
-    selected_style = _select_style(style)
-    final_prompt = _build_prompt(prompt, selected_style, normalized_radio, normalized_size)
-    output_root = Path(
-        cache_dir if cache_dir is not None else os.getenv("IMAGE_OUTPUT_DIRECTORY", DEFAULT_OUTPUT_DIRECTORY)
-    ).resolve()
-    cache_key = _cache_key(final_prompt, selected_style, normalized_radio, normalized_size)
-    output_path = output_root / f"{cache_key}.png"
-    metadata_path = output_root / f"{cache_key}.json"
-    if not force_regenerate:
-        cached = _read_cache(output_path, metadata_path, width, height, cache_key)
-        if cached:
-            return cached
-    agent_request = {
-        "prompt": final_prompt,
-        "referenced_image_paths": [selected_style["reference_image_path"]],
-        "radio": normalized_radio,
-        "size": normalized_size,
+    style_name = str(style or "").strip()
+    selected_style = _select_style(style_name) if style_name else None
+    if additional_reference_image_paths is not None and not isinstance(additional_reference_image_paths, list):
+        raise InvalidParameterError(
+            "additional_reference_image_paths",
+            "additional_reference_image_paths 必须是参考图路径数组或不传",
+        )
+    reference_paths: list[Path] = []
+    if selected_style:
+        reference_path = Path(selected_style["reference_image_path"]).resolve()
+        if not reference_path.is_file():
+            raise ReferenceImageError(f"风格参考图不存在：{reference_path}")
+        reference_paths.append(reference_path)
+    for value in additional_reference_image_paths or []:
+        extra_path = Path(str(value)).resolve()
+        if not extra_path.is_file():
+            raise ReferenceImageError(f"附加参考图不存在：{extra_path}")
+        if extra_path not in reference_paths:
+            reference_paths.append(extra_path)
+    output_root = Path(cache_dir).resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+    normalized: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for task in tasks:
+        normalized.append(_validate_task(task, seen))
+    forced = set(force_image_ids or [])
+    unknown = forced.difference(seen)
+    if unknown:
+        raise AgentImageTaskError(
+            f"要重做的图片不存在：{sorted(unknown)}",
+            {"supported_image_ids": sorted(seen)},
+        )
+    prepared: list[dict] = []
+    for image_id, prompt, kind in normalized:
+        task_reference_paths = list(reference_paths)
+        if kind == "cover":
+            cover_reference_path = COVER_REFERENCE_IMAGE_PATH.resolve()
+            if not cover_reference_path.is_file():
+                raise ReferenceImageError(f"公共封面参考图不存在：{cover_reference_path}")
+            if cover_reference_path not in task_reference_paths:
+                task_reference_paths.append(cover_reference_path)
+        output_path = output_root / f"{image_id}.png"
+        has_references = bool(task_reference_paths)
+        final_prompt = _final_prompt(
+            prompt,
+            selected_style,
+            normalized_radio,
+            normalized_size,
+            kind,
+            has_references=has_references,
+            exact_size=exact_size,
+        )
+        cache_signature = _cache_signature(
+            final_prompt,
+            task_reference_paths,
+            normalized_radio,
+            normalized_size,
+        )
+        cache_hit = (
+            _valid_image(output_path, width, height, cache_signature)
+            and not force_images
+            and image_id not in forced
+        )
+        prepared.append(
+            {
+                "image_id": image_id,
+                "kind": kind,
+                "prompt": final_prompt,
+                "style": selected_style["id"] if selected_style else None,
+                "radio": normalized_radio,
+                "size": normalized_size,
+                "exact_size": exact_size,
+                "referenced_image_paths": [_agent_path(path) for path in task_reference_paths],
+                "reference_images_required": has_references,
+                "reference_failure_policy": (
+                    "必须把 referenced_image_paths 作为本地图片数组原样传给当前生图能力；"
+                    "若宿主不能传本地参考图，按 capability_unavailable=true 提交失败，"
+                    "禁止用文字描述、提示词复述或想象参考图替代。"
+                    if has_references
+                    else "本任务没有参考图，不要附加画风或其它参考图。"
+                ),
+                "output_path": _agent_path(output_path),
+                "cache_signature": cache_signature,
+                "cache_hit": cache_hit,
+                "needs_generation": not cache_hit,
+            }
+        )
+    resolved_context = Path(context_path or output_root / AGENT_IMAGE_CONTEXT_NAME).resolve()
+    context = {
+        "version": AGENT_IMAGE_TASK_VERSION,
+        "status": "awaiting_agent_images",
+        "exact_size": exact_size,
+        "tasks": prepared,
+        "metadata": dict(metadata or {}),
+        "context_path": _agent_path(resolved_context),
     }
+    resolved_context.parent.mkdir(parents=True, exist_ok=True)
+    resolved_context.write_text(json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8")
+    return context
 
-    failures: list[str] = []
-    agent_attempts = 0
-    if _agent_image_generator is not None:
-        for attempt in range(1, AGENT_GENERATION_ATTEMPTS + 1):
-            agent_attempts = attempt
-            try:
-                image_bytes = _result_bytes(_agent_image_generator(agent_request))
-                _save_image(image_bytes, output_path, width, height, "当前 Agent")
-                result = {
-                    "output_path": str(output_path),
-                    "provider": "current_agent",
-                    "model": "current_agent",
-                    "style": selected_style["id"],
-                    "radio": normalized_radio,
-                    "size": normalized_size,
-                    "agent_attempts": attempt,
-                    "cache_hit": False,
-                    "cache_key": cache_key,
-                }
-                _write_cache_metadata(metadata_path, result)
-                return result
-            except Exception as exc:
-                failures.append(f"第 {attempt} 次：{type(exc).__name__}: {exc}")
 
+def _save_checked_image(
+    source_path: Path,
+    output_path: Path,
+    image_id: str,
+    width: int,
+    height: int,
+    exact_size: bool,
+) -> None:
+    if not source_path.is_file():
+        raise AgentImageTaskError(
+            f"当前 Agent 生成的图片不存在：{source_path}",
+            {"image_id": image_id, "image_path": str(source_path)},
+        )
     try:
-        image_bytes = _generate_with_ai(final_prompt, Path(selected_style["reference_image_path"]), normalized_size)
-        _save_image(image_bytes, output_path, width, height, "方舟", AIGenerationError)
-    except ImageGenerationError as exc:
-        exc.details["agent_failures"] = failures
+        with Image.open(source_path) as image:
+            image.load()
+            fitted = _fit_image(
+                image,
+                width,
+                height,
+                exact_size,
+                f"图片 {image_id}",
+                AgentImageTaskError,
+            )
+            _write_png(fitted.copy(), output_path)
+    except AgentImageTaskError:
         raise
-    result = {
-        "output_path": str(output_path),
-        "provider": "volc_ark",
-        "model": _ark_image_model(),
-        "style": selected_style["id"],
-        "radio": normalized_radio,
-        "size": normalized_size,
-        "agent_attempts": agent_attempts,
-        "cache_hit": False,
-        "cache_key": cache_key,
+    except (OSError, ValueError) as exc:
+        raise AgentImageTaskError(
+            f"图片 {image_id} 不是有效图片：{source_path}",
+            {"image_id": image_id, "image_path": str(source_path)},
+        ) from exc
+
+
+def submit_agent_image_tasks(
+    context_path: str | Path,
+    images: list[dict],
+    *,
+    failures: list[dict] | None = None,
+    manifest_path: str | Path | None = None,
+) -> dict:
+    """接收宿主 Agent 结果；无能力或失败三次的单张图片才使用方舟兜底。"""
+    resolved_context = Path(context_path).resolve()
+    if not resolved_context.is_file():
+        raise AgentImageTaskError(f"生图任务上下文不存在：{resolved_context}")
+    try:
+        context = json.loads(resolved_context.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AgentImageTaskError(f"读取生图任务上下文失败：{resolved_context}。{exc}") from exc
+    tasks = context.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        raise AgentImageTaskError("生图任务上下文缺少 tasks")
+    if not isinstance(images, list):
+        raise InvalidParameterError("images", "images 必须是图片结果列表")
+    provided: dict[str, Path] = {}
+    for item in images:
+        if not isinstance(item, dict) or not str(item.get("image_id") or "").strip() or not str(item.get("image_path") or "").strip():
+            raise AgentImageTaskError("每个图片结果都必须包含 image_id 和 image_path")
+        image_id = str(item["image_id"]).strip()
+        if image_id in provided:
+            raise AgentImageTaskError(f"图片结果重复：{image_id}")
+        provided[image_id] = Path(str(item["image_path"])).resolve()
+    task_by_id = {str(task["image_id"]): task for task in tasks}
+    unknown = set(provided).difference(task_by_id)
+    if unknown:
+        raise AgentImageTaskError(
+            f"提交了未知图片：{sorted(unknown)}",
+            {"supported_image_ids": sorted(task_by_id)},
+        )
+    failure_by_id: dict[str, dict] = {}
+    if failures is not None and not isinstance(failures, list):
+        raise InvalidParameterError("failures", "failures 必须是失败结果列表或不传")
+    for item in failures or []:
+        if not isinstance(item, dict) or not str(item.get("image_id") or "").strip():
+            raise AgentImageTaskError("每个失败结果都必须包含 image_id")
+        image_id = str(item["image_id"]).strip()
+        if image_id in failure_by_id:
+            raise AgentImageTaskError(f"失败结果重复：{image_id}")
+        if image_id in provided:
+            raise AgentImageTaskError(f"图片 {image_id} 不能同时提交成功路径和失败结果")
+        attempts = item.get("attempts", 0)
+        unavailable = item.get("capability_unavailable", False)
+        if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts < 0:
+            raise AgentImageTaskError(f"图片 {image_id} 的 attempts 必须是大于等于 0 的整数")
+        if unavailable is not True and attempts < 3:
+            raise AgentImageTaskError(
+                f"图片 {image_id} 仅失败 {attempts} 次；当前 Agent 必须尝试满 3 次才能使用方舟兜底"
+            )
+        failure_by_id[image_id] = item
+    unknown_failures = set(failure_by_id).difference(task_by_id)
+    if unknown_failures:
+        raise AgentImageTaskError(
+            f"提交了未知失败图片：{sorted(unknown_failures)}",
+            {"supported_image_ids": sorted(task_by_id)},
+        )
+    providers: dict[str, str] = {}
+    for image_id, task in task_by_id.items():
+        width, height, _, _ = _validate_dimensions(str(task["radio"]), str(task["size"]))
+        target = Path(task["output_path"]).resolve()
+        exact_size = bool(task.get("exact_size", context.get("exact_size", True)))
+        if image_id in provided:
+            _save_checked_image(provided[image_id], target, image_id, width, height, exact_size)
+            if task.get("cache_signature"):
+                _write_cache_metadata(target, str(task["cache_signature"]))
+            providers[image_id] = "current_agent"
+        elif image_id in failure_by_id:
+            references = task.get("referenced_image_paths") or []
+            if task.get("reference_images_required") and (not isinstance(references, list) or not references):
+                raise AgentImageTaskError(f"图片 {image_id} 缺少参考图")
+            reference_paths = [Path(str(reference)).resolve() for reference in references]
+            image_bytes = _generate_with_ai(str(task["prompt"]), reference_paths, str(task["size"]))
+            _save_image(image_bytes, target, width, height, "方舟", exact_size=exact_size)
+            if task.get("cache_signature"):
+                _write_cache_metadata(target, str(task["cache_signature"]))
+            providers[image_id] = "volc_ark"
+        elif not _valid_image(
+            target,
+            width,
+            height,
+            str(task.get("cache_signature") or "") or None,
+        ):
+            raise AgentImageTaskError(
+                f"缺少图片 {image_id}；请让当前 Agent 按对应任务生图后重新提交",
+                {"image_id": image_id, "expected_output_path": str(target)},
+            )
+        else:
+            providers[image_id] = "cache"
+    resolved_manifest = Path(manifest_path or resolved_context.parent / AGENT_IMAGE_MANIFEST_NAME).resolve()
+    manifest = {
+        "version": AGENT_IMAGE_TASK_VERSION,
+        "status": "ready",
+        "images": {image_id: str(Path(task["output_path"]).resolve()) for image_id, task in task_by_id.items()},
+        "providers": providers,
+        "metadata": dict(context.get("metadata") or {}),
+        "manifest_path": str(resolved_manifest),
     }
-    _write_cache_metadata(metadata_path, result)
-    return result
+    resolved_manifest.parent.mkdir(parents=True, exist_ok=True)
+    resolved_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    return manifest

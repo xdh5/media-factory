@@ -1,0 +1,3 @@
+[submodule "integrations/MatrixMedia"]
+	path = integrations/MatrixMedia
+	url = git@github.com:xdh5/MatrixMedia.git

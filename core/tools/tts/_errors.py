@@ -12,9 +12,11 @@ __all__ = [
     "EmptyTextError",
     "UnsupportedVoiceError",
     "SynthesisError",
+    "InvalidParameterError",
     "InvalidOutputPathError",
     "FFmpegNotFoundError",
     "AudioProcessingError",
+    "LoudnessNormalizationError",
 ]
 
 
@@ -56,14 +58,23 @@ class SynthesisError(TTSError):
     code = "SYNTHESIS_FAILED"
 
 
+class InvalidParameterError(TTSError):
+    """输入参数无效。"""
+
+    code = "INVALID_PARAMETER"
+
+    def __init__(self, parameter: str, message: str):
+        super().__init__(message, {"parameter": parameter})
+
+
 class InvalidOutputPathError(TTSError):
-    """compose 输出路径不是 WAV 文件。"""
+    """generate_tts 输出路径不是 WAV 文件。"""
 
     code = "INVALID_OUTPUT_PATH"
 
     def __init__(self, output_path: str):
         super().__init__(
-            f"compose 输出必须使用 .wav 扩展名，当前路径为 {output_path!r}",
+            f"generate_tts 输出必须使用 .wav 扩展名，当前路径为 {output_path!r}",
             {"output_path": output_path, "required_extension": ".wav"},
         )
 
@@ -81,3 +92,9 @@ class AudioProcessingError(TTSError):
     """静音处理、WAV 读取或音频拼接失败。"""
 
     code = "AUDIO_PROCESSING_FAILED"
+
+
+class LoudnessNormalizationError(TTSError):
+    """响度标准化失败，或标准化后时长发生变化。"""
+
+    code = "LOUDNESS_NORMALIZATION_FAILED"

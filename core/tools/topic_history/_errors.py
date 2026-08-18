@@ -26,9 +26,5 @@ class DuplicateTopicError(TopicHistoryError):
     code = "DUPLICATE_TOPIC"
 
 
-class TopicRecordNotFoundError(TopicHistoryError):
-    code = "TOPIC_RECORD_NOT_FOUND"
-
-
 class TopicDatabaseError(TopicHistoryError):
     code = "TOPIC_DATABASE_ERROR"

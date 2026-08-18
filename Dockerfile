@@ -38,5 +38,5 @@ COPY . .
 # 全部工作流运行数据由部署侧统一挂载持久化。
 VOLUME ["/app/data"]
 
-# 入口待定：apps/server 尚未实现，先保持 python 供 docker run -it 调试
+# 工作流 MCP 在本机 stdio 运行；镜像内默认进入 python 供调试
 CMD ["python"]

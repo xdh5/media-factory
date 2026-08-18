@@ -64,5 +64,6 @@ BGM_LIBRARY: list[dict] = [
 
 # ---- 渲染时默认混音参数（供视频合成阶段取用）----
 BGM_FIXED_GAIN = 0.28            # BGM 固定音量（对白优先，整体压低）
+BGM_MIX_GAIN = 1.0               # 混合后整体增益；具体工作流应显式传参
 BGM_FADE_IN_SECONDS = 1.0        # 片段起始淡入时长
 BGM_FADE_OUT_SECONDS = 2.0       # 片段结尾淡出时长

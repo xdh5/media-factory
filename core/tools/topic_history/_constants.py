@@ -2,5 +2,5 @@
 
 DEFAULT_DEDUPLICATION_DAYS = 30
 TOPIC_HISTORY_SCHEMA_VERSION = 1
-ACTIVE_TOPIC_STATUSES = ["reserved", "completed", "published"]
+ACTIVE_TOPIC_STATUSES = ["reserved", "completed", "published", "used"]
 SUPPORTED_TOPIC_STATUSES = [*ACTIVE_TOPIC_STATUSES, "failed"]

@@ -5,12 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
+COVER_REFERENCE_IMAGE_PATH = _STATIC_DIR / "ref_cover.png"
 
-AGENT_GENERATION_ATTEMPTS = 3
-IMAGE_CACHE_VERSION = 1
 ARK_IMAGE_MODEL = "doubao-seedream-4-5-251128"
 ARK_IMAGE_ENDPOINT = "https://ark.cn-beijing.volces.com/api/v3/images/generations"
-DEFAULT_OUTPUT_DIRECTORY = "outputs/images"
+AGENT_IMAGE_TASK_VERSION = 4
+AGENT_IMAGE_CONTEXT_NAME = "agent-image-context.json"
+AGENT_IMAGE_MANIFEST_NAME = "agent-image-manifest.json"
+IMAGE_ASPECT_MAX_PIXEL_ERROR = 1
 
 SUPPORTED_STYLE_IDS = ["painterly", "realistic", "paper"]
 

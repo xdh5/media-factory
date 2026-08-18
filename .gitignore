@@ -32,9 +32,12 @@ Thumbs.db
 *.sqlite3
 
 # 工作流运行数据由部署目录持久化，不进入版本库
-data/*/cache/
-data/*/outputs/
+data/*/runs/
 
-# 本地发布登录态与 OAuth 凭据，不进入版本库
-data/matrixmedia/user-data/
+# 本地 OAuth 凭据，不进入版本库
 data/youtube/tokens/
+
+# MatrixMedia 本机依赖与 MCP 构建产物
+integrations/MatrixMedia/node_modules/
+integrations/MatrixMedia/mcp/node_modules/
+integrations/MatrixMedia/mcp/dist/

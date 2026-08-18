@@ -19,7 +19,7 @@ SLIDE_IN_INPUT_SCHEMA = {
     "properties": {
         "image_path": {
             "type": "string",
-            "description": "输入图片路径（建议 16:9 彩色图片；动画内部统一处理为 1920x1080）",
+            "description": "输入图片路径（建议 16:9 彩色图片；动画内部统一处理为 2560x1440）",
         },
         "output_path": {
             "type": "string",
@@ -54,7 +54,7 @@ SLIDE_IN_OUTPUT_SCHEMA = {
         },
         "resolution": {
             "type": "string",
-            "description": "分辨率，固定 1920x1080",
+            "description": "分辨率，固定 2560x1440",
         },
         "sfx": {
             "type": "array",
@@ -89,6 +89,7 @@ SLIDE_IN_ERROR_SCHEMA = {
                         "MEDIA_PROBE_FAILED", # 无法读取 TTS 时长
                         "UNSUPPORTED_SUBTITLE_LANGUAGE", # 字幕语言不支持
                         "RENDER_FAILED",      # ffmpeg 渲染失败，message 带 stderr 摘要
+                        "RENDER_TIMEOUT",     # ffmpeg 超时后已终止
                     ],
                 },
                 "message": {

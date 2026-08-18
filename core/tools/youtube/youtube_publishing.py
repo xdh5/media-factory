@@ -1,10 +1,9 @@
-"""通过 YouTube Data API 发布视频并管理项目内 OAuth 登录态。"""
+"""通过 YouTube Data API 发布视频并读取项目内 OAuth 登录态。"""
 
 from __future__ import annotations
 
 import json
 import mimetypes
-import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -25,9 +24,9 @@ from ._constants import (
     YOUTUBE_SCOPES,
     YOUTUBE_TOKEN_DIR,
 )
-from ._errors import AccountNotFoundError, CredentialError, InvalidParameterError, MigrationError, UploadError
+from ._errors import AccountNotFoundError, CredentialError, InvalidParameterError, UploadError
 
-__all__ = ["list_youtube_accounts", "publish_youtube_video", "migrate_youtube_accounts"]
+__all__ = ["list_youtube_accounts", "publish_youtube_video"]
 
 
 def _read_token(channel_id: str) -> tuple[Path, dict]:
@@ -203,34 +202,3 @@ def publish_youtube_video(
     except Exception as exc:
         raise UploadError(f"YouTube 上传失败：{exc}", {"channel_id": channel_id}) from exc
     return {"video_id": video_id, "video_url": f"https://www.youtube.com/watch?v={video_id}", "channel_id": channel_id}
-
-
-def migrate_youtube_accounts(
-    source_token_dir: str | Path,
-    channel_ids: list[str] | None = None,
-) -> dict:
-    """把已有 OAuth 令牌和账号组复制到项目，不输出令牌内容。"""
-    source = Path(source_token_dir).resolve()
-    if not source.is_dir():
-        raise MigrationError(f"YouTube 令牌目录不存在：{source}", {"source_token_dir": str(source)})
-    YOUTUBE_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
-    selected = {str(channel_id).strip() for channel_id in (channel_ids or []) if str(channel_id).strip()}
-    copied = 0
-    for path in source.glob("*.json"):
-        if selected and path.stem not in selected:
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(data.get("credentials"), dict):
-                continue
-            shutil.copy2(path, YOUTUBE_TOKEN_DIR / path.name)
-            copied += 1
-        except (OSError, ValueError, TypeError) as exc:
-            raise MigrationError(f"迁移 YouTube 凭据失败：{path.name}：{exc}") from exc
-    accounts = list_youtube_accounts()
-    return {
-        "source_token_dir": str(source),
-        "target_token_dir": str(YOUTUBE_TOKEN_DIR),
-        "copied": copied,
-        "accounts": accounts,
-    }

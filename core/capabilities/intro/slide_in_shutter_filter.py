@@ -23,12 +23,18 @@ from core.capabilities.intro._constants import (
     FIRST_SLIDE_SECONDS,
     FLASH_SECONDS,
     FPS,
+    INTRO_RENDER_MIN_TIMEOUT_SECONDS,
+    INTRO_RENDER_TIMEOUT_PER_SECOND,
     OUTPUT_SIZE,
+    OUTPUT_HEIGHT,
+    OUTPUT_WIDTH,
+    PHOTO_EXPAND_SECONDS,
     RESOLUTION,
     SECOND_SLIDE_START_SECONDS,
     SFX_SHUTTER_GAIN,
     SFX_SHUTTER_PATH,
     SFX_SHUTTER_SECONDS,
+    SFX_WHOOSH_GAIN,
     SFX_WHOOSH_PATH,
     SFX_WHOOSH_SECONDS,
     SHUTTER_START_SECONDS,
@@ -39,6 +45,7 @@ from core.capabilities.intro._errors import (
     FFMPEGNotFoundError,
     InvalidParameterError,
     RenderError,
+    RenderTimeoutError,
 )
 from core.tools.video._constants import (
     SUBTITLE_FONT_DIRECTORIES,
@@ -50,7 +57,7 @@ from core.tools.video._constants import (
     VIDEO_PIXEL_FORMAT,
     VIDEO_PRESET,
 )
-from core.tools.video.render_shot import (
+from core.tools.video._render_shot import (
     _filter_path,
     _motion_filter,
     _probe,
@@ -61,12 +68,8 @@ from core.tools.video.render_shot import (
 __all__ = ["slide_in_shutter"]
 
 
-def _build_filter(source: str = "0:v") -> str:
-    """生成双向滑入 + 快门闪光的 ffmpeg filter_complex 片段。
-
-    产出 [photo_card]（滑入 + 闪光完整时间线），供渲染函数接 format 后输出。
-    """
-    duration = TOTAL_SECONDS
+def _build_filter(source: str, duration: float) -> str:
+    """生成原版双向滑入、快门和展开遮罩所需的 FFmpeg 片段。"""
     flash_end = min(duration, SHUTTER_START_SECONDS + FLASH_SECONDS)
 
     # 各阶段起止钳制在片段时长内，保证短片段不越界
@@ -88,9 +91,12 @@ def _build_filter(source: str = "0:v") -> str:
         f"[{source}]split=2[slide_full_source][slide_small_source];"
         f"color=c=black:size={CANVAS_SIZE}:r={FPS}:d={duration:.3f},format=rgba[base];"
         f"[slide_full_source]scale={OUTPUT_SIZE}:force_original_aspect_ratio=increase:flags=lanczos,"
-        f"crop={OUTPUT_SIZE},setsar=1,format=rgba,"
-        f"hue=s=0[first];"
-        f"[slide_small_source]scale=iw*{CARD_SCALE}:ih*{CARD_SCALE}:flags=lanczos,"
+        f"crop={OUTPUT_SIZE},setsar=1,format=rgba[full_source];"
+        f"[full_source]hue=s=0[first];"
+        # 输入是静态图；卡片阴影只需生成一次，后续由 overlay 重复，避免对相同像素逐帧高斯模糊。
+        f"[slide_small_source]select='eq(n\\,0)',"
+        f"scale={round(OUTPUT_WIDTH * CARD_SCALE)}:{round(OUTPUT_HEIGHT * CARD_SCALE)}:"
+        "force_original_aspect_ratio=decrease:flags=lanczos,"
         "setsar=1,format=rgba,split=2[photo][shadow_source];"
         f"[shadow_source]pad=iw+{CARD_SHADOW_MARGIN * 2}:ih+{CARD_SHADOW_MARGIN * 2}:"
         f"{shadow_x}:{shadow_y}:color=black@0,"
@@ -113,16 +119,20 @@ def _build_filter(source: str = "0:v") -> str:
     )
 
 
-def _run(command: list[str]) -> None:
+def _run(command: list[str], timeout_seconds: float) -> None:
     """执行外部命令，非零退出码时抛出带 stderr 摘要的错误。"""
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RenderTimeoutError(timeout_seconds) from exc
     if completed.returncode != 0:
         details = completed.stderr.strip() or completed.stdout.strip()
         raise RenderError(details[-2000:] or "FFmpeg 渲染失败")
@@ -175,33 +185,74 @@ def slide_in_shutter(
 
     with tempfile.TemporaryDirectory(prefix="slide-in-shutter-") as temporary:
         temporary_dir = Path(temporary)
-        command = [
-            ffmpeg, "-y", "-loop", "1", "-framerate", str(FPS), "-i", str(image_path),
-            "-ss", f"{effective_start:.6f}", "-t", f"{duration:.6f}", "-i", str(tts_path),
-        ]
         intro_duration = min(TOTAL_SECONDS, duration)
-        remaining_duration = max(0.0, duration - intro_duration)
+        flash_end = min(intro_duration, SHUTTER_START_SECONDS + FLASH_SECONDS)
+        expand_end = min(intro_duration, flash_end + PHOTO_EXPAND_SECONDS)
+        # 正常首镜头从一张图直接展开为帧序列；片头支路只补齐自身时长，
+        # 保留原版画面但不反复解码同一张 PNG。
+        command = [ffmpeg, "-y", "-framerate", str(FPS), "-i", str(image_path)]
+        command.extend([
+            "-ss", f"{effective_start:.6f}", "-t", f"{duration:.6f}", "-i", str(tts_path),
+        ])
         chains: list[str] = []
-        if remaining_duration > 0.0001:
-            chains.append("[0:v]split=2[intro_input][normal_input]")
-            chains.append(_build_filter("intro_input"))
-            normal_filter = (
-                _motion_filter(motion, remaining_duration, 1920, 1080)
-                if motion else _static_filter(1920, 1080)
-            )
+        if intro_duration > 0.0001:
+            chains.append("[0:v]split=2[normal_input][intro_raw]")
             chains.append(
-                f"[photo_card]trim=duration={intro_duration:.6f},setpts=PTS-STARTPTS[intro_video]"
+                f"[intro_raw]tpad=stop_mode=clone:stop_duration={intro_duration:.6f}[intro_input]"
             )
+            if motion:
+                normal_filter = _motion_filter(
+                    motion,
+                    duration,
+                    OUTPUT_WIDTH,
+                    OUTPUT_HEIGHT,
+                    single_image=True,
+                    start_delay=expand_end,
+                )
+            else:
+                normal_filter = (
+                    f"tpad=stop_mode=clone:stop_duration={duration:.6f},"
+                    f"{_static_filter(OUTPUT_WIDTH, OUTPUT_HEIGHT)}"
+                )
             chains.append(
-                f"[normal_input]{normal_filter},trim=duration={remaining_duration:.6f},"
-                "setpts=PTS-STARTPTS[normal_video]"
+                f"[normal_input]{normal_filter},trim=duration={duration:.6f},"
+                "setpts=PTS-STARTPTS,format=rgba[normal_source]"
             )
-            chains.append("[intro_video][normal_video]concat=n=2:v=1:a=0[base_video]")
+            chains.append(_build_filter("intro_input", intro_duration))
+            # 展开底图和展开遮罩都取自首镜头动效的起始画面。这样四向展开完成后
+            # 交给正常动效时，前后两帧的缩放与焦点完全一致，不再从 1.00 倍
+            # 突然跳到 zoom_from 造成二次放大和停顿感。
+            chains.extend([
+                "[normal_source]split=3[normal][expand_colour_source][expand_gray_raw]",
+                "[expand_gray_raw]hue=s=0[expand_gray_source]",
+            ])
+            expand_duration = max(0.05, expand_end - flash_end)
+            expand_p = f"min(1\\,max(0\\,(t-{flash_end:.3f})/{expand_duration:.3f}))"
+            expand_smooth = f"({expand_p})*({expand_p})*(3-2*({expand_p}))"
+            half_width = OUTPUT_WIDTH // 2
+            half_height = OUTPUT_HEIGHT // 2
+            chains.extend([
+                "[expand_gray_source]split=4[expand_top_source][expand_bottom_source]"
+                "[expand_left_source][expand_right_source]",
+                f"[expand_top_source]crop={OUTPUT_WIDTH}:{half_height}:0:0[expand_top]",
+                f"[expand_bottom_source]crop={OUTPUT_WIDTH}:{half_height}:0:{half_height}[expand_bottom]",
+                f"[expand_left_source]crop={half_width}:{OUTPUT_HEIGHT}:0:0[expand_left]",
+                f"[expand_right_source]crop={half_width}:{OUTPUT_HEIGHT}:{half_width}:0[expand_right]",
+                f"[expand_colour_source][expand_top]overlay=x=0:y='-{half_height}*{expand_smooth}':"
+                "eof_action=repeat[expand_1]",
+                f"[expand_1][expand_bottom]overlay=x=0:y='{half_height}+{half_height}*{expand_smooth}':"
+                "eof_action=repeat[expand_2]",
+                f"[expand_2][expand_left]overlay=x='-{half_width}*{expand_smooth}':y=0:"
+                "eof_action=repeat[expand_3]",
+                f"[expand_3][expand_right]overlay=x='{half_width}+{half_width}*{expand_smooth}':y=0:"
+                "eof_action=repeat[expand_stage]",
+                f"[expand_stage][photo_card]overlay=0:0:eof_action=pass:"
+                f"enable='lte(t,{flash_end:.3f})'[opening_timeline]",
+                f"[normal][opening_timeline]overlay=0:0:eof_action=pass:"
+                f"enable='lte(t,{expand_end:.3f})'[base_video]",
+            ])
         else:
-            chains.append(_build_filter("0:v"))
-            chains.append(
-                f"[photo_card]trim=duration={intro_duration:.6f},setpts=PTS-STARTPTS[base_video]"
-            )
+            chains.append(f"[0:v]{_static_filter(OUTPUT_WIDTH, OUTPUT_HEIGHT)}[base_video]")
 
         video_label = "base_video"
         if subtitle is not None and str(subtitle).strip():
@@ -230,7 +281,7 @@ def slide_in_shutter(
             chains.append(
                 f"[{next_input}:a]atrim=0:{min(SFX_WHOOSH_SECONDS, duration):.6f},"
                 f"asetpts=PTS-STARTPTS,aresample={VIDEO_AUDIO_RATE},"
-                "aformat=channel_layouts=stereo[whoosh]"
+                f"aformat=channel_layouts=stereo,volume={SFX_WHOOSH_GAIN:.3f}[whoosh]"
             )
             mix_labels.append("[whoosh]")
             sfx.append("whoosh")
@@ -259,7 +310,11 @@ def slide_in_shutter(
             "-c:a", VIDEO_AUDIO_CODEC, "-ar", str(VIDEO_AUDIO_RATE), "-ac", str(VIDEO_AUDIO_CHANNELS),
             "-movflags", "+faststart", str(output_path),
         ])
-        _run(command)
+        render_timeout = max(
+            INTRO_RENDER_MIN_TIMEOUT_SECONDS,
+            duration * INTRO_RENDER_TIMEOUT_PER_SECOND,
+        )
+        _run(command, render_timeout)
 
     return {
         "output_path": str(output_path),

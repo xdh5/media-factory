@@ -1,0 +1,36 @@
+{
+  "mcpServers": {
+    "media-factory-finance": {
+      "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "args": [
+        "-m",
+        "workflows.finance.index"
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "PYTHONUTF8": "1"
+      }
+    },
+    "media-factory-language-learning": {
+      "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "args": [
+        "-m",
+        "workflows.language_learning.index"
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "PYTHONUTF8": "1"
+      }
+    },
+    "matrixmedia": {
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/integrations/MatrixMedia/mcp/dist/index.js"
+      ],
+      "cwd": "${workspaceFolder}/integrations/MatrixMedia/mcp",
+      "env": {
+        "MATRIXMEDIA_DIR": "${workspaceFolder}/integrations/MatrixMedia"
+      }
+    }
+  }
+}

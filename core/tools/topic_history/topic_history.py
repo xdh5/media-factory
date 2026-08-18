@@ -9,15 +9,14 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ._constants import ACTIVE_TOPIC_STATUSES, DEFAULT_DEDUPLICATION_DAYS, SUPPORTED_TOPIC_STATUSES
+from ._constants import ACTIVE_TOPIC_STATUSES, DEFAULT_DEDUPLICATION_DAYS
 from ._errors import (
     DuplicateTopicError,
     InvalidParameterError,
     TopicDatabaseError,
-    TopicRecordNotFoundError,
 )
 
-__all__ = ["recent_topics", "reserve_topic", "update_topic_status"]
+__all__ = ["get_topic", "update"]
 
 
 def _now() -> datetime:
@@ -85,12 +84,12 @@ def _record(row: sqlite3.Row) -> dict:
     return {key: row[key] for key in ("id", "workflow", "topic", "fingerprint", "status", "created_at", "updated_at")}
 
 
-def recent_topics(
+def get_topic(
     database_path: str | Path,
     workflow: str,
     days: int = DEFAULT_DEDUPLICATION_DAYS,
 ) -> list[dict]:
-    """返回指定工作流在时间窗口内已占用的话题。"""
+    """返回指定工作流最近 days 天内已占用的话题，供调用方避开重复。"""
     normalized_workflow = _validate_text(workflow, "workflow")
     window_days = _validate_days(days)
     cutoff = _timestamp(_now() - timedelta(days=window_days))
@@ -110,13 +109,13 @@ def recent_topics(
         raise TopicDatabaseError(f"读取最近话题失败：{exc}") from exc
 
 
-def reserve_topic(
+def update(
     database_path: str | Path,
     workflow: str,
     topic: str,
     days: int = DEFAULT_DEDUPLICATION_DAYS,
 ) -> dict:
-    """原子检查时间窗口并占用话题，防止并发工作流重复生成。"""
+    """写入一个未在时间窗口内重复的话题。"""
     normalized_workflow = _validate_text(workflow, "workflow")
     normalized_topic = _validate_text(topic, "topic")
     window_days = _validate_days(days)
@@ -141,7 +140,7 @@ def reserve_topic(
             timestamp = _timestamp(now)
             cursor = connection.execute(
                 "INSERT INTO topic_history(workflow, topic, fingerprint, status, created_at, updated_at) "
-                "VALUES (?, ?, ?, 'reserved', ?, ?)",
+                "VALUES (?, ?, ?, 'used', ?, ?)",
                 (normalized_workflow, normalized_topic, fingerprint, timestamp, timestamp),
             )
             row = connection.execute("SELECT * FROM topic_history WHERE id=?", (cursor.lastrowid,)).fetchone()
@@ -155,33 +154,4 @@ def reserve_topic(
     except DuplicateTopicError:
         raise
     except sqlite3.Error as exc:
-        raise TopicDatabaseError(f"占用话题失败：{exc}") from exc
-
-
-def update_topic_status(database_path: str | Path, record_id: int, status: str) -> dict:
-    """更新话题状态；工作流失败时标为 failed，可重新选用。"""
-    if isinstance(record_id, bool) or not isinstance(record_id, int) or record_id < 1:
-        raise InvalidParameterError("record_id", "record_id 必须是大于等于 1 的整数")
-    if status not in SUPPORTED_TOPIC_STATUSES:
-        raise InvalidParameterError("status", f"status 必须从 {SUPPORTED_TOPIC_STATUSES} 中选择")
-    try:
-        connection = _connect(database_path)
-        try:
-            cursor = connection.execute(
-                "UPDATE topic_history SET status=?, updated_at=? WHERE id=?",
-                (status, _timestamp(_now()), record_id),
-            )
-            if cursor.rowcount != 1:
-                raise TopicRecordNotFoundError(
-                    f"没有找到话题记录 id={record_id}",
-                    {"record_id": record_id},
-                )
-            row = connection.execute("SELECT * FROM topic_history WHERE id=?", (record_id,)).fetchone()
-            connection.commit()
-            return _record(row)
-        finally:
-            connection.close()
-    except TopicRecordNotFoundError:
-        raise
-    except sqlite3.Error as exc:
-        raise TopicDatabaseError(f"更新话题状态失败：{exc}") from exc
+        raise TopicDatabaseError(f"写入话题失败：{exc}") from exc

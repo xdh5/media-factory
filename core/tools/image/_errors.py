@@ -31,7 +31,7 @@ class StyleNotFoundError(ImageGenerationError):
 
     def __init__(self, style: str):
         super().__init__(
-            f"不支持画风 '{style}'，请从 {SUPPORTED_STYLE_IDS} 中选择。",
+            f"不支持画风 '{style}'，请从 {SUPPORTED_STYLE_IDS} 中选择，或不传 style。",
             {"requested_style": style, "supported_styles": SUPPORTED_STYLE_IDS},
         )
 
@@ -40,13 +40,13 @@ class ReferenceImageError(ImageGenerationError):
     code = "REFERENCE_IMAGE_ERROR"
 
 
-class AgentGenerationError(ImageGenerationError):
-    code = "AGENT_GENERATION_FAILED"
-
-
 class AIConfigurationError(ImageGenerationError):
     code = "AI_CONFIGURATION_ERROR"
 
 
 class AIGenerationError(ImageGenerationError):
     code = "AI_GENERATION_FAILED"
+
+
+class AgentImageTaskError(ImageGenerationError):
+    code = "AGENT_IMAGE_TASK_ERROR"
