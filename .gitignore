@@ -27,12 +27,16 @@ Thumbs.db
 !core/capabilities/bgm/static/*.mp3
 !core/capabilities/intro/static/
 !core/capabilities/intro/static/*.wav
+!workflows/life_copy/static/
+!workflows/life_copy/static/*.wav
 *.db
 *.sqlite
 *.sqlite3
 
 # 工作流运行数据由部署目录持久化，不进入版本库
 data/*/runs/
+data/cliptext/
+data/image_library/
 
 # 本地 OAuth 凭据，不进入版本库
 data/youtube/tokens/

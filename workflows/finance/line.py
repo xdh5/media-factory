@@ -1,0 +1,50 @@
+"""财经文生图业务线配置。"""
+
+from ._constants import (
+    BGM_ID,
+    COVER_FRAME_SECONDS,
+    FINANCE_BGM_FADE_IN_SECONDS,
+    FINANCE_BGM_FADE_OUT_SECONDS,
+    FINANCE_BGM_GAIN,
+    FINANCE_EXAMPLES_DIR,
+    FINANCE_HOOKS_PATH,
+    FINANCE_MIX_GAIN,
+    FINANCE_PROMPT_PATH,
+    FINANCE_REFERENCE_IMAGE_PATH,
+    MATRIXMEDIA_ACCOUNT_GROUP,
+    SHOT_IMAGE_RULES_PATH,
+    TOPIC_DEDUPLICATION_DAYS,
+    TTS_RATE,
+    TTS_TRIM_TRAILING_SILENCE,
+    TTS_VOICE,
+    VIDEO_RADIO,
+    VIDEO_SIZE,
+    VISUAL_STYLE,
+    WORKFLOW_ID,
+)
+
+
+def get_line() -> dict:
+    return {
+        "id": WORKFLOW_ID,
+        "visual_style": VISUAL_STYLE,
+        "video_size": VIDEO_SIZE,
+        "video_radio": VIDEO_RADIO,
+        "bgm_id": BGM_ID,
+        "bgm_gain": FINANCE_BGM_GAIN,
+        "mix_gain": FINANCE_MIX_GAIN,
+        "bgm_fade_in": FINANCE_BGM_FADE_IN_SECONDS,
+        "bgm_fade_out": FINANCE_BGM_FADE_OUT_SECONDS,
+        "tts_voice": TTS_VOICE,
+        "tts_rate": TTS_RATE,
+        "tts_trim_trailing_silence": TTS_TRIM_TRAILING_SILENCE,
+        "cover_frame_seconds": COVER_FRAME_SECONDS,
+        "topic_deduplication_days": TOPIC_DEDUPLICATION_DAYS,
+        "matrixmedia_account_group": MATRIXMEDIA_ACCOUNT_GROUP,
+        "article_prompt_path": FINANCE_PROMPT_PATH,
+        "examples_dir": FINANCE_EXAMPLES_DIR,
+        "hooks_path": FINANCE_HOOKS_PATH,
+        "shot_image_rules_path": SHOT_IMAGE_RULES_PATH,
+        "extra_reference_image_path": FINANCE_REFERENCE_IMAGE_PATH,
+        "use_image_library": True,
+    }
