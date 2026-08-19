@@ -25,4 +25,4 @@ PLATFORM_CN = {
 }
 MCP_VIDEO_PLATFORMS = tuple(PLATFORM_CN.keys())
 MCP_SERVER_NAME = "matrixmedia"
-MCP_TOOLS = ("list_accounts", "list_history", "publish_video", "publish_article")
+MCP_TOOLS = ("list_accounts", "list_history", "login", "login_status", "publish_video", "publish_article")

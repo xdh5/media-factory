@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import shutil
 import subprocess
 import tempfile
@@ -19,10 +20,10 @@ from ._constants import (
     TTS_CHANNELS,
     TTS_CONCURRENCY,
     TTS_CONNECT_TIMEOUT_SECONDS,
+    TTS_DEFAULT_RATE,
     TTS_ENDING_PADDING_SECONDS,
     TTS_LRA,
     TTS_MAX_ATTEMPTS,
-    TTS_RATES,
     TTS_RECEIVE_TIMEOUT_SECONDS,
     TTS_RETRY_BASE_SECONDS,
     TTS_RETRY_JITTER_SECONDS,
@@ -49,19 +50,34 @@ from ._normalize_loudness import _normalize_loudness
 __all__ = ["generate_tts"]
 
 
-def _resolve_voice(voice: str) -> tuple[str, str]:
+TTS_RATE_PATTERN = re.compile(r"^[+-]\d+%$")
+
+
+def _resolve_voice(voice: str) -> str:
     for item in TTS_VOICES:
         if voice in (item["id"], item["name"]):
-            return item["id"], TTS_RATES[item["language"].split("-")[0]]
+            return item["id"]
     raise UnsupportedVoiceError(voice, TTS_VOICES)
 
 
-async def _speak(text: str, output_path: Path, voice: str) -> None:
+def _parse_rate(value: object, parameter: str = "rate") -> str:
+    if value is None:
+        return TTS_DEFAULT_RATE
+    text = str(value).strip()
+    if not TTS_RATE_PATTERN.fullmatch(text):
+        raise InvalidParameterError(
+            parameter,
+            f"{parameter} 必须是 Edge TTS 倍速格式，例如 +0%、+20%、-10%",
+        )
+    return text
+
+
+async def _speak(text: str, output_path: Path, voice: str, rate: str) -> None:
     """单句走 Edge TTS，写出临时 MP3；只给 generate_tts 内部用。"""
     text = text.strip()
     if not text:
         raise EmptyTextError("待合成文本为空")
-    voice_name, rate = _resolve_voice(voice)
+    voice_name = _resolve_voice(voice)
     temporary_output = output_path.with_name(f".{output_path.name}.part")
     last_error: Exception | None = None
     for attempt in range(1, TTS_MAX_ATTEMPTS + 1):
@@ -101,22 +117,23 @@ async def _speak(text: str, output_path: Path, voice: str) -> None:
     raise SynthesisError(f"TTS 合成失败：{last_error}")
 
 
-def _parse_line(item: object, index: int) -> dict:
+def _parse_line(item: object, index: int, default_rate: str) -> dict:
     if not isinstance(item, dict):
         raise InvalidParameterError("script", f"第 {index} 项必须是对象，且包含 text 和 voice")
-    unknown = sorted(set(item) - {"text", "voice"})
+    unknown = sorted(set(item) - {"text", "voice", "rate"})
     if unknown:
-        raise InvalidParameterError("script", f"第 {index} 项含未知字段 {unknown}，只允许 text 和 voice")
+        raise InvalidParameterError("script", f"第 {index} 项含未知字段 {unknown}，只允许 text、voice、rate")
     text = str(item.get("text") or "").strip()
     voice = str(item.get("voice") or "").strip()
     if not text:
         raise InvalidParameterError("script", f"第 {index} 项 text 不能为空")
     if not voice:
         raise InvalidParameterError("script", f"第 {index} 项必须提供 voice")
-    return {"text": text, "voice": voice}
+    rate = _parse_rate(item["rate"], f"script[{index}].rate") if "rate" in item else default_rate
+    return {"text": text, "voice": voice, "rate": rate}
 
 
-def _parse_script(script: object) -> list[dict]:
+def _parse_script(script: object, default_rate: str) -> list[dict]:
     if isinstance(script, str):
         raise InvalidParameterError(
             "script",
@@ -127,7 +144,7 @@ def _parse_script(script: object) -> list[dict]:
             "script",
             "script 必须是非空数组，每一项为 {text, voice}；单句也传长度为 1 的数组",
         )
-    return [_parse_line(item, index) for index, item in enumerate(script, 1)]
+    return [_parse_line(item, index, default_rate) for index, item in enumerate(script, 1)]
 
 
 def _wav_frames(path: Path) -> int:
@@ -208,6 +225,14 @@ def _silence_wav(ffmpeg: str, path: Path, seconds: float) -> Path:
     return path
 
 
+def _parse_bool(value: object, parameter: str, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    raise InvalidParameterError(parameter, f"{parameter} 必须是布尔值")
+
+
 def generate_tts(
     script: list[dict],
     output_path: str | Path,
@@ -215,12 +240,16 @@ def generate_tts(
     pause_start: float = 0.0,
     pause_between: float = TTS_BETWEEN_SENTENCE_TRAILING_SECONDS,
     pause_end: float = TTS_ENDING_PADDING_SECONDS,
+    rate: str = TTS_DEFAULT_RATE,
+    trim_trailing_silence: bool = False,
 ) -> dict:
-    """按数组顺序合成配音。单句传长度为 1 的 [{text, voice}]；停顿单位为秒。"""
-    lines = _parse_script(script)
+    """按数组顺序合成配音。单句传长度为 1 的 [{text, voice}]；停顿单位为秒。不传 rate 为原速。"""
+    default_rate = _parse_rate(rate, "rate")
+    lines = _parse_script(script, default_rate)
     start_silence = _pause_seconds(pause_start, "pause_start", 0.0)
     between_silence = _pause_seconds(pause_between, "pause_between", TTS_BETWEEN_SENTENCE_TRAILING_SECONDS)
     end_silence = _pause_seconds(pause_end, "pause_end", TTS_ENDING_PADDING_SECONDS)
+    trim_trailing = _parse_bool(trim_trailing_silence, "trim_trailing_silence", False)
 
     output_path = Path(output_path)
     if output_path.suffix.lower() != ".wav":
@@ -241,7 +270,7 @@ def generate_tts(
             raw_path = temporary_dir / f"line-{index:04d}.mp3"
             speech_path = temporary_dir / f"line-{index:04d}-speech.wav"
             try:
-                asyncio.run(_speak(line["text"], raw_path, line["voice"]))
+                asyncio.run(_speak(line["text"], raw_path, line["voice"], line["rate"]))
             except Exception as exc:
                 raise SynthesisError(
                     f"第 {index} 行 TTS 合成失败：{exc}",
@@ -250,36 +279,44 @@ def generate_tts(
             if cancel_pending.is_set():
                 raise AudioProcessingError(f"第 {index} 行因其他台词合成失败而取消")
             trailing = end_silence if index == len(lines) else between_silence
-            retained_silence = trailing + TTS_SILENCE_KEEP_COMPENSATION_SECONDS
-            edge_trim = (
-                "areverse,"
-                "silenceremove="
-                f"start_periods=1:start_duration={TTS_SILENCE_DETECTION_SECONDS:.3f}:"
-                f"start_threshold={TTS_SILENCE_THRESHOLD_DB:.1f}dB:"
-                f"start_silence={retained_silence:.3f},"
-                "areverse"
-            )
+            convert = [
+                "-i", str(raw_path),
+                "-ac", str(TTS_CHANNELS),
+                "-ar", str(TTS_SAMPLE_RATE),
+                "-c:a", "pcm_s16le",
+                str(speech_path),
+            ]
+            if trim_trailing:
+                retained_silence = trailing + TTS_SILENCE_KEEP_COMPENSATION_SECONDS
+                convert[2:2] = [
+                    "-af",
+                    (
+                        "areverse,"
+                        "silenceremove="
+                        f"start_periods=1:start_duration={TTS_SILENCE_DETECTION_SECONDS:.3f}:"
+                        f"start_threshold={TTS_SILENCE_THRESHOLD_DB:.1f}dB:"
+                        f"start_silence={retained_silence:.3f},"
+                        "areverse"
+                    ),
+                ]
             _run_ffmpeg(
                 ffmpeg,
-                [
-                    "-i", str(raw_path),
-                    "-af", edge_trim,
-                    "-ac", str(TTS_CHANNELS),
-                    "-ar", str(TTS_SAMPLE_RATE),
-                    "-c:a", "pcm_s16le",
-                    str(speech_path),
-                ],
-                f"第 {index} 行静音处理失败",
+                convert,
+                f"第 {index} 行静音处理失败" if trim_trailing else f"第 {index} 行转码失败",
             )
             pieces = []
             if index == 1 and start_silence > 0:
                 pieces.append(_silence_wav(ffmpeg, temporary_dir / "pause-start.wav", start_silence))
             pieces.append(speech_path)
+            if not trim_trailing and trailing > 0:
+                pieces.append(
+                    _silence_wav(ffmpeg, temporary_dir / f"pause-{index:04d}.wav", trailing)
+                )
             line_path = temporary_dir / f"line-{index:04d}.wav"
             if len(pieces) == 1:
                 speech_path.replace(line_path)
             else:
-                _concat_wavs(ffmpeg, pieces, line_path, f"第 {index} 行拼接片头静音失败")
+                _concat_wavs(ffmpeg, pieces, line_path, f"第 {index} 行拼接停顿失败")
             frames = _wav_frames(line_path)
             if frames <= 0:
                 raise AudioProcessingError(f"第 {index} 行处理后没有可用音频")
@@ -347,6 +384,7 @@ def generate_tts(
             "id": f"L{index:03d}",
             "text": line["text"],
             "voice": line["voice"],
+            "rate": line["rate"],
             "start": round(start, 6),
             "end": round(end, 6),
             "duration": round(frames / TTS_SAMPLE_RATE, 6),
@@ -367,5 +405,7 @@ def generate_tts(
         "pause_start": start_silence,
         "pause_between": between_silence,
         "pause_end": end_silence,
+        "rate": default_rate,
+        "trim_trailing_silence": trim_trailing,
         "loudness": loudness,
     }

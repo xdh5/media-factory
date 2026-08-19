@@ -1,5 +1,5 @@
-"""财经文生图视频工作流。"""
+"""财经文生图工作流（文生图 MCP 的一条业务线）。"""
 
-from .workflow import run_finance_workflow
+from .line import get_line
 
-__all__ = ["run_finance_workflow"]
+__all__ = ["get_line"]

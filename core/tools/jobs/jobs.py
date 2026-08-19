@@ -12,6 +12,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -22,11 +23,17 @@ from ._constants import (
     JOB_HEARTBEAT_SECONDS,
     JOB_ID_PATTERN,
     JOB_SCHEMA_VERSION,
+    JOB_WAIT_POLL_SECONDS,
+    JOB_WAIT_TIMEOUT_SECONDS,
     PROCESS_MODULE,
     PROJECT_ROOT,
     WORKFLOW_ID_PATTERN,
 )
 from ._errors import InvalidParameterError, JobExecutionError, JobNotFoundError
+from ._notify import publish_job_finished, redis_available, wait_job_event
+
+_TERMINAL_STATUSES = frozenset({"completed", "failed"})
+_WAIT_BLOCK_SLICE_MS = 2000
 
 _QUEUE: queue.Queue[tuple[str, Path]] = queue.Queue()
 _WORKER_LOCK = threading.Lock()
@@ -138,7 +145,8 @@ def _update(
 ) -> None:
     now = _timestamp()
     started_at = now if status == "running" else None
-    finished_at = now if status in {"completed", "failed"} else None
+    finished_at = now if status in _TERMINAL_STATUSES else None
+    meta = None
     connection = _connect(database_path)
     try:
         connection.execute(
@@ -156,8 +164,15 @@ def _update(
             ),
         )
         connection.commit()
+        if status in _TERMINAL_STATUSES:
+            meta = connection.execute(
+                "SELECT workflow, job_type FROM workflow_jobs WHERE job_id=?",
+                (job_id,),
+            ).fetchone()
     finally:
         connection.close()
+    if meta is not None:
+        publish_job_finished(job_id, meta["workflow"], meta["job_type"], status)
 
 
 def _heartbeat(database_path: Path, job_id: str, stop_event: threading.Event) -> None:
@@ -203,14 +218,14 @@ def _worker() -> None:
                 errors="replace",
             )
             current = get_job(job_id, database_path=database_path)
-            if completed.returncode != 0 and current["status"] not in {"completed", "failed"}:
+            if completed.returncode != 0 and current["status"] not in _TERMINAL_STATUSES:
                 details = (completed.stderr or completed.stdout or "").strip()[-3000:]
                 raise JobExecutionError(
                     f"独立任务进程异常退出（退出码 {completed.returncode}）：{details or '没有错误输出'}"
                 )
         except Exception as exc:
             current = get_job(job_id, database_path=database_path)
-            if current["status"] not in {"completed", "failed"}:
+            if current["status"] not in _TERMINAL_STATUSES:
                 _update(
                     database_path,
                     job_id,
@@ -284,6 +299,7 @@ def recover_interrupted_jobs(workflow: str, database_path: str | Path | None = N
     """把该工作流上次退出时仍排队或运行的任务标为失败。"""
     workflow_id = _workflow_id(workflow)
     database = Path(database_path or DEFAULT_DATABASE_PATH).resolve()
+    interrupted: list[sqlite3.Row] = []
     connection = _connect(database)
     try:
         now = _timestamp()
@@ -292,6 +308,11 @@ def recover_interrupted_jobs(workflow: str, database_path: str | Path | None = N
             "message": "MCP 服务在任务完成前退出；已有缓存会保留，请重新提交原步骤继续执行。",
             "details": {"workflow": workflow_id},
         }
+        interrupted = connection.execute(
+            "SELECT job_id, job_type FROM workflow_jobs "
+            "WHERE workflow=? AND status IN ('queued', 'running')",
+            (workflow_id,),
+        ).fetchall()
         connection.execute(
             "UPDATE workflow_jobs SET status='failed', progress_message=?, error_json=?, "
             "finished_at=?, updated_at=? WHERE workflow=? AND status IN ('queued', 'running')",
@@ -300,6 +321,8 @@ def recover_interrupted_jobs(workflow: str, database_path: str | Path | None = N
         connection.commit()
     finally:
         connection.close()
+    for row in interrupted:
+        publish_job_finished(row["job_id"], workflow_id, row["job_type"], "failed")
 
 
 def enqueue_job(
@@ -361,7 +384,7 @@ def get_job(
     *,
     workflow: str | None = None,
 ) -> dict:
-    """查询后台任务状态和结果。"""
+    """瞬时查询后台任务状态和结果，不阻塞。等待终态请用 wait_task。"""
     if not isinstance(job_id, str) or not re.fullmatch(JOB_ID_PATTERN, job_id.strip()):
         raise InvalidParameterError("job_id", f"job_id 必须是 job- 加 32 位十六进制，当前为 {job_id!r}")
     database = Path(database_path or DEFAULT_DATABASE_PATH).resolve()
@@ -385,3 +408,57 @@ def get_job(
             {"job_id": job_id, "workflow": workflow, "actual_workflow": decoded["workflow"]},
         )
     return decoded
+
+
+def _wait_seconds(timeout: float | int | None) -> float:
+    if timeout is None:
+        return float(JOB_WAIT_TIMEOUT_SECONDS)
+    try:
+        seconds = float(timeout)
+    except (TypeError, ValueError) as exc:
+        raise InvalidParameterError("timeout", f"timeout 必须是正数秒，当前为 {timeout!r}") from exc
+    if seconds <= 0:
+        raise InvalidParameterError("timeout", f"timeout 必须大于 0，当前为 {timeout!r}")
+    return min(seconds, float(JOB_WAIT_TIMEOUT_SECONDS))
+
+
+def wait_task(
+    job_id: str,
+    database_path: str | Path | None = None,
+    *,
+    workflow: str | None = None,
+    timeout: float | int | None = None,
+) -> dict:
+    """阻塞等到任务终态。SQLite 为真相；Redis Stream 负责唤醒。单次最多 180 秒。"""
+    snapshot = get_job(job_id, database_path=database_path, workflow=workflow)
+    if snapshot["status"] in _TERMINAL_STATUSES:
+        return snapshot
+    deadline = time.monotonic() + _wait_seconds(timeout)
+    last_id = "0-0"
+    while True:
+        snapshot = get_job(job_id, database_path=database_path, workflow=workflow)
+        if snapshot["status"] in _TERMINAL_STATUSES:
+            return snapshot
+        remaining_ms = int((deadline - time.monotonic()) * 1000)
+        if remaining_ms <= 0:
+            return snapshot
+        if redis_available():
+            while True:
+                new_id, matched = wait_job_event(job_id, block_ms=0, last_id=last_id)
+                if matched:
+                    return get_job(job_id, database_path=database_path, workflow=workflow)
+                if new_id == last_id:
+                    break
+                last_id = new_id
+            remaining_ms = int((deadline - time.monotonic()) * 1000)
+            if remaining_ms <= 0:
+                return get_job(job_id, database_path=database_path, workflow=workflow)
+            last_id, matched = wait_job_event(
+                job_id,
+                block_ms=min(remaining_ms, _WAIT_BLOCK_SLICE_MS),
+                last_id=last_id,
+            )
+            if matched:
+                return get_job(job_id, database_path=database_path, workflow=workflow)
+        else:
+            time.sleep(min(JOB_WAIT_POLL_SECONDS, remaining_ms / 1000))

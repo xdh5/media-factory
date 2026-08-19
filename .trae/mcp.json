@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "media-factory-finance": {
+    "media-factory-text2image": {
       "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
       "args": [
         "-m",
-        "workflows.finance.index"
+        "mcp_servers.text2image"
       ],
       "env": {
         "PYTHONPATH": "${workspaceFolder}",
@@ -16,7 +16,19 @@
       "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
       "args": [
         "-m",
-        "workflows.language_learning.index"
+        "mcp_servers.language_learning"
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "PYTHONUTF8": "1"
+      },
+      "enabled": true
+    },
+    "media-factory-cliptext": {
+      "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "args": [
+        "-m",
+        "mcp_servers.cliptext"
       ],
       "env": {
         "PYTHONPATH": "${workspaceFolder}",

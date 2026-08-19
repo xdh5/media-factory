@@ -1,4 +1,4 @@
-"""enqueue_job / get_job 的真实入参和返回合同。"""
+"""enqueue_job / get_job / wait_task 的真实入参和返回合同。"""
 
 from __future__ import annotations
 
@@ -25,6 +25,24 @@ GET_JOB_INPUT_SCHEMA = {
         "job_id": {"type": "string", "pattern": r"^job-[0-9a-f]{32}$"},
         "workflow": {"type": "string", "description": "可选；传入则必须与任务所属工作流一致"},
         "database_path": {"type": "string"},
+    },
+    "required": ["job_id"],
+    "additionalProperties": False,
+}
+
+WAIT_TASK_INPUT_SCHEMA = {
+    "type": "object",
+    "description": "wait_task(...) 阻塞等到 completed/failed；SQLite 为真相，Redis Stream 只负责唤醒",
+    "properties": {
+        "job_id": {"type": "string", "pattern": r"^job-[0-9a-f]{32}$"},
+        "workflow": {"type": "string", "description": "可选；传入则必须与任务所属工作流一致"},
+        "database_path": {"type": "string"},
+        "timeout": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 180,
+            "description": "单次最多阻塞秒数，默认 180；超时仍 queued/running 则再调一次 wait_task",
+        },
     },
     "required": ["job_id"],
     "additionalProperties": False,

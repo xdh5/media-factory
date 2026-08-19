@@ -14,13 +14,12 @@ from ._constants import (
     AGENT_IMAGE_CONTEXT_NAME,
     AGENT_IMAGE_MANIFEST_NAME,
     AGENT_IMAGE_TASK_VERSION,
-    COVER_REFERENCE_IMAGE_PATH,
 )
 from ._errors import AgentImageTaskError, InvalidParameterError, ReferenceImageError
 from ._select_style import _select_style
 from ._ark import _fit_image, _generate_with_ai, _save_image, _validate_dimensions, _write_png
 
-__all__ = ["prepare_agent_image_tasks", "submit_agent_image_tasks"]
+__all__ = ["prepare_agent_image_tasks", "save_agent_image_tasks", "submit_agent_image_tasks"]
 
 
 def _agent_path(path: Path) -> str:
@@ -34,9 +33,6 @@ def _valid_image(path: Path, width: int, height: int, cache_signature: str | Non
     try:
         with Image.open(path) as image:
             image.verify()
-        with Image.open(path) as image:
-            if image.size != (width, height):
-                return False
         if cache_signature is None:
             return True
         metadata_path = path.with_suffix(".json")
@@ -53,31 +49,20 @@ def _final_prompt(
     style: dict | None,
     radio: str,
     size: str,
-    kind: str,
     *,
     has_references: bool,
-    exact_size: bool,
 ) -> str:
     parts = [prompt.strip()]
     if style:
         parts.append(f"画风要求：{style['description']}")
     if has_references:
-        cover_reference_rule = (
-            "第二张图片是公共封面参考图，用于参考标题艺术字、标题层级、人物与标题的关系、"
-            "油画材质和整体封面完成度；只参考视觉语言，不得复制其中的具体标题、人物、物体或构图。\n"
-            if kind == "cover" else ""
-        )
         parts.append(
             "随附图片均为视觉参考图。"
             + ("第一张用于参考画法、笔触、材质、光影和配色；" if style else "")
-            + cover_reference_rule
             + "其余图片如有，用于参考业务指定的人物气质、服饰和场景。"
             "不得复制参考图中的具体人物身份、物体摆放或构图。"
         )
-    size_rule = f"画面比例：{radio}；输出尺寸：{size}。"
-    if not exact_size:
-        size_rule += f"像素不必正好是 {size}，保持比例即可，程序会缩放。"
-    parts.append(size_rule)
+    parts.append(f"画面比例：{radio}。像素不必正好是 {size}，程序会缩放到 {size}。")
     return "\n\n".join(parts)
 
 
@@ -141,7 +126,6 @@ def prepare_agent_image_tasks(
     context_path: str | Path | None = None,
     force_image_ids: list[str] | None = None,
     force_images: bool = False,
-    exact_size: bool = True,
     metadata: dict | None = None,
 ) -> dict:
     """生成与具体工作流无关的宿主 Agent 生图任务和缓存状态。"""
@@ -149,8 +133,6 @@ def prepare_agent_image_tasks(
         raise InvalidParameterError("tasks", "tasks 必须是非空生图任务列表")
     if not isinstance(force_images, bool):
         raise InvalidParameterError("force_images", "force_images 必须是布尔值")
-    if not isinstance(exact_size, bool):
-        raise InvalidParameterError("exact_size", "exact_size 必须是布尔值")
     width, height, normalized_radio, normalized_size = _validate_dimensions(radio, size)
     style_name = str(style or "").strip()
     selected_style = _select_style(style_name) if style_name else None
@@ -187,12 +169,6 @@ def prepare_agent_image_tasks(
     prepared: list[dict] = []
     for image_id, prompt, kind in normalized:
         task_reference_paths = list(reference_paths)
-        if kind == "cover":
-            cover_reference_path = COVER_REFERENCE_IMAGE_PATH.resolve()
-            if not cover_reference_path.is_file():
-                raise ReferenceImageError(f"公共封面参考图不存在：{cover_reference_path}")
-            if cover_reference_path not in task_reference_paths:
-                task_reference_paths.append(cover_reference_path)
         output_path = output_root / f"{image_id}.png"
         has_references = bool(task_reference_paths)
         final_prompt = _final_prompt(
@@ -200,9 +176,7 @@ def prepare_agent_image_tasks(
             selected_style,
             normalized_radio,
             normalized_size,
-            kind,
             has_references=has_references,
-            exact_size=exact_size,
         )
         cache_signature = _cache_signature(
             final_prompt,
@@ -223,7 +197,6 @@ def prepare_agent_image_tasks(
                 "style": selected_style["id"] if selected_style else None,
                 "radio": normalized_radio,
                 "size": normalized_size,
-                "exact_size": exact_size,
                 "referenced_image_paths": [_agent_path(path) for path in task_reference_paths],
                 "reference_images_required": has_references,
                 "reference_failure_policy": (
@@ -243,7 +216,6 @@ def prepare_agent_image_tasks(
     context = {
         "version": AGENT_IMAGE_TASK_VERSION,
         "status": "awaiting_agent_images",
-        "exact_size": exact_size,
         "tasks": prepared,
         "metadata": dict(metadata or {}),
         "context_path": _agent_path(resolved_context),
@@ -253,48 +225,7 @@ def prepare_agent_image_tasks(
     return context
 
 
-def _save_checked_image(
-    source_path: Path,
-    output_path: Path,
-    image_id: str,
-    width: int,
-    height: int,
-    exact_size: bool,
-) -> None:
-    if not source_path.is_file():
-        raise AgentImageTaskError(
-            f"当前 Agent 生成的图片不存在：{source_path}",
-            {"image_id": image_id, "image_path": str(source_path)},
-        )
-    try:
-        with Image.open(source_path) as image:
-            image.load()
-            fitted = _fit_image(
-                image,
-                width,
-                height,
-                exact_size,
-                f"图片 {image_id}",
-                AgentImageTaskError,
-            )
-            _write_png(fitted.copy(), output_path)
-    except AgentImageTaskError:
-        raise
-    except (OSError, ValueError) as exc:
-        raise AgentImageTaskError(
-            f"图片 {image_id} 不是有效图片：{source_path}",
-            {"image_id": image_id, "image_path": str(source_path)},
-        ) from exc
-
-
-def submit_agent_image_tasks(
-    context_path: str | Path,
-    images: list[dict],
-    *,
-    failures: list[dict] | None = None,
-    manifest_path: str | Path | None = None,
-) -> dict:
-    """接收宿主 Agent 结果；无能力或失败三次的单张图片才使用方舟兜底。"""
+def _load_image_context(context_path: str | Path) -> tuple[Path, dict, list[dict], dict[str, dict]]:
     resolved_context = Path(context_path).resolve()
     if not resolved_context.is_file():
         raise AgentImageTaskError(f"生图任务上下文不存在：{resolved_context}")
@@ -305,8 +236,14 @@ def submit_agent_image_tasks(
     tasks = context.get("tasks")
     if not isinstance(tasks, list) or not tasks:
         raise AgentImageTaskError("生图任务上下文缺少 tasks")
+    return resolved_context, context, tasks, {str(task["image_id"]): task for task in tasks}
+
+
+def _parse_image_results(images: list[dict], *, allow_empty: bool) -> dict[str, Path]:
     if not isinstance(images, list):
         raise InvalidParameterError("images", "images 必须是图片结果列表")
+    if not images and not allow_empty:
+        raise InvalidParameterError("images", "images 必须是非空图片结果列表")
     provided: dict[str, Path] = {}
     for item in images:
         if not isinstance(item, dict) or not str(item.get("image_id") or "").strip() or not str(item.get("image_path") or "").strip():
@@ -315,13 +252,106 @@ def submit_agent_image_tasks(
         if image_id in provided:
             raise AgentImageTaskError(f"图片结果重复：{image_id}")
         provided[image_id] = Path(str(item["image_path"])).resolve()
-    task_by_id = {str(task["image_id"]): task for task in tasks}
+    return provided
+
+
+def _task_is_cached(task: dict) -> bool:
+    width, height, _, _ = _validate_dimensions(str(task["radio"]), str(task["size"]))
+    return _valid_image(
+        Path(task["output_path"]).resolve(),
+        width,
+        height,
+        str(task.get("cache_signature") or "") or None,
+    )
+
+
+def _cache_status(tasks: list[dict]) -> tuple[list[str], list[str]]:
+    cached: list[str] = []
+    pending: list[str] = []
+    for task in tasks:
+        image_id = str(task["image_id"])
+        if _task_is_cached(task):
+            cached.append(image_id)
+        else:
+            pending.append(image_id)
+    return cached, pending
+
+
+def _persist_provided_images(
+    task_by_id: dict[str, dict],
+    provided: dict[str, Path],
+) -> list[str]:
     unknown = set(provided).difference(task_by_id)
     if unknown:
         raise AgentImageTaskError(
             f"提交了未知图片：{sorted(unknown)}",
             {"supported_image_ids": sorted(task_by_id)},
         )
+    saved: list[str] = []
+    for image_id, source_path in provided.items():
+        task = task_by_id[image_id]
+        width, height, _, _ = _validate_dimensions(str(task["radio"]), str(task["size"]))
+        target = Path(task["output_path"]).resolve()
+        _save_checked_image(source_path, target, image_id, width, height)
+        if task.get("cache_signature"):
+            _write_cache_metadata(target, str(task["cache_signature"]))
+        saved.append(image_id)
+    return saved
+
+
+def _save_checked_image(
+    source_path: Path,
+    output_path: Path,
+    image_id: str,
+    width: int,
+    height: int,
+) -> None:
+    if not source_path.is_file():
+        raise AgentImageTaskError(
+            f"当前 Agent 生成的图片不存在：{source_path}",
+            {"image_id": image_id, "image_path": str(source_path)},
+        )
+    try:
+        with Image.open(source_path) as image:
+            image.load()
+            fitted = _fit_image(image, width, height)
+            _write_png(fitted.copy(), output_path)
+    except AgentImageTaskError:
+        raise
+    except (OSError, ValueError) as exc:
+        raise AgentImageTaskError(
+            f"图片 {image_id} 不是有效图片：{source_path}",
+            {"image_id": image_id, "image_path": str(source_path)},
+        ) from exc
+
+
+def save_agent_image_tasks(context_path: str | Path, images: list[dict]) -> dict:
+    """把已生成的图片立即写入工作流缓存；未齐的任务下次 prepare 会继续命中已缓存项。"""
+    resolved_context, context, tasks, task_by_id = _load_image_context(context_path)
+    provided = _parse_image_results(images, allow_empty=False)
+    saved = _persist_provided_images(task_by_id, provided)
+    cached, pending = _cache_status(tasks)
+    return {
+        "status": "cached" if not pending else "partial",
+        "saved_image_ids": saved,
+        "cached_image_ids": cached,
+        "pending_image_ids": pending,
+        "context_path": str(resolved_context),
+    }
+
+
+def submit_agent_image_tasks(
+    context_path: str | Path,
+    images: list[dict],
+    *,
+    failures: list[dict] | None = None,
+    manifest_path: str | Path | None = None,
+) -> dict:
+    """接收宿主 Agent 结果；无能力或失败三次的单张图片才使用方舟兜底。"""
+    resolved_context, context, tasks, task_by_id = _load_image_context(context_path)
+    provided = _parse_image_results(images, allow_empty=True)
+    if provided:
+        _persist_provided_images(task_by_id, provided)
     failure_by_id: dict[str, dict] = {}
     if failures is not None and not isinstance(failures, list):
         raise InvalidParameterError("failures", "failures 必须是失败结果列表或不传")
@@ -352,11 +382,7 @@ def submit_agent_image_tasks(
     for image_id, task in task_by_id.items():
         width, height, _, _ = _validate_dimensions(str(task["radio"]), str(task["size"]))
         target = Path(task["output_path"]).resolve()
-        exact_size = bool(task.get("exact_size", context.get("exact_size", True)))
         if image_id in provided:
-            _save_checked_image(provided[image_id], target, image_id, width, height, exact_size)
-            if task.get("cache_signature"):
-                _write_cache_metadata(target, str(task["cache_signature"]))
             providers[image_id] = "current_agent"
         elif image_id in failure_by_id:
             references = task.get("referenced_image_paths") or []
@@ -364,7 +390,7 @@ def submit_agent_image_tasks(
                 raise AgentImageTaskError(f"图片 {image_id} 缺少参考图")
             reference_paths = [Path(str(reference)).resolve() for reference in references]
             image_bytes = _generate_with_ai(str(task["prompt"]), reference_paths, str(task["size"]))
-            _save_image(image_bytes, target, width, height, "方舟", exact_size=exact_size)
+            _save_image(image_bytes, target, width, height, "方舟")
             if task.get("cache_signature"):
                 _write_cache_metadata(target, str(task["cache_signature"]))
             providers[image_id] = "volc_ark"
@@ -374,9 +400,15 @@ def submit_agent_image_tasks(
             height,
             str(task.get("cache_signature") or "") or None,
         ):
+            cached, pending = _cache_status(tasks)
             raise AgentImageTaskError(
-                f"缺少图片 {image_id}；请让当前 Agent 按对应任务生图后重新提交",
-                {"image_id": image_id, "expected_output_path": str(target)},
+                f"缺少图片 {image_id}；已缓存 {cached}，仍缺 {pending}。请先把已生成的图写入缓存后再提交",
+                {
+                    "image_id": image_id,
+                    "expected_output_path": str(target),
+                    "cached_image_ids": cached,
+                    "pending_image_ids": pending,
+                },
             )
         else:
             providers[image_id] = "cache"

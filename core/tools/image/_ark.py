@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import re
 from io import BytesIO
@@ -12,9 +13,9 @@ from uuid import uuid4
 
 import requests
 from dotenv import load_dotenv
-from PIL import Image
+from PIL import Image, ImageOps
 
-from ._constants import ARK_IMAGE_ENDPOINT, ARK_IMAGE_MODEL, IMAGE_ASPECT_MAX_PIXEL_ERROR
+from ._constants import ARK_IMAGE_ENDPOINT, ARK_IMAGE_MODEL, ARK_MIN_IMAGE_PIXELS, IMAGE_ASPECT_MAX_PIXEL_ERROR
 from ._errors import AIConfigurationError, AIGenerationError, InvalidParameterError, ReferenceImageError
 
 load_dotenv()
@@ -28,7 +29,7 @@ def _ark_image_model() -> str:
 def _parse_size(size: str) -> tuple[int, int, str]:
     matched = re.fullmatch(r"\s*(\d+)\s*[xX×]\s*(\d+)\s*", str(size or ""))
     if not matched:
-        raise InvalidParameterError("size", "size 必须使用 WIDTHxHEIGHT 格式，例如 2560x1440")
+        raise InvalidParameterError("size", "size 必须使用 WIDTHxHEIGHT 格式，例如 1920x1080")
     width, height = (int(value) for value in matched.groups())
     if width < 64 or height < 64:
         raise InvalidParameterError("size", "size 的宽高都必须不小于 64 像素")
@@ -64,26 +65,13 @@ def _matches_target_aspect(src_width: int, src_height: int, dst_width: int, dst_
     return abs(src_height - expected) <= IMAGE_ASPECT_MAX_PIXEL_ERROR
 
 
-def _fit_image(
-    image: Image.Image,
-    width: int,
-    height: int,
-    exact_size: bool,
-    source: str,
-    error_type: type[Exception],
-) -> Image.Image:
+def _fit_image(image: Image.Image, width: int, height: int) -> Image.Image:
+    """缩放到目标尺寸。比例一致时只缩放，不一致时居中裁切，不报尺寸错误。"""
     if image.size == (width, height):
         return image
-    if exact_size:
-        raise error_type(
-            f"{source} 返回尺寸为 {image.width}x{image.height}，要求尺寸为 {width}x{height}"
-        )
-    if not _matches_target_aspect(image.width, image.height, width, height):
-        raise error_type(
-            f"{source} 必须保持 {width}×{height} 的宽高比，当前为 {image.width}×{image.height}。"
-            f"比例正确时程序会缩放到 {width}×{height}；比例不对请重新生成"
-        )
-    return image.resize((width, height), Image.Resampling.LANCZOS)
+    if _matches_target_aspect(image.width, image.height, width, height):
+        return image.resize((width, height), Image.Resampling.LANCZOS)
+    return ImageOps.fit(image, (width, height), method=Image.Resampling.LANCZOS)
 
 
 def _write_png(image: Image.Image, output_path: Path) -> None:
@@ -100,13 +88,11 @@ def _save_image(
     width: int,
     height: int,
     source: str,
-    *,
-    exact_size: bool = True,
 ) -> None:
     try:
         with Image.open(BytesIO(image_bytes)) as image:
             image.load()
-            fitted = _fit_image(image, width, height, exact_size, source, AIGenerationError)
+            fitted = _fit_image(image, width, height)
             _write_png(fitted.copy(), output_path)
     except AIGenerationError:
         raise
@@ -146,6 +132,17 @@ def _ark_image_bytes(payload: dict) -> bytes:
     raise AIGenerationError("方舟响应中没有可用的图片数据")
 
 
+def _ark_request_size(size: str) -> str:
+    """把本地目标尺寸放大到方舟允许的最小像素面积，并保持宽高比。"""
+    width, height, normalized = _parse_size(size)
+    if width * height >= ARK_MIN_IMAGE_PIXELS:
+        return normalized
+    ratio_gcd = math.gcd(width, height)
+    ratio_width, ratio_height = width // ratio_gcd, height // ratio_gcd
+    scale = math.ceil(math.sqrt(ARK_MIN_IMAGE_PIXELS / (ratio_width * ratio_height)))
+    return f"{scale * ratio_width}x{scale * ratio_height}"
+
+
 def _generate_with_ai(prompt: str, reference_paths: Path | list[Path], size: str) -> bytes:
     api_key = os.getenv("VOLC_ARK_API_KEY", "").strip()
     if not api_key:
@@ -157,7 +154,7 @@ def _generate_with_ai(prompt: str, reference_paths: Path | list[Path], size: str
     payload = {
         "model": _ark_image_model(),
         "prompt": prompt,
-        "size": size,
+        "size": _ark_request_size(size),
         "sequential_image_generation": "disabled",
         "response_format": "b64_json",
         "watermark": False,

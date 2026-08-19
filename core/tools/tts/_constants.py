@@ -1,11 +1,7 @@
 """TTS 常量配置。"""
 
-# 各语言倍速：中文 1.2 倍，英文 1.1 倍，韩语原速
-TTS_RATES = {
-    "zh": "+20%",
-    "en": "+10%",
-    "ko": "+0%",
-}
+# Edge TTS 默认原速；工作流如需加速由 generate_tts(rate=...) 传入，例如 "+20%"。
+TTS_DEFAULT_RATE = "+0%"
 
 # Edge TTS 网络与重试策略。降低并发可减少批量台词触发服务端限流或空音频。
 TTS_CONCURRENCY = 3

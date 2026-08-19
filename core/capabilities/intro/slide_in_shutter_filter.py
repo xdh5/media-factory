@@ -48,7 +48,6 @@ from core.capabilities.intro._errors import (
     RenderTimeoutError,
 )
 from core.tools.video._constants import (
-    SUBTITLE_FONT_DIRECTORIES,
     VIDEO_AUDIO_CHANNELS,
     VIDEO_AUDIO_CODEC,
     VIDEO_AUDIO_RATE,
@@ -57,12 +56,11 @@ from core.tools.video._constants import (
     VIDEO_PIXEL_FORMAT,
     VIDEO_PRESET,
 )
-from core.tools.video._render_shot import (
-    _filter_path,
+from core.tools.video.render_shot import (
+    _frozen_motion_filter,
     _motion_filter,
     _probe,
     _static_filter,
-    _write_ass,
 )
 
 __all__ = ["slide_in_shutter"]
@@ -117,6 +115,36 @@ def _build_filter(source: str, duration: float) -> str:
         f"[intro_card][flash]overlay=0:0:eof_action=pass:"
         f"enable='between(t,{SHUTTER_START_SECONDS:.3f},{flash_end:.3f})'[photo_card]"
     )
+
+
+def _expand_chains(flash_end: float, expand_end: float) -> list[str]:
+    expand_duration = max(0.05, expand_end - flash_end)
+    expand_p = f"min(1\\,max(0\\,(t-{flash_end:.3f})/{expand_duration:.3f}))"
+    expand_smooth = f"({expand_p})*({expand_p})*(3-2*({expand_p}))"
+    half_width = OUTPUT_WIDTH // 2
+    half_height = OUTPUT_HEIGHT // 2
+    return [
+        "[normal_source]split=3[normal][expand_colour_source][expand_gray_raw]",
+        "[expand_gray_raw]hue=s=0[expand_gray_source]",
+        "[expand_gray_source]split=4[expand_top_source][expand_bottom_source]"
+        "[expand_left_source][expand_right_source]",
+        f"[expand_top_source]crop={OUTPUT_WIDTH}:{half_height}:0:0[expand_top]",
+        f"[expand_bottom_source]crop={OUTPUT_WIDTH}:{half_height}:0:{half_height}[expand_bottom]",
+        f"[expand_left_source]crop={half_width}:{OUTPUT_HEIGHT}:0:0[expand_left]",
+        f"[expand_right_source]crop={half_width}:{OUTPUT_HEIGHT}:{half_width}:0[expand_right]",
+        f"[expand_colour_source][expand_top]overlay=x=0:y='-{half_height}*{expand_smooth}':"
+        "eof_action=repeat[expand_1]",
+        f"[expand_1][expand_bottom]overlay=x=0:y='{half_height}+{half_height}*{expand_smooth}':"
+        "eof_action=repeat[expand_2]",
+        f"[expand_2][expand_left]overlay=x='-{half_width}*{expand_smooth}':y=0:"
+        "eof_action=repeat[expand_3]",
+        f"[expand_3][expand_right]overlay=x='{half_width}+{half_width}*{expand_smooth}':y=0:"
+        "eof_action=repeat[expand_stage]",
+        f"[expand_stage][photo_card]overlay=0:0:eof_action=pass:"
+        f"enable='lte(t,{flash_end:.3f})'[opening_timeline]",
+        f"[normal][opening_timeline]overlay=0:0:eof_action=pass:"
+        f"enable='lte(t,{expand_end:.3f})'[opening_video]",
+    ]
 
 
 def _run(command: list[str], timeout_seconds: float) -> None:
@@ -183,91 +211,74 @@ def slide_in_shutter(
             "未找到 ffmpeg，请先安装并加入 PATH（如 winget install Gyan.FFmpeg）",
         )
 
-    with tempfile.TemporaryDirectory(prefix="slide-in-shutter-") as temporary:
-        temporary_dir = Path(temporary)
+    with tempfile.TemporaryDirectory(prefix="slide-in-shutter-"):
         intro_duration = min(TOTAL_SECONDS, duration)
         flash_end = min(intro_duration, SHUTTER_START_SECONDS + FLASH_SECONDS)
         expand_end = min(intro_duration, flash_end + PHOTO_EXPAND_SECONDS)
         # 正常首镜头从一张图直接展开为帧序列；片头支路只补齐自身时长，
         # 保留原版画面但不反复解码同一张 PNG。
-        command = [ffmpeg, "-y", "-framerate", str(FPS), "-i", str(image_path)]
-        command.extend([
+        command = [
+            ffmpeg, "-y", "-hide_banner", "-nostats", "-loglevel", "error",
+            "-loop", "1", "-framerate", str(FPS),
+            "-t", f"{duration:.6f}", "-i", str(image_path),
             "-ss", f"{effective_start:.6f}", "-t", f"{duration:.6f}", "-i", str(tts_path),
-        ])
+        ]
         chains: list[str] = []
+        remaining = max(0.0, duration - expand_end)
         if intro_duration > 0.0001:
-            chains.append("[0:v]split=2[normal_input][intro_raw]")
-            chains.append(
-                f"[intro_raw]tpad=stop_mode=clone:stop_duration={intro_duration:.6f}[intro_input]"
-            )
             if motion:
-                normal_filter = _motion_filter(
-                    motion,
-                    duration,
-                    OUTPUT_WIDTH,
-                    OUTPUT_HEIGHT,
-                    single_image=True,
-                    start_delay=expand_end,
+                # 片头阶段运镜进度本就是 0；只渲一帧起始构图，避免整段 8K zoompan。
+                frozen = _frozen_motion_filter(motion, OUTPUT_WIDTH, OUTPUT_HEIGHT)
+                chains.append("[0:v]split=2[motion_input][intro_raw]")
+                chains.append(
+                    f"[intro_raw]{frozen},format=rgba,"
+                    f"tpad=stop_mode=clone:stop_duration={intro_duration:.6f}[intro_hold]"
                 )
+                chains.append("[intro_hold]split=2[intro_input][normal_source]")
+                chains.append(_build_filter("intro_input", intro_duration))
+                chains.extend(_expand_chains(flash_end, expand_end))
+                chains.append(
+                    f"[opening_video]trim=duration={expand_end:.6f},setpts=PTS-STARTPTS,"
+                    f"format={VIDEO_PIXEL_FORMAT}[opening]"
+                )
+                if remaining >= (1 / FPS):
+                    motion_filter = _motion_filter(
+                        motion,
+                        remaining,
+                        OUTPUT_WIDTH,
+                        OUTPUT_HEIGHT,
+                    )
+                    chains.append(
+                        f"[motion_input]trim=start={expand_end:.6f}:end={duration:.6f},"
+                        f"setpts=PTS-STARTPTS,{motion_filter},format={VIDEO_PIXEL_FORMAT}[tail]"
+                    )
+                    chains.append("[opening][tail]concat=n=2:v=1:a=0[video]")
+                else:
+                    chains.append("[opening]setpts=PTS-STARTPTS[video]")
             else:
+                chains.append("[0:v]split=2[normal_input][intro_raw]")
+                chains.append(
+                    f"[intro_raw]tpad=stop_mode=clone:stop_duration={intro_duration:.6f}[intro_input]"
+                )
                 normal_filter = (
                     f"tpad=stop_mode=clone:stop_duration={duration:.6f},"
                     f"{_static_filter(OUTPUT_WIDTH, OUTPUT_HEIGHT)}"
                 )
-            chains.append(
-                f"[normal_input]{normal_filter},trim=duration={duration:.6f},"
-                "setpts=PTS-STARTPTS,format=rgba[normal_source]"
-            )
-            chains.append(_build_filter("intro_input", intro_duration))
-            # 展开底图和展开遮罩都取自首镜头动效的起始画面。这样四向展开完成后
-            # 交给正常动效时，前后两帧的缩放与焦点完全一致，不再从 1.00 倍
-            # 突然跳到 zoom_from 造成二次放大和停顿感。
-            chains.extend([
-                "[normal_source]split=3[normal][expand_colour_source][expand_gray_raw]",
-                "[expand_gray_raw]hue=s=0[expand_gray_source]",
-            ])
-            expand_duration = max(0.05, expand_end - flash_end)
-            expand_p = f"min(1\\,max(0\\,(t-{flash_end:.3f})/{expand_duration:.3f}))"
-            expand_smooth = f"({expand_p})*({expand_p})*(3-2*({expand_p}))"
-            half_width = OUTPUT_WIDTH // 2
-            half_height = OUTPUT_HEIGHT // 2
-            chains.extend([
-                "[expand_gray_source]split=4[expand_top_source][expand_bottom_source]"
-                "[expand_left_source][expand_right_source]",
-                f"[expand_top_source]crop={OUTPUT_WIDTH}:{half_height}:0:0[expand_top]",
-                f"[expand_bottom_source]crop={OUTPUT_WIDTH}:{half_height}:0:{half_height}[expand_bottom]",
-                f"[expand_left_source]crop={half_width}:{OUTPUT_HEIGHT}:0:0[expand_left]",
-                f"[expand_right_source]crop={half_width}:{OUTPUT_HEIGHT}:{half_width}:0[expand_right]",
-                f"[expand_colour_source][expand_top]overlay=x=0:y='-{half_height}*{expand_smooth}':"
-                "eof_action=repeat[expand_1]",
-                f"[expand_1][expand_bottom]overlay=x=0:y='{half_height}+{half_height}*{expand_smooth}':"
-                "eof_action=repeat[expand_2]",
-                f"[expand_2][expand_left]overlay=x='-{half_width}*{expand_smooth}':y=0:"
-                "eof_action=repeat[expand_3]",
-                f"[expand_3][expand_right]overlay=x='{half_width}+{half_width}*{expand_smooth}':y=0:"
-                "eof_action=repeat[expand_stage]",
-                f"[expand_stage][photo_card]overlay=0:0:eof_action=pass:"
-                f"enable='lte(t,{flash_end:.3f})'[opening_timeline]",
-                f"[normal][opening_timeline]overlay=0:0:eof_action=pass:"
-                f"enable='lte(t,{expand_end:.3f})'[base_video]",
-            ])
+                chains.append(
+                    f"[normal_input]{normal_filter},trim=duration={duration:.6f},"
+                    "setpts=PTS-STARTPTS,format=rgba[normal_source]"
+                )
+                chains.append(_build_filter("intro_input", intro_duration))
+                chains.extend(_expand_chains(flash_end, expand_end))
+                chains.append(
+                    f"[opening_video]trim=duration={duration:.6f},setpts=PTS-STARTPTS,"
+                    f"format={VIDEO_PIXEL_FORMAT}[video]"
+                )
         else:
-            chains.append(f"[0:v]{_static_filter(OUTPUT_WIDTH, OUTPUT_HEIGHT)}[base_video]")
-
-        video_label = "base_video"
-        if subtitle is not None and str(subtitle).strip():
-            subtitle_file = temporary_dir / "subtitle.ass"
-            _write_ass(subtitle_file, str(subtitle), duration, subtitle_language, RESOLUTION)
-            subtitle_filter = f"subtitles='{_filter_path(subtitle_file)}'"
-            font_directory = next(
-                (Path(value) for value in SUBTITLE_FONT_DIRECTORIES if Path(value).is_dir()),
-                None,
+            chains.append(
+                f"[0:v]{_static_filter(OUTPUT_WIDTH, OUTPUT_HEIGHT)},"
+                f"format={VIDEO_PIXEL_FORMAT}[video]"
             )
-            if font_directory:
-                subtitle_filter += f":fontsdir='{_filter_path(font_directory)}'"
-            chains.append(f"[base_video]{subtitle_filter}[subtitled_video]")
-            video_label = "subtitled_video"
-        chains.append(f"[{video_label}]format={VIDEO_PIXEL_FORMAT}[video]")
 
         chains.append(
             f"[1:a]atrim=0:{duration:.6f},asetpts=PTS-STARTPTS,"

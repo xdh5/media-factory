@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# 输出画面：1280x720（ffmpeg scale/crop 用冒号，color 画布用 x）
-OUTPUT_WIDTH = 1280
-OUTPUT_HEIGHT = 720
+# 输出画面：1920x1080（ffmpeg scale/crop 用冒号，color 画布用 x）
+OUTPUT_WIDTH = 1920
+OUTPUT_HEIGHT = 1080
 OUTPUT_SIZE = f"{OUTPUT_WIDTH}:{OUTPUT_HEIGHT}"
 CANVAS_SIZE = f"{OUTPUT_WIDTH}x{OUTPUT_HEIGHT}"
 RESOLUTION = CANVAS_SIZE
 FPS = 30
-INTRO_RENDERER_VERSION = 8
+INTRO_RENDERER_VERSION = 14
 
-# 片头包含多层 2560x1440 叠加、阴影模糊和音效混音，不能沿用普通镜头的
+# 片头含多层叠加、阴影模糊、音效混音和超采样运镜，不能沿用普通镜头的
 # 超时策略；弱 CPU 下也应给一次完整编码机会，但避免无限等待。
 INTRO_RENDER_MIN_TIMEOUT_SECONDS = 180
 INTRO_RENDER_TIMEOUT_PER_SECOND = 30
@@ -34,12 +34,12 @@ PHOTO_EXPAND_SECONDS = 0.5        # 快门后彩色全屏从中心向四周展�
 # 开场完整时长：滑入、停顿、闪光、四向展开；之后无切镜交给首镜头原动效。
 TOTAL_SECONDS = SHUTTER_START_SECONDS + FLASH_SECONDS + PHOTO_EXPAND_SECONDS
 
-# 照片卡柔和投影
-CARD_SHADOW_MARGIN = 64           # 投影外边距（像素）
-CARD_SHADOW_OFFSET_X = 16         # 投影水平偏移
-CARD_SHADOW_OFFSET_Y = 24         # 投影垂直偏移
+# 照片卡柔和投影（相对 1280×720 时的 64/16/24/27 按 1.5 倍放大到 1080p）
+CARD_SHADOW_MARGIN = 96           # 投影外边距（像素）
+CARD_SHADOW_OFFSET_X = 24         # 投影水平偏移
+CARD_SHADOW_OFFSET_Y = 36         # 投影垂直偏移
 CARD_SHADOW_OPACITY = 0.52        # 投影不透明度
-CARD_SHADOW_BLUR = 27             # 投影高斯模糊半径
+CARD_SHADOW_BLUR = 40             # 投影高斯模糊半径
 
 # 开场音效（模块内 static 目录，随滤镜时序对齐）
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -49,3 +49,11 @@ SFX_WHOOSH_SECONDS = SLIDE_IN_SECONDS  # 滑入音效截取时长
 SFX_WHOOSH_GAIN = 1.35            # 滑入“嗖”声音量增益
 SFX_SHUTTER_SECONDS = 0.456       # 快门音效截取时长
 SFX_SHUTTER_GAIN = 1.8            # 快门音效增益
+
+# 翻页开场（九张图从右滑入，最后一页缓慢放大至第一句旁白结束）
+PAGE_FLIP_COUNT = 9
+PAGE_FLIP_SECONDS = 0.18          # 单次翻页滑入时长
+PAGE_FLIP_MIN_HOLD_SECONDS = 0.05 # 翻页之间最短停留
+PAGE_FLIP_MIN_ZOOM_SECONDS = 0.6  # 最后一页最少放大时长
+PAGE_FLIP_ZOOM_TO = 1.18          # 最后一页放大终点（相对 1.0）
+PAGE_FLIP_SFX_GAIN = 1.15         # 翻页音效增益

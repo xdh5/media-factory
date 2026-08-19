@@ -11,6 +11,8 @@ __all__ = [
     "SLIDE_IN_INPUT_SCHEMA",
     "SLIDE_IN_OUTPUT_SCHEMA",
     "SLIDE_IN_ERROR_SCHEMA",
+    "PAGE_FLIP_INPUT_SCHEMA",
+    "PAGE_FLIP_OUTPUT_SCHEMA",
 ]
 
 # 输入参数 schema
@@ -19,7 +21,7 @@ SLIDE_IN_INPUT_SCHEMA = {
     "properties": {
         "image_path": {
             "type": "string",
-            "description": "输入图片路径（建议 16:9 彩色图片；动画内部统一处理为 2560x1440）",
+            "description": "输入图片路径（建议 16:9 彩色图片；动画内部统一处理为 1920x1080）",
         },
         "output_path": {
             "type": "string",
@@ -28,7 +30,7 @@ SLIDE_IN_INPUT_SCHEMA = {
         "tts_path": {"type": "string", "description": "必传完整 TTS 音频路径"},
         "audio_start": {"type": "number", "minimum": 0, "default": 0},
         "audio_end": {"type": "number", "exclusiveMinimum": 0},
-        "subtitle": {"type": "string", "description": "可选字幕；不传则不烧录字幕"},
+        "subtitle": {"type": "string", "description": "可选。开场动画本身不烧字幕；财经成片由 burn_subtitles 按时间轴一次烧录"},
         "subtitle_language": {"type": "string", "enum": ["zh", "en"], "default": "zh"},
         "motion": MOTION_SCHEMA,
     },
@@ -54,7 +56,7 @@ SLIDE_IN_OUTPUT_SCHEMA = {
         },
         "resolution": {
             "type": "string",
-            "description": "分辨率，固定 2560x1440",
+            "description": "分辨率，固定 1920x1080",
         },
         "sfx": {
             "type": "array",
@@ -105,4 +107,48 @@ SLIDE_IN_ERROR_SCHEMA = {
         },
     },
     "required": ["error"],
+}
+
+PAGE_FLIP_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "image_paths": {
+            "type": "array",
+            "minItems": 9,
+            "maxItems": 9,
+            "items": {"type": "string"},
+            "description": "翻页用的 9 张图片路径；最后一张会缓慢放大到第一句旁白结束",
+        },
+        "output_path": {
+            "type": "string",
+            "description": "输出 mp4 路径（父目录自动创建）",
+        },
+        "tts_path": {"type": "string", "description": "完整 TTS 音频路径"},
+        "sfx_path": {"type": "string", "description": "每次翻页播放的音效路径"},
+        "audio_start": {"type": "number", "minimum": 0, "default": 0},
+        "audio_end": {"type": "number", "exclusiveMinimum": 0},
+    },
+    "required": ["image_paths", "tts_path", "sfx_path", "output_path"],
+    "additionalProperties": False,
+}
+
+PAGE_FLIP_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "output_path": {"type": "string"},
+        "duration": {"type": "number", "description": "首镜头总时长，以传入 TTS 区间为准"},
+        "fps": {"type": "integer"},
+        "resolution": {"type": "string"},
+        "sfx": {"type": "array", "items": {"type": "string"}},
+        "audio_start": {"type": "number"},
+        "audio_end": {"type": "number"},
+        "page_count": {"type": "integer"},
+        "flip_starts": {"type": "array", "items": {"type": "number"}},
+        "last_page_land": {"type": "number", "description": "最后一页落定并开始放大的时刻"},
+    },
+    "required": [
+        "output_path", "duration", "fps", "resolution", "sfx",
+        "audio_start", "audio_end", "page_count", "flip_starts", "last_page_land",
+    ],
+    "additionalProperties": False,
 }

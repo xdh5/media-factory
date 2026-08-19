@@ -1,0 +1,11 @@
+"""Cloudflare R2（S3 兼容）公开对象存储常量。"""
+
+R2_REGION = "auto"
+R2_UPLOAD_TIMEOUT_SECONDS = 120
+R2_REQUIRED_ENV = (
+    "R2_ACCOUNT_ID",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_BUCKET",
+    "R2_PUBLIC_BASE_URL",
+)
