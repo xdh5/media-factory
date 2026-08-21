@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list; \
     fi; \
     apt-get update; \
-    apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-wqy-zenhei
+    apt-get install -y --no-install-recommends ffmpeg
 
 # ---- 层 2：Python 依赖（清华 PyPI 源）----
 # 只先拷贝依赖声明：pyproject.toml 不变时此层缓存命中，改代码不重装依赖；
@@ -32,11 +32,11 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     pip install -i https://pypi.tuna.tsinghua.edu.cn/simple .
 
 # ---- 层 3：项目代码与静态资源 ----
-# 日常改动只重建这一层（含 core/capabilities/intro/static 音效）
+# 日常改动只重建这一层（含 core/tools/generate_intro/static 音效）
 COPY . .
 
-# 全部工作流运行数据由部署侧统一挂载持久化。
-VOLUME ["/app/data"]
+# 库文件、缓存、成片由部署侧分别挂载持久化。
+VOLUME ["/app/data", "/app/cache", "/app/outputs"]
 
 # 工作流 MCP 在本机 stdio 运行；镜像内默认进入 python 供调试
 CMD ["python"]

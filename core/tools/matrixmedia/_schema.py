@@ -20,7 +20,10 @@ PUBLISH_VIDEO_INPUT_SCHEMA = {
         "file": {"type": "string", "minLength": 1},
         "title": {"type": "string", "minLength": 1},
         "phone": {"type": "string", "minLength": 1},
-        "bt2": {"type": "string"},
+        "bt2": {
+            "type": "string",
+            "description": "短标题。视频号必填 6～16 字；财经传 short_title / publish_bt2",
+        },
         "tags": {"type": "string"},
         "address": {"type": "string"},
         "publishAt": {"type": "string"},

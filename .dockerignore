@@ -12,11 +12,13 @@ tmp_*.py
 data/*/cache/
 data/*/outputs/
 data/youtube/tokens/
+/cache/
+/outputs/
 **/*.db
 **/*.sqlite
 **/*.sqlite3
 
-# 输出产物（音效 wav 在 core/capabilities/intro/static/，不在此列，会进镜像）
+# 输出产物（片头音效 wav 在 core/tools/generate_intro/static/，不在此列，会进镜像）
 *.mp3
-!core/capabilities/bgm/static/*.mp3
+!core/tools/generate_bgm/static/*.mp3
 *.mp4

@@ -1,0 +1,17 @@
+"""成片编码与拼接常量。须与 generate_shot 的帧率、编码、音轨一致，才能 copy 拼接。"""
+
+from __future__ import annotations
+
+FINAL_VIDEO_VERSION = 1
+VIDEO_FPS = 30
+VIDEO_CODEC = "libx264"
+VIDEO_PRESET = "veryfast"
+VIDEO_CRF = 21
+VIDEO_TUNE_STILLIMAGE = "stillimage"
+VIDEO_PIXEL_FORMAT = "yuv420p"
+VIDEO_AUDIO_CODEC = "aac"
+VIDEO_AUDIO_RATE = 48_000
+VIDEO_AUDIO_CHANNELS = 2
+VIDEO_SHOT_RENDER_WORKERS = 4
+VIDEO_FFMPEG_TIMEOUT_SECONDS = 600
+VIDEO_PROBE_TIMEOUT_SECONDS = 30
