@@ -22,6 +22,7 @@ from .._constants import (
     SUBJECT_ONNX_THREADS,
     SUBJECT_REMBG_MODEL,
     SUBJECT_SHEET_SIZE,
+    SUBJECT_VISION_MAX_TOKENS,
     TEMPLATE_FILENAMES,
     WORDS_PER_TASK,
 )
@@ -84,7 +85,7 @@ _REMBG_SESSION = None
 
 
 def _rembg_session():
-    """同一进程内复用 BiRefNet 会话，十个主体只加载一次模型。"""
+    """同一进程内复用抠图会话，十个主体只加载一次模型。"""
     global _REMBG_SESSION
     if _REMBG_SESSION is not None:
         return _REMBG_SESSION
@@ -196,6 +197,7 @@ def _visual_layout(subject_sheet_path: Path) -> dict:
             _read_visual_prompt("visual-validation-system.md"),
             _read_visual_prompt("visual-validation-user.md"),
             json_output=True,
+            max_tokens=SUBJECT_VISION_MAX_TOKENS,
         )
     except QwenVisionError as exc:
         raise CardCompositionError(f"千问视觉验收失败：{exc}", exc.details) from exc
@@ -217,19 +219,27 @@ def _visual_layout(subject_sheet_path: Path) -> dict:
         raise CardCompositionError("千问视觉验收结果的 has_text 必须是布尔值")
     raw_boxes = payload.get("boxes")
     boxes: list[list[int]] = []
-    if not isinstance(raw_boxes, list) or len(raw_boxes) != WORDS_PER_TASK:
-        raise CardCompositionError(f"千问视觉验收结果的 boxes 必须正好包含 {WORDS_PER_TASK} 个边界框")
-    for index, raw_box in enumerate(raw_boxes, 1):
-        if not isinstance(raw_box, list) or len(raw_box) != 4:
-            raise CardCompositionError(f"千问视觉返回的第 {index} 个边界框格式不正确")
-        try:
-            box = [max(0, min(1000, int(value))) for value in raw_box]
-        except (TypeError, ValueError) as exc:
-            raise CardCompositionError(f"千问视觉返回的第 {index} 个边界框坐标不是整数") from exc
-        if box[2] <= box[0] or box[3] <= box[1]:
-            raise CardCompositionError(f"千问视觉返回的第 {index} 个边界框范围无效")
-        boxes.append(box)
     issues: list[str] = []
+    if not isinstance(raw_boxes, list):
+        issues.append("视觉模型没有返回主体边界框列表")
+    else:
+        if len(raw_boxes) != WORDS_PER_TASK:
+            issues.append(
+                f"视觉模型返回 {len(raw_boxes)} 个主体边界框，必须为 {WORDS_PER_TASK} 个"
+            )
+        for index, raw_box in enumerate(raw_boxes, 1):
+            if not isinstance(raw_box, list) or len(raw_box) != 4:
+                issues.append(f"视觉模型返回的第 {index} 个边界框格式不正确")
+                continue
+            try:
+                box = [max(0, min(1000, int(value))) for value in raw_box]
+            except (TypeError, ValueError):
+                issues.append(f"视觉模型返回的第 {index} 个边界框坐标不是整数")
+                continue
+            if box[2] <= box[0] or box[3] <= box[1]:
+                issues.append(f"视觉模型返回的第 {index} 个边界框范围无效")
+                continue
+            boxes.append(box)
     if object_count != WORDS_PER_TASK:
         issues.append(f"视觉模型判断主体总数为 {object_count}，必须为 {WORDS_PER_TASK}")
     if top_count != CARD_GRID_COLUMNS or bottom_count != CARD_GRID_COLUMNS:
@@ -254,17 +264,73 @@ def _visual_layout(subject_sheet_path: Path) -> dict:
     }
 
 
-def _detect_subjects(sheet: Image.Image, session, visual_boxes: list[list[int]]) -> tuple[list[Image.Image], list[dict], list[str]]:
-    """按视觉模型返回的十个边界框逐个裁切和抠图。"""
+def _adjust_grid_divider(
+    base: int,
+    previous_end: int,
+    next_start: int,
+    label: str,
+    issues: list[str],
+) -> int:
+    """均分线安全时保持不动；会切到主体时移到相邻主体之间。"""
+    if previous_end < base < next_start:
+        return base
+    if previous_end < next_start:
+        return (previous_end + next_start) // 2
+    issues.append(f"{label}两侧主体边界重叠，无法找到安全分割线")
+    return base
+
+
+def _dynamic_grid_boxes(visual_boxes: list[list[int]]) -> tuple[list[list[int]], list[str]]:
+    """按 2×5 均分整图，仅在均分线切到主体时根据视觉框微调。"""
+    issues: list[str] = []
+    rows = (visual_boxes[:CARD_GRID_COLUMNS], visual_boxes[CARD_GRID_COLUMNS:])
+    row_dividers: list[list[int]] = []
+    for row_index, row in enumerate(rows, 1):
+        dividers = [0]
+        for column in range(1, CARD_GRID_COLUMNS):
+            dividers.append(_adjust_grid_divider(
+                column * 1000 // CARD_GRID_COLUMNS,
+                row[column - 1][2],
+                row[column][0],
+                f"第 {row_index} 排第 {column} 条竖向分割线",
+                issues,
+            ))
+        dividers.append(1000)
+        row_dividers.append(dividers)
+    horizontal = _adjust_grid_divider(
+        500,
+        max(box[3] for box in rows[0]),
+        min(box[1] for box in rows[1]),
+        "上下两排横向分割线",
+        issues,
+    )
+    crop_boxes: list[list[int]] = []
+    for row_index, dividers in enumerate(row_dividers):
+        top, bottom = (0, horizontal) if row_index == 0 else (horizontal, 1000)
+        for column in range(CARD_GRID_COLUMNS):
+            crop_boxes.append([dividers[column], top, dividers[column + 1], bottom])
+    return crop_boxes, issues
+
+
+def _detect_subjects(
+    sheet: Image.Image,
+    session,
+    visual_boxes: list[list[int]],
+) -> tuple[list[Image.Image], list[dict], list[str], list[list[int]]]:
+    """用视觉框微调 2×5 分割线，保留每格全部留白后逐格抠图。"""
     issues: list[str] = []
     subjects: list[Image.Image] = []
     cells: list[dict] = []
-    for index, visual_box in enumerate(visual_boxes, 1):
+    crop_boxes, grid_issues = _dynamic_grid_boxes(visual_boxes)
+    issues.extend(grid_issues)
+    if issues:
+        return subjects, cells, issues, crop_boxes
+    for index, crop_box in enumerate(crop_boxes, 1):
         box = (
-            visual_box[0] * sheet.width // 1000,
-            visual_box[1] * sheet.height // 1000,
-            max(1, visual_box[2] * sheet.width // 1000),
-            max(1, visual_box[3] * sheet.height // 1000),
+            crop_box[0] * sheet.width // 1000,
+            crop_box[1] * sheet.height // 1000,
+            max(1, crop_box[2] * sheet.width // 1000),
+            max(1, crop_box[3] * sheet.height // 1000),
         )
         region = _remove_subject_background(sheet.crop(box), session, index)
         local_bbox = _visible_mask(region).getbbox()
@@ -298,7 +364,7 @@ def _detect_subjects(sheet: Image.Image, session, visual_boxes: list[list[int]])
     if issues:
         for cell in cells:
             cell["valid"] = False
-    return subjects, cells, issues
+    return subjects, cells, issues, crop_boxes
 
 
 def validate_subject_sheet(
@@ -312,10 +378,12 @@ def validate_subject_sheet(
     issues = list(vision["issues"])
     subjects: list[Image.Image] = []
     cells: list[dict] = []
+    crop_boxes: list[list[int]] = []
     if not issues:
         session = _rembg_session()
-        subjects, cells, crop_issues = _detect_subjects(sheet, session, vision["boxes"])
+        subjects, cells, crop_issues, crop_boxes = _detect_subjects(sheet, session, vision["boxes"])
         issues.extend(crop_issues)
+    vision["crop_boxes"] = crop_boxes
     valid = not issues
     if valid and cutout_cache_dir:
         _save_cached_cutouts(
