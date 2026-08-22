@@ -4,10 +4,9 @@ import hashlib
 import json
 import re
 import unicodedata
-from collections import deque
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from core.tools.generate_final_video import safe_filename
 from core.tools.qwen_vision import QwenVisionError, analyze_image
@@ -19,9 +18,6 @@ from .._constants import (
     STATIC_ROOT,
     SUBJECT_ALPHA_THRESHOLD,
     SUBJECT_CUTOUT_STRATEGY_VERSION,
-    SUBJECT_DETECTION_ANALYSIS_WIDTH,
-    SUBJECT_DETECTION_DILATION_SIZE,
-    SUBJECT_DETECTION_MIN_COMPONENT_PIXELS,
     SUBJECT_GENERATION_MAX_ATTEMPTS,
     SUBJECT_REMBG_MODEL,
     SUBJECT_SHEET_SIZE,
@@ -158,17 +154,18 @@ def _save_cached_cutouts(cache_dir: Path, signature: str, subjects: list[Image.I
     marker.write_text(signature, encoding="utf-8")
 
 
-def _remove_sheet_background(sheet: Image.Image, session) -> Image.Image:
+def _remove_subject_background(subject: Image.Image, session, index: int) -> Image.Image:
+    """逐个主体抠图，避免整张图中较小或浅色主体被忽略。"""
     try:
         from rembg import remove
     except ImportError as extra:
         raise CardCompositionError("缺少 rembg，请先安装项目依赖后再拼卡") from extra
     try:
-        cut = remove(sheet.convert("RGB"), session=session)
+        cut = remove(subject.convert("RGB"), session=session)
     except Exception as extra:
-        raise CardCompositionError(f"整张主体图 rembg 抠图失败：{extra}") from extra
+        raise CardCompositionError(f"第 {index} 个主体 rembg 抠图失败：{extra}") from extra
     if not isinstance(cut, Image.Image):
-        raise CardCompositionError("整张主体图 rembg 没有返回图片")
+        raise CardCompositionError(f"第 {index} 个主体 rembg 没有返回图片")
     return cut.convert("RGBA")
 
 
@@ -206,6 +203,20 @@ def _visual_layout(subject_sheet_path: Path) -> dict:
     has_text = payload.get("has_text")
     if not isinstance(has_text, bool):
         raise CardCompositionError("千问视觉验收结果的 has_text 必须是布尔值")
+    raw_boxes = payload.get("boxes")
+    boxes: list[list[int]] = []
+    if not isinstance(raw_boxes, list) or len(raw_boxes) != WORDS_PER_TASK:
+        raise CardCompositionError(f"千问视觉验收结果的 boxes 必须正好包含 {WORDS_PER_TASK} 个边界框")
+    for index, raw_box in enumerate(raw_boxes, 1):
+        if not isinstance(raw_box, list) or len(raw_box) != 4:
+            raise CardCompositionError(f"千问视觉返回的第 {index} 个边界框格式不正确")
+        try:
+            box = [max(0, min(1000, int(value))) for value in raw_box]
+        except (TypeError, ValueError) as exc:
+            raise CardCompositionError(f"千问视觉返回的第 {index} 个边界框坐标不是整数") from exc
+        if box[2] <= box[0] or box[3] <= box[1]:
+            raise CardCompositionError(f"千问视觉返回的第 {index} 个边界框范围无效")
+        boxes.append(box)
     issues: list[str] = []
     if object_count != WORDS_PER_TASK:
         issues.append(f"视觉模型判断主体总数为 {object_count}，必须为 {WORDS_PER_TASK}")
@@ -223,6 +234,7 @@ def _visual_layout(subject_sheet_path: Path) -> dict:
         "bottom_count": bottom_count,
         "has_text": has_text,
         "reason": str(payload.get("reason") or "").strip(),
+        "boxes": boxes,
         "issues": issues,
         "model": str(result.get("model") or ""),
         "usage": dict(result.get("usage") or {}),
@@ -230,95 +242,19 @@ def _visual_layout(subject_sheet_path: Path) -> dict:
     }
 
 
-def _component_boxes(mask: Image.Image) -> list[tuple[int, int, int, int]]:
-    """在缩小后的蒙版中查找独立主体，忽略极小的抠图噪点。"""
-    analysis_width = min(SUBJECT_DETECTION_ANALYSIS_WIDTH, mask.width)
-    analysis_height = max(1, round(mask.height * analysis_width / mask.width))
-    small = mask.resize((analysis_width, analysis_height), Image.Resampling.NEAREST)
-    small = small.filter(ImageFilter.MaxFilter(SUBJECT_DETECTION_DILATION_SIZE))
-    pixels = small.tobytes()
-    visited = bytearray(len(pixels))
-    boxes: list[tuple[int, int, int, int]] = []
-    for start, value in enumerate(pixels):
-        if value == 0 or visited[start]:
-            continue
-        queue = deque([start])
-        visited[start] = 1
-        area = 0
-        min_x = max_x = start % analysis_width
-        min_y = max_y = start // analysis_width
-        while queue:
-            current = queue.popleft()
-            x = current % analysis_width
-            y = current // analysis_width
-            area += 1
-            min_x, max_x = min(min_x, x), max(max_x, x)
-            min_y, max_y = min(min_y, y), max(max_y, y)
-            if x > 0:
-                neighbor = current - 1
-                if pixels[neighbor] and not visited[neighbor]:
-                    visited[neighbor] = 1
-                    queue.append(neighbor)
-            if x + 1 < analysis_width:
-                neighbor = current + 1
-                if pixels[neighbor] and not visited[neighbor]:
-                    visited[neighbor] = 1
-                    queue.append(neighbor)
-            if y > 0:
-                neighbor = current - analysis_width
-                if pixels[neighbor] and not visited[neighbor]:
-                    visited[neighbor] = 1
-                    queue.append(neighbor)
-            if y + 1 < analysis_height:
-                neighbor = current + analysis_width
-                if pixels[neighbor] and not visited[neighbor]:
-                    visited[neighbor] = 1
-                    queue.append(neighbor)
-        if area >= SUBJECT_DETECTION_MIN_COMPONENT_PIXELS:
-            left = max(0, min_x * mask.width // analysis_width)
-            top = max(0, min_y * mask.height // analysis_height)
-            right = min(mask.width, (max_x + 1) * mask.width // analysis_width + 1)
-            bottom = min(mask.height, (max_y + 1) * mask.height // analysis_height + 1)
-            boxes.append((left, top, right, bottom))
-    return boxes
-
-
-def _detect_subjects(sheet: Image.Image, session) -> tuple[list[Image.Image], list[dict], list[str]]:
-    """把整图轮廓分配到上五下五十个位置，同位置的主体、把手和阴影一起裁切。"""
-    cut = _remove_sheet_background(sheet, session)
-    mask = _visible_mask(cut)
-    boxes = _component_boxes(mask)
-    groups: list[list[tuple[int, int, int, int]]] = [
-        [] for _ in range(WORDS_PER_TASK)
-    ]
-    for box in boxes:
-        center_x = (box[0] + box[2]) / 2
-        center_y = (box[1] + box[3]) / 2
-        row = 0 if center_y < sheet.height / 2 else 1
-        column = min(CARD_GRID_COLUMNS - 1, int(center_x * CARD_GRID_COLUMNS / sheet.width))
-        groups[row * CARD_GRID_COLUMNS + column].append(box)
+def _detect_subjects(sheet: Image.Image, session, visual_boxes: list[list[int]]) -> tuple[list[Image.Image], list[dict], list[str]]:
+    """按视觉模型返回的十个边界框逐个裁切和抠图。"""
     issues: list[str] = []
     subjects: list[Image.Image] = []
     cells: list[dict] = []
-    for index, group in enumerate(groups, 1):
-        if not group:
-            issue = f"第 {index} 个位置没有分配到可裁切前景"
-            issues.append(issue)
-            cells.append({
-                "index": index,
-                "valid": False,
-                "bbox": None,
-                "foreground_ratio": 0.0,
-                "issues": [issue],
-            })
-            continue
-        group_box = (
-            min(box[0] for box in group),
-            min(box[1] for box in group),
-            max(box[2] for box in group),
-            max(box[3] for box in group),
+    for index, visual_box in enumerate(visual_boxes, 1):
+        box = (
+            visual_box[0] * sheet.width // 1000,
+            visual_box[1] * sheet.height // 1000,
+            max(1, visual_box[2] * sheet.width // 1000),
+            max(1, visual_box[3] * sheet.height // 1000),
         )
-        region = cut.crop(group_box)
+        region = _remove_subject_background(sheet.crop(box), session, index)
         local_bbox = _visible_mask(region).getbbox()
         if local_bbox is None:
             issue = f"第 {index} 个位置没有有效透明前景"
@@ -332,10 +268,10 @@ def _detect_subjects(sheet: Image.Image, session) -> tuple[list[Image.Image], li
             })
             continue
         bbox = (
-            group_box[0] + local_bbox[0],
-            group_box[1] + local_bbox[1],
-            group_box[0] + local_bbox[2],
-            group_box[1] + local_bbox[3],
+            box[0] + local_bbox[0],
+            box[1] + local_bbox[1],
+            box[0] + local_bbox[2],
+            box[1] + local_bbox[3],
         )
         subject = region.crop(local_bbox)
         subjects.append(subject)
@@ -366,7 +302,7 @@ def validate_subject_sheet(
     cells: list[dict] = []
     if not issues:
         session = _rembg_session()
-        subjects, cells, crop_issues = _detect_subjects(sheet, session)
+        subjects, cells, crop_issues = _detect_subjects(sheet, session, vision["boxes"])
         issues.extend(crop_issues)
     valid = not issues
     if valid and cutout_cache_dir:
@@ -395,13 +331,7 @@ def _extract_subjects(sheet: Image.Image, sheet_path: Path, cache_dir: Path | No
         cached = _load_cached_cutouts(cache_dir, signature)
         if cached is not None:
             return cached
-    session = _rembg_session()
-    subjects, _, issues = _detect_subjects(sheet, session)
-    if issues:
-        raise CardCompositionError("；".join(issues))
-    if cache_dir is not None:
-        _save_cached_cutouts(cache_dir, signature, subjects)
-    return subjects
+    raise CardCompositionError("主体裁切缓存不存在；请先调用主体图视觉验收再制作卡片")
 
 
 def _paste_subject(card: Image.Image, subject: Image.Image, box: tuple[int, int, int, int]) -> None:
