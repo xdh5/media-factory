@@ -31,7 +31,6 @@ jobs:
       MEDIA_FACTORY_PUBLISH_HOST: aliyun
       RUNNER_LABELS: publisher,matrixmedia
       MATRIXMEDIA_BIN: /usr/local/bin/matrixmedia
-      PUBLISH_VENV: ${{ runner.tool_cache }}/media-factory-publisher
       CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
       CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
       INPUT_MANIFEST_URL: ${{ inputs.manifest_url }}
@@ -51,6 +50,7 @@ jobs:
 
       - name: 准备持久 Python 发布环境
         run: |
+          PUBLISH_VENV="$RUNNER_TOOL_CACHE/media-factory-publisher"
           if [ ! -x "$PUBLISH_VENV/bin/python" ]; then
             python3 -m venv "$PUBLISH_VENV"
           fi
@@ -73,7 +73,6 @@ jobs:
     env:
       PYTHONUTF8: "1"
       INPUT_MANIFEST_URL: ${{ inputs.manifest_url }}
-      PUBLISH_VENV: ${{ runner.tool_cache }}/media-factory-publisher
       LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID }}
       LANGUAGE_LEARNING_YOUTUBE_CHANNEL_TITLE: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CHANNEL_TITLE }}
       LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN }}
@@ -85,6 +84,7 @@ jobs:
 
       - name: 准备持久 Python 发布环境
         run: |
+          PUBLISH_VENV="$RUNNER_TOOL_CACHE/media-factory-publisher"
           if [ ! -x "$PUBLISH_VENV/bin/python" ]; then
             python3 -m venv "$PUBLISH_VENV"
           fi
@@ -109,13 +109,13 @@ jobs:
       LANGUAGE_LEARNING_TIKTOK_ACCOUNT_ID: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_ACCOUNT_ID }}
       LANGUAGE_LEARNING_TIKTOK_ACCOUNT_TITLE: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_ACCOUNT_TITLE }}
       LANGUAGE_LEARNING_TIKTOK_USERNAME: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_USERNAME }}
-      PUBLISH_VENV: ${{ runner.tool_cache }}/media-factory-publisher
     steps:
       - name: 检出发布代码
         uses: actions/checkout@v5
 
       - name: 准备持久 Python 发布环境
         run: |
+          PUBLISH_VENV="$RUNNER_TOOL_CACHE/media-factory-publisher"
           if [ ! -x "$PUBLISH_VENV/bin/python" ]; then
             python3 -m venv "$PUBLISH_VENV"
           fi
