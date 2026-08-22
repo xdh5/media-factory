@@ -10,6 +10,7 @@ RUN apt-get update \
         curl \
         ffmpeg \
         fontconfig \
+        fonts-dejavu-core \
         fonts-noto-cjk \
         git \
         libgl1 \
