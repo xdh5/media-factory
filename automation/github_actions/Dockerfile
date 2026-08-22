@@ -14,8 +14,6 @@ RUN apt-get update \
         fonts-dejavu-core \
         fonts-noto-cjk \
         git \
-        libgl1 \
-        libglib2.0-0 \
         libgomp1 \
         tar \
         unzip \
