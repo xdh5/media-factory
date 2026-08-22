@@ -64,7 +64,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 词表与主体图 Prompt 由 MCP 工具返回，不要自行改写模板结构：
 
 - `language_learning_build_vocabulary_prompt` → `user_prompt`
-- `language_learning_prepare_images` 内部根据词表生成主体图 Prompt；Prompt 明确禁止生成任何文字、标签、数字、网格线和水印，并要求锅柄等延伸部分完整收在各自位置内
+- `language_learning_prepare_images` 内部根据词表生成主体图 Prompt；Prompt 明确禁止生成任何文字、标签、数字、网格线和水印
 
 TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 天去重：每期 10 个英语单词中，至少 5 个必须未在最近 100 天使用。`build_vocabulary_prompt` 会把历史词库写进 `user_prompt`，`parse_vocabulary_response` 只校验、不写库；用户触发发布后才把话题与全部 10 个单词正式写入 D1。
 
