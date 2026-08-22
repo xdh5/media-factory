@@ -1,0 +1,62 @@
+name: 阿里云发布 R2 成片
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_url:
+        description: 生产 Workflow 输出的 R2 清单 URL
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aliyun-matrixmedia-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: 仅在阿里云发布机执行
+    runs-on: [self-hosted, Linux, X64, publisher, matrixmedia]
+    timeout-minutes: 180
+    env:
+      PYTHONUTF8: "1"
+      MEDIA_FACTORY_PUBLISH_HOST: aliyun
+      RUNNER_LABELS: publisher,matrixmedia
+      MATRIXMEDIA_BIN: /usr/local/bin/matrixmedia
+      XDG_RUNTIME_DIR: ${{ runner.temp }}/xdg-runtime
+      LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID }}
+      LANGUAGE_LEARNING_YOUTUBE_CHANNEL_TITLE: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CHANNEL_TITLE }}
+      LANGUAGE_LEARNING_YOUTUBE_CLIENT_ID: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CLIENT_ID }}
+      LANGUAGE_LEARNING_YOUTUBE_CLIENT_SECRET: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CLIENT_SECRET }}
+      LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN }}
+      LANGUAGE_LEARNING_FACEBOOK_PAGE_ID: ${{ secrets.LANGUAGE_LEARNING_FACEBOOK_PAGE_ID }}
+      LANGUAGE_LEARNING_FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.LANGUAGE_LEARNING_FACEBOOK_PAGE_ACCESS_TOKEN }}
+      LANGUAGE_LEARNING_INSTAGRAM_USER_ID: ${{ secrets.LANGUAGE_LEARNING_INSTAGRAM_USER_ID }}
+
+    steps:
+      - name: 检出媒体工厂代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装轻量发布依赖
+        run: python -m pip install google-api-python-client google-auth requests python-dotenv
+
+      - name: 检查独立 MatrixMedia
+        run: |
+          test -x "$MATRIXMEDIA_BIN"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          unset DBUS_SESSION_BUS_ADDRESS ELECTRON_RUN_AS_NODE
+          xvfb-run -a env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" LIBGL_ALWAYS_SOFTWARE=1 MATRIXMEDIA_DISABLE_TELEMETRY=1 "$MATRIXMEDIA_BIN" --no-sandbox --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage cli accounts --json
+
+      - name: 从 R2 下载并发布
+        env:
+          INPUT_MANIFEST_URL: ${{ inputs.manifest_url }}
+        run: python -m automation.github_actions publish --manifest-url "$INPUT_MANIFEST_URL"

@@ -66,14 +66,15 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 ```
 
 - BGM 固定 `cinematic-inspirational-piano-ambient-128209`；Agent 不得改曲目或混音参数
-- 发布走 MatrixMedia MCP，`list_accounts` 筛 `phone` 等于 `心灵鸡汤`
+- 生产完成后上传 R2；发布只能触发 GitHub 的“阿里云发布 R2 成片”Workflow
+- 阿里云发布机上的独立 MatrixMedia 使用账号组 `心灵鸡汤`
 - 跳过掘金、番茄、小红书
 - **视频号必填 `bt2`**：用成片返回的 `short_title`（稿件短标题，已是 6～16 字）。禁止省略，禁止把长标题 `title` 填进短标题框。其它平台也一律带上 `bt2`，避免漏传。
 - `tags` 用空格分隔且带 `#`，例如 `"#存钱 #理财常识 #生活方式 #查理芒格"`（最多 4 个）
 
 ## 确认门禁
 
-1. **成片**：稿件生成后直接制作；`finance_start_finish_video` 轮询完成后展示 `video_path`、标题、标签、发布文案；未确认不得发布。
+1. **成片**：稿件生成后直接制作；`finance_start_finish_video` 轮询完成后展示 `video_path`、标题、标签、发布文案与 R2 清单 URL；未确认不得触发阿里云发布 Workflow。
 2. **清缓存**：发布结束后用户确认才调用 `finance_clear_run(run_id, confirmed=true)`。
 
 中间步骤不逐项确认。
@@ -112,7 +113,7 @@ SUB|L002|你以为涨薪就能存钱
 2. 按 `result.storyboard_prompt` 写完整分镜文本（IMAGE 行 + 每句一条 `SUB` 行，见上文「字幕重点」）。
 3. `finance_prepare_images`（传入本 Skill 的 `image_config`）→ 按 `library_catalog` 与 `selection_tasks` 为每个镜头选最贴近的图 → `finance_submit_images`（`images` 传 `[{image_id, image_path}]`）。
 4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`；配音直接用 `prepare_storyboard` 的 `tts_path`。
-5. 展示成片；确认后 MatrixMedia `publish_video`：`file` 用 `video_path`，`phone` 用 `心灵鸡汤`，**`bt2` 用 `short_title`**，`title` 用长标题，`tags` 用带 `#` 的空格分隔话题。
+5. 展示成片；确认后用 R2 清单 URL 触发 `.github/workflows/publish-from-r2.yml`。禁止本机发布，也禁止 GitHub 官方 Runner 发布；阿里云发布机会调用独立 MatrixMedia，账号组为 `心灵鸡汤`。
 6. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询

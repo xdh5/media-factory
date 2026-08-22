@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -348,7 +349,12 @@ def _publish_chinese_youtube(item: dict, *, include_youtube: bool, meta_platform
 
 
 def publish_vocabulary_videos(manifest_path: str | Path, publish_confirmed: bool) -> dict:
-    """用户确认后把中文发到 YouTube 与 Facebook/Instagram Reels。韩语仍由 Agent 调矩媒 MCP。"""
+    """仅在阿里云发布机把中文发到 YouTube 与 Facebook/Instagram Reels。"""
+    if os.getenv("MEDIA_FACTORY_PUBLISH_HOST", "").strip().casefold() != "aliyun":
+        raise PublishError(
+            "发布已与生产环境分离，只能通过 GitHub 的“阿里云发布 R2 成片”Workflow 执行",
+            {"required_host": "aliyun", "workflow": ".github/workflows/publish-from-r2.yml"},
+        )
     if publish_confirmed is not True:
         raise ConfirmationRequiredError("必须先让用户看过成片并获得明确确认后再发布")
     manifest = _load_manifest(manifest_path)

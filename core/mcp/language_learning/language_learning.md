@@ -57,10 +57,10 @@ language_learning_start_create_videos
    └─ tools.publish_vocabulary_videos.attach_publish_manifest
 
 language_learning_publish
-└─ tools.publish_vocabulary_videos.publish_vocabulary_videos  （同步，易超时）
+└─ 兼容旧客户端；非阿里云发布机拒绝执行
 
 language_learning_start_publish
-└─ core.mcp._task_runner.submit_task
+└─ 兼容旧客户端；正式发布使用 `.github/workflows/publish-from-r2.yml`
 
 language_learning_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task
@@ -77,7 +77,7 @@ language_learning_clear_run
 | `tools/vocabulary_history.py` | 最近 100 天词库、新词比例校验与历史记录 |
 | `tools/compose_fixed_cards.py` | 主体图抠图并贴到固定模板单词卡 |
 | `tools/create_vocabulary_videos.py` | 卡片 + 双语 TTS → 竖版成片 |
-| `tools/publish_vocabulary_videos.py` | 写发布清单、发 YouTube / Meta |
+| `tools/publish_vocabulary_videos.py` | 写发布清单；仅允许阿里云发布机发 YouTube / Meta |
 
 ## 目录
 

@@ -55,7 +55,8 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 }
 ```
 
-- 发布走 MatrixMedia MCP，`list_accounts` 筛 `phone` 等于 `韩语`
+- 生产完成后上传 R2；所有平台发布只能触发 GitHub 的“阿里云发布 R2 成片”Workflow
+- 阿里云发布机上的独立 MatrixMedia 使用账号组 `韩语`
 - 跳过掘金、番茄、小红书
 
 ## Prompt
@@ -69,7 +70,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 
 ## 确认门禁
 
-1. **成片**：`language_learning_start_create_videos` 轮询完成后展示成片路径、标题、标签、账号组；未确认不得发布。
+1. **成片**：`language_learning_start_create_videos` 轮询完成后展示成片路径、标题、标签、账号组与 R2 清单 URL；未确认不得触发阿里云发布 Workflow。
 2. **清缓存**：发布结束后用户确认才调用 `language_learning_clear_run(run_id, confirmed=true)`。
 
 词表、主体图、卡片、出片中间步骤不逐项确认。
@@ -83,7 +84,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走方舟）→ `language_learning_poll_task`。
 6. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。
 7. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。
-8. 展示成品；确认后：中文 `language_learning_start_publish` + poll；韩语改调 MatrixMedia（`publish_video` 的 `file` 用成片 `output_path`，`phone` 用 `韩语`，**`bt2` 用 `short_title`**，视频号不得省略）。
+8. 展示成品；确认后用 R2 清单 URL 触发 `.github/workflows/publish-from-r2.yml`。中文 YouTube / Meta 与韩语 MatrixMedia 都在阿里云发布，禁止本机或 GitHub 官方 Runner 直接发布。
 9. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
@@ -109,7 +110,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 | `language_learning_start_compose_cards` | 启动拼卡后台任务 |
 | `language_learning_create_videos` | 出片（同步，勿用） |
 | `language_learning_start_create_videos` | 启动出片后台任务 |
-| `language_learning_publish` | 发中文 YouTube + Reels（同步，勿用） |
-| `language_learning_start_publish` | 启动发布后台任务 |
+| `language_learning_publish` | 兼容旧客户端；非阿里云环境会拒绝发布 |
+| `language_learning_start_publish` | 兼容旧客户端；正式发布统一走阿里云 Workflow |
 | `language_learning_poll_task` | 轮询后台任务 |
 | `language_learning_clear_run` | 清本次目录 |

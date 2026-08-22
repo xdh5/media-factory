@@ -27,3 +27,4 @@
 1. 语言学习 Prompt 放在 `core/mcp/language_learning/prompts/`；财经 MCP 的标题标签与分镜 Prompt 放在 `core/mcp/finance/prompts/`；财经正文范文与业务参数放在 `.agents/skills/finance`，TTS 与发布参数放在 `.agents/skills/learn_Chinese_and_Korean`，对应 MCP 只负责编排。耗时步骤必须通过 MCP 的 `*_start_*` + `*_poll_task` 后台任务轮询（实现见 `core/mcp/_task_runner.py`），禁止同步调用以免 Cursor MCP 客户端超时。
 2. 每个 MCP 必须使用共用话题去重 `get_topic` / `update` 做去重与占坑，禁止另起一套主题库。
 3. 发布与清缓存分开：发布成功后必须再向用户确认是否删除本次生产文件，确认后调用共用 `clear_run`（`core.tools.clear_cache`，MCP 封装为 `*_clear_run`）；不得把清缓存写进发布工具的返回或自动删除。
+4. 生产与发布分离：本地和 GitHub 官方 Runner 只生成成片并上传 R2；所有平台发布只能触发 `.github/workflows/publish-from-r2.yml`，由带 `publisher`、`matrixmedia` 标签的阿里云自托管 Runner 执行。MatrixMedia 是阿里云机器上的独立程序，本仓库禁止再次加入 MatrixMedia 源码、子模块或本地 MCP 配置。

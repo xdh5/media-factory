@@ -21,17 +21,6 @@
         "PYTHONPATH": "${workspaceFolder}",
         "PYTHONUTF8": "1"
       }
-    },
-    "matrixmedia": {
-      "command": "node",
-      "args": [
-        "${workspaceFolder}/integrations/MatrixMedia/mcp/dist/index.js"
-      ],
-      "cwd": "${workspaceFolder}/integrations/MatrixMedia/mcp",
-      "env": {
-        "MATRIXMEDIA_DIR": "${workspaceFolder}/integrations/MatrixMedia",
-        "MATRIXMEDIA_LOGIN_SHOW": "1"
-      }
     }
   }
 }

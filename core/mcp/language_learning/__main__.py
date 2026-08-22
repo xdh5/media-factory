@@ -396,7 +396,7 @@ def language_learning_start_create_videos(
 
 @mcp.tool()
 def language_learning_publish(manifest_path: str, publish_confirmed: bool) -> dict:
-    """发布中文到 YouTube / Meta（同步，易超时）。优先使用 language_learning_start_publish + poll_task。"""
+    """兼容旧客户端；非阿里云发布机调用会返回明确错误。"""
     try:
         return publish_vocabulary_videos(manifest_path, publish_confirmed)
     except Exception as exc:
@@ -405,7 +405,7 @@ def language_learning_publish(manifest_path: str, publish_confirmed: bool) -> di
 
 @mcp.tool()
 def language_learning_start_publish(manifest_path: str, publish_confirmed: bool, run_id: str) -> dict:
-    """启动 YouTube / Meta 发布；立即返回 task_path，用 language_learning_poll_task 轮询。"""
+    """兼容旧客户端；正式发布统一使用阿里云发布 Workflow。"""
     try:
         cache_root, _ = production_dirs(run_id)
 

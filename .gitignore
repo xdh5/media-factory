@@ -39,11 +39,6 @@ Thumbs.db
 # 本地 OAuth 凭据，不进入版本库
 data/youtube/tokens/
 
-# MatrixMedia 本机依赖与 MCP 构建产物
-integrations/MatrixMedia/node_modules/
-integrations/MatrixMedia/mcp/node_modules/
-integrations/MatrixMedia/mcp/dist/
-
 # Cloudflare 本地开发状态与依赖
 cloudflare/**/.wrangler/
 cloudflare/**/node_modules/

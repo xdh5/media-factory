@@ -306,6 +306,11 @@ def publish_to_meta(
     account: str | None = None,
 ) -> dict:
     """按平台列表发布同一条公网视频；Facebook/Instagram 只使用 video_url。"""
+    if os.getenv("MEDIA_FACTORY_PUBLISH_HOST", "").strip().casefold() != "aliyun":
+        raise InvalidParameterError(
+            "Meta 发布只能通过阿里云发布 Workflow 执行",
+            {"required_host": "aliyun", "workflow": ".github/workflows/publish-from-r2.yml"},
+        )
     selected = [str(item).strip().lower() for item in (platforms or list(META_PLATFORMS))]
     unknown = [item for item in selected if item not in META_PLATFORMS]
     if unknown:
