@@ -35,7 +35,7 @@ def _api_key() -> str:
     value = _env(ZERNIO_API_KEY_ENV) or _env(ZERNIO_LEGACY_API_KEY_ENV)
     if not value:
         raise CredentialError(
-            f"缺少 {ZERNIO_API_KEY_ENV}，请把 Zernio API key 写入本地 .env 和 GitHub Secret",
+            f"缺少 {ZERNIO_API_KEY_ENV}，请把 Zernio API key 写入 MCP 宿主环境的 .env",
             {"environment": ZERNIO_API_KEY_ENV},
         )
     return value
@@ -96,11 +96,6 @@ def publish_to_tiktok(
     account: str | None = None,
 ) -> dict:
     """立即公开发布单个 TikTok 视频。"""
-    if os.getenv("GITHUB_ACTIONS", "").strip().casefold() != "true":
-        raise InvalidParameterError(
-            "TikTok 发布只能通过 GitHub Action 执行",
-            {"required_environment": "GITHUB_ACTIONS=true", "workflow": ".github/workflows/publish-from-r2.yml"},
-        )
     configured = _configured_account(account_id, account)
     normalized_url = str(video_url or "").strip()
     if not normalized_url.startswith(("https://", "http://")):

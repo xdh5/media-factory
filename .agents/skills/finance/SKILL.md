@@ -47,6 +47,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 ```
 
 - 图库目录：`data/image_library/finance/`
+- 本地图库存在时直接使用；缺失时 MCP 自动从 R2 的 `assets/finance-images.tar` 下载并解压恢复
 - 图库记录格式：`{id, caption, image_path}`
 - `finance_prepare_images` 返回 `library_catalog` 与 `selection_tasks`；Agent 对照每个镜头的 `match_query` 与各图 `caption`，选出语义最贴近的一张
 - 选好后调用 `finance_submit_images`，`images` 传入 `[{image_id, image_path}]`（`image_path` 用 catalog 中的路径）
@@ -66,15 +67,15 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 ```
 
 - BGM 固定 `cinematic-inspirational-piano-ambient-128209`；Agent 不得改曲目或混音参数
-- 生产完成后上传 R2；发布只能触发 GitHub 的“阿里云发布 R2 成片”Workflow
-- 阿里云发布机上的独立 MatrixMedia 使用账号组 `心灵鸡汤`
+- 生产完成后调用 `finance_start_upload_r2` 上传 R2
+- 发布服务器上的独立 MatrixMedia MCP 使用账号组 `心灵鸡汤`
 - 跳过掘金、番茄、小红书
 - **视频号必填 `bt2`**：用成片返回的 `short_title`（稿件短标题，已是 6～16 字）。禁止省略，禁止把长标题 `title` 填进短标题框。其它平台也一律带上 `bt2`，避免漏传。
 - `tags` 用空格分隔且带 `#`，例如 `"#存钱 #理财常识 #生活方式 #查理芒格"`（最多 4 个）
 
 ## 确认门禁
 
-1. **成片**：稿件生成后直接制作；`finance_start_finish_video` 轮询完成后展示 `video_path`、标题、标签、发布文案与 R2 清单 URL；未确认不得触发阿里云发布 Workflow。
+1. **成片**：稿件生成后直接制作；`finance_start_finish_video` 与 `finance_start_upload_r2` 轮询完成后展示 `video_path`、标题、标签、发布文案与 R2 清单 URL；未确认不得调用发布 MCP。
 2. **清缓存**：发布结束后用户确认才调用 `finance_clear_run(run_id, confirmed=true)`。
 
 中间步骤不逐项确认。
@@ -113,8 +114,9 @@ SUB|L002|你以为涨薪就能存钱
 2. 按 `result.storyboard_prompt` 写完整分镜文本（IMAGE 行 + 每句一条 `SUB` 行，见上文「字幕重点」）。
 3. `finance_prepare_images`（传入本 Skill 的 `image_config`）→ 按 `library_catalog` 与 `selection_tasks` 为每个镜头选最贴近的图 → `finance_submit_images`（`images` 传 `[{image_id, image_path}]`）。
 4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`；配音直接用 `prepare_storyboard` 的 `tts_path`。
-5. 展示成片；确认后用 R2 清单 URL 触发 `.github/workflows/publish-from-r2.yml`。发布任务先把正式话题幂等写入 D1，再调用阿里云独立 MatrixMedia；禁止本机或 GitHub 官方 Runner 发布。
-6. 展示发布结果后，确认清缓存。
+5. 调用 `finance_start_upload_r2(manifest_path, run_id)` → `finance_poll_task` 直至完成，展示成片和 `manifest_url`。
+6. 用户确认后，把 R2 清单 URL 交给发布服务器上的独立 MatrixMedia MCP；发布 MCP 先把正式话题幂等写入 D1，再用账号组 `心灵鸡汤` 发布。
+7. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
 
@@ -138,4 +140,5 @@ SUB|L002|你以为涨薪就能存钱
 | `finance_submit_images` | 提交选图清单 |
 | `finance_finish_video` | 合成成片（同步，易超时，勿用） |
 | `finance_start_finish_video` | 启动成片合成后台任务 |
+| `finance_start_upload_r2` | 后台上传财经成片、封面和发布清单到 R2 |
 | `finance_clear_run` | 清本次目录 |

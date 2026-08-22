@@ -23,3 +23,7 @@ class CredentialError(R2StorageError):
 
 class UploadError(R2StorageError):
     code = "R2_UPLOAD_FAILED"
+
+
+class DownloadError(R2StorageError):
+    code = "R2_DOWNLOAD_FAILED"

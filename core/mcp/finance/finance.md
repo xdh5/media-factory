@@ -17,7 +17,7 @@ finance_get_metadata_prompt
 [Agent 按 Skill 写正文，按 metadata_prompt 写标题标签]
 
 finance_save_draft(...)
-└─ topic_dedup.update
+└─ topic_dedup.get_topic 查重；暂不写 D1
 └─ tools.save_draft.save_draft
    └─ tools.parse_metadata.parse_metadata
 
@@ -30,6 +30,10 @@ finance_start_storyboard(...)
 
 finance_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task
+
+finance_start_upload_r2(manifest_path, run_id)
+└─ core.mcp._task_runner.submit_task
+   └─ tools.upload_to_r2.upload_finance_assets_to_r2
 
 [Agent 按 storyboard_prompt 写分镜 IMAGE 行，并按财经 Skill 为每句写 SUB 字幕重点]
 
@@ -71,6 +75,7 @@ finance_clear_run
 | `tools/storyboard.py` | TTS、timeline 与分镜解析 |
 | `tools/prepare_shot_images.py` | 按 image_config 准备镜头图 |
 | `tools/assemble_finance_video.py` | 封面、片头、成片合成 |
+| `tools/upload_to_r2.py` | 上传财经成片、封面和发布清单到 R2 |
 | `tools/narration.py` | 旁白切句与字幕显示 |
 
 ## 目录

@@ -163,11 +163,6 @@ def publish_to_youtube(
     on_progress: Callable[[float, str], None] | None = None,
 ) -> dict:
     """上传单个视频，可选设置封面和字幕。"""
-    if os.getenv("GITHUB_ACTIONS", "").strip().casefold() != "true":
-        raise InvalidParameterError(
-            "YouTube 发布只能通过 GitHub Action 执行",
-            {"required_environment": "GITHUB_ACTIONS=true", "workflow": ".github/workflows/publish-from-r2.yml"},
-        )
     video = Path(video_path).resolve()
     if not video.is_file():
         raise InvalidParameterError(f"视频文件不存在：{video}", {"parameter": "video_path"})

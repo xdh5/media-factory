@@ -1,6 +1,5 @@
 """财经 MCP 技术常量（业务 Prompt 与参数见财经 Skill）。"""
 
-import os
 import time
 from pathlib import Path
 
@@ -36,10 +35,6 @@ def production_run_id(record_id: int | None = None) -> str:
     """生成不依赖数据库主键的数字 run_id；发布时才正式写入 D1。"""
     if record_id is not None:
         return f"run-{int(record_id):06d}"
-    github_run_id = os.getenv("GITHUB_RUN_ID", "").strip()
-    if github_run_id.isdigit():
-        attempt = int(os.getenv("GITHUB_RUN_ATTEMPT", "1") or "1")
-        return f"run-{github_run_id}{attempt:02d}"
     return f"run-{time.time_ns()}"
 
 

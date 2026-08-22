@@ -55,8 +55,8 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 }
 ```
 
-- 生产完成后上传 R2；所有平台发布只能触发 GitHub 的“阿里云发布 R2 成片”Workflow
-- 阿里云发布机上的独立 MatrixMedia 使用账号组 `韩语`
+- 生产完成后调用 `language_learning_start_upload_r2` 上传 R2
+- 发布服务器上的独立 MatrixMedia MCP 使用账号组 `韩语`
 - 跳过掘金、番茄、小红书
 
 ## Prompt
@@ -72,7 +72,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 
 ## 确认门禁
 
-1. **成片**：`language_learning_start_create_videos` 轮询完成后展示成片路径、标题、标签、账号组与 R2 清单 URL；未确认不得触发阿里云发布 Workflow。
+1. **成片**：`language_learning_start_create_videos` 与 `language_learning_start_upload_r2` 轮询完成后展示成片路径、标题、标签、账号组与 R2 清单 URL；未确认不得调用发布 MCP。
 2. **清缓存**：发布结束后用户确认才调用 `language_learning_clear_run(run_id, confirmed=true)`。
 
 词表、主体图、卡片、出片中间步骤不逐项确认。
@@ -83,10 +83,13 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 2. 自选单个英文单词主题后 `language_learning_occupy_topic(topic, learning_modes)`，只创建本次生产目录并拿到 `run_id`，不写 D1。
 3. `language_learning_build_vocabulary_prompt(topic, learning_modes)` 获取包含最近 100 天词库的 Prompt，按原样生成纯文本词表；再调用 `language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)`，由 MCP 强制校验至少 5 个新词，但暂不写库。
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
-5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问）→ `language_learning_poll_task`。提交后台任务先用千问视觉识别统一纯色背景，检查是否恰好十个主体、上排五个、下排五个且无文字，并返回按上排从左到右、下排从左到右排序的十个保守边界框；千问框必须四周保留背景安全边距。通过后 Python 从画布边缘估计背景实际 RGB，在整张图中全局删除同色和近似色，再严格按千问返回的框切出并紧裁主体，不额外扩展边界。失败时强制重新生图，最多 3 次，第三次仍失败必须报错停止。GitHub Action 会把每次被拒绝的原始主题图上传到 R2 的 `diagnostics/` 目录，并在 1 天后自动清理。
-6. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例，统一缩放到固定图片区域的完整高度并水平居中。
-7. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。GitHub Action 交接时必须同时保留原始主题图，上传 R2 后在清单写入 `subject_sheet_url`。
-8. GitHub Action 第三步上传 R2 成功后，直接把清单 URL 交给第四步：先在阿里云自托管 Runner 逐条发布韩语 MatrixMedia，再依次发布中文 YouTube 和 TikTok。第四步开始时幂等写入正式话题与本期 10 个单词。
+5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问兜底生图）→ `language_learning_poll_task`。MCP 不调用千问文本或视觉模型。
+6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 亲自检查主题图是否恰好十个主体、上排五个、下排五个且无文字，并返回按上排从左到右、下排从左到右排序的十个保守边界框；调用 `language_learning_validate_subject_sheet` 后，Python 去背景并输出十张抠图。
+7. 宿主 Agent 必须打开十张抠图逐张检查，再调用 `language_learning_review_cutouts` 提交十条结论。第一次仅裁剪框有问题时调整完整十框并重新调用 `language_learning_validate_subject_sheet`；第二次仍抠坏，或源图本身残缺、重叠、被背景色吃掉时，调用 `language_learning_prepare_images` 重新生主题图。主题图最多生成 3 次，第三次仍失败必须报错停止。未通过逐张检查时禁止拼卡。
+8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例，统一缩放到固定图片区域的完整高度并水平居中。
+9. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。
+10. `language_learning_start_upload_r2` 上传成片、主题图和本地发布清单 → poll 至 `done=true`，保留返回的 `manifest_url` 与 `subject_sheet_url`。
+11. 用户确认发布后：韩语条目交给发布服务器上的 MatrixMedia MCP；中文调用 `language_learning_start_publish` 发布 YouTube 和 TikTok。发布 MCP 幂等写入正式话题与本期 10 个单词。
 9. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
@@ -107,12 +110,16 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 | `language_learning_prepare_images` | 注册主体图任务 |
 | `language_learning_save_images` | 写入已生成图 |
 | `language_learning_submit_images` | 提交主体图（同步，勿用） |
-| `language_learning_start_submit_images` | 启动主体图提交（含千问） |
+| `language_learning_start_submit_images` | 启动主体图提交（可选千问兜底生图） |
+| `language_learning_get_visual_validation_prompt` | 返回宿主 Agent 的主题图验收 Prompt |
+| `language_learning_validate_subject_sheet` | 接收宿主 Agent 的十个框并抠图 |
+| `language_learning_review_cutouts` | 接收宿主 Agent 对十张抠图的逐张检查 |
 | `language_learning_compose_cards` | 拼单词卡（同步，勿用） |
 | `language_learning_start_compose_cards` | 启动拼卡后台任务 |
 | `language_learning_create_videos` | 出片（同步，勿用） |
 | `language_learning_start_create_videos` | 启动出片后台任务 |
-| `language_learning_publish` | 兼容旧客户端；非阿里云环境会拒绝发布 |
-| `language_learning_start_publish` | 兼容旧客户端；正式发布统一走阿里云 Workflow |
+| `language_learning_start_upload_r2` | 后台上传成片、主题图和发布清单到 R2 |
+| `language_learning_publish` | 兼容旧客户端的同步发布入口 |
+| `language_learning_start_publish` | 后台发布中文 YouTube 和 TikTok，并写入内容历史 |
 | `language_learning_poll_task` | 轮询后台任务 |
 | `language_learning_clear_run` | 清本次目录 |

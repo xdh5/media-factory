@@ -69,6 +69,11 @@ BUILD_VOCABULARY_PROMPT_INPUT_SCHEMA = {
     "required": ["topic", "learning_modes"],
     "additionalProperties": False,
 }
+GET_VISUAL_VALIDATION_PROMPT_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": False,
+}
 PREPARE_IMAGES_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -124,6 +129,65 @@ START_SUBMIT_IMAGES_INPUT_SCHEMA = {
         "generation_attempt": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1},
     },
     "required": ["context_path", "images", "run_id"],
+    "additionalProperties": False,
+}
+VISUAL_LAYOUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "object_count": {"type": "integer", "minimum": 0},
+        "top_count": {"type": "integer", "minimum": 0},
+        "bottom_count": {"type": "integer", "minimum": 0},
+        "has_text": {"type": "boolean"},
+        "background_color": {"type": "string", "minLength": 1},
+        "reason": {"type": "string"},
+        "boxes": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "items": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": {"type": "integer", "minimum": 0, "maximum": 1000},
+            },
+        },
+    },
+    "required": ["object_count", "top_count", "bottom_count", "has_text", "background_color", "boxes"],
+    "additionalProperties": False,
+}
+VALIDATE_SUBJECT_SHEET_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "subject_sheet_path": {"type": "string", "minLength": 1},
+        "visual_layout": VISUAL_LAYOUT_SCHEMA,
+        "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
+    },
+    "required": ["subject_sheet_path", "visual_layout", "run_id"],
+    "additionalProperties": False,
+}
+REVIEW_CUTOUTS_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "subject_sheet_path": {"type": "string", "minLength": 1},
+        "reviews": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {"type": "integer", "minimum": 1, "maximum": 10},
+                    "valid": {"type": "boolean"},
+                    "failure_kind": {"type": "string", "enum": ["", "crop", "source"]},
+                    "issue": {"type": "string"},
+                },
+                "required": ["index", "valid"],
+                "additionalProperties": False,
+            },
+        },
+        "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
+    },
+    "required": ["subject_sheet_path", "reviews", "run_id"],
     "additionalProperties": False,
 }
 SUBJECT_SHEET_VALIDATION_SCHEMA = {
@@ -189,6 +253,16 @@ CREATE_VIDEOS_INPUT_SCHEMA = {
         "publish_config": PUBLISH_CONFIG_SCHEMA,
     },
     "required": ["card_dirs", "words_by_mode", "run_id", "voices", "publish_config"],
+    "additionalProperties": False,
+}
+UPLOAD_R2_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "manifest_path": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
+        "subject_sheet_path": {"type": ["string", "null"]},
+    },
+    "required": ["manifest_path", "run_id"],
     "additionalProperties": False,
 }
 PUBLISH_VIDEOS_INPUT_SCHEMA = {

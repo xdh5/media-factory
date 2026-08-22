@@ -23,6 +23,7 @@ from core.tools.generate_image import (
     save_agent_image_tasks,
     submit_agent_image_tasks,
 )
+from core.tools.r2_storage import R2StorageError
 from core.tools.topic_dedup import TopicDedupError, get_topic
 
 from core.mcp._task_runner import TaskNotFoundError as RunnerTaskNotFoundError
@@ -46,12 +47,15 @@ from ._errors import ConfirmationRequiredError, LanguageLearningError, TaskNotFo
 from .tools import (
     attach_publish_manifest,
     build_subject_sheet_prompt,
+    build_visual_validation_prompt,
     build_vocabulary_prompt,
     compose_fixed_cards,
     create_vocabulary_videos,
     list_recent_words,
     parse_vocabulary_response,
     publish_vocabulary_videos,
+    review_subject_cutouts,
+    upload_publish_assets_to_r2,
     validate_subject_sheet,
     validate_words,
 )
@@ -62,7 +66,8 @@ mcp = FastMCP(
         "语言学习视频编排 MCP。Prompt 由本 MCP 工具返回；TTS 音色、发布账号组等固定参数以 Skill "
         "learn_Chinese_and_Korean 为准，Agent 必须按 Skill 传参。"
         "每期 10 个英语单词中至少 5 个必须未在最近 100 天使用；只有用户触发发布后才记录话题与全部单词。"
-        "耗时步骤（千问生图、拼卡、出片、发布）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
+        "文本生成和图片视觉验收由宿主 Agent 完成；千问只用于宿主生图失败后的兜底。"
+        "耗时步骤（千问兜底生图、拼卡、出片、发布）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
         "禁止绕过 MCP 自行读写内部文件。"
     ),
 )
@@ -75,6 +80,8 @@ def _map_error(exc: Exception) -> LanguageLearningError:
         return LanguageLearningError(exc.message, exc.details)
     if isinstance(exc, TopicDedupError):
         return LanguageLearningError(str(exc), exc.details)
+    if isinstance(exc, R2StorageError):
+        return LanguageLearningError(exc.message, exc.details)
     if isinstance(exc, ClearCacheConfirmationRequiredError):
         return ConfirmationRequiredError(str(exc))
     raise exc
@@ -173,6 +180,15 @@ def language_learning_build_vocabulary_prompt(
 
 
 @mcp.tool()
+def language_learning_get_visual_validation_prompt() -> dict:
+    """返回宿主 Agent 检查主题图和定位十个主体所需的 Prompt。"""
+    try:
+        return build_visual_validation_prompt()
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
 def language_learning_parse_vocabulary_response(
     response_text: str,
     learning_modes: list[str],
@@ -256,7 +272,7 @@ def language_learning_submit_images(
     images: list[dict],
     failures: list[dict] | None = None,
 ) -> dict:
-    """提交主体图（同步，含千问时易超时）。优先使用 language_learning_start_submit_images + poll_task。"""
+    """提交主体图；若需千问兜底，优先使用 start_submit_images + poll_task。"""
     try:
         if failures:
             _run_qwen_fallback(context_path, failures, images or [])
@@ -266,15 +282,18 @@ def language_learning_submit_images(
     subject_sheet_path = (result.get("images") or {}).get(SUBJECT_SHEET_IMAGE_ID)
     if not subject_sheet_path:
         raise LanguageLearningError(f"提交结果里缺少主体图 {SUBJECT_SHEET_IMAGE_ID}")
-    validation = validate_subject_sheet(subject_sheet_path)
-    return {**result, "subject_sheet_path": subject_sheet_path, "validation": validation}
+    return {
+        **result,
+        "subject_sheet_path": subject_sheet_path,
+        "validation_required": True,
+        "next_tool": "language_learning_validate_subject_sheet",
+    }
 
 
 def _submit_images_worker(
     context_path: str,
     images: list[dict],
     failures: list[dict] | None,
-    cutout_cache_dir: Path,
 ) -> dict:
     if failures:
         _run_qwen_fallback(context_path, failures, images or [])
@@ -282,8 +301,12 @@ def _submit_images_worker(
     subject_sheet_path = (result.get("images") or {}).get(SUBJECT_SHEET_IMAGE_ID)
     if not subject_sheet_path:
         raise LanguageLearningError(f"提交结果里缺少主体图 {SUBJECT_SHEET_IMAGE_ID}")
-    validation = validate_subject_sheet(subject_sheet_path, cutout_cache_dir)
-    return {**result, "subject_sheet_path": subject_sheet_path, "validation": validation}
+    return {
+        **result,
+        "subject_sheet_path": subject_sheet_path,
+        "validation_required": True,
+        "next_tool": "language_learning_validate_subject_sheet",
+    }
 
 
 @mcp.tool()
@@ -307,7 +330,6 @@ def language_learning_start_submit_images(
                 context_path,
                 images,
                 failures,
-                cache_root / SUBJECT_CUTOUT_CACHE_DIR_NAME,
             )
 
         started = runner_submit_task(
@@ -317,6 +339,42 @@ def language_learning_start_submit_images(
             fn=_work,
         )
         return {**started, "poll_tool": "language_learning_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def language_learning_validate_subject_sheet(
+    subject_sheet_path: str,
+    visual_layout: dict,
+    run_id: str,
+) -> dict:
+    """使用宿主 Agent 提交的十个主体框进行验收、去背景和裁图。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+        return validate_subject_sheet(
+            subject_sheet_path,
+            visual_layout,
+            cache_root / SUBJECT_CUTOUT_CACHE_DIR_NAME,
+        )
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def language_learning_review_cutouts(
+    subject_sheet_path: str,
+    reviews: list[dict],
+    run_id: str,
+) -> dict:
+    """接收宿主 Agent 对十张抠图的逐张检查；未通过时禁止拼卡。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+        return review_subject_cutouts(
+            subject_sheet_path,
+            cache_root / SUBJECT_CUTOUT_CACHE_DIR_NAME,
+            reviews,
+        )
     except Exception as exc:
         raise _map_error(exc) from exc
 
@@ -440,8 +498,32 @@ def language_learning_start_create_videos(
 
 
 @mcp.tool()
+def language_learning_start_upload_r2(
+    manifest_path: str,
+    run_id: str,
+    subject_sheet_path: str | None = None,
+) -> dict:
+    """启动语言成片、主题图和发布清单上传 R2。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+
+        def _work() -> dict:
+            return upload_publish_assets_to_r2(manifest_path, subject_sheet_path)
+
+        started = runner_submit_task(
+            cache_dir=cache_root,
+            run_id=run_id,
+            step="upload_r2",
+            fn=_work,
+        )
+        return {**started, "poll_tool": "language_learning_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
 def language_learning_publish(manifest_path: str, publish_confirmed: bool) -> dict:
-    """兼容旧客户端；非阿里云发布机调用会返回明确错误。"""
+    """通过 MCP 发布中文视频；同步接口仅用于兼容旧客户端。"""
     try:
         return publish_vocabulary_videos(manifest_path, publish_confirmed)
     except Exception as exc:
@@ -450,7 +532,7 @@ def language_learning_publish(manifest_path: str, publish_confirmed: bool) -> di
 
 @mcp.tool()
 def language_learning_start_publish(manifest_path: str, publish_confirmed: bool, run_id: str) -> dict:
-    """兼容旧客户端；正式发布统一使用阿里云发布 Workflow。"""
+    """启动 MCP 发布；立即返回 task_path，用 language_learning_poll_task 轮询。"""
     try:
         cache_root, _ = production_dirs(run_id)
 

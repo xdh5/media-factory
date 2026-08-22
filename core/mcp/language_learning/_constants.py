@@ -1,6 +1,5 @@
 """语言学习 MCP 技术常量（TTS、发布等业务参数见 SKILL）。"""
 
-import os
 import time
 from pathlib import Path
 
@@ -22,9 +21,8 @@ SUBJECT_SHEET_IMAGE_ID = "subject-sheet"
 SUBJECT_ALPHA_THRESHOLD = 16
 SUBJECT_CHROMA_LOW_DISTANCE = 18
 SUBJECT_CHROMA_HIGH_DISTANCE = 64
-SUBJECT_VISION_MAX_TOKENS = 800
 SUBJECT_CUTOUT_CACHE_DIR_NAME = "subject-cutouts"
-SUBJECT_CUTOUT_STRATEGY_VERSION = "qwen-conservative-boxes-v12"
+SUBJECT_CUTOUT_STRATEGY_VERSION = "host-agent-conservative-boxes-v13"
 SUBJECT_GENERATION_MAX_ATTEMPTS = 3
 TOPIC_DEDUPLICATION_DAYS = 30
 MAX_SUBJECT_SHEET_BYTES = 30 * 1024 * 1024
@@ -56,10 +54,6 @@ def production_run_id(record_id: int | None = None) -> str:
     """生成不依赖数据库主键的数字 run_id；发布时才正式写入 D1。"""
     if record_id is not None:
         return f"run-{int(record_id):06d}"
-    github_run_id = os.getenv("GITHUB_RUN_ID", "").strip()
-    if github_run_id.isdigit():
-        attempt = int(os.getenv("GITHUB_RUN_ATTEMPT", "1") or "1")
-        return f"run-{github_run_id}{attempt:02d}"
     return f"run-{time.time_ns()}"
 
 

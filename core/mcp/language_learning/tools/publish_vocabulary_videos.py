@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
+
+from core.tools.r2_storage import upload_public_file
+from core.tools.topic_dedup import commit as commit_topic
 
 from .._constants import (
     CHINESE_YOUTUBE_CHANNEL_ID,
@@ -198,6 +200,65 @@ def _load_manifest(manifest_path: str | Path) -> dict:
     return payload
 
 
+def upload_publish_assets_to_r2(
+    manifest_path: str | Path,
+    subject_sheet_path: str | Path | None = None,
+) -> dict:
+    """上传语言成片、可选主题图和发布清单，并把公网地址写回本地清单。"""
+    path = Path(manifest_path).resolve()
+    manifest = _load_manifest(path)
+    run_id = str(manifest.get("run_id") or "").strip()
+    if not run_id:
+        raise PublishError("发布清单缺少 run_id，无法生成 R2 对象路径")
+    uploaded: list[dict] = []
+    for item in manifest.get("items") or []:
+        mode = str(item.get("learning_mode") or "unknown").strip() or "unknown"
+        for index, video in enumerate(item.get("videos") or [], 1):
+            video_path = Path(str(video.get("output_path") or "")).resolve()
+            stored = upload_public_file(
+                video_path,
+                f"runs/{WORKFLOW_ID}/{run_id}/{mode}/{index:02d}-{video_path.name}",
+                content_type="video/mp4",
+            )
+            video["video_url"] = stored["url"]
+            video["r2_key"] = stored["key"]
+            uploaded.append({"kind": "video", "learning_mode": mode, **stored})
+    if subject_sheet_path:
+        sheet_path = Path(subject_sheet_path).resolve()
+        suffix = sheet_path.suffix.lower()
+        content_type = "image/png" if suffix == ".png" else "image/jpeg"
+        stored = upload_public_file(
+            sheet_path,
+            f"runs/{WORKFLOW_ID}/{run_id}/subject-sheet{suffix or '.png'}",
+            content_type=content_type,
+        )
+        manifest["subject_sheet_url"] = stored["url"]
+        manifest["subject_sheet_r2_key"] = stored["key"]
+        uploaded.append({"kind": "subject_sheet", **stored})
+    manifest["r2_uploaded"] = True
+    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    stored_manifest = upload_public_file(
+        path,
+        f"runs/{WORKFLOW_ID}/{run_id}/publish-manifest.json",
+        content_type="application/json",
+    )
+    manifest["manifest_url"] = stored_manifest["url"]
+    manifest["manifest_r2_key"] = stored_manifest["key"]
+    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    stored_manifest = upload_public_file(
+        path,
+        stored_manifest["key"],
+        content_type="application/json",
+    )
+    uploaded.append({"kind": "manifest", **stored_manifest})
+    return {
+        "manifest_path": str(path),
+        "manifest_url": stored_manifest["url"],
+        "subject_sheet_url": manifest.get("subject_sheet_url"),
+        "uploaded": uploaded,
+    }
+
+
 def _youtube_channels(group_name: str, youtube_account: str) -> list[dict]:
     from core.tools.publish_to_youtube import list_youtube_accounts
 
@@ -236,6 +297,22 @@ def _should_publish_youtube(manifest: dict) -> bool:
 def _should_publish_tiktok(manifest: dict) -> bool:
     """TikTok 已成功时不重复提交。"""
     return manifest.get("tiktok_published") is not True
+
+
+def _commit_manifest_database(manifest: dict) -> dict:
+    """用户通过 MCP 触发发布后，幂等写入正式话题和十个单词。"""
+    payload = manifest.get("database_commit")
+    if not isinstance(payload, dict):
+        raise PublishError("发布清单缺少 database_commit，无法写入正式内容历史")
+    return commit_topic(
+        str(payload.get("workflow") or ""),
+        str(payload.get("topic") or ""),
+        str(payload.get("publication_id") or ""),
+        days=int(payload.get("days") or TOPIC_DEDUPLICATION_DAYS),
+        entries=list(payload.get("entries") or []),
+        history_days=int(payload.get("history_days") or WORD_HISTORY_DAYS),
+        minimum_new_words=int(payload.get("minimum_new_words") or MINIMUM_NEW_WORDS),
+    )
 
 
 def _publish_chinese_youtube(item: dict) -> dict:
@@ -326,15 +403,11 @@ def publish_vocabulary_videos(
     *,
     targets: list[str] | None = None,
 ) -> dict:
-    """仅在 GitHub Action 把中文视频发布到 YouTube 或 TikTok。"""
-    if os.getenv("GITHUB_ACTIONS", "").strip().casefold() != "true":
-        raise PublishError(
-            "YouTube 和 TikTok 发布只能通过 GitHub Action 执行",
-            {"required_environment": "GITHUB_ACTIONS=true", "workflow": ".github/workflows/publish-from-r2.yml"},
-        )
+    """通过语言学习 MCP 把中文视频发布到 YouTube 或 TikTok。"""
     if publish_confirmed is not True:
         raise ConfirmationRequiredError("必须先让用户看过成片并获得明确确认后再发布")
     manifest = _load_manifest(manifest_path)
+    database = _commit_manifest_database(manifest)
     selected_targets = {str(item).strip().casefold() for item in (targets or ["youtube", "tiktok"])}
     unknown_targets = selected_targets - {"youtube", "tiktok"}
     if unknown_targets:
@@ -378,6 +451,7 @@ def publish_vocabulary_videos(
         "manifest_path": str(Path(manifest_path).resolve()),
         "topic": manifest.get("topic"),
         "run_id": manifest.get("run_id"),
+        "database": database,
         "published": published,
         "matrixmedia_items": matrixmedia_items,
     }

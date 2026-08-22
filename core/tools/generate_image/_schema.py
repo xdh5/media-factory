@@ -3,7 +3,7 @@
 公开入口分三类，互不耦合：
 - 宿主 Agent：prepare_agent_image_tasks / save_agent_image_tasks / submit_agent_image_tasks
 - 千问：generate_qwen_image
-- 本地选：list_local_images
+- 本地选：list_local_images（本地缺失时从 R2 自动恢复图库包）
 宿主失败后是否改走千问，由业务 MCP（如语言学习）决定，不放在 image 内。
 """
 

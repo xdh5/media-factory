@@ -19,6 +19,7 @@ from core.tools.generate_image import (
     save_agent_image_tasks,
     submit_agent_image_tasks,
 )
+from core.tools.r2_storage import R2StorageError
 from core.tools.topic_dedup import TopicDedupError, get_topic
 
 from core.mcp._task_runner import TaskNotFoundError as RunnerTaskNotFoundError
@@ -33,6 +34,7 @@ from .tools import (
     prepare_shot_images,
     prepare_storyboard,
     save_draft,
+    upload_finance_assets_to_r2,
 )
 from .tools.save_draft import load_draft
 
@@ -44,6 +46,8 @@ def _map_error(exc: Exception) -> FinanceError:
         return WorkflowStepError(exc.message, exc.details)
     if isinstance(exc, TopicDedupError):
         return WorkflowStepError(str(exc), exc.details)
+    if isinstance(exc, R2StorageError):
+        return WorkflowStepError(exc.message, exc.details)
     if isinstance(exc, ClearCacheConfirmationRequiredError):
         return ConfirmationRequiredError(str(exc))
     raise exc
@@ -252,6 +256,26 @@ def finance_start_finish_video(
             cache_dir=cache_dir,
             run_id=run_id,
             step="finish_video",
+            fn=_work,
+        )
+        return {**started, "poll_tool": "finance_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_start_upload_r2(manifest_path: str, run_id: str) -> dict:
+    """启动财经成片、封面和发布清单上传 R2。"""
+    try:
+        cache_dir = Path(manifest_path).resolve().parent
+
+        def _work() -> dict:
+            return upload_finance_assets_to_r2(manifest_path)
+
+        started = runner_submit_task(
+            cache_dir=cache_dir,
+            run_id=run_id,
+            step="upload_r2",
             fn=_work,
         )
         return {**started, "poll_tool": "finance_poll_task"}

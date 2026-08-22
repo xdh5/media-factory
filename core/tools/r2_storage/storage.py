@@ -9,12 +9,12 @@ from urllib.parse import quote
 import boto3
 from botocore.config import Config
 
-from ._constants import R2_REGION, R2_REQUIRED_ENV, R2_UPLOAD_TIMEOUT_SECONDS, load_project_env
-from ._errors import CredentialError, InvalidParameterError, UploadError
+from ._constants import R2_DOWNLOAD_TIMEOUT_SECONDS, R2_REGION, R2_REQUIRED_ENV, R2_UPLOAD_TIMEOUT_SECONDS, load_project_env
+from ._errors import CredentialError, DownloadError, InvalidParameterError, UploadError
 
 load_project_env()
 
-__all__ = ["upload_public_file", "delete_public_file"]
+__all__ = ["upload_public_file", "download_public_file", "delete_public_file"]
 
 
 def _env(name: str) -> str:
@@ -80,6 +80,47 @@ def upload_public_file(file_path: str | Path, object_key: str, *, content_type: 
         "key": key,
         "bucket": settings["R2_BUCKET"],
         "size": source.stat().st_size,
+    }
+
+
+def download_public_file(object_key: str, destination_path: str | Path) -> dict:
+    """从 R2 下载对象到指定本地文件。"""
+    key = _normalize_key(object_key)
+    destination = Path(destination_path).resolve()
+    if destination.exists() and not destination.is_file():
+        raise InvalidParameterError(
+            f"destination_path 已存在且不是文件：{destination}",
+            {"parameter": "destination_path"},
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    settings = _settings()
+    client = boto3.client(
+        "s3",
+        endpoint_url=f"https://{settings['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+        aws_access_key_id=settings["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=settings["R2_SECRET_ACCESS_KEY"],
+        region_name=R2_REGION,
+        config=Config(
+            signature_version="s3v4",
+            connect_timeout=30,
+            read_timeout=R2_DOWNLOAD_TIMEOUT_SECONDS,
+        ),
+    )
+    temporary = destination.with_name(f"{destination.name}.part")
+    try:
+        client.download_file(settings["R2_BUCKET"], key, str(temporary))
+        temporary.replace(destination)
+    except Exception as exc:
+        temporary.unlink(missing_ok=True)
+        raise DownloadError(
+            f"从 Cloudflare R2 下载失败：{exc}",
+            {"bucket": settings["R2_BUCKET"], "key": key, "destination_path": str(destination)},
+        ) from exc
+    return {
+        "path": str(destination),
+        "key": key,
+        "bucket": settings["R2_BUCKET"],
+        "size": destination.stat().st_size,
     }
 
 

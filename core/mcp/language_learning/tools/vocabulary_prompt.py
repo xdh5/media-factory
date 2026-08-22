@@ -25,6 +25,16 @@ def _read_prompt(name: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+def build_visual_validation_prompt() -> dict:
+    """返回给宿主 Agent 使用的主题图视觉验收 Prompt。"""
+    return {
+        "system_prompt": _read_prompt("visual-validation-system.md"),
+        "user_prompt": _read_prompt("visual-validation-user.md"),
+        "response_format": "json",
+        "next_tool": "language_learning_validate_subject_sheet",
+    }
+
+
 def _format(modes: list[str]) -> tuple[str, list[str]]:
     if modes == ["en-zh"]:
         return "序号｜英语｜中文｜拼音", ["english", "chinese", "romanization"]

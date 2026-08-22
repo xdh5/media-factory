@@ -32,6 +32,15 @@ PRODUCTION_CONFIG_SCHEMA = {
     "required": ["bgm_path", "cover_frame_seconds", "intro", "shot_stickers", "matrixmedia_account_group"],
     "additionalProperties": False,
 }
+UPLOAD_R2_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "manifest_path": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
+    },
+    "required": ["manifest_path", "run_id"],
+    "additionalProperties": False,
+}
 FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
     "type": "object",
     "properties": {

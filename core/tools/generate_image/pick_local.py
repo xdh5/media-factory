@@ -1,4 +1,4 @@
-"""从 Cloudflare D1 图库目录列出本机已有图片，供宿主 Agent 语义匹配选图。"""
+"""从 Cloudflare D1 读取图库目录，本地缺图时从 R2 恢复，供宿主 Agent 选图。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from core.tools.cloudflare_data import CloudflareDataError, list_images
 
 from ._constants import IMAGE_LIBRARY_LINE_PATTERN, IMAGE_LIBRARY_PROJECT_ROOT
 from ._errors import ImageLibraryDataError, ImageLibraryEmptyError, InvalidParameterError
+from ._restore_library import restore_image_library
 
 __all__ = ["list_local_images"]
 
@@ -32,8 +33,9 @@ def _resolve_image(image_path: str | None) -> Path | None:
 
 
 def list_local_images(line: str) -> list[dict]:
-    """从 D1 读取业务线图片目录，并只返回当前机器实际存在的图片。"""
+    """确保本地图片已从 R2 恢复，再结合 D1 元数据返回图库。"""
     workflow = _validate_line(line)
+    restore_image_library(workflow)
     try:
         rows = list_images(workflow)
     except CloudflareDataError as exc:

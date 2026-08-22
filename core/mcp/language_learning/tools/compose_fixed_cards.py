@@ -10,8 +10,6 @@ from statistics import median
 from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 
 from core.tools.generate_final_video import safe_filename
-from core.tools.qwen_vision import QwenVisionError, analyze_image
-
 from .._constants import (
     CARD_CANVAS_SIZE,
     CARD_GRID_COLUMNS,
@@ -23,14 +21,12 @@ from .._constants import (
     SUBJECT_CUTOUT_STRATEGY_VERSION,
     SUBJECT_GENERATION_MAX_ATTEMPTS,
     SUBJECT_SHEET_SIZE,
-    SUBJECT_VISION_MAX_TOKENS,
     TEMPLATE_FILENAMES,
     WORDS_PER_TASK,
 )
 from .._errors import CardCompositionError
 
 _FONT_DIR = PROJECT_ROOT / "static" / "font"
-_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 _SYSTEM_FONTS = {
     "latin": [Path("/usr/share/fonts/windows/arialbd.ttf"), Path("C:/Windows/Fonts/arialbd.ttf"), Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")],
     "cjk": [Path("/usr/share/fonts/windows/simhei.ttf"), Path("C:/Windows/Fonts/simhei.ttf"), Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"), Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")],
@@ -107,9 +103,20 @@ def _cutout_cache_paths(cache_dir: Path) -> tuple[Path, list[Path]]:
     return cache_dir / "signature.txt", [cache_dir / f"{index:02d}.png" for index in range(1, WORDS_PER_TASK + 1)]
 
 
+def _inspection_paths(cache_dir: Path) -> tuple[Path, Path]:
+    return cache_dir / "inspection.json", cache_dir / "review-history.json"
+
+
 def _load_cached_cutouts(cache_dir: Path, signature: str) -> list[Image.Image] | None:
     marker, paths = _cutout_cache_paths(cache_dir)
     if not marker.is_file() or marker.read_text(encoding="utf-8").strip() != signature:
+        return None
+    inspection_path, _ = _inspection_paths(cache_dir)
+    try:
+        inspection = json.loads(inspection_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if inspection.get("signature") != signature or inspection.get("approved") is not True:
         return None
     images: list[Image.Image] = []
     for path in paths:
@@ -129,13 +136,96 @@ def _load_cached_cutouts(cache_dir: Path, signature: str) -> list[Image.Image] |
 def _save_cached_cutouts(cache_dir: Path, signature: str, subjects: list[Image.Image]) -> None:
     cache_dir.mkdir(parents=True, exist_ok=True)
     marker, paths = _cutout_cache_paths(cache_dir)
+    inspection_path, history_path = _inspection_paths(cache_dir)
     for path, subject in zip(paths, subjects):
         subject.save(path, format="PNG")
     marker.write_text(signature, encoding="utf-8")
+    inspection_path.unlink(missing_ok=True)
+    try:
+        history = json.loads(history_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        history = {}
+    if history.get("signature") != signature:
+        history_path.write_text(
+            json.dumps({"signature": signature, "failed_rounds": 0}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+
+def review_subject_cutouts(
+    subject_sheet_path: str | Path,
+    cutout_cache_dir: str | Path,
+    reviews: list[dict],
+) -> dict:
+    """记录宿主 Agent 对十张抠图的逐张检查，并决定重抠或重新生成。"""
+    sheet_path = Path(subject_sheet_path).resolve()
+    cache_dir = Path(cutout_cache_dir).resolve()
+    signature = _sheet_signature(sheet_path)
+    marker, cutout_paths = _cutout_cache_paths(cache_dir)
+    if not marker.is_file() or marker.read_text(encoding="utf-8").strip() != signature:
+        raise CardCompositionError("当前主体图没有可检查的抠图缓存，请先调用主体图验收")
+    if len(reviews) != WORDS_PER_TASK:
+        raise CardCompositionError(f"必须逐张检查 {WORDS_PER_TASK} 张抠图，现在提交了 {len(reviews)} 条")
+    normalized: list[dict] = []
+    seen: set[int] = set()
+    for raw in reviews:
+        try:
+            index = int(raw.get("index"))
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise CardCompositionError("抠图检查的 index 必须是 1 到 10 的整数") from exc
+        if index < 1 or index > WORDS_PER_TASK or index in seen:
+            raise CardCompositionError(f"抠图检查包含无效或重复编号：{index}")
+        seen.add(index)
+        valid = raw.get("valid")
+        if not isinstance(valid, bool):
+            raise CardCompositionError(f"第 {index} 张抠图的 valid 必须是布尔值")
+        failure_kind = str(raw.get("failure_kind") or "").strip().casefold()
+        issue = str(raw.get("issue") or "").strip()
+        if valid:
+            failure_kind = ""
+        elif failure_kind not in {"crop", "source"}:
+            raise CardCompositionError(f"第 {index} 张坏图必须标记 failure_kind=crop 或 source")
+        normalized.append({"index": index, "valid": valid, "failure_kind": failure_kind, "issue": issue})
+    normalized.sort(key=lambda item: item["index"])
+    if any(not path.is_file() for path in cutout_paths):
+        raise CardCompositionError("十张抠图缓存不完整，请重新执行主体图验收")
+    inspection_path, history_path = _inspection_paths(cache_dir)
+    invalid = [item for item in normalized if not item["valid"]]
+    if not invalid:
+        inspection_path.write_text(
+            json.dumps({"signature": signature, "approved": True, "reviews": normalized}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return {
+            "approved": True,
+            "inspection_count": len(normalized),
+            "cutout_paths": [str(path) for path in cutout_paths],
+            "next_tool": "language_learning_start_compose_cards",
+        }
+    try:
+        history = json.loads(history_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        history = {"signature": signature, "failed_rounds": 0}
+    failed_rounds = int(history.get("failed_rounds") or 0) + 1
+    history_path.write_text(
+        json.dumps({"signature": signature, "failed_rounds": failed_rounds}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    source_broken = any(item["failure_kind"] == "source" for item in invalid)
+    action = "regenerate" if source_broken or failed_rounds >= 2 else "revise_boxes"
+    return {
+        "approved": False,
+        "inspection_count": len(normalized),
+        "bad_indices": [item["index"] for item in invalid],
+        "failed_rounds": failed_rounds,
+        "action": action,
+        "next_tool": "language_learning_prepare_images" if action == "regenerate" else "language_learning_validate_subject_sheet",
+        "reviews": normalized,
+    }
 
 
 def _estimate_background_rgb(sheet: Image.Image) -> tuple[int, int, int]:
-    """从画布四边估计千问识别的均匀纯色背景实际 RGB。"""
+    """从画布四边估计宿主 Agent 识别的均匀纯色背景实际 RGB。"""
     rgb = sheet.convert("RGB")
     pixels = rgb.load()
     stride = max(1, min(rgb.size) // 180)
@@ -169,76 +259,54 @@ def _remove_sheet_background(sheet: Image.Image) -> tuple[Image.Image, tuple[int
     return transparent, background_rgb
 
 
-def _read_visual_prompt(name: str) -> str:
-    path = _PROMPTS_DIR / name
-    if not path.is_file():
-        raise CardCompositionError(f"视觉验收 Prompt 不存在：{path}")
-    return path.read_text(encoding="utf-8").strip()
-
-
-def _visual_layout(subject_sheet_path: Path) -> dict:
-    """让千问识别纯色背景并验收十个主体、上五下五、无文字和主体框。"""
-    try:
-        result = analyze_image(
-            subject_sheet_path,
-            _read_visual_prompt("visual-validation-system.md"),
-            _read_visual_prompt("visual-validation-user.md"),
-            json_output=True,
-            max_tokens=SUBJECT_VISION_MAX_TOKENS,
-        )
-    except QwenVisionError as exc:
-        raise CardCompositionError(f"千问视觉验收失败：{exc}", exc.details) from exc
-    raw = str(result.get("text") or "").strip().removeprefix("```json").removesuffix("```").strip()
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise CardCompositionError(f"千问视觉没有返回有效 JSON：{raw[:300]}") from exc
+def _validated_visual_layout(payload: dict) -> dict:
+    """校验宿主 Agent 提交的十个主体位置，不在 MCP 内调用视觉模型。"""
     if not isinstance(payload, dict):
-        raise CardCompositionError("千问视觉验收结果必须是 JSON 对象")
+        raise CardCompositionError("宿主 Agent 的视觉验收结果必须是对象")
     try:
         object_count = int(payload["object_count"])
         top_count = int(payload["top_count"])
         bottom_count = int(payload["bottom_count"])
     except (KeyError, TypeError, ValueError) as exc:
-        raise CardCompositionError("千问视觉验收结果缺少有效的 object_count、top_count 或 bottom_count") from exc
+        raise CardCompositionError("宿主 Agent 的视觉验收结果缺少有效的 object_count、top_count 或 bottom_count") from exc
     has_text = payload.get("has_text")
     if not isinstance(has_text, bool):
-        raise CardCompositionError("千问视觉验收结果的 has_text 必须是布尔值")
+        raise CardCompositionError("宿主 Agent 的视觉验收结果的 has_text 必须是布尔值")
     background_color = str(payload.get("background_color") or "").strip()
     raw_boxes = payload.get("boxes")
     boxes: list[list[int]] = []
     issues: list[str] = []
     if not isinstance(raw_boxes, list):
-        issues.append("视觉模型没有返回主体边界框列表")
+        issues.append("宿主 Agent 没有返回主体边界框列表")
     else:
         if len(raw_boxes) != WORDS_PER_TASK:
             issues.append(
-                f"视觉模型返回 {len(raw_boxes)} 个主体边界框，必须为 {WORDS_PER_TASK} 个"
+                f"宿主 Agent 返回 {len(raw_boxes)} 个主体边界框，必须为 {WORDS_PER_TASK} 个"
             )
         for index, raw_box in enumerate(raw_boxes, 1):
             if not isinstance(raw_box, list) or len(raw_box) != 4:
-                issues.append(f"视觉模型返回的第 {index} 个边界框格式不正确")
+                issues.append(f"宿主 Agent 返回的第 {index} 个边界框格式不正确")
                 continue
             try:
                 box = [max(0, min(1000, int(value))) for value in raw_box]
             except (TypeError, ValueError):
-                issues.append(f"视觉模型返回的第 {index} 个边界框坐标不是整数")
+                issues.append(f"宿主 Agent 返回的第 {index} 个边界框坐标不是整数")
                 continue
             if box[2] <= box[0] or box[3] <= box[1]:
-                issues.append(f"视觉模型返回的第 {index} 个边界框范围无效")
+                issues.append(f"宿主 Agent 返回的第 {index} 个边界框范围无效")
                 continue
             boxes.append(box)
     if object_count != WORDS_PER_TASK:
-        issues.append(f"视觉模型判断主体总数为 {object_count}，必须为 {WORDS_PER_TASK}")
+        issues.append(f"宿主 Agent 判断主体总数为 {object_count}，必须为 {WORDS_PER_TASK}")
     if top_count != CARD_GRID_COLUMNS or bottom_count != CARD_GRID_COLUMNS:
         issues.append(
-            f"视觉模型判断上排 {top_count} 个、下排 {bottom_count} 个，"
+            f"宿主 Agent 判断上排 {top_count} 个、下排 {bottom_count} 个，"
             f"必须各为 {CARD_GRID_COLUMNS} 个"
         )
     if has_text:
-        issues.append("视觉模型检测到可见文字、字母、数字、标签或水印")
+        issues.append("宿主 Agent 检测到可见文字、字母、数字、标签或水印")
     if not background_color:
-        issues.append("视觉模型没有返回统一纯色背景的颜色")
+        issues.append("宿主 Agent 没有返回统一纯色背景的颜色")
     return {
         "valid": not issues,
         "object_count": object_count,
@@ -249,9 +317,7 @@ def _visual_layout(subject_sheet_path: Path) -> dict:
         "reason": str(payload.get("reason") or "").strip(),
         "boxes": boxes,
         "issues": issues,
-        "model": str(result.get("model") or ""),
-        "usage": dict(result.get("usage") or {}),
-        "image_size": dict(result.get("image_size") or {}),
+        "source": "host_agent",
     }
 
 
@@ -259,7 +325,7 @@ def _detect_subjects(
     sheet: Image.Image,
     visual_boxes: list[list[int]],
 ) -> tuple[list[Image.Image], list[dict], list[str], list[list[int]], tuple[int, int, int]]:
-    """全局删除纯色背景后，严格按千问框逐个紧裁主体。"""
+    """全局删除纯色背景后，严格按宿主 Agent 的框逐个紧裁主体。"""
     issues: list[str] = []
     subjects: list[Image.Image] = []
     cells: list[dict] = []
@@ -309,12 +375,13 @@ def _detect_subjects(
 
 def validate_subject_sheet(
     subject_sheet_path: str | Path,
+    visual_layout: dict,
     cutout_cache_dir: str | Path | None = None,
 ) -> dict:
-    """先用千问视觉验收十个主体、上五下五和无文字，再由 Python 分组裁切。"""
+    """使用宿主 Agent 的视觉结果验收，再由 Python 去背景并裁切。"""
     sheet_path = Path(subject_sheet_path).resolve()
     sheet = _sheet(sheet_path)
-    vision = _visual_layout(sheet_path)
+    vision = _validated_visual_layout(visual_layout)
     issues = list(vision["issues"])
     subjects: list[Image.Image] = []
     cells: list[dict] = []
@@ -330,11 +397,15 @@ def validate_subject_sheet(
     vision["background_rgb"] = list(background_rgb) if background_rgb else []
     valid = not issues
     if valid and cutout_cache_dir:
+        cache_dir = Path(cutout_cache_dir).resolve()
         _save_cached_cutouts(
-            Path(cutout_cache_dir).resolve(),
+            cache_dir,
             _sheet_signature(sheet_path),
             subjects,
         )
+        cutout_paths = [str(path) for path in _cutout_cache_paths(cache_dir)[1]]
+    else:
+        cutout_paths = []
     return {
         "valid": valid,
         "max_attempts": SUBJECT_GENERATION_MAX_ATTEMPTS,
@@ -345,6 +416,9 @@ def validate_subject_sheet(
         "bottom_count": vision["bottom_count"],
         "has_text": vision["has_text"],
         "background_removed": background_rgb is not None,
+        "cutout_paths": cutout_paths,
+        "inspection_required": valid,
+        "next_tool": "language_learning_review_cutouts" if valid else "language_learning_prepare_images",
         "vision": vision,
     }
 
@@ -356,7 +430,7 @@ def _extract_subjects(sheet: Image.Image, sheet_path: Path, cache_dir: Path | No
         cached = _load_cached_cutouts(cache_dir, signature)
         if cached is not None:
             return cached
-    raise CardCompositionError("主体裁切缓存不存在；请先调用主体图视觉验收再制作卡片")
+    raise CardCompositionError("主体抠图尚未通过宿主 Agent 的逐张检查，不能制作卡片")
 
 
 def _paste_subject(card: Image.Image, subject: Image.Image, box: tuple[int, int, int, int]) -> None:

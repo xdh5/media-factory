@@ -22,3 +22,25 @@ UPLOAD_PUBLIC_FILE_OUTPUT_SCHEMA = {
     "required": ["url", "key", "bucket", "size"],
     "additionalProperties": False,
 }
+
+DOWNLOAD_PUBLIC_FILE_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "object_key": {"type": "string", "minLength": 1, "maxLength": 512},
+        "destination_path": {"type": "string", "minLength": 1},
+    },
+    "required": ["object_key", "destination_path"],
+    "additionalProperties": False,
+}
+
+DOWNLOAD_PUBLIC_FILE_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "key": {"type": "string"},
+        "bucket": {"type": "string"},
+        "size": {"type": "integer", "minimum": 1},
+    },
+    "required": ["path", "key", "bucket", "size"],
+    "additionalProperties": False,
+}

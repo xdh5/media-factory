@@ -16,6 +16,9 @@ IMAGE_ASPECT_MAX_PIXEL_ERROR = 1
 # 本地图库
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 IMAGE_LIBRARY_PROJECT_ROOT = _PROJECT_ROOT
+IMAGE_LIBRARY_DATA_ROOT = _PROJECT_ROOT / "data" / "image_library"
+IMAGE_LIBRARY_CACHE_ROOT = _PROJECT_ROOT / "cache" / "assets"
+IMAGE_LIBRARY_ARCHIVE_KEY_TEMPLATE = "assets/{line}-images.tar"
 IMAGE_LIBRARY_LINE_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
 
 SUPPORTED_STYLE_IDS = ["painterly", "realistic", "paper"]
