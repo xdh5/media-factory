@@ -24,7 +24,7 @@ from core.tools.generate_shot import (
     intro_bgm_start_seconds,
 )
 
-from .._constants import MCP_ID, STORYBOARD_TEXT_FILE_NAME, VIDEO_SIZE
+from .._constants import MCP_ID, STORYBOARD_TEXT_FILE_NAME, TOPIC_DEDUPLICATION_DAYS, VIDEO_SIZE
 from .._errors import WorkflowStepError
 from .narration import display_subtitle_cue, display_subtitle_text
 from .save_draft import load_draft
@@ -404,6 +404,14 @@ def finish_finance_video(
         "matrixmedia_account_group": settings["matrixmedia_account_group"],
         "created_at": created_at,
         "topic_record_id": record["id"],
+        "database_commit": {
+            "workflow": MCP_ID,
+            "publication_id": f"{MCP_ID}:{run_id}",
+            "run_id": run_id,
+            "topic": record["topic"],
+            "days": TOPIC_DEDUPLICATION_DAYS,
+            "entries": [],
+        },
         "shots": shots,
     }
     manifest_path = cache_root / "manifest.json"

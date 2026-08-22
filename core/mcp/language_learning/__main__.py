@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import warnings
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from core.tools.generate_image import (
     save_agent_image_tasks,
     submit_agent_image_tasks,
 )
-from core.tools.topic_dedup import TopicDedupError, get_topic, update
+from core.tools.topic_dedup import TopicDedupError, get_topic
 
 from core.mcp._task_runner import TaskNotFoundError as RunnerTaskNotFoundError
 from core.mcp._task_runner import poll_task as runner_poll_task
@@ -50,7 +51,7 @@ from .tools import (
     list_recent_words,
     parse_vocabulary_response,
     publish_vocabulary_videos,
-    validate_and_record_words,
+    validate_words,
 )
 
 mcp = FastMCP(
@@ -58,7 +59,7 @@ mcp = FastMCP(
     instructions=(
         "语言学习视频编排 MCP。Prompt 由本 MCP 工具返回；TTS 音色、发布账号组等固定参数以 Skill "
         "learn_Chinese_and_Korean 为准，Agent 必须按 Skill 传参。"
-        "每期 10 个英语单词中至少 5 个必须未在最近 100 天使用；解析合格后必须记录全部单词。"
+        "每期 10 个英语单词中至少 5 个必须未在最近 100 天使用；只有用户触发发布后才记录话题与全部单词。"
         "耗时步骤（方舟生图、拼卡、出片、发布）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
         "禁止绕过 MCP 自行读写内部文件。"
     ),
@@ -129,22 +130,28 @@ def language_learning_occupy_topic(
     topic: str,
     learning_modes: list[str],
 ) -> dict:
-    """占用主题并返回 run_id 与生产目录。"""
+    """创建本次生产目录；正式话题只在用户触发发布后写入 D1。"""
     modes = [str(item).strip() for item in learning_modes if str(item).strip()]
     if not modes:
         raise LanguageLearningError("learning_modes 不能为空")
-    try:
-        record = update(WORKFLOW_ID, topic, TOPIC_DEDUPLICATION_DAYS)
-    except Exception as exc:
-        raise _map_error(exc) from exc
-    run_id = production_run_id(record["id"])
+    clean_topic = str(topic or "").strip()
+    if re.fullmatch(r"[A-Za-z]+", clean_topic) is None:
+        raise LanguageLearningError("语言学习 topic 必须是一个不含空格的英文单词")
+    recent = get_topic(WORKFLOW_ID, TOPIC_DEDUPLICATION_DAYS)
+    if clean_topic.casefold() in {
+        str(item.get("topic") or "").strip().casefold() for item in recent
+    }:
+        raise LanguageLearningError(f"语言学习 topic 最近 {TOPIC_DEDUPLICATION_DAYS} 天已经发布：{clean_topic}")
+    run_id = production_run_id()
+    record_id = int(run_id.removeprefix("run-"))
     cache_root, output_root = production_dirs(run_id)
     cache_root.mkdir(parents=True, exist_ok=True)
     output_root.mkdir(parents=True, exist_ok=True)
     return {
-        "topic": record["topic"],
+        "topic": clean_topic,
         "learning_modes": modes,
-        "topic_record_id": record["id"],
+        "topic_record_id": record_id,
+        "database_status": "pending_publish",
         "run_id": run_id,
         "cache_dir": str(cache_root),
         "output_dir": str(output_root),
@@ -170,10 +177,12 @@ def language_learning_parse_vocabulary_response(
     topic: str,
     run_id: str,
 ) -> dict:
-    """严格解析词表，校验最近 100 天新词比例，合格后记录全部单词。"""
+    """严格解析词表并校验最近 100 天新词比例；发布时才记录单词。"""
     try:
         parsed = parse_vocabulary_response(response_text, learning_modes)
-        history = validate_and_record_words(
+        if str(parsed.get("_topic_english") or "").casefold() != str(topic).strip().casefold():
+            raise LanguageLearningError("词表英文主题必须与本次单词 TOPIC 完全一致")
+        history = validate_words(
             run_id=run_id,
             topic=topic,
             words_by_mode=parsed,

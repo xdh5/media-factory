@@ -10,8 +10,20 @@ TOPIC_RECORD_SCHEMA = {
         "status": {"type": "string"},
         "created_at": {"type": "string"},
         "updated_at": {"type": "string"},
+        "publication_id": {"type": ["string", "null"]},
     },
     "required": ["id", "workflow", "topic", "fingerprint", "status", "created_at", "updated_at"],
+    "additionalProperties": False,
+}
+
+PUBLICATION_COMMIT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "record": TOPIC_RECORD_SCHEMA,
+        "already_committed": {"type": "boolean"},
+        "word_count": {"type": "integer", "minimum": 0},
+    },
+    "required": ["record", "already_committed", "word_count"],
     "additionalProperties": False,
 }
 
@@ -49,4 +61,3 @@ CLOUDFLARE_DATA_ERROR_SCHEMA = {
     },
     "required": ["error"],
 }
-

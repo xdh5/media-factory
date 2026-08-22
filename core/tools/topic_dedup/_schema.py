@@ -47,6 +47,21 @@ GET_TOPIC_OUTPUT_SCHEMA = {
 
 UPDATE_TOPIC_OUTPUT_SCHEMA = TOPIC_RECORD_SCHEMA
 
+COMMIT_TOPIC_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "workflow": {"type": "string", "minLength": 1},
+        "topic": {"type": "string", "minLength": 1},
+        "publication_id": {"type": "string", "minLength": 1},
+        "days": {"type": "integer", "minimum": 1},
+        "entries": {"type": "array"},
+        "history_days": {"type": "integer", "minimum": 1},
+        "minimum_new_words": {"type": "integer", "minimum": 1, "maximum": 10},
+    },
+    "required": ["workflow", "topic", "publication_id"],
+    "additionalProperties": False,
+}
+
 TOPIC_DEDUP_ERROR_SCHEMA = {
     "type": "object",
     "properties": {

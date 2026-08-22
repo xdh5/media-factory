@@ -8,16 +8,17 @@ from .vocabulary_prompt import (
     build_vocabulary_prompt,
     parse_vocabulary_response,
 )
-from .vocabulary_history import list_recent_words, validate_and_record_words
+from .vocabulary_history import build_database_word_entries, list_recent_words, validate_words
 
 __all__ = [
     "attach_publish_manifest",
     "build_subject_sheet_prompt",
     "build_vocabulary_prompt",
+    "build_database_word_entries",
     "compose_fixed_cards",
     "create_vocabulary_videos",
     "list_recent_words",
     "parse_vocabulary_response",
     "publish_vocabulary_videos",
-    "validate_and_record_words",
+    "validate_words",
 ]

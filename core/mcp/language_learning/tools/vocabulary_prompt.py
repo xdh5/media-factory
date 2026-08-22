@@ -44,8 +44,8 @@ def _language_rule(modes: list[str]) -> str:
 def build_vocabulary_prompt(topic: str, learning_modes: list[str], recent_words: list[str] | None = None) -> dict:
     modes = _modes(learning_modes)
     clean_topic = str(topic or "").strip()
-    if not clean_topic:
-        raise InvalidVocabularyError("主题不能为空")
+    if re.fullmatch(r"[A-Za-z]+", clean_topic) is None:
+        raise InvalidVocabularyError("语言学习主题必须是一个不含空格的英文单词")
     table_header, _ = _format(modes)
     history = [str(word).strip() for word in (recent_words or []) if str(word).strip()]
     if history:
@@ -74,8 +74,8 @@ def build_vocabulary_prompt(topic: str, learning_modes: list[str], recent_words:
 
 def build_subject_sheet_prompt(topic: str, words: list[dict]) -> dict:
     clean_topic = str(topic or "").strip()
-    if not clean_topic:
-        raise InvalidVocabularyError("主题不能为空")
+    if re.fullmatch(r"[A-Za-z]+", clean_topic) is None:
+        raise InvalidVocabularyError("语言学习主题必须是一个不含空格的英文单词")
     if len(words) != WORDS_PER_TASK:
         raise InvalidVocabularyError(f"主体图需要 {WORDS_PER_TASK} 个单词，现在只有 {len(words)} 个")
     word_list = "\n".join(
@@ -113,6 +113,8 @@ def parse_vocabulary_response(content: str, learning_modes: list[str]) -> dict:
                 topic_english = topic_match.group(1).strip("[]【】*#_：: ")
     if not topic_english:
         raise InvalidVocabularyError("词表缺少“英文主题｜...”行")
+    if re.fullmatch(r"[A-Za-z]+", topic_english) is None:
+        raise InvalidVocabularyError("英文主题必须是一个不含空格的英文单词")
     if len(rows) != WORDS_PER_TASK:
         raise InvalidVocabularyError(f"词表必须正好有 {WORDS_PER_TASK} 行，现在解析到 {len(rows)} 行")
     normalized, seen = [], set()

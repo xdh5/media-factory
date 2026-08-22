@@ -133,6 +133,36 @@ def reserve_topic(workflow: str, topic: str, fingerprint: str, days: int) -> dic
     return payload["record"]
 
 
+def commit_publication(
+    *,
+    publication_id: str,
+    workflow: str,
+    topic: str,
+    fingerprint: str,
+    days: int,
+    entries: list[dict] | None = None,
+    history_days: int = 100,
+    minimum_new_words: int = 5,
+) -> dict:
+    payload = _request(
+        "POST",
+        "/v1/publications/commit",
+        body={
+            "publication_id": publication_id,
+            "workflow": workflow,
+            "topic": topic,
+            "fingerprint": fingerprint,
+            "days": days,
+            "entries": entries or [],
+            "history_days": history_days,
+            "minimum_new_words": minimum_new_words,
+        },
+    )
+    if not isinstance(payload, dict) or not isinstance(payload.get("record"), dict):
+        raise CloudflareDataRequestError("Cloudflare 发布入库接口缺少 record 对象")
+    return payload
+
+
 def list_recent_words(days: int) -> list[str]:
     payload = _request("GET", "/v1/words/recent", query={"days": days})
     if not isinstance(payload, dict) or not isinstance(payload.get("words"), list):

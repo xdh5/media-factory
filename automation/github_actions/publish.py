@@ -11,6 +11,7 @@ import urllib.request
 from pathlib import Path
 
 from core.mcp.language_learning.tools.publish_vocabulary_videos import publish_vocabulary_videos
+from core.tools.topic_dedup import commit as commit_topic
 
 
 DEFAULT_MATRIXMEDIA_PLATFORMS = ("dy", "ks", "blbl", "bjh", "tt", "sph")
@@ -204,6 +205,32 @@ def _publish_finance(remote_manifest: dict, target_dir: Path) -> dict:
     return {"matrixmedia": _publish_matrixmedia_item(item, target_dir)}
 
 
+def _commit_database(remote_manifest: dict, line: str) -> dict:
+    """用户点击发布后，先把本次正式话题及可选词表幂等写入 D1。"""
+    payload = remote_manifest.get("database_commit")
+    if not isinstance(payload, dict):
+        publish_manifest = remote_manifest.get("publish_manifest")
+        payload = publish_manifest.get("database_commit") if isinstance(publish_manifest, dict) else None
+    if not isinstance(payload, dict):
+        return {
+            "legacy_manifest": True,
+            "already_committed": True,
+            "message": "旧版清单在生产阶段已经入库，本次兼容跳过重复写入",
+        }
+    workflow = str(payload.get("workflow") or "").strip()
+    if workflow != line:
+        raise RuntimeError(f"R2 清单入库生产线不匹配：预期 {line}，实际 {workflow or '空'}")
+    return commit_topic(
+        workflow,
+        str(payload.get("topic") or ""),
+        str(payload.get("publication_id") or ""),
+        days=int(payload.get("days") or 30),
+        entries=list(payload.get("entries") or []),
+        history_days=int(payload.get("history_days") or 100),
+        minimum_new_words=int(payload.get("minimum_new_words") or 5),
+    )
+
+
 def run(manifest_url: str) -> dict:
     """从 R2 远程清单识别生产线，并统一在阿里云完成发布。"""
     _require_aliyun_runner()
@@ -214,15 +241,24 @@ def run(manifest_url: str) -> dict:
     runner_temp = Path(os.getenv("RUNNER_TEMP", tempfile.gettempdir())).resolve()
     target_dir = Path(tempfile.mkdtemp(prefix="media-factory-publish-", dir=runner_temp))
     if remote_manifest.get("publish_manifest"):
-        result = _publish_language(remote_manifest, target_dir)
         line = "language_learning"
     elif remote_manifest.get("line") == "finance" or remote_manifest.get("matrixmedia_account_group"):
-        result = _publish_finance(remote_manifest, target_dir)
         line = "finance"
     else:
         raise RuntimeError("无法识别 R2 清单所属生产线")
+    database = _commit_database(remote_manifest, line)
+    if line == "language_learning":
+        result = _publish_language(remote_manifest, target_dir)
+    else:
+        result = _publish_finance(remote_manifest, target_dir)
     _write_summary(
         "阿里云发布完成",
         [("生产线", line), ("R2 清单", url), ("发布机", os.getenv("RUNNER_NAME", "未知"))],
     )
-    return {"line": line, "manifest_url": url, "result": result, "work_dir": str(target_dir)}
+    return {
+        "line": line,
+        "manifest_url": url,
+        "database": database,
+        "result": result,
+        "work_dir": str(target_dir),
+    }

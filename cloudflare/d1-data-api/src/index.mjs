@@ -46,7 +46,7 @@ async function listTopics(request, env) {
   const days = positiveInteger(url.searchParams.get("days"), "days");
   const placeholders = ACTIVE_STATUSES.map(() => "?").join(",");
   const result = await env.DB.prepare(
-    `SELECT id, workflow, topic, fingerprint, status, created_at, updated_at
+    `SELECT id, workflow, topic, fingerprint, status, publication_id, created_at, updated_at
      FROM topic_history
      WHERE workflow = ? AND created_at >= ? AND status IN (${placeholders})
      ORDER BY created_at DESC`,
@@ -82,7 +82,7 @@ async function reserveTopic(request, env) {
     return jsonResponse({ record: inserted }, 201);
   }
   const duplicate = await env.DB.prepare(
-    `SELECT id, workflow, topic, fingerprint, status, created_at, updated_at
+    `SELECT id, workflow, topic, fingerprint, status, publication_id, created_at, updated_at
      FROM topic_history
      WHERE workflow = ? AND fingerprint = ? AND created_at >= ?
      AND status IN (${placeholders})
@@ -92,6 +92,110 @@ async function reserveTopic(request, env) {
     duplicate_record: duplicate,
     days,
   });
+}
+
+async function commitPublication(request, env) {
+  const body = await request.json();
+  const publicationId = requiredText(body.publication_id, "publication_id", 200);
+  const workflow = requiredText(body.workflow, "workflow", 64);
+  const topic = requiredText(body.topic, "topic", 500);
+  const fingerprint = requiredText(body.fingerprint, "fingerprint", 64);
+  const days = positiveInteger(body.days, "days");
+  const historyDays = positiveInteger(body.history_days, "history_days");
+  const minimumNewWords = positiveInteger(body.minimum_new_words, "minimum_new_words", 10);
+  const rawEntries = Array.isArray(body.entries) ? body.entries : [];
+  if (!/^[a-f0-9]{64}$/.test(fingerprint)) {
+    throw new Error("fingerprint 必须是 64 位小写十六进制 SHA-256");
+  }
+  const existing = await env.DB.prepare(
+    `SELECT id, workflow, topic, fingerprint, status, publication_id, created_at, updated_at
+     FROM topic_history WHERE publication_id = ? LIMIT 1`,
+  ).bind(publicationId).first();
+  if (existing) {
+    if (existing.workflow !== workflow || existing.fingerprint !== fingerprint) {
+      return errorResponse("PUBLICATION_CONFLICT", "publication_id 已绑定其他内容", 409, {
+        publication_id: publicationId,
+      });
+    }
+    const count = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM language_learning_words WHERE run_id = ?",
+    ).bind(publicationId).first();
+    return jsonResponse({
+      record: existing,
+      already_committed: true,
+      word_count: Number(count?.count || 0),
+    });
+  }
+  const placeholders = ACTIVE_STATUSES.map(() => "?").join(",");
+  const duplicate = await env.DB.prepare(
+    `SELECT id, workflow, topic, fingerprint, status, publication_id, created_at, updated_at
+     FROM topic_history
+     WHERE workflow = ? AND fingerprint = ? AND created_at >= ?
+     AND status IN (${placeholders})
+     ORDER BY created_at DESC LIMIT 1`,
+  ).bind(workflow, fingerprint, cutoffTimestamp(days), ...ACTIVE_STATUSES).first();
+  if (duplicate) {
+    return errorResponse("DUPLICATE_TOPIC", `话题在最近 ${days} 天内已经发布：${duplicate.topic}`, 409, {
+      duplicate_record: duplicate,
+      days,
+    });
+  }
+  let entries = [];
+  if (rawEntries.length) {
+    entries = validateWordEntries(rawEntries);
+    const entriesJson = JSON.stringify(entries);
+    const recent = await env.DB.prepare(
+      `SELECT DISTINCT normalized_english
+       FROM language_learning_words
+       WHERE created_at >= ?
+       AND normalized_english IN (
+         SELECT json_extract(value, '$.normalized_english') FROM json_each(?)
+       )`,
+    ).bind(cutoffTimestamp(historyDays), entriesJson).all();
+    const repeatedSet = new Set((recent.results || []).map((row) => row.normalized_english));
+    const repeatedWords = entries.filter((entry) => repeatedSet.has(entry.normalized_english)).map((entry) => entry.english);
+    if (entries.length - repeatedWords.length < minimumNewWords) {
+      return errorResponse(
+        "VOCABULARY_REUSE_LIMIT",
+        `本次只有 ${entries.length - repeatedWords.length} 个新词；发布入库至少需要 ${minimumNewWords} 个新词`,
+        409,
+        {
+          history_days: historyDays,
+          minimum_new_words: minimumNewWords,
+          new_word_count: entries.length - repeatedWords.length,
+          repeated_word_count: repeatedWords.length,
+          repeated_words: repeatedWords,
+        },
+      );
+    }
+  }
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const statements = [env.DB.prepare(
+    `INSERT INTO topic_history(
+       workflow, topic, fingerprint, status, publication_id, created_at, updated_at
+     ) VALUES (?, ?, ?, 'published', ?, ?, ?)
+     RETURNING id, workflow, topic, fingerprint, status, publication_id, created_at, updated_at`,
+  ).bind(workflow, topic, fingerprint, publicationId, now, now)];
+  if (entries.length) {
+    statements.push(env.DB.prepare(
+      `INSERT INTO language_learning_words(
+         run_id, topic_record_id, topic, english, normalized_english, word_json, created_at
+       )
+       SELECT ?,
+              (SELECT id FROM topic_history WHERE publication_id = ?),
+              ?,
+              json_extract(value, '$.english'),
+              json_extract(value, '$.normalized_english'),
+              json_extract(value, '$.word_json'), ?
+       FROM json_each(?)`,
+    ).bind(publicationId, publicationId, topic, now, JSON.stringify(entries)));
+  }
+  const results = await env.DB.batch(statements);
+  const record = results[0]?.results?.[0];
+  if (!record) {
+    throw new Error("发布入库后没有返回话题记录");
+  }
+  return jsonResponse({ record, already_committed: false, word_count: entries.length }, 201);
 }
 
 async function listRecentWords(request, env) {
@@ -277,6 +381,7 @@ export default {
     try {
       if (request.method === "GET" && url.pathname === "/v1/topics") return await listTopics(request, env);
       if (request.method === "POST" && url.pathname === "/v1/topics/reserve") return await reserveTopic(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/publications/commit") return await commitPublication(request, env);
       if (request.method === "GET" && url.pathname === "/v1/words/recent") return await listRecentWords(request, env);
       if (request.method === "POST" && url.pathname === "/v1/words/validate-and-record") return await validateAndRecordWords(request, env);
       if (request.method === "GET" && url.pathname === "/v1/images") return await listImages(request, env);

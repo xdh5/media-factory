@@ -94,8 +94,17 @@ def finance_save_draft(
     cover_lines: list[str],
     draft_path: str | None = None,
 ) -> dict:
-    """保存完整稿件并直接返回制作所需数据。"""
+    """保存完整稿件并直接返回制作所需数据；新稿只查重，发布时才入库。"""
     try:
+        if draft_path is None:
+            clean_topic = str(topic or "").strip()
+            recent = get_topic(MCP_ID, TOPIC_DEDUPLICATION_DAYS)
+            if clean_topic.casefold() in {
+                str(item.get("topic") or "").strip().casefold() for item in recent
+            }:
+                raise WorkflowStepError(
+                    f"财经话题最近 {TOPIC_DEDUPLICATION_DAYS} 天已经发布：{clean_topic}"
+                )
         return save_draft(
             topic,
             article,

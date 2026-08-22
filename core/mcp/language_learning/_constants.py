@@ -1,5 +1,7 @@
 """语言学习 MCP 技术常量（TTS、发布等业务参数见 SKILL）。"""
 
+import os
+import time
 from pathlib import Path
 
 WORKFLOW_ID = "language_learning"
@@ -59,8 +61,15 @@ PROJECT_OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 DEFAULT_DATA_ROOT = PROJECT_DATA_ROOT / WORKFLOW_ID
 
 
-def production_run_id(record_id: int) -> str:
-    return f"run-{int(record_id):06d}"
+def production_run_id(record_id: int | None = None) -> str:
+    """生成不依赖数据库主键的数字 run_id；发布时才正式写入 D1。"""
+    if record_id is not None:
+        return f"run-{int(record_id):06d}"
+    github_run_id = os.getenv("GITHUB_RUN_ID", "").strip()
+    if github_run_id.isdigit():
+        attempt = int(os.getenv("GITHUB_RUN_ATTEMPT", "1") or "1")
+        return f"run-{github_run_id}{attempt:02d}"
+    return f"run-{time.time_ns()}"
 
 
 def production_dirs(run_id: str) -> tuple[Path, Path]:

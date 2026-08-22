@@ -7,6 +7,7 @@ from ._errors import (
     CloudflareDataRequestError,
 )
 from .client import (
+    commit_publication,
     list_images,
     list_recent_words,
     list_topics,
@@ -19,10 +20,10 @@ __all__ = [
     "CloudflareDataConflictError",
     "CloudflareDataError",
     "CloudflareDataRequestError",
+    "commit_publication",
     "list_images",
     "list_recent_words",
     "list_topics",
     "reserve_topic",
     "validate_and_record_words",
 ]
-

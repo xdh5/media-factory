@@ -6,12 +6,9 @@ import json
 import re
 from pathlib import Path
 
-from core.tools.topic_dedup import update
-
 from .._constants import (
     DRAFT_FILE_NAME,
     MCP_ID,
-    TOPIC_DEDUPLICATION_DAYS,
     production_dirs,
     production_run_id,
 )
@@ -80,8 +77,8 @@ def save_draft(
         output_root = Path(existing["output_dir"]).resolve()
         target_draft_path = resolved_draft
     else:
-        record = update(MCP_ID, normalized_topic, TOPIC_DEDUPLICATION_DAYS)
-        run_id = production_run_id(record["id"])
+        run_id = production_run_id()
+        record = {"id": int(run_id.removeprefix("run-")), "topic": normalized_topic}
         cache_root, output_root = production_dirs(run_id)
         target_draft_path = cache_root / DRAFT_FILE_NAME
     cache_root.mkdir(parents=True, exist_ok=True)
@@ -93,6 +90,7 @@ def save_draft(
         "topic": record["topic"],
         "run_id": run_id,
         "topic_record_id": record["id"],
+        "database_status": "pending_publish",
         "article": normalized_article,
         **metadata,
         "cover_lines": normalized_cover_lines,

@@ -105,7 +105,7 @@ SUB|L002|你以为涨薪就能存钱
 1. `finance_get_topics`：避开近 30 天重复话题。
 2. 按本 Skill 正文模板与范文生成正文；调用 `finance_get_metadata_prompt` 后写标题标签行。
 3. 用**长标题**按语义断成 1～3 行 `cover_lines`（拼接去空白后必须等于长标题 `title`）。封面不自动折行。
-4. `finance_save_draft` → 直接进入制作，不再等待稿件确认。
+4. `finance_save_draft` → 只保存本次生产稿件，不写 D1，直接进入制作。
 
 ### 第二阶段：制作与发布
 
@@ -113,7 +113,7 @@ SUB|L002|你以为涨薪就能存钱
 2. 按 `result.storyboard_prompt` 写完整分镜文本（IMAGE 行 + 每句一条 `SUB` 行，见上文「字幕重点」）。
 3. `finance_prepare_images`（传入本 Skill 的 `image_config`）→ 按 `library_catalog` 与 `selection_tasks` 为每个镜头选最贴近的图 → `finance_submit_images`（`images` 传 `[{image_id, image_path}]`）。
 4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`；配音直接用 `prepare_storyboard` 的 `tts_path`。
-5. 展示成片；确认后用 R2 清单 URL 触发 `.github/workflows/publish-from-r2.yml`。禁止本机发布，也禁止 GitHub 官方 Runner 发布；阿里云发布机会调用独立 MatrixMedia，账号组为 `心灵鸡汤`。
+5. 展示成片；确认后用 R2 清单 URL 触发 `.github/workflows/publish-from-r2.yml`。发布任务先把正式话题幂等写入 D1，再调用阿里云独立 MatrixMedia；禁止本机或 GitHub 官方 Runner 发布。
 6. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询

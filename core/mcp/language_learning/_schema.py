@@ -43,7 +43,7 @@ GET_TOPICS_INPUT_SCHEMA = {
 OCCUPY_TOPIC_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "topic": {"type": "string", "minLength": 1, "maxLength": 200},
+        "topic": {"type": "string", "pattern": r"^[A-Za-z]+$", "maxLength": 200},
         "learning_modes": LEARNING_MODES_SCHEMA,
     },
     "required": ["topic", "learning_modes"],
@@ -54,7 +54,7 @@ PARSE_VOCABULARY_INPUT_SCHEMA = {
     "properties": {
         "response_text": {"type": "string", "minLength": 1, "maxLength": 20000},
         "learning_modes": LEARNING_MODES_SCHEMA,
-        "topic": {"type": "string", "minLength": 1, "maxLength": 200},
+        "topic": {"type": "string", "pattern": r"^[A-Za-z]+$", "maxLength": 200},
         "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
     },
     "required": ["response_text", "learning_modes", "topic", "run_id"],
@@ -63,7 +63,7 @@ PARSE_VOCABULARY_INPUT_SCHEMA = {
 BUILD_VOCABULARY_PROMPT_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "topic": {"type": "string", "minLength": 1, "maxLength": 200},
+        "topic": {"type": "string", "pattern": r"^[A-Za-z]+$", "maxLength": 200},
         "learning_modes": LEARNING_MODES_SCHEMA,
     },
     "required": ["topic", "learning_modes"],
@@ -72,7 +72,7 @@ BUILD_VOCABULARY_PROMPT_INPUT_SCHEMA = {
 PREPARE_IMAGES_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "topic": {"type": "string", "minLength": 1, "maxLength": 200},
+        "topic": {"type": "string", "pattern": r"^[A-Za-z]+$", "maxLength": 200},
         "words": {"type": "array", "minItems": 10, "maxItems": 10, "items": WORD_SCHEMA},
         "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
         "force_images": {"type": "boolean", "default": False},
@@ -137,7 +137,7 @@ CREATE_VIDEOS_INPUT_SCHEMA = {
         },
         "words_by_mode": {"type": "object"},
         "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
-        "topic": {"type": "string", "maxLength": 200},
+        "topic": {"type": "string", "pattern": r"^[A-Za-z]+$", "maxLength": 200},
         "language_pause": {"type": "number", "minimum": 0},
         "word_pause": {"type": "number", "minimum": 0},
         "voices": VOICES_SCHEMA,

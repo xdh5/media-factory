@@ -12,12 +12,16 @@ from core.tools.publish_to_youtube import YouTubeToolError, list_youtube_account
 
 from .._constants import (
     CHINESE_YOUTUBE_CHANNEL_ID,
+    MINIMUM_NEW_WORDS,
     PUBLISH_MANIFEST_FILE_NAME,
+    TOPIC_DEDUPLICATION_DAYS,
+    WORD_HISTORY_DAYS,
     WORKFLOW_ID,
     YOUTUBE_LANGUAGE_BY_MODE,
     YOUTUBE_LANGUAGE_LEARNING_CATEGORY_ID,
 )
 from .._errors import ConfirmationRequiredError, PublishError
+from .vocabulary_history import build_database_word_entries
 
 
 def build_video_title(
@@ -162,6 +166,16 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
         "cache_dir": video_result.get("cache_dir"),
         "output_dir": str(output_dir),
         "items": items,
+        "database_commit": {
+            "workflow": WORKFLOW_ID,
+            "publication_id": f"{WORKFLOW_ID}:{video_result.get('run_id')}",
+            "run_id": video_result.get("run_id"),
+            "topic": topic,
+            "days": TOPIC_DEDUPLICATION_DAYS,
+            "history_days": WORD_HISTORY_DAYS,
+            "minimum_new_words": MINIMUM_NEW_WORDS,
+            "entries": build_database_word_entries(words_by_mode),
+        },
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return {

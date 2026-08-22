@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -15,14 +16,24 @@ VOICES = {"en": "en-US-AriaNeural", "zh": "zh-CN-XiaoxiaoNeural", "ko": "ko-KR-S
 
 
 def _choose_topic(recent_topics: list[str], requested_topic: str) -> str:
+    recent = {str(item).strip().casefold() for item in recent_topics if str(item).strip()}
     if requested_topic.strip():
-        return requested_topic.strip()
-    return str(qwen(
-        "你是语言学习短视频选题编辑，只返回一个简短英文主题，不加说明。",
-        "选择适合初学者学习10个生活常用词的具体主题。"
-        f"不得与最近30天主题重复：{json.dumps(recent_topics, ensure_ascii=False)}",
-        max_tokens=80,
-    )["text"]).strip().strip("“”\"'")
+        topic = requested_topic.strip()
+        if not re.fullmatch(r"[A-Za-z]+", topic):
+            raise ValueError("语言学习 TOPIC 必须是一个不含空格的英文单词")
+        if topic.casefold() in recent:
+            raise ValueError(f"语言学习 TOPIC 最近 30 天已经发布：{topic}")
+        return topic
+    for _ in range(3):
+        topic = str(qwen(
+            "你是语言学习短视频选题编辑，只返回一个不含空格的英文单词，不加说明。",
+            "选择一个能扩展出10个初学者生活常用词的英文类别词。"
+            f"不得与最近30天主题重复：{json.dumps(recent_topics, ensure_ascii=False)}",
+            max_tokens=30,
+        )["text"]).strip().strip("“”\"'")
+        if re.fullmatch(r"[A-Za-z]+", topic) and topic.casefold() not in recent:
+            return topic
+    raise ValueError("千问连续三次未返回单个英文单词 TOPIC")
 
 
 def _publish_config(topic: str, modes: list[str]) -> dict:
@@ -92,7 +103,7 @@ async def generate_words(
         last_error = None
         for _ in range(3):
             response_text = qwen(
-                "你是语言学习词表编辑。只输出用户规定的纯文本表格；第一行必须是“英文主题｜自然英语主题名称”，禁止 Markdown、标题、解释或省略首行。",
+                "你是语言学习词表编辑。只输出用户规定的纯文本表格；第一行必须是“英文主题｜单个英文单词 TOPIC”，禁止 Markdown、标题、解释或省略首行。",
                 prompt["user_prompt"],
                 max_tokens=2500,
             )["text"]

@@ -9,6 +9,7 @@ import unicodedata
 from core.tools.cloudflare_data import (
     CloudflareDataConflictError,
     CloudflareDataError,
+    commit_publication,
     list_topics,
     reserve_topic,
 )
@@ -16,7 +17,7 @@ from core.tools.cloudflare_data import (
 from ._constants import DEFAULT_DEDUPLICATION_DAYS
 from ._errors import DuplicateTopicError, InvalidParameterError, TopicDataServiceError
 
-__all__ = ["get_topic", "update"]
+__all__ = ["commit", "get_topic", "update"]
 
 
 def _validate_text(value: str, parameter: str) -> str:
@@ -71,5 +72,42 @@ def update(workflow: str, topic: str, days: int = DEFAULT_DEDUPLICATION_DAYS) ->
     except CloudflareDataError as exc:
         raise TopicDataServiceError(
             f"写入 Cloudflare D1 话题失败：{exc.message}",
+            exc.details,
+        ) from exc
+
+
+def commit(
+    workflow: str,
+    topic: str,
+    publication_id: str,
+    *,
+    days: int = DEFAULT_DEDUPLICATION_DAYS,
+    entries: list[dict] | None = None,
+    history_days: int = 100,
+    minimum_new_words: int = 5,
+) -> dict:
+    """用户触发发布后，幂等写入正式话题及可选语言词表。"""
+    normalized_workflow = _validate_text(workflow, "workflow")
+    normalized_topic = _validate_text(topic, "topic")
+    normalized_publication_id = _validate_text(publication_id, "publication_id")
+    window_days = _validate_days(days)
+    try:
+        return commit_publication(
+            publication_id=normalized_publication_id,
+            workflow=normalized_workflow,
+            topic=normalized_topic,
+            fingerprint=_fingerprint(normalized_topic),
+            days=window_days,
+            entries=entries,
+            history_days=_validate_days(history_days),
+            minimum_new_words=_validate_days(minimum_new_words),
+        )
+    except CloudflareDataConflictError as exc:
+        if exc.remote_code == "DUPLICATE_TOPIC":
+            raise DuplicateTopicError(exc.message, exc.details) from exc
+        raise TopicDataServiceError(exc.message, exc.details) from exc
+    except CloudflareDataError as exc:
+        raise TopicDataServiceError(
+            f"发布入库 Cloudflare D1 失败：{exc.message}",
             exc.details,
         ) from exc
