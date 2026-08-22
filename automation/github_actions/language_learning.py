@@ -205,9 +205,9 @@ async def generate_cards(
         else:
             diagnostic_payload["status"] = "failed"
             _write_diagnostics(diagnostic_root, diagnostic_payload)
-            details = "；".join(validation_issues) or "没有返回具体格子错误"
+            details = "；".join(validation_issues) or "没有返回具体视觉错误"
             raise RuntimeError(
-                f"原始主题图连续 {SUBJECT_GENERATION_MAX_ATTEMPTS} 次未通过 Python 格子检查：{details}"
+                f"原始主题图连续 {SUBJECT_GENERATION_MAX_ATTEMPTS} 次未通过视觉布局检查：{details}"
             )
         card_dirs = {}
         for mode in learning_modes:

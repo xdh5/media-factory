@@ -153,8 +153,10 @@ SUBJECT_SHEET_VALIDATION_SCHEMA = {
         "detected_count": {"type": "integer", "minimum": 0},
         "top_count": {"type": "integer", "minimum": 0},
         "bottom_count": {"type": "integer", "minimum": 0},
+        "has_text": {"type": "boolean"},
+        "vision": {"type": "object", "additionalProperties": True},
     },
-    "required": ["valid", "max_attempts", "issues", "cells", "detected_count", "top_count", "bottom_count"],
+    "required": ["valid", "max_attempts", "issues", "cells", "detected_count", "top_count", "bottom_count", "has_text", "vision"],
     "additionalProperties": False,
 }
 COMPOSE_CARDS_INPUT_SCHEMA = {

@@ -1,6 +1,7 @@
 """按既定模板制作语言学习卡片。"""
 
 import hashlib
+import json
 import re
 import unicodedata
 from collections import deque
@@ -9,6 +10,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from core.tools.generate_final_video import safe_filename
+from core.tools.qwen_vision import QwenVisionError, analyze_image
 
 from .._constants import (
     CARD_CANVAS_SIZE,
@@ -29,6 +31,7 @@ from .._constants import (
 from .._errors import CardCompositionError
 
 _FONT_DIR = PROJECT_ROOT / "static" / "font"
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 _SYSTEM_FONTS = {
     "latin": [Path("/usr/share/fonts/windows/arialbd.ttf"), Path("C:/Windows/Fonts/arialbd.ttf"), Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")],
     "cjk": [Path("/usr/share/fonts/windows/simhei.ttf"), Path("C:/Windows/Fonts/simhei.ttf"), Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"), Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")],
@@ -169,6 +172,64 @@ def _remove_sheet_background(sheet: Image.Image, session) -> Image.Image:
     return cut.convert("RGBA")
 
 
+def _read_visual_prompt(name: str) -> str:
+    path = _PROMPTS_DIR / name
+    if not path.is_file():
+        raise CardCompositionError(f"视觉验收 Prompt 不存在：{path}")
+    return path.read_text(encoding="utf-8").strip()
+
+
+def _visual_layout(subject_sheet_path: Path) -> dict:
+    """让千问视觉只验收十个主体、上五下五和无文字。"""
+    try:
+        result = analyze_image(
+            subject_sheet_path,
+            _read_visual_prompt("visual-validation-system.md"),
+            _read_visual_prompt("visual-validation-user.md"),
+            json_output=True,
+        )
+    except QwenVisionError as exc:
+        raise CardCompositionError(f"千问视觉验收失败：{exc}", exc.details) from exc
+    raw = str(result.get("text") or "").strip().removeprefix("```json").removesuffix("```").strip()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CardCompositionError(f"千问视觉没有返回有效 JSON：{raw[:300]}") from exc
+    if not isinstance(payload, dict):
+        raise CardCompositionError("千问视觉验收结果必须是 JSON 对象")
+    try:
+        object_count = int(payload["object_count"])
+        top_count = int(payload["top_count"])
+        bottom_count = int(payload["bottom_count"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CardCompositionError("千问视觉验收结果缺少有效的 object_count、top_count 或 bottom_count") from exc
+    has_text = payload.get("has_text")
+    if not isinstance(has_text, bool):
+        raise CardCompositionError("千问视觉验收结果的 has_text 必须是布尔值")
+    issues: list[str] = []
+    if object_count != WORDS_PER_TASK:
+        issues.append(f"视觉模型判断主体总数为 {object_count}，必须为 {WORDS_PER_TASK}")
+    if top_count != CARD_GRID_COLUMNS or bottom_count != CARD_GRID_COLUMNS:
+        issues.append(
+            f"视觉模型判断上排 {top_count} 个、下排 {bottom_count} 个，"
+            f"必须各为 {CARD_GRID_COLUMNS} 个"
+        )
+    if has_text:
+        issues.append("视觉模型检测到可见文字、字母、数字、标签或水印")
+    return {
+        "valid": not issues,
+        "object_count": object_count,
+        "top_count": top_count,
+        "bottom_count": bottom_count,
+        "has_text": has_text,
+        "reason": str(payload.get("reason") or "").strip(),
+        "issues": issues,
+        "model": str(result.get("model") or ""),
+        "usage": dict(result.get("usage") or {}),
+        "image_size": dict(result.get("image_size") or {}),
+    }
+
+
 def _component_boxes(mask: Image.Image) -> list[tuple[int, int, int, int]]:
     """在缩小后的蒙版中查找独立主体，忽略极小的抠图噪点。"""
     analysis_width = min(SUBJECT_DETECTION_ANALYSIS_WIDTH, mask.width)
@@ -223,60 +284,90 @@ def _component_boxes(mask: Image.Image) -> list[tuple[int, int, int, int]]:
 
 
 def _detect_subjects(sheet: Image.Image, session) -> tuple[list[Image.Image], list[dict], list[str]]:
-    """整图识别主体，按上五下五、从左到右排序并裁切。"""
+    """把整图轮廓分配到上五下五十个位置，同位置的主体、把手和阴影一起裁切。"""
     cut = _remove_sheet_background(sheet, session)
     mask = _visible_mask(cut)
     boxes = _component_boxes(mask)
-    detected: list[tuple[tuple[int, int, int, int], Image.Image]] = []
+    groups: list[list[tuple[int, int, int, int]]] = [
+        [] for _ in range(WORDS_PER_TASK)
+    ]
     for box in boxes:
-        region = cut.crop(box)
+        center_x = (box[0] + box[2]) / 2
+        center_y = (box[1] + box[3]) / 2
+        row = 0 if center_y < sheet.height / 2 else 1
+        column = min(CARD_GRID_COLUMNS - 1, int(center_x * CARD_GRID_COLUMNS / sheet.width))
+        groups[row * CARD_GRID_COLUMNS + column].append(box)
+    issues: list[str] = []
+    subjects: list[Image.Image] = []
+    cells: list[dict] = []
+    for index, group in enumerate(groups, 1):
+        if not group:
+            issue = f"第 {index} 个位置没有分配到可裁切前景"
+            issues.append(issue)
+            cells.append({
+                "index": index,
+                "valid": False,
+                "bbox": None,
+                "foreground_ratio": 0.0,
+                "issues": [issue],
+            })
+            continue
+        group_box = (
+            min(box[0] for box in group),
+            min(box[1] for box in group),
+            max(box[2] for box in group),
+            max(box[3] for box in group),
+        )
+        region = cut.crop(group_box)
         local_bbox = _visible_mask(region).getbbox()
         if local_bbox is None:
+            issue = f"第 {index} 个位置没有有效透明前景"
+            issues.append(issue)
+            cells.append({
+                "index": index,
+                "valid": False,
+                "bbox": None,
+                "foreground_ratio": 0.0,
+                "issues": [issue],
+            })
             continue
-        full_bbox = (
-            box[0] + local_bbox[0],
-            box[1] + local_bbox[1],
-            box[0] + local_bbox[2],
-            box[1] + local_bbox[3],
+        bbox = (
+            group_box[0] + local_bbox[0],
+            group_box[1] + local_bbox[1],
+            group_box[0] + local_bbox[2],
+            group_box[1] + local_bbox[3],
         )
-        detected.append((full_bbox, region.crop(local_bbox)))
-    top = [item for item in detected if (item[0][1] + item[0][3]) / 2 < sheet.height / 2]
-    bottom = [item for item in detected if (item[0][1] + item[0][3]) / 2 >= sheet.height / 2]
-    top.sort(key=lambda item: (item[0][0] + item[0][2]) / 2)
-    bottom.sort(key=lambda item: (item[0][0] + item[0][2]) / 2)
-    ordered = [*top, *bottom]
-    issues: list[str] = []
-    if len(detected) != WORDS_PER_TASK:
-        issues.append(f"必须识别到 {WORDS_PER_TASK} 个独立主体，实际识别到 {len(detected)} 个")
-    if len(top) != CARD_GRID_COLUMNS or len(bottom) != CARD_GRID_COLUMNS:
-        issues.append(
-            f"主体必须上排 {CARD_GRID_COLUMNS} 个、下排 {CARD_GRID_COLUMNS} 个，"
-            f"实际为上排 {len(top)} 个、下排 {len(bottom)} 个"
-        )
-    cells = []
-    for index, (bbox, subject) in enumerate(ordered, 1):
+        subject = region.crop(local_bbox)
+        subjects.append(subject)
         foreground_pixels = _visible_mask(subject).histogram()[255]
         cells.append({
             "index": index,
-            "valid": not issues,
+            "valid": True,
             "bbox": list(bbox),
             "foreground_ratio": round(foreground_pixels / (sheet.width * sheet.height), 4),
             "issues": [],
         })
-    return [subject for _, subject in ordered], cells, issues
+    if issues:
+        for cell in cells:
+            cell["valid"] = False
+    return subjects, cells, issues
 
 
 def validate_subject_sheet(
     subject_sheet_path: str | Path,
     cutout_cache_dir: str | Path | None = None,
 ) -> dict:
-    """用 Python 检查是否恰好识别到上五下五共十个主体，不做文字识别。"""
+    """先用千问视觉验收十个主体、上五下五和无文字，再由 Python 分组裁切。"""
     sheet_path = Path(subject_sheet_path).resolve()
     sheet = _sheet(sheet_path)
-    session = _rembg_session()
-    subjects, cells, issues = _detect_subjects(sheet, session)
-    top_count = sum(1 for item in cells if ((item["bbox"][1] + item["bbox"][3]) / 2) < sheet.height / 2)
-    bottom_count = len(cells) - top_count
+    vision = _visual_layout(sheet_path)
+    issues = list(vision["issues"])
+    subjects: list[Image.Image] = []
+    cells: list[dict] = []
+    if not issues:
+        session = _rembg_session()
+        subjects, cells, crop_issues = _detect_subjects(sheet, session)
+        issues.extend(crop_issues)
     valid = not issues
     if valid and cutout_cache_dir:
         _save_cached_cutouts(
@@ -289,9 +380,11 @@ def validate_subject_sheet(
         "max_attempts": SUBJECT_GENERATION_MAX_ATTEMPTS,
         "issues": issues,
         "cells": cells,
-        "detected_count": len(cells),
-        "top_count": top_count,
-        "bottom_count": bottom_count,
+        "detected_count": vision["object_count"],
+        "top_count": vision["top_count"],
+        "bottom_count": vision["bottom_count"],
+        "has_text": vision["has_text"],
+        "vision": vision,
     }
 
 
