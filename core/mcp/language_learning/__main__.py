@@ -31,6 +31,7 @@ from core.mcp._task_runner import submit_task as runner_submit_task
 
 from ._constants import (
     SUBJECT_CUTOUT_CACHE_DIR_NAME,
+    SUBJECT_GENERATION_MAX_ATTEMPTS,
     SUBJECT_SHEET_IMAGE_ID,
     SUBJECT_SHEET_RADIO,
     SUBJECT_SHEET_SIZE_TEXT,
@@ -51,6 +52,7 @@ from .tools import (
     list_recent_words,
     parse_vocabulary_response,
     publish_vocabulary_videos,
+    validate_subject_sheet,
     validate_words,
 )
 
@@ -198,6 +200,8 @@ def language_learning_prepare_images(
     words: list[dict],
     run_id: str,
     force_images: bool = False,
+    generation_attempt: int = 1,
+    validation_issues: list[str] | None = None,
 ) -> dict:
     """注册主体图生图任务（core.tools.generate_image）。"""
     try:
@@ -207,6 +211,16 @@ def language_learning_prepare_images(
     prompt = str(sheet.get("subject_sheet_prompt") or "").strip()
     if not prompt:
         raise LanguageLearningError("主体图 Prompt 生成失败")
+    if generation_attempt < 1 or generation_attempt > SUBJECT_GENERATION_MAX_ATTEMPTS:
+        raise LanguageLearningError(
+            f"generation_attempt 必须是 1 到 {SUBJECT_GENERATION_MAX_ATTEMPTS}"
+        )
+    previous_issues = [str(item).strip() for item in validation_issues or [] if str(item).strip()]
+    if previous_issues:
+        prompt += (
+            f"\n\n这是第 {generation_attempt} 次生成。上一张图未通过格子位置检查，必须修正：\n- "
+            + "\n- ".join(previous_issues)
+        )
     cache_root, _ = production_dirs(run_id)
     try:
         return prepare_agent_image_tasks(
@@ -216,7 +230,12 @@ def language_learning_prepare_images(
             SUBJECT_SHEET_SIZE_TEXT,
             cache_root / "agent-images",
             force_images=force_images,
-            metadata={"workflow": WORKFLOW_ID, "topic": topic, "run_id": run_id},
+            metadata={
+                "workflow": WORKFLOW_ID,
+                "topic": topic,
+                "run_id": run_id,
+                "generation_attempt": generation_attempt,
+            },
         )
     except ImageGenerationError as exc:
         raise LanguageLearningError(exc.message, exc.details) from exc
@@ -247,17 +266,24 @@ def language_learning_submit_images(
     subject_sheet_path = (result.get("images") or {}).get(SUBJECT_SHEET_IMAGE_ID)
     if not subject_sheet_path:
         raise LanguageLearningError(f"提交结果里缺少主体图 {SUBJECT_SHEET_IMAGE_ID}")
-    return {**result, "subject_sheet_path": subject_sheet_path}
+    validation = validate_subject_sheet(subject_sheet_path)
+    return {**result, "subject_sheet_path": subject_sheet_path, "validation": validation}
 
 
-def _submit_images_worker(context_path: str, images: list[dict], failures: list[dict] | None) -> dict:
+def _submit_images_worker(
+    context_path: str,
+    images: list[dict],
+    failures: list[dict] | None,
+    cutout_cache_dir: Path,
+) -> dict:
     if failures:
         _run_ark_fallback(context_path, failures, images or [])
     result = submit_agent_image_tasks(context_path, images or [])
     subject_sheet_path = (result.get("images") or {}).get(SUBJECT_SHEET_IMAGE_ID)
     if not subject_sheet_path:
         raise LanguageLearningError(f"提交结果里缺少主体图 {SUBJECT_SHEET_IMAGE_ID}")
-    return {**result, "subject_sheet_path": subject_sheet_path}
+    validation = validate_subject_sheet(subject_sheet_path, cutout_cache_dir)
+    return {**result, "subject_sheet_path": subject_sheet_path, "validation": validation}
 
 
 @mcp.tool()
@@ -266,18 +292,28 @@ def language_learning_start_submit_images(
     images: list[dict],
     run_id: str,
     failures: list[dict] | None = None,
+    generation_attempt: int = 1,
 ) -> dict:
     """启动主体图提交（含可选方舟兜底）；立即返回 task_path，用 language_learning_poll_task 轮询。"""
     try:
         cache_root, _ = production_dirs(run_id)
+        if generation_attempt < 1 or generation_attempt > SUBJECT_GENERATION_MAX_ATTEMPTS:
+            raise LanguageLearningError(
+                f"generation_attempt 必须是 1 到 {SUBJECT_GENERATION_MAX_ATTEMPTS}"
+            )
 
         def _work() -> dict:
-            return _submit_images_worker(context_path, images, failures)
+            return _submit_images_worker(
+                context_path,
+                images,
+                failures,
+                cache_root / SUBJECT_CUTOUT_CACHE_DIR_NAME,
+            )
 
         started = runner_submit_task(
             cache_dir=cache_root,
             run_id=run_id,
-            step="submit_images",
+            step=f"submit_images:{generation_attempt}",
             fn=_work,
         )
         return {**started, "poll_tool": "language_learning_poll_task"}

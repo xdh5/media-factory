@@ -13,6 +13,7 @@ from ._shared import PROJECT_ROOT, qwen, upload_run_files, write_summary
 
 
 VOICES = {"en": "en-US-AriaNeural", "zh": "zh-CN-XiaoxiaoNeural", "ko": "ko-KR-SunHiNeural"}
+SUBJECT_GENERATION_MAX_ATTEMPTS = 3
 
 
 def _choose_topic(recent_topics: list[str], requested_topic: str) -> str:
@@ -142,20 +143,39 @@ async def generate_cards(state_path: str | Path) -> dict:
     words = dict(state["words"])
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
         primary_words = words.get("en-zh") or words.get("en-ko")
-        prepared = await mcp.call(
-            "language_learning_prepare_images",
-            {"topic": topic, "words": primary_words, "run_id": run_id},
-        )
-        started = await mcp.call(
-            "language_learning_start_submit_images",
-            {
-                "context_path": prepared["context_path"],
-                "images": [],
-                "run_id": run_id,
-                "failures": [{"image_id": "subject-sheet", "attempts": 0, "capability_unavailable": True, "errors": ["GitHub Runner 无宿主生图能力"]}],
-            },
-        )
-        submitted = await mcp.poll("language_learning_poll_task", started["task_path"])
+        validation_issues: list[str] = []
+        for generation_attempt in range(1, SUBJECT_GENERATION_MAX_ATTEMPTS + 1):
+            prepared = await mcp.call(
+                "language_learning_prepare_images",
+                {
+                    "topic": topic,
+                    "words": primary_words,
+                    "run_id": run_id,
+                    "force_images": generation_attempt > 1,
+                    "generation_attempt": generation_attempt,
+                    "validation_issues": validation_issues,
+                },
+            )
+            started = await mcp.call(
+                "language_learning_start_submit_images",
+                {
+                    "context_path": prepared["context_path"],
+                    "images": [],
+                    "run_id": run_id,
+                    "generation_attempt": generation_attempt,
+                    "failures": [{"image_id": "subject-sheet", "attempts": 0, "capability_unavailable": True, "errors": ["GitHub Runner 无宿主生图能力"]}],
+                },
+            )
+            submitted = await mcp.poll("language_learning_poll_task", started["task_path"])
+            validation = dict(submitted.get("validation") or {})
+            if validation.get("valid") is True:
+                break
+            validation_issues = [str(item) for item in validation.get("issues") or []]
+        else:
+            details = "；".join(validation_issues) or "没有返回具体格子错误"
+            raise RuntimeError(
+                f"原始主题图连续 {SUBJECT_GENERATION_MAX_ATTEMPTS} 次未通过 Python 格子检查：{details}"
+            )
         card_dirs = {}
         for mode in learning_modes:
             started = await mcp.call(
@@ -171,6 +191,10 @@ async def generate_cards(state_path: str | Path) -> dict:
             cards = await mcp.poll("language_learning_poll_task", started["task_path"])
             card_dirs[mode] = cards["output_dir"]
     state["subject_sheet_path"] = submitted["subject_sheet_path"]
+    state["subject_sheet_validation"] = {
+        **validation,
+        "generation_attempt": generation_attempt,
+    }
     state["card_dirs"] = card_dirs
     _write_state(state_path, state)
     return state
@@ -199,6 +223,7 @@ async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> di
             },
         )
         manifest = await mcp.poll("language_learning_poll_task", started["task_path"])
+    manifest["subject_sheet_validation"] = dict(state["subject_sheet_validation"])
     destination = Path(handoff_dir).resolve()
     files_dir = destination / "files"
     files_dir.mkdir(parents=True, exist_ok=True)

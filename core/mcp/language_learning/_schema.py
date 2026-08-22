@@ -76,6 +76,8 @@ PREPARE_IMAGES_INPUT_SCHEMA = {
         "words": {"type": "array", "minItems": 10, "maxItems": 10, "items": WORD_SCHEMA},
         "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
         "force_images": {"type": "boolean", "default": False},
+        "generation_attempt": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1},
+        "validation_issues": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["topic", "words", "run_id"],
     "additionalProperties": False,
@@ -112,6 +114,46 @@ SUBMIT_IMAGES_INPUT_SCHEMA = {
         },
     },
     "required": ["context_path", "images"],
+    "additionalProperties": False,
+}
+START_SUBMIT_IMAGES_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        **SUBMIT_IMAGES_INPUT_SCHEMA["properties"],
+        "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
+        "generation_attempt": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1},
+    },
+    "required": ["context_path", "images", "run_id"],
+    "additionalProperties": False,
+}
+SUBJECT_SHEET_VALIDATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "valid": {"type": "boolean"},
+        "max_attempts": {"type": "integer", "const": 3},
+        "issues": {"type": "array", "items": {"type": "string"}},
+        "cells": {
+            "type": "array",
+            "minItems": 10,
+            "maxItems": 10,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {"type": "integer", "minimum": 1, "maximum": 10},
+                    "valid": {"type": "boolean"},
+                    "bbox": {
+                        "type": ["array", "null"],
+                        "items": {"type": "integer"},
+                    },
+                    "foreground_ratio": {"type": "number", "minimum": 0, "maximum": 1},
+                    "issues": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["index", "valid", "bbox", "foreground_ratio", "issues"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["valid", "max_attempts", "issues", "cells"],
     "additionalProperties": False,
 }
 COMPOSE_CARDS_INPUT_SCHEMA = {
