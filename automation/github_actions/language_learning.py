@@ -58,7 +58,7 @@ async def run(requested_topic: str = "", modes: list[str] | None = None) -> dict
         last_error = None
         for _ in range(3):
             response_text = qwen(
-                "你是语言学习词表编辑，只输出用户规定的纯文本表格。",
+                "你是语言学习词表编辑。只输出用户规定的纯文本表格；第一行必须是“英文主题｜自然英语主题名称”，禁止 Markdown、标题、解释或省略首行。",
                 prompt["user_prompt"],
                 max_tokens=2500,
             )["text"]

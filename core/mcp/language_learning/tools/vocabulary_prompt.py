@@ -98,11 +98,19 @@ def parse_vocabulary_response(content: str, learning_modes: list[str]) -> dict:
         if not line:
             continue
         parts = [part.strip() for part in re.split(r"[|｜]", line)]
-        label = parts[0].strip("[]：: ") if parts else ""
+        label = parts[0].strip("[]【】*#_：: ") if parts else ""
         if label in {"英文主题", "主题英文"} and len(parts) >= 2:
-            topic_english = parts[1]
+            topic_english = parts[1].strip("[]【】*#_：: ")
         elif len(parts) == len(fields) + 1 and parts[0].isdigit():
             rows.append(parts[1:])
+        elif not topic_english:
+            topic_match = re.match(
+                r"^(?:\*{0,2})?(?:英文主题|主题英文|English Topic|English Theme)(?:\*{0,2})?\s*[：:]\s*(.+?)\s*$",
+                line,
+                flags=re.IGNORECASE,
+            )
+            if topic_match:
+                topic_english = topic_match.group(1).strip("[]【】*#_：: ")
     if not topic_english:
         raise InvalidVocabularyError("词表缺少“英文主题｜...”行")
     if len(rows) != WORDS_PER_TASK:
