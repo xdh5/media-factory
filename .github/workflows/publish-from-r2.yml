@@ -46,11 +46,21 @@ jobs:
           mkdir -p "$XDG_RUNTIME_DIR"
           chmod 700 "$XDG_RUNTIME_DIR"
           unset DBUS_SESSION_BUS_ADDRESS ELECTRON_RUN_AS_NODE
-          xvfb-run -a env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" LIBGL_ALWAYS_SOFTWARE=1 MATRIXMEDIA_DISABLE_TELEMETRY=1 "$MATRIXMEDIA_BIN" --no-sandbox --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage cli accounts --json
+          accounts_output=$(xvfb-run -a env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" LIBGL_ALWAYS_SOFTWARE=1 MATRIXMEDIA_DISABLE_TELEMETRY=1 "$MATRIXMEDIA_BIN" --no-sandbox --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage cli accounts --json)
+          echo "$accounts_output"
+          accounts_json=$(printf '%s\n' "$accounts_output" | grep -E '^\s*\[.*\]\s*$' | tail -n 1)
+          if [ -z "$accounts_json" ] || [ "$(printf '%s' "$accounts_json" | tr -d '[:space:]')" = "[]" ]; then
+            echo "::error::MatrixMedia 当前 Runner 用户下没有已登录账号"
+            exit 1
+          fi
 
       - name: 准备持久 Python 发布环境
         run: |
           PUBLISH_VENV="$RUNNER_TOOL_CACHE/media-factory-publisher"
+          if ! python3 -c "import ensurepip" >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y python3.12-venv
+          fi
           if [ ! -x "$PUBLISH_VENV/bin/python" ]; then
             python3 -m venv "$PUBLISH_VENV"
           fi
@@ -85,6 +95,10 @@ jobs:
       - name: 准备持久 Python 发布环境
         run: |
           PUBLISH_VENV="$RUNNER_TOOL_CACHE/media-factory-publisher"
+          if ! python3 -c "import ensurepip" >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y python3.12-venv
+          fi
           if [ ! -x "$PUBLISH_VENV/bin/python" ]; then
             python3 -m venv "$PUBLISH_VENV"
           fi
@@ -116,6 +130,10 @@ jobs:
       - name: 准备持久 Python 发布环境
         run: |
           PUBLISH_VENV="$RUNNER_TOOL_CACHE/media-factory-publisher"
+          if ! python3 -c "import ensurepip" >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y python3.12-venv
+          fi
           if [ ! -x "$PUBLISH_VENV/bin/python" ]; then
             python3 -m venv "$PUBLISH_VENV"
           fi
