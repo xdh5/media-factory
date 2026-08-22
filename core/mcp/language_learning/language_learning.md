@@ -36,7 +36,7 @@ language_learning_save_images
 └─ generate_image.save_agent_image_tasks
 
 language_learning_submit_images
-└─ generate_image.submit_agent_image_tasks  （同步，含方舟时易超时）
+└─ generate_image.submit_agent_image_tasks  （同步，含千问时易超时）
 
 language_learning_start_submit_images
 └─ core.mcp._task_runner.submit_task

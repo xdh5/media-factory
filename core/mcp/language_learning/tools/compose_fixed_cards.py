@@ -5,8 +5,9 @@ import json
 import re
 import unicodedata
 from pathlib import Path
+from statistics import median
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 
 from core.tools.generate_final_video import safe_filename
 from core.tools.qwen_vision import QwenVisionError, analyze_image
@@ -17,10 +18,10 @@ from .._constants import (
     PROJECT_ROOT,
     STATIC_ROOT,
     SUBJECT_ALPHA_THRESHOLD,
+    SUBJECT_CHROMA_HIGH_DISTANCE,
+    SUBJECT_CHROMA_LOW_DISTANCE,
     SUBJECT_CUTOUT_STRATEGY_VERSION,
     SUBJECT_GENERATION_MAX_ATTEMPTS,
-    SUBJECT_ONNX_THREADS,
-    SUBJECT_REMBG_MODEL,
     SUBJECT_SHEET_SIZE,
     SUBJECT_VISION_MAX_TOKENS,
     TEMPLATE_FILENAMES,
@@ -81,42 +82,10 @@ def _fit_sheet(image: Image.Image) -> Image.Image:
     return ImageOps.fit(image, (width, height), method=Image.Resampling.LANCZOS)
 
 
-_REMBG_SESSION = None
-
-
-def _rembg_session():
-    """同一进程内复用抠图会话，十个主体只加载一次模型。"""
-    global _REMBG_SESSION
-    if _REMBG_SESSION is not None:
-        return _REMBG_SESSION
-    try:
-        from rembg import new_session
-        import onnxruntime as ort
-    except ImportError as extra:
-        raise CardCompositionError("缺少 rembg 或 onnxruntime，请先安装项目依赖后再拼卡") from extra
-    try:
-        session_options = ort.SessionOptions()
-        session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-        session_options.inter_op_num_threads = SUBJECT_ONNX_THREADS
-        session_options.intra_op_num_threads = SUBJECT_ONNX_THREADS
-        session_options.enable_cpu_mem_arena = False
-        session_options.enable_mem_pattern = False
-        _REMBG_SESSION = new_session(
-            SUBJECT_REMBG_MODEL,
-            sess_opts=session_options,
-            providers=["CPUExecutionProvider"],
-        )
-    except Exception as extra:
-        raise CardCompositionError(
-            f"初始化 {SUBJECT_REMBG_MODEL} 抠图会话失败：{extra}。请确认已安装 rembg 且能下载模型"
-        ) from extra
-    return _REMBG_SESSION
-
-
 def _sheet(path: Path) -> Image.Image:
     try:
         with Image.open(path) as source:
-            image = ImageOps.exif_transpose(source).convert("RGB")
+            image = ImageOps.exif_transpose(source).convert("RGBA")
     except Exception as extra:
         raise CardCompositionError("上传的文件不是有效的主体素材图") from extra
     return _fit_sheet(image)
@@ -128,8 +97,6 @@ def _visible_mask(image: Image.Image) -> Image.Image:
 
 def _sheet_signature(path: Path) -> str:
     digest = hashlib.sha256()
-    digest.update(SUBJECT_REMBG_MODEL.encode("utf-8"))
-    digest.update(b"\0")
     digest.update(SUBJECT_CUTOUT_STRATEGY_VERSION.encode("utf-8"))
     digest.update(b"\0")
     digest.update(path.read_bytes())
@@ -167,19 +134,39 @@ def _save_cached_cutouts(cache_dir: Path, signature: str, subjects: list[Image.I
     marker.write_text(signature, encoding="utf-8")
 
 
-def _remove_subject_background(subject: Image.Image, session, index: int) -> Image.Image:
-    """逐个主体抠图，避免整张图中较小或浅色主体被忽略。"""
-    try:
-        from rembg import remove
-    except ImportError as extra:
-        raise CardCompositionError("缺少 rembg，请先安装项目依赖后再拼卡") from extra
-    try:
-        cut = remove(subject.convert("RGB"), session=session)
-    except Exception as extra:
-        raise CardCompositionError(f"第 {index} 个主体 rembg 抠图失败：{extra}") from extra
-    if not isinstance(cut, Image.Image):
-        raise CardCompositionError(f"第 {index} 个主体 rembg 没有返回图片")
-    return cut.convert("RGBA")
+def _estimate_background_rgb(sheet: Image.Image) -> tuple[int, int, int]:
+    """从画布四边估计千问识别的均匀纯色背景实际 RGB。"""
+    rgb = sheet.convert("RGB")
+    pixels = rgb.load()
+    stride = max(1, min(rgb.size) // 180)
+    samples: list[tuple[int, int, int]] = []
+    for x in range(0, rgb.width, stride):
+        samples.extend((pixels[x, 0], pixels[x, rgb.height - 1]))
+    for y in range(0, rgb.height, stride):
+        samples.extend((pixels[0, y], pixels[rgb.width - 1, y]))
+    if not samples:
+        raise CardCompositionError("无法从主体图画布边缘估计背景色")
+    return tuple(round(median(channel)) for channel in zip(*samples))
+
+
+def _remove_sheet_background(sheet: Image.Image) -> tuple[Image.Image, tuple[int, int, int]]:
+    """在整张图全局删除与背景同色或近似色的像素，不保护主体内部同色区域。"""
+    rgb = sheet.convert("RGB")
+    background_rgb = _estimate_background_rgb(rgb)
+    background = Image.new("RGB", rgb.size, background_rgb)
+    red, green, blue = ImageChops.difference(rgb, background).split()
+    distance = ImageChops.lighter(ImageChops.lighter(red, green), blue)
+    spread = max(1, SUBJECT_CHROMA_HIGH_DISTANCE - SUBJECT_CHROMA_LOW_DISTANCE)
+    alpha = distance.point(
+        lambda value: 0
+        if value <= SUBJECT_CHROMA_LOW_DISTANCE
+        else 255
+        if value >= SUBJECT_CHROMA_HIGH_DISTANCE
+        else round((value - SUBJECT_CHROMA_LOW_DISTANCE) * 255 / spread)
+    )
+    transparent = rgb.convert("RGBA")
+    transparent.putalpha(alpha)
+    return transparent, background_rgb
 
 
 def _read_visual_prompt(name: str) -> str:
@@ -190,7 +177,7 @@ def _read_visual_prompt(name: str) -> str:
 
 
 def _visual_layout(subject_sheet_path: Path) -> dict:
-    """让千问视觉只验收十个主体、上五下五和无文字。"""
+    """让千问识别纯色背景并验收十个主体、上五下五、无文字和主体框。"""
     try:
         result = analyze_image(
             subject_sheet_path,
@@ -217,6 +204,7 @@ def _visual_layout(subject_sheet_path: Path) -> dict:
     has_text = payload.get("has_text")
     if not isinstance(has_text, bool):
         raise CardCompositionError("千问视觉验收结果的 has_text 必须是布尔值")
+    background_color = str(payload.get("background_color") or "").strip()
     raw_boxes = payload.get("boxes")
     boxes: list[list[int]] = []
     issues: list[str] = []
@@ -249,12 +237,15 @@ def _visual_layout(subject_sheet_path: Path) -> dict:
         )
     if has_text:
         issues.append("视觉模型检测到可见文字、字母、数字、标签或水印")
+    if not background_color:
+        issues.append("视觉模型没有返回统一纯色背景的颜色")
     return {
         "valid": not issues,
         "object_count": object_count,
         "top_count": top_count,
         "bottom_count": bottom_count,
         "has_text": has_text,
+        "background_color": background_color,
         "reason": str(payload.get("reason") or "").strip(),
         "boxes": boxes,
         "issues": issues,
@@ -264,67 +255,16 @@ def _visual_layout(subject_sheet_path: Path) -> dict:
     }
 
 
-def _adjust_grid_divider(
-    base: int,
-    previous_end: int,
-    next_start: int,
-    label: str,
-    issues: list[str],
-) -> int:
-    """均分线安全时保持不动；会切到主体时移到相邻主体之间。"""
-    if previous_end < base < next_start:
-        return base
-    if previous_end < next_start:
-        return (previous_end + next_start) // 2
-    issues.append(f"{label}两侧主体边界重叠，无法找到安全分割线")
-    return base
-
-
-def _dynamic_grid_boxes(visual_boxes: list[list[int]]) -> tuple[list[list[int]], list[str]]:
-    """按 2×5 均分整图，仅在均分线切到主体时根据视觉框微调。"""
-    issues: list[str] = []
-    rows = (visual_boxes[:CARD_GRID_COLUMNS], visual_boxes[CARD_GRID_COLUMNS:])
-    row_dividers: list[list[int]] = []
-    for row_index, row in enumerate(rows, 1):
-        dividers = [0]
-        for column in range(1, CARD_GRID_COLUMNS):
-            dividers.append(_adjust_grid_divider(
-                column * 1000 // CARD_GRID_COLUMNS,
-                row[column - 1][2],
-                row[column][0],
-                f"第 {row_index} 排第 {column} 条竖向分割线",
-                issues,
-            ))
-        dividers.append(1000)
-        row_dividers.append(dividers)
-    horizontal = _adjust_grid_divider(
-        500,
-        max(box[3] for box in rows[0]),
-        min(box[1] for box in rows[1]),
-        "上下两排横向分割线",
-        issues,
-    )
-    crop_boxes: list[list[int]] = []
-    for row_index, dividers in enumerate(row_dividers):
-        top, bottom = (0, horizontal) if row_index == 0 else (horizontal, 1000)
-        for column in range(CARD_GRID_COLUMNS):
-            crop_boxes.append([dividers[column], top, dividers[column + 1], bottom])
-    return crop_boxes, issues
-
-
 def _detect_subjects(
     sheet: Image.Image,
-    session,
     visual_boxes: list[list[int]],
-) -> tuple[list[Image.Image], list[dict], list[str], list[list[int]]]:
-    """用视觉框微调 2×5 分割线，保留每格全部留白后逐格抠图。"""
+) -> tuple[list[Image.Image], list[dict], list[str], list[list[int]], tuple[int, int, int]]:
+    """全局删除纯色背景后，严格按千问框逐个紧裁主体。"""
     issues: list[str] = []
     subjects: list[Image.Image] = []
     cells: list[dict] = []
-    crop_boxes, grid_issues = _dynamic_grid_boxes(visual_boxes)
-    issues.extend(grid_issues)
-    if issues:
-        return subjects, cells, issues, crop_boxes
+    crop_boxes = visual_boxes
+    transparent_sheet, background_rgb = _remove_sheet_background(sheet)
     for index, crop_box in enumerate(crop_boxes, 1):
         box = (
             crop_box[0] * sheet.width // 1000,
@@ -332,7 +272,7 @@ def _detect_subjects(
             max(1, crop_box[2] * sheet.width // 1000),
             max(1, crop_box[3] * sheet.height // 1000),
         )
-        region = _remove_subject_background(sheet.crop(box), session, index)
+        region = transparent_sheet.crop(box)
         local_bbox = _visible_mask(region).getbbox()
         if local_bbox is None:
             issue = f"第 {index} 个位置没有有效透明前景"
@@ -364,7 +304,7 @@ def _detect_subjects(
     if issues:
         for cell in cells:
             cell["valid"] = False
-    return subjects, cells, issues, crop_boxes
+    return subjects, cells, issues, crop_boxes, background_rgb
 
 
 def validate_subject_sheet(
@@ -379,11 +319,15 @@ def validate_subject_sheet(
     subjects: list[Image.Image] = []
     cells: list[dict] = []
     crop_boxes: list[list[int]] = []
+    background_rgb: tuple[int, int, int] | None = None
     if not issues:
-        session = _rembg_session()
-        subjects, cells, crop_issues, crop_boxes = _detect_subjects(sheet, session, vision["boxes"])
+        subjects, cells, crop_issues, crop_boxes, background_rgb = _detect_subjects(
+            sheet,
+            vision["boxes"],
+        )
         issues.extend(crop_issues)
     vision["crop_boxes"] = crop_boxes
+    vision["background_rgb"] = list(background_rgb) if background_rgb else []
     valid = not issues
     if valid and cutout_cache_dir:
         _save_cached_cutouts(
@@ -400,6 +344,7 @@ def validate_subject_sheet(
         "top_count": vision["top_count"],
         "bottom_count": vision["bottom_count"],
         "has_text": vision["has_text"],
+        "background_removed": background_rgb is not None,
         "vision": vision,
     }
 
@@ -415,9 +360,11 @@ def _extract_subjects(sheet: Image.Image, sheet_path: Path, cache_dir: Path | No
 
 
 def _paste_subject(card: Image.Image, subject: Image.Image, box: tuple[int, int, int, int]) -> None:
-    target = (box[2] - box[0], box[3] - box[1])
-    fitted = ImageOps.contain(subject, target, Image.Resampling.LANCZOS)
-    card.alpha_composite(fitted, (box[0] + (target[0] - fitted.width) // 2, box[1] + (target[1] - fitted.height) // 2))
+    target_width = box[2] - box[0]
+    target_height = box[3] - box[1]
+    fitted_width = max(1, round(subject.width * target_height / subject.height))
+    fitted = subject.resize((fitted_width, target_height), Image.Resampling.LANCZOS)
+    card.alpha_composite(fitted, (box[0] + (target_width - fitted.width) // 2, box[1]))
 
 
 def _draw(draw, value: str, spec: tuple[int, int, int], kind: str):

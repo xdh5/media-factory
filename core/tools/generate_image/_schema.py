@@ -2,9 +2,9 @@
 
 公开入口分三类，互不耦合：
 - 宿主 Agent：prepare_agent_image_tasks / save_agent_image_tasks / submit_agent_image_tasks
-- 方舟：generate_ark_image
+- 千问：generate_qwen_image
 - 本地选：list_local_images
-宿主失败后是否改走方舟，由业务 MCP（如语言学习）决定，不放在 image 内。
+宿主失败后是否改走千问，由业务 MCP（如语言学习）决定，不放在 image 内。
 """
 
 from __future__ import annotations
@@ -114,7 +114,7 @@ SUBMIT_AGENT_IMAGE_TASKS_INPUT_SCHEMA = {
     "additionalProperties": False,
 }
 
-GENERATE_ARK_IMAGE_INPUT_SCHEMA = {
+GENERATE_QWEN_IMAGE_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "prompt": {"type": "string", "minLength": 1},

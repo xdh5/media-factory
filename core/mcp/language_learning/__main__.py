@@ -18,7 +18,7 @@ from core.tools.clear_cache import ConfirmationRequiredError as ClearCacheConfir
 from core.tools.clear_cache import clear_run
 from core.tools.generate_image import (
     ImageGenerationError,
-    generate_ark_image,
+    generate_qwen_image,
     prepare_agent_image_tasks,
     save_agent_image_tasks,
     submit_agent_image_tasks,
@@ -62,7 +62,7 @@ mcp = FastMCP(
         "语言学习视频编排 MCP。Prompt 由本 MCP 工具返回；TTS 音色、发布账号组等固定参数以 Skill "
         "learn_Chinese_and_Korean 为准，Agent 必须按 Skill 传参。"
         "每期 10 个英语单词中至少 5 个必须未在最近 100 天使用；只有用户触发发布后才记录话题与全部单词。"
-        "耗时步骤（方舟生图、拼卡、出片、发布）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
+        "耗时步骤（千问生图、拼卡、出片、发布）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
         "禁止绕过 MCP 自行读写内部文件。"
     ),
 )
@@ -80,8 +80,8 @@ def _map_error(exc: Exception) -> LanguageLearningError:
     raise exc
 
 
-def _run_ark_fallback(context_path: str, failures: list, images: list) -> None:
-    """宿主无能力或单张失败三次后，才调用方舟。"""
+def _run_qwen_fallback(context_path: str, failures: list, images: list) -> None:
+    """宿主无能力或单张失败三次后，才调用千问。"""
     provided = {str(item.get("image_id") or "").strip() for item in images if isinstance(item, dict)}
     context_file = Path(context_path).resolve()
     context = json.loads(context_file.read_text(encoding="utf-8"))
@@ -96,9 +96,9 @@ def _run_ark_fallback(context_path: str, failures: list, images: list) -> None:
         task = tasks[image_id]
         attempts = item.get("attempts", 0)
         if item.get("capability_unavailable") is not True and attempts < 3:
-            raise LanguageLearningError(f"图片 {image_id} 仅失败 {attempts} 次；必须尝试满 3 次才能走方舟")
+            raise LanguageLearningError(f"图片 {image_id} 仅失败 {attempts} 次；必须尝试满 3 次才能走千问")
         references = task.get("referenced_image_paths") or []
-        generate_ark_image(
+        generate_qwen_image(
             str(task.get("prompt") or ""),
             task["output_path"],
             size=str(task["size"]),
@@ -256,10 +256,10 @@ def language_learning_submit_images(
     images: list[dict],
     failures: list[dict] | None = None,
 ) -> dict:
-    """提交主体图（同步，含方舟时易超时）。优先使用 language_learning_start_submit_images + poll_task。"""
+    """提交主体图（同步，含千问时易超时）。优先使用 language_learning_start_submit_images + poll_task。"""
     try:
         if failures:
-            _run_ark_fallback(context_path, failures, images or [])
+            _run_qwen_fallback(context_path, failures, images or [])
         result = submit_agent_image_tasks(context_path, images or [])
     except ImageGenerationError as exc:
         raise LanguageLearningError(exc.message, exc.details) from exc
@@ -277,7 +277,7 @@ def _submit_images_worker(
     cutout_cache_dir: Path,
 ) -> dict:
     if failures:
-        _run_ark_fallback(context_path, failures, images or [])
+        _run_qwen_fallback(context_path, failures, images or [])
     result = submit_agent_image_tasks(context_path, images or [])
     subject_sheet_path = (result.get("images") or {}).get(SUBJECT_SHEET_IMAGE_ID)
     if not subject_sheet_path:
@@ -294,7 +294,7 @@ def language_learning_start_submit_images(
     failures: list[dict] | None = None,
     generation_attempt: int = 1,
 ) -> dict:
-    """启动主体图提交（含可选方舟兜底）；立即返回 task_path，用 language_learning_poll_task 轮询。"""
+    """启动主体图提交（含可选千问兜底）；立即返回 task_path，用 language_learning_poll_task 轮询。"""
     try:
         cache_root, _ = production_dirs(run_id)
         if generation_attempt < 1 or generation_attempt > SUBJECT_GENERATION_MAX_ATTEMPTS:
@@ -329,7 +329,7 @@ def language_learning_compose_cards(
     topic_english: str,
     run_id: str,
 ) -> dict:
-    """拼单词卡（同步，首次 rembg 较慢）。优先使用 language_learning_start_compose_cards + poll_task。"""
+    """拼单词卡（同步）。优先使用 language_learning_start_compose_cards + poll_task。"""
     cache_root, _ = production_dirs(run_id)
     return compose_fixed_cards(
         subject_sheet_path,

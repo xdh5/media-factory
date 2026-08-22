@@ -17,7 +17,7 @@ from ._constants import (
 )
 from ._errors import AgentImageTaskError, InvalidParameterError, ReferenceImageError
 from ._select_style import _select_style
-from ._ark import _fit_image, _validate_dimensions, _write_png
+from ._image import _fit_image, _validate_dimensions, _write_png
 
 __all__ = ["prepare_agent_image_tasks", "save_agent_image_tasks", "submit_agent_image_tasks"]
 
@@ -346,7 +346,7 @@ def submit_agent_image_tasks(
     *,
     manifest_path: str | Path | None = None,
 ) -> dict:
-    """接收已缓存的宿主 Agent 图片并写出清单；不调用方舟。"""
+    """接收已缓存的宿主 Agent 图片并写出清单；不调用千问。"""
     resolved_context, context, tasks, task_by_id = _load_image_context(context_path)
     provided = _parse_image_results(images, allow_empty=True)
     if provided:

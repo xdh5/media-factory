@@ -6,10 +6,8 @@ from pathlib import Path
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-ARK_IMAGE_MODEL = "doubao-seedream-4-5-251128"
-ARK_IMAGE_ENDPOINT = "https://ark.cn-beijing.volces.com/api/v3/images/generations"
-# Seedream 4.5 要求生成面积至少 3686400 像素（例如 16:9 对应 2560x1440）。
-ARK_MIN_IMAGE_PIXELS = 3686400
+QWEN_IMAGE_MODEL = "qwen-image-2.0-pro"
+QWEN_IMAGE_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 AGENT_IMAGE_TASK_VERSION = 4
 AGENT_IMAGE_CONTEXT_NAME = "agent-image-context.json"
 AGENT_IMAGE_MANIFEST_NAME = "agent-image-manifest.json"
