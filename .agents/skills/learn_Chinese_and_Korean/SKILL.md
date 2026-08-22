@@ -83,7 +83,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 2. 自选单个英文单词主题后 `language_learning_occupy_topic(topic, learning_modes)`，只创建本次生产目录并拿到 `run_id`，不写 D1。
 3. `language_learning_build_vocabulary_prompt(topic, learning_modes)` 获取包含最近 100 天词库的 Prompt，按原样生成纯文本词表；再调用 `language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)`，由 MCP 强制校验至少 5 个新词，但暂不写库。
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
-5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问）→ `language_learning_poll_task`。提交后台任务先用千问视觉识别统一纯色背景，检查是否恰好十个主体、上排五个、下排五个且无文字，并返回按上排从左到右、下排从左到右排序的十个主体边界框；通过后 Python 从画布边缘估计背景实际 RGB，在整张图中全局删除同色和近似色，再严格按照千问的十个框切出并紧裁主体。失败时强制重新生图，最多 3 次，第三次仍失败必须报错停止。GitHub Action 会把每次被拒绝的原始主题图上传到 R2 的 `diagnostics/` 目录，并在 1 天后自动清理。
+5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问）→ `language_learning_poll_task`。提交后台任务先用千问视觉识别统一纯色背景，检查是否恰好十个主体、上排五个、下排五个且无文字，并返回按上排从左到右、下排从左到右排序的十个保守边界框；千问框必须四周保留背景安全边距。通过后 Python 从画布边缘估计背景实际 RGB，在整张图中全局删除同色和近似色，再严格按千问返回的框切出并紧裁主体，不额外扩展边界。失败时强制重新生图，最多 3 次，第三次仍失败必须报错停止。GitHub Action 会把每次被拒绝的原始主题图上传到 R2 的 `diagnostics/` 目录，并在 1 天后自动清理。
 6. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例，统一缩放到固定图片区域的完整高度并水平居中。
 7. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。GitHub Action 交接时必须同时保留原始主题图，上传 R2 后在清单写入 `subject_sheet_url`。
 8. 展示原始主题图和成品；确认后用 R2 清单 URL 触发 `.github/workflows/publish-from-r2.yml`。发布任务先幂等写入正式话题与本期 10 个单词，再执行中文 YouTube / Meta 与韩语 MatrixMedia 发布。
