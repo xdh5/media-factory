@@ -83,7 +83,7 @@ _REMBG_SESSION = None
 
 
 def _rembg_session():
-    """同一进程内复用 u2netp session，十格批处理只加载一次模型。"""
+    """同一进程内复用 BiRefNet 会话，十个主体只加载一次模型。"""
     global _REMBG_SESSION
     if _REMBG_SESSION is not None:
         return _REMBG_SESSION
