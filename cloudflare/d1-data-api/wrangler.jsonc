@@ -3,6 +3,18 @@
   "name": "media-factory-data-api",
   "main": "src/index.mjs",
   "compatibility_date": "2025-08-21",
+  "routes": [
+    {
+      "pattern": "media-data.cyberlab.lol",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  },
   "d1_databases": [
     {
       "binding": "DB",
