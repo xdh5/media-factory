@@ -19,6 +19,7 @@ from .._constants import (
     SUBJECT_ALPHA_THRESHOLD,
     SUBJECT_CUTOUT_STRATEGY_VERSION,
     SUBJECT_GENERATION_MAX_ATTEMPTS,
+    SUBJECT_ONNX_THREADS,
     SUBJECT_REMBG_MODEL,
     SUBJECT_SHEET_SIZE,
     TEMPLATE_FILENAMES,
@@ -89,10 +90,21 @@ def _rembg_session():
         return _REMBG_SESSION
     try:
         from rembg import new_session
+        import onnxruntime as ort
     except ImportError as extra:
-        raise CardCompositionError("缺少 rembg，请先安装项目依赖后再拼卡") from extra
+        raise CardCompositionError("缺少 rembg 或 onnxruntime，请先安装项目依赖后再拼卡") from extra
     try:
-        _REMBG_SESSION = new_session(SUBJECT_REMBG_MODEL)
+        session_options = ort.SessionOptions()
+        session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        session_options.inter_op_num_threads = SUBJECT_ONNX_THREADS
+        session_options.intra_op_num_threads = SUBJECT_ONNX_THREADS
+        session_options.enable_cpu_mem_arena = False
+        session_options.enable_mem_pattern = False
+        _REMBG_SESSION = new_session(
+            SUBJECT_REMBG_MODEL,
+            sess_opts=session_options,
+            providers=["CPUExecutionProvider"],
+        )
     except Exception as extra:
         raise CardCompositionError(
             f"初始化 {SUBJECT_REMBG_MODEL} 抠图会话失败：{extra}。请确认已安装 rembg 且能下载模型"
