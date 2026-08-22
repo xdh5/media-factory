@@ -18,7 +18,7 @@ def _choose_topic(recent_topics: list[str], requested_topic: str) -> str:
     if requested_topic.strip():
         return requested_topic.strip()
     return str(qwen(
-        "你是语言学习短视频选题编辑，只返回一个简短中文主题，不加说明。",
+        "你是语言学习短视频选题编辑，只返回一个简短英文主题，不加说明。",
         "选择适合初学者学习10个生活常用词的具体主题。"
         f"不得与最近30天主题重复：{json.dumps(recent_topics, ensure_ascii=False)}",
         max_tokens=80,
