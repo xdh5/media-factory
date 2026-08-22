@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
+from pathlib import Path
 
 from ._mcp import MCPCallError, ProjectMCP
 from ._shared import PROJECT_ROOT, qwen, upload_run_files, write_summary
@@ -42,6 +45,37 @@ def _publish_config(topic: str, modes: list[str]) -> dict:
 
 
 async def run(requested_topic: str = "", modes: list[str] | None = None) -> dict:
+    """兼容原有单命令入口：依次制作、交接并上传 R2。"""
+    with tempfile.TemporaryDirectory(prefix="language-learning-") as temporary_dir:
+        root = Path(temporary_dir)
+        state_path = root / "state.json"
+        handoff_dir = root / "handoff"
+        await generate_words(requested_topic, modes or ["en-zh", "en-ko"], state_path)
+        await generate_cards(state_path)
+        await generate_videos(state_path, handoff_dir)
+        return upload_handoff(handoff_dir)
+
+
+def _read_state(state_path: str | Path) -> dict:
+    path = Path(state_path).resolve()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"语言学习阶段状态不是 JSON 对象：{path}")
+    return payload
+
+
+def _write_state(state_path: str | Path, payload: dict) -> None:
+    path = Path(state_path).resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+async def generate_words(
+    requested_topic: str,
+    modes: list[str],
+    state_path: str | Path,
+) -> dict:
+    """第一段：选题、占坑并生成通过校验的双语词表。"""
     learning_modes = modes or ["en-zh", "en-ko"]
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
         topics = await mcp.call("language_learning_get_topics")
@@ -78,6 +112,24 @@ async def run(requested_topic: str = "", modes: list[str] | None = None) -> dict
                 prompt["user_prompt"] += f"\n\n上一次词表校验失败，必须换词并修正：{exc}"
         else:
             raise RuntimeError(f"语言词表连续三次不合格：{last_error}")
+    state = {
+        "topic": topic,
+        "learning_modes": learning_modes,
+        "run_id": run_id,
+        "words": words,
+    }
+    _write_state(state_path, state)
+    return state
+
+
+async def generate_cards(state_path: str | Path) -> dict:
+    """第二段：生成主体图并合成各语言方向的固定模板卡片。"""
+    state = _read_state(state_path)
+    topic = str(state["topic"])
+    learning_modes = list(state["learning_modes"])
+    run_id = str(state["run_id"])
+    words = dict(state["words"])
+    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
         primary_words = words.get("en-zh") or words.get("en-ko")
         prepared = await mcp.call(
             "language_learning_prepare_images",
@@ -107,6 +159,20 @@ async def run(requested_topic: str = "", modes: list[str] | None = None) -> dict
             )
             cards = await mcp.poll("language_learning_poll_task", started["task_path"])
             card_dirs[mode] = cards["output_dir"]
+    state["card_dirs"] = card_dirs
+    _write_state(state_path, state)
+    return state
+
+
+async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> dict:
+    """第三段：配音合成成片，并整理供下一 Job 使用的临时交接目录。"""
+    state = _read_state(state_path)
+    topic = str(state["topic"])
+    learning_modes = list(state["learning_modes"])
+    run_id = str(state["run_id"])
+    words = dict(state["words"])
+    card_dirs = dict(state["card_dirs"])
+    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
         started = await mcp.call(
             "language_learning_start_create_videos",
             {
@@ -121,16 +187,59 @@ async def run(requested_topic: str = "", modes: list[str] | None = None) -> dict
             },
         )
         manifest = await mcp.poll("language_learning_poll_task", started["task_path"])
-    video_paths = [path for video in manifest["videos"] for path in video["output_paths"]]
+    destination = Path(handoff_dir).resolve()
+    files_dir = destination / "files"
+    files_dir.mkdir(parents=True, exist_ok=True)
+    video_files = []
+    for source_value in [path for video in manifest["videos"] for path in video["output_paths"]]:
+        source = Path(source_value).resolve()
+        target = files_dir / source.name
+        shutil.copy2(source, target)
+        video_files.append(str(target.relative_to(destination)))
+    publish_manifest_file = ""
+    if manifest.get("manifest_path"):
+        source = Path(str(manifest["manifest_path"])).resolve()
+        target = files_dir / source.name
+        shutil.copy2(source, target)
+        publish_manifest_file = str(target.relative_to(destination))
+    handoff = {
+        "workflow": "language_learning",
+        "run_id": run_id,
+        "topic": topic,
+        "learning_modes": learning_modes,
+        "video_files": video_files,
+        "publish_manifest_file": publish_manifest_file,
+        "manifest": manifest,
+    }
+    _write_state(destination / "handoff.json", handoff)
+    return handoff
+
+
+def upload_handoff(handoff_dir: str | Path) -> dict:
+    """读取上一 Job 的临时交接文件，将成片和发布清单上传 R2。"""
+    destination = Path(handoff_dir).resolve()
+    handoff = _read_state(destination / "handoff.json")
+    video_paths = [destination / value for value in handoff["video_files"]]
+    publish_manifest_path = (
+        destination / handoff["publish_manifest_file"]
+        if handoff.get("publish_manifest_file")
+        else None
+    )
+    manifest = dict(handoff["manifest"])
+    manifest["output_dir"] = str(destination)
     remote = upload_run_files(
         "language_learning",
-        run_id,
+        str(handoff["run_id"]),
         video_paths,
         manifest,
-        publish_manifest_path=manifest.get("manifest_path"),
+        publish_manifest_path=publish_manifest_path,
     )
     write_summary(
-        "语言学习成片已生成，等待手动确认发布",
-        [("主题", topic), ("模式", ", ".join(learning_modes)), ("R2 清单", remote["manifest"]["url"])],
+        "语言学习成片已生成并上传 R2",
+        [
+            ("主题", str(handoff["topic"])),
+            ("模式", ", ".join(handoff["learning_modes"])),
+            ("R2 清单", remote["manifest"]["url"]),
+        ],
     )
     return {"manifest": manifest, "r2": remote}

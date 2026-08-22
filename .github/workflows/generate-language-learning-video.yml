@@ -19,53 +19,81 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: generate-language-learning-video
   cancel-in-progress: false
 
+env:
+  PYTHONUTF8: "1"
+  STATE_PATH: cache/github_actions/language-learning-state.json
+  HANDOFF_DIR: cache/github_actions/language-learning-handoff
+
 jobs:
-  generate:
-    name: 生成成片并上传 R2
+  prepare:
+    name: 第一步：准备生产环境
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 10
+    container:
+      image: ghcr.io/xdh5/media-factory-runner:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: 检出生产代码
+        uses: actions/checkout@v5
+
+      - name: 检查 Python 与项目依赖
+        run: |
+          python --version
+          python -c "import boto3, edge_tts, mcp, PIL, rembg; print('Python 项目依赖可用')"
+
+      - name: 检查 FFmpeg 与中文字体
+        run: |
+          ffmpeg -version | head -n 1
+          fc-match "Noto Sans CJK SC"
+
+      - name: 检查云端配置
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
+          CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
+          VOLC_ARK_API_KEY: ${{ secrets.VOLC_ARK_API_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        shell: bash
+        run: |
+          for name in DASHSCOPE_API_KEY CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN VOLC_ARK_API_KEY R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL; do
+            test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
+          done
+          echo "生产所需云端配置完整"
+
+  generate:
+    name: 第二步：制作语言学习视频
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 160
+    container:
+      image: ghcr.io/xdh5/media-factory-runner:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     env:
-      PYTHONUTF8: "1"
       DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
       CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
       CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
       VOLC_ARK_API_KEY: ${{ secrets.VOLC_ARK_API_KEY }}
       VOLC_ARK_IMAGE_MODEL: doubao-seedream-4-5-251128
       VOLC_ARK_IMAGE_URL: https://ark.cn-beijing.volces.com/api/v3/images/generations
-      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      R2_BUCKET: ${{ secrets.R2_BUCKET }}
-      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+      - name: 检出生产代码
+        uses: actions/checkout@v5
 
-      - name: 配置 Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: 恢复抠图模型缓存
-        uses: actions/cache@v4
-        with:
-          path: ~/.u2net
-          key: rembg-u2netp-v1
-
-      - name: 安装系统字体与 FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
-
-      - name: 安装项目依赖
-        run: python -m pip install .
-
-      - name: 自动生成语言学习成片
+      - name: 生成主题并校验双语词表
         env:
           INPUT_TOPIC: ${{ inputs.topic }}
           INPUT_MODES: ${{ inputs.modes }}
@@ -77,5 +105,50 @@ jobs:
             en-ko) MODES="en-ko" ;;
             *) echo "不支持的语言方向：$INPUT_MODES" >&2; exit 1 ;;
           esac
-          python -m automation.github_actions language_learning --topic "$INPUT_TOPIC" --modes "$MODES"
+          python -m automation.github_actions language_learning_words --topic "$INPUT_TOPIC" --modes "$MODES" --state-path "$STATE_PATH"
 
+      - name: 生成主体图与双语卡片
+        run: python -m automation.github_actions language_learning_cards --state-path "$STATE_PATH"
+
+      - name: 合成配音与中韩双模式成片
+        run: python -m automation.github_actions language_learning_videos --state-path "$STATE_PATH" --handoff-dir "$HANDOFF_DIR"
+
+      - name: 打包阶段产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: language-learning-${{ github.run_id }}
+          path: cache/github_actions/language-learning-handoff
+          if-no-files-found: error
+          retention-days: 1
+
+  upload:
+    name: 第三步：上传 R2
+    needs: generate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: ghcr.io/xdh5/media-factory-runner:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+    steps:
+      - name: 检出上传代码
+        uses: actions/checkout@v5
+
+      - name: 下载成片交接文件
+        uses: actions/download-artifact@v4
+        with:
+          name: language-learning-${{ github.run_id }}
+          path: cache/github_actions/language-learning-handoff
+
+      - name: 上传成片与发布清单
+        run: python -m automation.github_actions language_learning_r2 --handoff-dir "$HANDOFF_DIR"
+
+      - name: 展示 R2 成片结果
+        run: echo "成片、公网地址和发布清单已写入本次任务摘要。"
