@@ -49,9 +49,9 @@ fi
 export DISPLAY="${display_address}"
 export XDG_RUNTIME_DIR="${runtime_dir}"
 export MATRIXMEDIA_DISABLE_TELEMETRY=1
-unset ELECTRON_RUN_AS_NODE DBUS_SESSION_BUS_ADDRESS
+unset ELECTRON_RUN_AS_NODE DBUS_SESSION_BUS_ADDRESS RUNNER_TRACKING_ID
 
-start_background_process xvfb Xvfb "${display_address}" -screen 0 1440x900x24 -nolisten tcp
+start_background_process xvfb Xvfb "${display_address}" -screen 0 1024x768x16 -nolisten tcp
 for _ in {1..50}; do
   [[ -S "/tmp/.X11-unix/X${display_number}" ]] && break
   sleep 0.1

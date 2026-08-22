@@ -1,0 +1,31 @@
+name: 恢复矩媒图形登录界面
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    name: 降低画质并重启图形界面
+    runs-on: [self-hosted, Linux, X64, publisher, matrixmedia]
+    timeout-minutes: 5
+    steps:
+      - name: 检出启动脚本
+        uses: actions/checkout@v5
+
+      - name: 输出恢复前资源状态
+        run: |
+          free -h
+          uptime
+
+      - name: 重启矩媒图形界面
+        run: |
+          chmod 700 automation/matrixmedia_gui_session.sh
+          automation/matrixmedia_gui_session.sh
+
+      - name: 验证本机服务
+        run: |
+          curl --fail --silent --output /dev/null http://127.0.0.1:6080/vnc.html
+          ss -lnt | grep -E '127.0.0.1:(5900|6080)'
