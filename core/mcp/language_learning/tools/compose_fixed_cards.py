@@ -3,19 +3,24 @@
 import hashlib
 import re
 import unicodedata
+from collections import deque
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from core.tools.generate_final_video import safe_filename
 
 from .._constants import (
     CARD_CANVAS_SIZE,
+    CARD_GRID_COLUMNS,
     PROJECT_ROOT,
     STATIC_ROOT,
     SUBJECT_ALPHA_THRESHOLD,
+    SUBJECT_CUTOUT_STRATEGY_VERSION,
+    SUBJECT_DETECTION_ANALYSIS_WIDTH,
+    SUBJECT_DETECTION_DILATION_SIZE,
+    SUBJECT_DETECTION_MIN_COMPONENT_PIXELS,
     SUBJECT_GENERATION_MAX_ATTEMPTS,
-    SUBJECT_GRID_BOXES,
     SUBJECT_REMBG_MODEL,
     SUBJECT_SHEET_SIZE,
     TEMPLATE_FILENAMES,
@@ -113,6 +118,8 @@ def _sheet_signature(path: Path) -> str:
     digest = hashlib.sha256()
     digest.update(SUBJECT_REMBG_MODEL.encode("utf-8"))
     digest.update(b"\0")
+    digest.update(SUBJECT_CUTOUT_STRATEGY_VERSION.encode("utf-8"))
+    digest.update(b"\0")
     digest.update(path.read_bytes())
     return digest.hexdigest()
 
@@ -148,71 +155,129 @@ def _save_cached_cutouts(cache_dir: Path, signature: str, subjects: list[Image.I
     marker.write_text(signature, encoding="utf-8")
 
 
-def _remove_cell_background(cell: Image.Image, session, index: int) -> Image.Image:
+def _remove_sheet_background(sheet: Image.Image, session) -> Image.Image:
     try:
         from rembg import remove
     except ImportError as extra:
         raise CardCompositionError("缺少 rembg，请先安装项目依赖后再拼卡") from extra
     try:
-        cut = remove(cell.convert("RGB"), session=session)
+        cut = remove(sheet.convert("RGB"), session=session)
     except Exception as extra:
-        raise CardCompositionError(f"第 {index} 格 rembg 抠图失败：{extra}") from extra
+        raise CardCompositionError(f"整张主体图 rembg 抠图失败：{extra}") from extra
     if not isinstance(cut, Image.Image):
-        raise CardCompositionError(f"第 {index} 格 rembg 没有返回图片")
+        raise CardCompositionError("整张主体图 rembg 没有返回图片")
     return cut.convert("RGBA")
 
 
-def _cutout_cell(cell: Image.Image, session, index: int) -> Image.Image:
-    cut = _remove_cell_background(cell, session, index)
-    bbox = _visible_mask(cut).getbbox()
-    if bbox is None:
-        raise CardCompositionError(f"第 {index} 格没有可见主体，请重新生成完整的 2 行×5 列主体图")
-    return cut.crop(bbox)
+def _component_boxes(mask: Image.Image) -> list[tuple[int, int, int, int]]:
+    """在缩小后的蒙版中查找独立主体，忽略极小的抠图噪点。"""
+    analysis_width = min(SUBJECT_DETECTION_ANALYSIS_WIDTH, mask.width)
+    analysis_height = max(1, round(mask.height * analysis_width / mask.width))
+    small = mask.resize((analysis_width, analysis_height), Image.Resampling.NEAREST)
+    small = small.filter(ImageFilter.MaxFilter(SUBJECT_DETECTION_DILATION_SIZE))
+    pixels = small.tobytes()
+    visited = bytearray(len(pixels))
+    boxes: list[tuple[int, int, int, int]] = []
+    for start, value in enumerate(pixels):
+        if value == 0 or visited[start]:
+            continue
+        queue = deque([start])
+        visited[start] = 1
+        area = 0
+        min_x = max_x = start % analysis_width
+        min_y = max_y = start // analysis_width
+        while queue:
+            current = queue.popleft()
+            x = current % analysis_width
+            y = current // analysis_width
+            area += 1
+            min_x, max_x = min(min_x, x), max(max_x, x)
+            min_y, max_y = min(min_y, y), max(max_y, y)
+            if x > 0:
+                neighbor = current - 1
+                if pixels[neighbor] and not visited[neighbor]:
+                    visited[neighbor] = 1
+                    queue.append(neighbor)
+            if x + 1 < analysis_width:
+                neighbor = current + 1
+                if pixels[neighbor] and not visited[neighbor]:
+                    visited[neighbor] = 1
+                    queue.append(neighbor)
+            if y > 0:
+                neighbor = current - analysis_width
+                if pixels[neighbor] and not visited[neighbor]:
+                    visited[neighbor] = 1
+                    queue.append(neighbor)
+            if y + 1 < analysis_height:
+                neighbor = current + analysis_width
+                if pixels[neighbor] and not visited[neighbor]:
+                    visited[neighbor] = 1
+                    queue.append(neighbor)
+        if area >= SUBJECT_DETECTION_MIN_COMPONENT_PIXELS:
+            left = max(0, min_x * mask.width // analysis_width)
+            top = max(0, min_y * mask.height // analysis_height)
+            right = min(mask.width, (max_x + 1) * mask.width // analysis_width + 1)
+            bottom = min(mask.height, (max_y + 1) * mask.height // analysis_height + 1)
+            boxes.append((left, top, right, bottom))
+    return boxes
+
+
+def _detect_subjects(sheet: Image.Image, session) -> tuple[list[Image.Image], list[dict], list[str]]:
+    """整图识别主体，按上五下五、从左到右排序并裁切。"""
+    cut = _remove_sheet_background(sheet, session)
+    mask = _visible_mask(cut)
+    boxes = _component_boxes(mask)
+    detected: list[tuple[tuple[int, int, int, int], Image.Image]] = []
+    for box in boxes:
+        region = cut.crop(box)
+        local_bbox = _visible_mask(region).getbbox()
+        if local_bbox is None:
+            continue
+        full_bbox = (
+            box[0] + local_bbox[0],
+            box[1] + local_bbox[1],
+            box[0] + local_bbox[2],
+            box[1] + local_bbox[3],
+        )
+        detected.append((full_bbox, region.crop(local_bbox)))
+    top = [item for item in detected if (item[0][1] + item[0][3]) / 2 < sheet.height / 2]
+    bottom = [item for item in detected if (item[0][1] + item[0][3]) / 2 >= sheet.height / 2]
+    top.sort(key=lambda item: (item[0][0] + item[0][2]) / 2)
+    bottom.sort(key=lambda item: (item[0][0] + item[0][2]) / 2)
+    ordered = [*top, *bottom]
+    issues: list[str] = []
+    if len(detected) != WORDS_PER_TASK:
+        issues.append(f"必须识别到 {WORDS_PER_TASK} 个独立主体，实际识别到 {len(detected)} 个")
+    if len(top) != CARD_GRID_COLUMNS or len(bottom) != CARD_GRID_COLUMNS:
+        issues.append(
+            f"主体必须上排 {CARD_GRID_COLUMNS} 个、下排 {CARD_GRID_COLUMNS} 个，"
+            f"实际为上排 {len(top)} 个、下排 {len(bottom)} 个"
+        )
+    cells = []
+    for index, (bbox, subject) in enumerate(ordered, 1):
+        foreground_pixels = _visible_mask(subject).histogram()[255]
+        cells.append({
+            "index": index,
+            "valid": not issues,
+            "bbox": list(bbox),
+            "foreground_ratio": round(foreground_pixels / (sheet.width * sheet.height), 4),
+            "issues": [],
+        })
+    return [subject for _, subject in ordered], cells, issues
 
 
 def validate_subject_sheet(
     subject_sheet_path: str | Path,
     cutout_cache_dir: str | Path | None = None,
 ) -> dict:
-    """用 Python 检查十格主体是否为空或触碰格子边界，不做文字识别。"""
+    """用 Python 检查是否恰好识别到上五下五共十个主体，不做文字识别。"""
     sheet_path = Path(subject_sheet_path).resolve()
     sheet = _sheet(sheet_path)
     session = _rembg_session()
-    cells: list[dict] = []
-    subjects: list[Image.Image] = []
-    issues: list[str] = []
-    for index, grid_box in enumerate(SUBJECT_GRID_BOXES, 1):
-        cut = _remove_cell_background(sheet.crop(grid_box), session, index)
-        mask = _visible_mask(cut)
-        bbox = mask.getbbox()
-        cell_issues: list[str] = []
-        if bbox is None:
-            cell_issues.append("没有检测到主体")
-            foreground_ratio = 0.0
-        else:
-            foreground_pixels = mask.histogram()[255]
-            foreground_ratio = foreground_pixels / (mask.width * mask.height)
-            if bbox[0] <= 0:
-                cell_issues.append("主体接触左边界，可能跨格或被截断")
-            if bbox[2] >= mask.width:
-                cell_issues.append("主体接触右边界，可能跨格或被截断")
-            if bbox[1] <= 0:
-                cell_issues.append("主体接触上边界，可能被截断")
-            if bbox[3] >= mask.height:
-                cell_issues.append("主体接触下边界，可能被截断")
-            cleaned = cut.copy()
-            cleaned.putalpha(mask)
-            subjects.append(cleaned.crop(bbox))
-        if cell_issues:
-            issues.extend(f"第 {index} 格：{message}" for message in cell_issues)
-        cells.append({
-            "index": index,
-            "valid": not cell_issues,
-            "bbox": list(bbox) if bbox else None,
-            "foreground_ratio": round(foreground_ratio, 4),
-            "issues": cell_issues,
-        })
-    valid = not issues and len(subjects) == WORDS_PER_TASK
+    subjects, cells, issues = _detect_subjects(sheet, session)
+    top_count = sum(1 for item in cells if ((item["bbox"][1] + item["bbox"][3]) / 2) < sheet.height / 2)
+    bottom_count = len(cells) - top_count
+    valid = not issues
     if valid and cutout_cache_dir:
         _save_cached_cutouts(
             Path(cutout_cache_dir).resolve(),
@@ -224,18 +289,23 @@ def validate_subject_sheet(
         "max_attempts": SUBJECT_GENERATION_MAX_ATTEMPTS,
         "issues": issues,
         "cells": cells,
+        "detected_count": len(cells),
+        "top_count": top_count,
+        "bottom_count": bottom_count,
     }
 
 
 def _extract_subjects(sheet: Image.Image, sheet_path: Path, cache_dir: Path | None) -> list[Image.Image]:
-    """按 2×5 切格抠图；同一主体图的抠图结果写入本次生产缓存，中韩拼卡共用。"""
+    """按识别位置裁切十个主体；同一主体图的结果写入本次生产缓存，中韩拼卡共用。"""
     signature = _sheet_signature(sheet_path)
     if cache_dir is not None:
         cached = _load_cached_cutouts(cache_dir, signature)
         if cached is not None:
             return cached
     session = _rembg_session()
-    subjects = [_cutout_cell(sheet.crop(grid_box), session, index) for index, grid_box in enumerate(SUBJECT_GRID_BOXES, 1)]
+    subjects, _, issues = _detect_subjects(sheet, session)
+    if issues:
+        raise CardCompositionError("；".join(issues))
     if cache_dir is not None:
         _save_cached_cutouts(cache_dir, signature, subjects)
     return subjects

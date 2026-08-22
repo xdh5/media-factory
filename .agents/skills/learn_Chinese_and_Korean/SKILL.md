@@ -81,7 +81,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 2. 自选单个英文单词主题后 `language_learning_occupy_topic(topic, learning_modes)`，只创建本次生产目录并拿到 `run_id`，不写 D1。
 3. `language_learning_build_vocabulary_prompt(topic, learning_modes)` 获取包含最近 100 天词库的 Prompt，按原样生成纯文本词表；再调用 `language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)`，由 MCP 强制校验至少 5 个新词，但暂不写库。
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
-5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走方舟）→ `language_learning_poll_task`。提交后台任务用 Python 检查十个物体是否为空或接触各自格子的边界，不设置额外留白和主体面积阈值，也不检查文字；失败时强制重新生图，最多 3 次，第三次仍失败必须报错停止。GitHub Action 会把每次被拒绝的原始主题图上传到 R2 的 `diagnostics/` 目录，并在 1 天后自动清理。
+5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走方舟）→ `language_learning_poll_task`。提交后台任务对整张图只执行一次 rembg，再用 Python 检查是否恰好识别到十个独立主体且上排五个、下排五个；通过后按上排从左到右、下排从左到右的顺序裁切，不检查固定格子边界、额外留白、主体面积或文字。失败时强制重新生图，最多 3 次，第三次仍失败必须报错停止。GitHub Action 会把每次被拒绝的原始主题图上传到 R2 的 `diagnostics/` 目录，并在 1 天后自动清理。
 6. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。
 7. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。GitHub Action 交接时必须同时保留原始主题图，上传 R2 后在清单写入 `subject_sheet_url`。
 8. 展示原始主题图和成品；确认后用 R2 清单 URL 触发 `.github/workflows/publish-from-r2.yml`。发布任务先幂等写入正式话题与本期 10 个单词，再执行中文 YouTube / Meta 与韩语 MatrixMedia 发布。

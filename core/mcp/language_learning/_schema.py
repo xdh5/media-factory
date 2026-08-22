@@ -134,12 +134,10 @@ SUBJECT_SHEET_VALIDATION_SCHEMA = {
         "issues": {"type": "array", "items": {"type": "string"}},
         "cells": {
             "type": "array",
-            "minItems": 10,
-            "maxItems": 10,
             "items": {
                 "type": "object",
                 "properties": {
-                    "index": {"type": "integer", "minimum": 1, "maximum": 10},
+                    "index": {"type": "integer", "minimum": 1},
                     "valid": {"type": "boolean"},
                     "bbox": {
                         "type": ["array", "null"],
@@ -152,8 +150,11 @@ SUBJECT_SHEET_VALIDATION_SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        "detected_count": {"type": "integer", "minimum": 0},
+        "top_count": {"type": "integer", "minimum": 0},
+        "bottom_count": {"type": "integer", "minimum": 0},
     },
-    "required": ["valid", "max_attempts", "issues", "cells"],
+    "required": ["valid", "max_attempts", "issues", "cells", "detected_count", "top_count", "bottom_count"],
     "additionalProperties": False,
 }
 COMPOSE_CARDS_INPUT_SCHEMA = {
