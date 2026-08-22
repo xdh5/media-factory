@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+from pathlib import Path
 
 
 def main() -> None:
@@ -25,6 +27,7 @@ def main() -> None:
     parser.add_argument("--topic", default="")
     parser.add_argument("--modes", default="en-zh,en-ko")
     parser.add_argument("--manifest-url", default="")
+    parser.add_argument("--target", choices=["all", "matrixmedia", "youtube", "tiktok"], default="all")
     parser.add_argument("--state-path", default="cache/github_actions/language-learning-state.json")
     parser.add_argument("--handoff-dir", default="cache/github_actions/language-learning-handoff")
     parser.add_argument("--diagnostics-dir", default="cache/github_actions/language-learning-diagnostics")
@@ -61,6 +64,10 @@ def main() -> None:
 
         result = upload_handoff(arguments.handoff_dir)
         payload = {"status": "succeeded", "r2": result["r2"]}
+        output_path = os.getenv("GITHUB_OUTPUT", "").strip()
+        if output_path:
+            with Path(output_path).open("a", encoding="utf-8") as stream:
+                stream.write(f"manifest_url={result['r2']['manifest']['url']}\n")
     elif arguments.workflow == "language_learning_diagnostics_r2":
         from .language_learning import upload_failed_subject_sheets
 
@@ -68,7 +75,7 @@ def main() -> None:
     else:
         from .publish import run as run_publish
 
-        result = run_publish(arguments.manifest_url)
+        result = run_publish(arguments.manifest_url, arguments.target)
         payload = {"status": "succeeded", "result": result}
     print(json.dumps(payload, ensure_ascii=False))
 

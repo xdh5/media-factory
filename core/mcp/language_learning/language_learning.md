@@ -77,7 +77,7 @@ language_learning_clear_run
 | `tools/vocabulary_history.py` | 最近 100 天词库、新词比例校验与历史记录 |
 | `tools/compose_fixed_cards.py` | 主体图抠图并贴到固定模板单词卡 |
 | `tools/create_vocabulary_videos.py` | 卡片 + 双语 TTS → 竖版成片 |
-| `tools/publish_vocabulary_videos.py` | 写发布清单；仅允许阿里云发布机发 YouTube / Meta |
+| `tools/publish_vocabulary_videos.py` | 写发布清单；仅允许阿里云发布机发 YouTube 与 TikTok |
 
 ## 目录
 

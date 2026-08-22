@@ -1,4 +1,4 @@
-"""语言学习成片发布：中文发 YouTube / Meta，韩语由 Agent 用矩媒 MCP 发到「韩语」。"""
+"""语言学习成片发布：中文发 YouTube，韩语由 MatrixMedia 发布到「韩语」。"""
 
 from __future__ import annotations
 
@@ -6,9 +6,6 @@ import json
 import os
 import re
 from pathlib import Path
-
-from core.tools.publish_to_meta import MetaToolError, publish_to_meta
-from core.tools.publish_to_youtube import YouTubeToolError, list_youtube_accounts, publish_to_youtube
 
 from .._constants import (
     CHINESE_YOUTUBE_CHANNEL_ID,
@@ -202,159 +199,83 @@ def _load_manifest(manifest_path: str | Path) -> dict:
 
 
 def _youtube_channels(group_name: str, youtube_account: str) -> list[dict]:
+    from core.tools.publish_to_youtube import list_youtube_accounts
+
     account = str(youtube_account or WORKFLOW_ID).strip() or WORKFLOW_ID
     accounts = list_youtube_accounts(account=account)
     if accounts:
         return accounts
     raise PublishError(
         f"YouTube 账号未配置。请在 .env 填写 {account.upper()}_YOUTUBE_CHANNEL_ID、"
-        f"{account.upper()}_YOUTUBE_CLIENT_ID、{account.upper()}_YOUTUBE_CLIENT_SECRET、"
-        f"{account.upper()}_YOUTUBE_REFRESH_TOKEN",
+        f"{account.upper()}_YOUTUBE_REFRESH_TOKEN、YOUTUBE_OAUTH_CLIENT_ID、"
+        f"YOUTUBE_OAUTH_CLIENT_SECRET",
         {"account": account, "account_group": group_name, "channel_id": CHINESE_YOUTUBE_CHANNEL_ID},
     )
 
 
+def _tiktok_accounts(group_name: str, tiktok_account: str) -> list[dict]:
+    from core.tools.publish_to_tiktok import list_tiktok_accounts
+
+    account = str(tiktok_account or WORKFLOW_ID).strip() or WORKFLOW_ID
+    accounts = list_tiktok_accounts(account=account)
+    if accounts:
+        return accounts
+    raise PublishError(
+        f"TikTok 账号未配置。请在 .env 填写 {account.upper()}_TIKTOK_ACCOUNT_ID、ZERNIO_API_KEY",
+        {"account": account, "account_group": group_name},
+    )
+
+
 def _should_publish_youtube(manifest: dict) -> bool:
-    """YouTube 已成功时只补发 Reels，避免重复上传。"""
+    """YouTube 已成功时不重复上传。"""
     if manifest.get("youtube_published") is True:
         return False
-    return str(manifest.get("status") or "") not in {"awaiting_matrixmedia", "published", "awaiting_meta"}
+    return str(manifest.get("status") or "") not in {"awaiting_matrixmedia", "published"}
 
 
-def _meta_platforms(manifest: dict) -> list[str]:
-    """按清单里已成功的平台补发，避免 Instagram 重复发。"""
-    facebook_ok = bool(manifest.get("meta_facebook_ok"))
-    instagram_ok = bool(manifest.get("meta_instagram_ok"))
-    if (
-        "meta_facebook_ok" not in manifest
-        and "meta_instagram_ok" not in manifest
-        and manifest.get("youtube_published")
-        and str(manifest.get("status") or "") == "publish_failed"
-    ):
-        instagram_ok = True
-    platforms = []
-    if not facebook_ok:
-        platforms.append("facebook")
-    if not instagram_ok:
-        platforms.append("instagram")
-    return platforms or ["facebook", "instagram"]
+def _should_publish_tiktok(manifest: dict) -> bool:
+    """TikTok 已成功时不重复提交。"""
+    return manifest.get("tiktok_published") is not True
 
 
-def _record_meta_flags(published: list[dict]) -> tuple[bool, bool]:
-    facebook_ok = True
-    instagram_ok = True
-    seen = False
-    for item in published:
-        for row in item.get("results") or []:
-            if row.get("channel") != "meta":
-                continue
-            seen = True
-            platforms = (row.get("result") or {}).get("platforms") or []
-            if not platforms:
-                facebook_ok = facebook_ok and bool(row.get("success"))
-                instagram_ok = instagram_ok and bool(row.get("success"))
-                continue
-            for platform in platforms:
-                name = str(platform.get("platform") or "")
-                ok = bool(platform.get("success"))
-                if name == "facebook":
-                    facebook_ok = facebook_ok and ok
-                elif name == "instagram":
-                    instagram_ok = instagram_ok and ok
-    return (facebook_ok if seen else False, instagram_ok if seen else False)
-
-
-def _validate_meta_video_urls(manifest: dict, platforms: list[str]) -> None:
-    """Meta 只接受生产阶段已经写入清单的公网视频 URL。"""
-    if not [name for name in platforms if name in ("facebook", "instagram")]:
-        return
-    missing = []
-    for item in manifest.get("items") or []:
-        if str(item.get("learning_mode") or "") != "en-zh":
-            continue
-        for video in item.get("videos") or []:
-            if not str(video.get("video_url") or "").strip():
-                missing.append(str(video.get("output_path") or "未知视频"))
-    if missing:
-        raise PublishError(
-            "Meta 发布清单缺少公网 video_url，禁止本地直传或重复上传 R2。"
-            "请先由生产 Workflow 上传成片并把 R2 公网地址写回发布清单",
-            {"missing_videos": missing},
-        )
-
-
-def _publish_chinese_meta(item: dict, platforms: list[str]) -> list[dict]:
-    results = []
-    selected = [name for name in platforms if name in ("facebook", "instagram")]
-    if not selected:
-        return results
-    meta_account = str(item.get("youtube_account") or WORKFLOW_ID)
-    for video in item["videos"]:
-        title = str(video.get("title") or item["title"])
-        description = _description(title, item["tags"])
-        video_url = str(video.get("video_url") or "").strip()
-        try:
-            upload = publish_to_meta(
-                title=title,
-                description=description,
-                video_url=video_url,
-                platforms=selected,
-                account=meta_account,
-            )
-            results.append({
-                "channel": "meta",
-                "video": video,
-                "success": all(row.get("success") for row in upload.get("platforms") or []),
-                "result": {**upload, "storage": {"url": video_url, "reused": True}},
-            })
-        except MetaToolError as error:
-            results.append({
-                "channel": "meta",
-                "video": video,
-                "success": False,
-                "error": error.to_dict()["error"],
-            })
-    return results
-
-
-def _publish_chinese_youtube(item: dict, *, include_youtube: bool, meta_platforms: list[str]) -> dict:
+def _publish_chinese_youtube(item: dict) -> dict:
     youtube_account = str(item.get("youtube_account") or WORKFLOW_ID)
-    channels = _youtube_channels(item["account_group"], youtube_account) if include_youtube else []
+    channels = _youtube_channels(item["account_group"], youtube_account)
     tags = _normalized_tags(item["tags"])
     language = YOUTUBE_LANGUAGE_BY_MODE["en-zh"]
     results = []
-    if include_youtube:
-        for video in item["videos"]:
-            title = str(video.get("title") or item["title"])
-            description = _description(title, item["tags"])
-            for account in channels:
-                try:
-                    upload = publish_to_youtube(
-                        account["channel_id"],
-                        video["output_path"],
-                        title,
-                        description=description,
-                        tags=tags,
-                        category_id=YOUTUBE_LANGUAGE_LEARNING_CATEGORY_ID,
-                        privacy_status="public",
-                        language=language,
-                        account=youtube_account,
-                    )
-                    results.append({"channel": "youtube", "account": account, "video": video, "success": True, "result": upload})
-                except YouTubeToolError as error:
-                    results.append({
-                        "channel": "youtube",
-                        "account": account,
-                        "video": video,
-                        "success": False,
-                        "error": error.to_dict()["error"],
-                    })
-    results.extend(_publish_chinese_meta(item, meta_platforms))
+    from core.tools.publish_to_youtube import YouTubeToolError, publish_to_youtube
+
+    for video in item["videos"]:
+        title = str(video.get("title") or item["title"])
+        description = _description(title, item["tags"])
+        for account in channels:
+            try:
+                upload = publish_to_youtube(
+                    account["channel_id"],
+                    video["output_path"],
+                    title,
+                    description=description,
+                    tags=tags,
+                    category_id=YOUTUBE_LANGUAGE_LEARNING_CATEGORY_ID,
+                    privacy_status="public",
+                    language=language,
+                    account=youtube_account,
+                )
+                results.append({"channel": "youtube", "account": account, "video": video, "success": True, "result": upload})
+            except YouTubeToolError as error:
+                results.append({
+                    "channel": "youtube",
+                    "account": account,
+                    "video": video,
+                    "success": False,
+                    "error": error.to_dict()["error"],
+                })
     return {
         "learning_mode": item["learning_mode"],
         "account_group": item["account_group"],
-        "channel": "youtube+meta" if include_youtube else "meta",
-        "youtube_published": include_youtube and all(
+        "channel": "youtube",
+        "youtube_published": all(
             row["success"] for row in results if row.get("channel") == "youtube"
         ),
         "success": all(row["success"] for row in results) if results else False,
@@ -362,30 +283,74 @@ def _publish_chinese_youtube(item: dict, *, include_youtube: bool, meta_platform
     }
 
 
-def publish_vocabulary_videos(manifest_path: str | Path, publish_confirmed: bool) -> dict:
-    """仅在阿里云发布机把中文发到 YouTube 与 Facebook/Instagram Reels。"""
-    if os.getenv("MEDIA_FACTORY_PUBLISH_HOST", "").strip().casefold() != "aliyun":
+def _publish_chinese_tiktok(item: dict) -> dict:
+    from core.tools.publish_to_tiktok import TikTokToolError, publish_to_tiktok
+
+    tiktok_account = str(item.get("tiktok_account") or item.get("youtube_account") or WORKFLOW_ID)
+    accounts = _tiktok_accounts(item["account_group"], tiktok_account)
+    results = []
+    for video in item["videos"]:
+        title = str(video.get("title") or item["title"])
+        content = _description(title, item["tags"])
+        video_url = str(video.get("video_url") or "").strip()
+        for account in accounts:
+            try:
+                upload = publish_to_tiktok(
+                    account["account_id"],
+                    video_url,
+                    content,
+                    account=tiktok_account,
+                )
+                results.append({"channel": "tiktok", "account": account, "video": video, "success": True, "result": upload})
+            except TikTokToolError as error:
+                results.append({
+                    "channel": "tiktok",
+                    "account": account,
+                    "video": video,
+                    "success": False,
+                    "error": error.to_dict()["error"],
+                })
+    return {
+        "learning_mode": item["learning_mode"],
+        "account_group": item["account_group"],
+        "channel": "tiktok",
+        "tiktok_published": all(row["success"] for row in results),
+        "success": all(row["success"] for row in results) if results else False,
+        "results": results,
+    }
+
+
+def publish_vocabulary_videos(
+    manifest_path: str | Path,
+    publish_confirmed: bool,
+    *,
+    targets: list[str] | None = None,
+) -> dict:
+    """仅在 GitHub Action 把中文视频发布到 YouTube 或 TikTok。"""
+    if os.getenv("GITHUB_ACTIONS", "").strip().casefold() != "true":
         raise PublishError(
-            "发布已与生产环境分离，只能通过 GitHub 的“阿里云发布 R2 成片”Workflow 执行",
-            {"required_host": "aliyun", "workflow": ".github/workflows/publish-from-r2.yml"},
+            "YouTube 和 TikTok 发布只能通过 GitHub Action 执行",
+            {"required_environment": "GITHUB_ACTIONS=true", "workflow": ".github/workflows/publish-from-r2.yml"},
         )
     if publish_confirmed is not True:
         raise ConfirmationRequiredError("必须先让用户看过成片并获得明确确认后再发布")
     manifest = _load_manifest(manifest_path)
-    include_youtube = _should_publish_youtube(manifest)
-    meta_platforms = _meta_platforms(manifest)
-    _validate_meta_video_urls(manifest, meta_platforms)
+    selected_targets = {str(item).strip().casefold() for item in (targets or ["youtube", "tiktok"])}
+    unknown_targets = selected_targets - {"youtube", "tiktok"}
+    if unknown_targets:
+        raise PublishError(f"不支持的官方发布目标：{sorted(unknown_targets)}")
+    include_youtube = "youtube" in selected_targets and _should_publish_youtube(manifest)
+    include_tiktok = "tiktok" in selected_targets and _should_publish_tiktok(manifest)
     published = []
     matrixmedia_items = []
     for item in manifest["items"]:
         channel = str(item.get("channel") or "")
         mode = str(item.get("learning_mode") or "")
         if mode == "en-zh" and channel == "youtube":
-            published.append(_publish_chinese_youtube(
-                item,
-                include_youtube=include_youtube,
-                meta_platforms=meta_platforms,
-            ))
+            if include_youtube:
+                published.append(_publish_chinese_youtube(item))
+            if include_tiktok:
+                published.append(_publish_chinese_tiktok(item))
             continue
         if mode == "en-ko" and channel == "matrixmedia":
             matrixmedia_items.append(item)
@@ -394,16 +359,16 @@ def publish_vocabulary_videos(manifest_path: str | Path, publish_confirmed: bool
     if not published:
         raise PublishError("发布清单里没有待发的中文视频。仅有韩语时不要调用本工具，确认后直接用矩媒 MCP 发布")
     chinese_success = all(item["success"] for item in published)
-    youtube_ok = include_youtube and all(item.get("youtube_published") for item in published)
-    if youtube_ok or not include_youtube:
+    youtube_ok = include_youtube and all(
+        item.get("youtube_published") for item in published if item.get("channel") == "youtube"
+    )
+    if "youtube" in selected_targets and youtube_ok:
         manifest["youtube_published"] = True
-    facebook_ok, instagram_ok = _record_meta_flags(published)
-    if "facebook" not in meta_platforms:
-        facebook_ok = bool(manifest.get("meta_facebook_ok"))
-    if "instagram" not in meta_platforms:
-        instagram_ok = True
-    manifest["meta_facebook_ok"] = facebook_ok
-    manifest["meta_instagram_ok"] = instagram_ok
+    tiktok_ok = include_tiktok and all(
+        item.get("tiktok_published") for item in published if item.get("channel") == "tiktok"
+    )
+    if "tiktok" in selected_targets and tiktok_ok:
+        manifest["tiktok_published"] = True
     manifest["status"] = "published" if chinese_success and not matrixmedia_items else (
         "awaiting_matrixmedia" if chinese_success else "publish_failed"
     )

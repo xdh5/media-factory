@@ -176,16 +176,18 @@ def _language_items(remote_manifest: dict, target_dir: Path) -> tuple[list[dict]
     return items, local_path
 
 
-def _publish_language(remote_manifest: dict, target_dir: Path) -> dict:
+def _publish_language(remote_manifest: dict, target_dir: Path, target: str) -> dict:
     items, local_manifest_path = _language_items(remote_manifest, target_dir)
     chinese_items = [item for item in items if item.get("learning_mode") == "en-zh"]
     matrixmedia_items = [item for item in items if item.get("channel") == "matrixmedia"]
     official_result = None
-    if chinese_items:
-        official_result = publish_vocabulary_videos(local_manifest_path, True)
+    if target in {"all", "youtube", "tiktok"} and chinese_items:
+        selected = [target] if target != "all" else ["youtube", "tiktok"]
+        official_result = publish_vocabulary_videos(local_manifest_path, True, targets=selected)
     matrixmedia_results = []
-    for item in matrixmedia_items:
-        matrixmedia_results.extend(_publish_matrixmedia_item(item, target_dir, len(matrixmedia_results)))
+    if target in {"all", "matrixmedia"}:
+        for item in matrixmedia_items:
+            matrixmedia_results.extend(_publish_matrixmedia_item(item, target_dir, len(matrixmedia_results)))
     return {"official": official_result, "matrixmedia": matrixmedia_results}
 
 
@@ -231,9 +233,15 @@ def _commit_database(remote_manifest: dict, line: str) -> dict:
     )
 
 
-def run(manifest_url: str) -> dict:
-    """从 R2 远程清单识别生产线，并统一在阿里云完成发布。"""
-    _require_aliyun_runner()
+def run(manifest_url: str, target: str = "all") -> dict:
+    """从 R2 清单识别生产线，并在目标对应的 GitHub Action Runner 发布。"""
+    selected_target = str(target or "all").strip().casefold()
+    if selected_target not in {"all", "matrixmedia", "youtube", "tiktok"}:
+        raise RuntimeError(f"不支持的发布目标：{target}")
+    if selected_target in {"all", "matrixmedia"}:
+        _require_aliyun_runner()
+    elif os.getenv("GITHUB_ACTIONS", "").strip().casefold() != "true":
+        raise RuntimeError("YouTube 和 TikTok 发布只允许在 GitHub Action 执行")
     url = str(manifest_url or "").strip()
     if not url.startswith(("https://", "http://")):
         raise RuntimeError("manifest_url 必须是 R2 的 HTTP(S) 清单地址")
@@ -246,17 +254,29 @@ def run(manifest_url: str) -> dict:
         line = "finance"
     else:
         raise RuntimeError("无法识别 R2 清单所属生产线")
-    database = _commit_database(remote_manifest, line)
+    database = _commit_database(remote_manifest, line) if selected_target in {"all", "matrixmedia"} else {
+        "skipped": True,
+        "message": "D1 已由第四步首个矩媒任务幂等写入",
+    }
     if line == "language_learning":
-        result = _publish_language(remote_manifest, target_dir)
+        result = _publish_language(remote_manifest, target_dir, selected_target)
     else:
-        result = _publish_finance(remote_manifest, target_dir)
+        result = _publish_finance(remote_manifest, target_dir) if selected_target in {"all", "matrixmedia"} else {
+            "skipped": True,
+            "message": "财经生产线不需要 YouTube 或 TikTok 发布",
+        }
     _write_summary(
-        "阿里云发布完成",
-        [("生产线", line), ("R2 清单", url), ("发布机", os.getenv("RUNNER_NAME", "未知"))],
+        "第四步发布完成",
+        [
+            ("生产线", line),
+            ("发布目标", selected_target),
+            ("R2 清单", url),
+            ("发布机", os.getenv("RUNNER_NAME", "未知")),
+        ],
     )
     return {
         "line": line,
+        "target": selected_target,
         "manifest_url": url,
         "database": database,
         "result": result,

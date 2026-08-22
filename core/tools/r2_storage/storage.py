@@ -1,4 +1,4 @@
-"""把本地文件上传到 Cloudflare R2，返回 Meta 可拉取的公开 HTTPS 地址。"""
+"""上传和删除 Cloudflare R2 公开对象。"""
 
 from __future__ import annotations
 
@@ -34,10 +34,9 @@ def _settings() -> dict:
 
 
 def _client(account_id: str, access_key: str, secret: str):
-    endpoint = f"https://{account_id}.r2.cloudflarestorage.com"
     return boto3.client(
         "s3",
-        endpoint_url=endpoint,
+        endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
         aws_access_key_id=access_key,
         aws_secret_access_key=secret,
         region_name=R2_REGION,
@@ -49,10 +48,6 @@ def _client(account_id: str, access_key: str, secret: str):
     )
 
 
-def _public_url(base: str, key: str) -> str:
-    return f"{base.rstrip('/')}/{quote(key, safe='/')}"
-
-
 def _normalize_key(object_key: str) -> str:
     key = str(object_key or "").strip().lstrip("/")
     if not key or ".." in key.split("/"):
@@ -60,20 +55,14 @@ def _normalize_key(object_key: str) -> str:
     return key
 
 
-def upload_public_file(
-    file_path: str | Path,
-    object_key: str,
-    *,
-    content_type: str = "video/mp4",
-) -> dict:
-    """上传对象并返回公开 URL。桶必须已开启公开读，Meta 才能抓取。"""
+def upload_public_file(file_path: str | Path, object_key: str, *, content_type: str = "video/mp4") -> dict:
+    """上传文件并返回公开 URL。"""
     source = Path(file_path).resolve()
     if not source.is_file():
         raise InvalidParameterError(f"要上传的文件不存在：{source}", {"parameter": "file_path"})
     key = _normalize_key(object_key)
     settings = _settings()
     client = _client(settings["R2_ACCOUNT_ID"], settings["R2_ACCESS_KEY_ID"], settings["R2_SECRET_ACCESS_KEY"])
-    size = source.stat().st_size
     try:
         client.upload_file(
             str(source),
@@ -81,29 +70,29 @@ def upload_public_file(
             key,
             ExtraArgs={"ContentType": str(content_type or "video/mp4")},
         )
-    except Exception as extra:
+    except Exception as exc:
         raise UploadError(
-            f"上传到 Cloudflare R2 失败：{extra}",
-            {"bucket": settings["R2_BUCKET"], "key": key, "fix": "请确认 API Token 对桶有写权限，且 Account ID 正确"},
-        ) from extra
+            f"上传到 Cloudflare R2 失败：{exc}",
+            {"bucket": settings["R2_BUCKET"], "key": key, "fix": "请确认 R2 密钥有目标桶写权限"},
+        ) from exc
     return {
-        "url": _public_url(settings["R2_PUBLIC_BASE_URL"], key),
+        "url": f"{settings['R2_PUBLIC_BASE_URL'].rstrip('/')}/{quote(key, safe='/')}",
         "key": key,
         "bucket": settings["R2_BUCKET"],
-        "size": size,
+        "size": source.stat().st_size,
     }
 
 
 def delete_public_file(object_key: str) -> dict:
-    """删除 R2 上的公开对象；对象不存在也视为成功。"""
+    """删除 R2 对象；对象不存在也视为成功。"""
     key = _normalize_key(object_key)
     settings = _settings()
     client = _client(settings["R2_ACCOUNT_ID"], settings["R2_ACCESS_KEY_ID"], settings["R2_SECRET_ACCESS_KEY"])
     try:
         client.delete_object(Bucket=settings["R2_BUCKET"], Key=key)
-    except Exception as extra:
+    except Exception as exc:
         raise UploadError(
-            f"从 Cloudflare R2 删除失败：{extra}",
+            f"从 Cloudflare R2 删除失败：{exc}",
             {"bucket": settings["R2_BUCKET"], "key": key},
-        ) from extra
+        ) from exc
     return {"deleted": True, "key": key, "bucket": settings["R2_BUCKET"]}

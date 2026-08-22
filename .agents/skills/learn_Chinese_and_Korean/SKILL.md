@@ -40,8 +40,8 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 }
 ```
 
-- YouTube / Meta Reels 使用 `.env` 里 `LANGUAGE_LEARNING_*`（`youtube_account` 即账号前缀）
-- Meta 只能复用生产 Workflow 已写入发布清单的 R2 公网 `video_url`；缺少 URL 必须报错，禁止本地直传或在发布阶段重复上传 R2
+- YouTube 使用项目共用的 `YOUTUBE_OAUTH_CLIENT_ID`、`YOUTUBE_OAUTH_CLIENT_SECRET`，并使用 `.env` 里按频道隔离的 `LANGUAGE_LEARNING_YOUTUBE_*`（`youtube_account` 即账号前缀）
+- TikTok 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用共用的 `ZERNIO_API_KEY` 与 `LANGUAGE_LEARNING_TIKTOK_*`
 - 展示给用户看的账号组名：`Daily Chinese Learning`
 
 **韩语 `en-ko`**
@@ -86,7 +86,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问）→ `language_learning_poll_task`。提交后台任务先用千问视觉识别统一纯色背景，检查是否恰好十个主体、上排五个、下排五个且无文字，并返回按上排从左到右、下排从左到右排序的十个保守边界框；千问框必须四周保留背景安全边距。通过后 Python 从画布边缘估计背景实际 RGB，在整张图中全局删除同色和近似色，再严格按千问返回的框切出并紧裁主体，不额外扩展边界。失败时强制重新生图，最多 3 次，第三次仍失败必须报错停止。GitHub Action 会把每次被拒绝的原始主题图上传到 R2 的 `diagnostics/` 目录，并在 1 天后自动清理。
 6. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例，统一缩放到固定图片区域的完整高度并水平居中。
 7. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。GitHub Action 交接时必须同时保留原始主题图，上传 R2 后在清单写入 `subject_sheet_url`。
-8. 展示原始主题图和成品；确认后用 R2 清单 URL 触发 `.github/workflows/publish-from-r2.yml`。发布任务先幂等写入正式话题与本期 10 个单词，再执行中文 YouTube / Meta 与韩语 MatrixMedia 发布。
+8. GitHub Action 第三步上传 R2 成功后，直接把清单 URL 交给第四步：先在阿里云自托管 Runner 逐条发布韩语 MatrixMedia，再依次发布中文 YouTube 和 TikTok。第四步开始时幂等写入正式话题与本期 10 个单词。
 9. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询

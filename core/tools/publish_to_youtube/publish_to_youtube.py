@@ -1,4 +1,4 @@
-"""通过 YouTube Data API 发布视频；凭据按账号前缀从 .env 读取，可配置多个号。"""
+"""通过 YouTube Data API 发布视频；OAuth 客户端共用，频道凭据按账号前缀隔离。"""
 
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ from ._constants import (
     UPLOAD_CHUNK_SIZE,
     YOUTUBE_CHANNEL_ID_SUFFIX,
     YOUTUBE_CHANNEL_TITLE_SUFFIX,
-    YOUTUBE_CLIENT_ID_SUFFIX,
-    YOUTUBE_CLIENT_SECRET_SUFFIX,
+    YOUTUBE_OAUTH_CLIENT_ID_ENV,
+    YOUTUBE_OAUTH_CLIENT_SECRET_ENV,
     YOUTUBE_PRIVACY_STATUSES,
     YOUTUBE_REFRESH_TOKEN_SUFFIX,
     YOUTUBE_REQUIRED_SUFFIXES,
@@ -60,6 +60,8 @@ def _account_from_prefix(prefix: str) -> str:
 
 def _youtube_settings(prefix: str) -> dict[str, str] | None:
     values = {suffix: _env(prefix + suffix) for suffix in YOUTUBE_REQUIRED_SUFFIXES}
+    values[YOUTUBE_OAUTH_CLIENT_ID_ENV] = _env(YOUTUBE_OAUTH_CLIENT_ID_ENV)
+    values[YOUTUBE_OAUTH_CLIENT_SECRET_ENV] = _env(YOUTUBE_OAUTH_CLIENT_SECRET_ENV)
     if any(not value for value in values.values()):
         return None
     values[YOUTUBE_TOKEN_SUFFIX] = _env(prefix + YOUTUBE_TOKEN_SUFFIX)
@@ -109,7 +111,8 @@ def _load_credentials(channel_id: str, account: str | None = None) -> Credential
     if not matched:
         raise AccountNotFoundError(
             f"找不到 YouTube 频道 {normalized}。请在 .env 按账号前缀填写 "
-            f"{{ACCOUNT}}_YOUTUBE_CHANNEL_ID / CLIENT_ID / CLIENT_SECRET / REFRESH_TOKEN",
+            f"{{ACCOUNT}}_YOUTUBE_CHANNEL_ID / {{ACCOUNT}}_YOUTUBE_REFRESH_TOKEN，"
+            f"并填写共用的 {YOUTUBE_OAUTH_CLIENT_ID_ENV} / {YOUTUBE_OAUTH_CLIENT_SECRET_ENV}",
             {"channel_id": normalized, "account": account},
         )
     prefix = matched[0]["account"].upper()
@@ -123,8 +126,8 @@ def _load_credentials(channel_id: str, account: str | None = None) -> Credential
         token=settings[YOUTUBE_TOKEN_SUFFIX] or None,
         refresh_token=settings[YOUTUBE_REFRESH_TOKEN_SUFFIX],
         token_uri=YOUTUBE_TOKEN_URI,
-        client_id=settings[YOUTUBE_CLIENT_ID_SUFFIX],
-        client_secret=settings[YOUTUBE_CLIENT_SECRET_SUFFIX],
+        client_id=settings[YOUTUBE_OAUTH_CLIENT_ID_ENV],
+        client_secret=settings[YOUTUBE_OAUTH_CLIENT_SECRET_ENV],
         scopes=YOUTUBE_SCOPES,
     )
     try:
@@ -160,10 +163,10 @@ def publish_to_youtube(
     on_progress: Callable[[float, str], None] | None = None,
 ) -> dict:
     """上传单个视频，可选设置封面和字幕。"""
-    if os.getenv("MEDIA_FACTORY_PUBLISH_HOST", "").strip().casefold() != "aliyun":
+    if os.getenv("GITHUB_ACTIONS", "").strip().casefold() != "true":
         raise InvalidParameterError(
-            "YouTube 发布只能通过阿里云发布 Workflow 执行",
-            {"required_host": "aliyun", "workflow": ".github/workflows/publish-from-r2.yml"},
+            "YouTube 发布只能通过 GitHub Action 执行",
+            {"required_environment": "GITHUB_ACTIONS=true", "workflow": ".github/workflows/publish-from-r2.yml"},
         )
     video = Path(video_path).resolve()
     if not video.is_file():

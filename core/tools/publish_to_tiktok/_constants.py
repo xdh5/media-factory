@@ -1,0 +1,23 @@
+"""Zernio TikTok 发布常量。"""
+
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+ZERNIO_API_BASE_URL = "https://zernio.com/api/v1"
+ZERNIO_API_KEY_ENV = "ZERNIO_API_KEY"
+ZERNIO_LEGACY_API_KEY_ENV = "zernio_api_key"
+TIKTOK_ACCOUNT_ID_SUFFIX = "_TIKTOK_ACCOUNT_ID"
+TIKTOK_ACCOUNT_TITLE_SUFFIX = "_TIKTOK_ACCOUNT_TITLE"
+TIKTOK_USERNAME_SUFFIX = "_TIKTOK_USERNAME"
+TIKTOK_PRIVACY_LEVEL = "PUBLIC_TO_EVERYONE"
+TIKTOK_REQUEST_TIMEOUT_SECONDS = 120
+ACCOUNT_ID_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
+
+
+def load_project_env() -> None:
+    for candidate in Path(__file__).resolve().parents:
+        if any((candidate / name).is_file() for name in ("AGENTS.md", "agents.md")):
+            load_dotenv(candidate / ".env", override=True)
+            return
+    load_dotenv(override=True)

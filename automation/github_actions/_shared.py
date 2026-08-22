@@ -10,7 +10,7 @@ from pathlib import Path
 
 import boto3
 
-from core.tools.publish_to_meta import upload_public_file
+from core.tools.r2_storage import upload_public_file
 from core.tools.qwen_text import generate_text
 
 
@@ -85,7 +85,7 @@ def _path_key(value: str | Path) -> str:
 
 
 def _attach_public_video_urls(manifest_path: str | Path, uploaded: list[dict]) -> dict:
-    """把生产阶段已有的 R2 公网地址写回发布清单，供 Meta 直接复用。"""
+    """把生产阶段已有的 R2 公网地址写回发布清单。"""
     path = Path(manifest_path).resolve()
     payload = json.loads(path.read_text(encoding="utf-8"))
     by_path = {
