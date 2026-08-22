@@ -26,5 +26,5 @@ class DuplicateTopicError(TopicDedupError):
     code = "DUPLICATE_TOPIC"
 
 
-class TopicDatabaseError(TopicDedupError):
-    code = "TOPIC_DATABASE_ERROR"
+class TopicDataServiceError(TopicDedupError):
+    code = "TOPIC_DATA_SERVICE_ERROR"

@@ -22,7 +22,7 @@ IMAGE_GENERATION_ERROR_SCHEMA = {
                     "enum": [
                         "INVALID_PARAMETER", "STYLE_NOT_FOUND", "REFERENCE_IMAGE_ERROR",
                         "AI_CONFIGURATION_ERROR", "AI_GENERATION_FAILED", "AGENT_IMAGE_TASK_ERROR",
-                        "IMAGE_LIBRARY_DATABASE_ERROR", "IMAGE_LIBRARY_EMPTY",
+                        "IMAGE_LIBRARY_DATA_ERROR", "IMAGE_LIBRARY_EMPTY",
                     ],
                 },
                 "message": {"type": "string"},
@@ -131,7 +131,6 @@ LIST_LOCAL_IMAGES_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "line": {"type": "string", "minLength": 1, "description": "业务线 id，如 finance"},
-        "database_path": {"type": "string"},
     },
     "required": ["line"],
     "additionalProperties": False,

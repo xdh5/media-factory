@@ -1,4 +1,4 @@
-"""文生图 MCP 内部编排模块。"""
+"""财经 MCP 内部编排模块。"""
 
 from .assemble_finance_video import finish_finance_video
 from .parse_metadata import parse_metadata

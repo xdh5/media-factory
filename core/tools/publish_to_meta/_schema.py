@@ -5,8 +5,7 @@ from ._constants import META_PLATFORMS
 PUBLISH_TO_META_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "video_path": {"type": "string", "minLength": 1},
-        "video_url": {"type": "string", "minLength": 8},
+        "video_url": {"type": "string", "minLength": 9, "pattern": "^https://"},
         "title": {"type": "string", "minLength": 1, "maxLength": 2200},
         "account": {"type": "string", "minLength": 1, "description": "账号标识，对应 .env 前缀，如 language_learning"},
         "description": {"type": "string"},
@@ -16,7 +15,7 @@ PUBLISH_TO_META_INPUT_SCHEMA = {
             "items": {"type": "string", "enum": list(META_PLATFORMS)},
         },
     },
-    "required": ["title"],
+    "required": ["video_url", "title"],
     "additionalProperties": False,
 }
 
@@ -37,6 +36,7 @@ PUBLISH_TO_META_OUTPUT_SCHEMA = {
     "properties": {
         "title": {"type": "string"},
         "account": {"type": "string"},
+        "video_url": {"type": "string"},
         "platforms": {
             "type": "array",
             "items": {
@@ -52,7 +52,7 @@ PUBLISH_TO_META_OUTPUT_SCHEMA = {
             },
         },
     },
-    "required": ["title", "platforms"],
+    "required": ["title", "video_url", "platforms"],
     "additionalProperties": False,
 }
 

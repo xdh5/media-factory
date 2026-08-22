@@ -1,8 +1,6 @@
 """以固定单词卡、双语配音生成竖版词汇视频。"""
 
 import json
-import os
-import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -19,47 +17,6 @@ from .._errors import VocabularyVideoError
 from .publish_vocabulary_videos import build_video_title
 
 VIDEO_SIZE = f"{CARD_CANVAS_SIZE[0]}x{CARD_CANVAS_SIZE[1]}"
-
-
-def _user_desktop() -> Path:
-    """解析当前用户桌面目录（含 OneDrive 重定向）。"""
-    if os.name == "nt":
-        try:
-            import ctypes
-
-            buffer = ctypes.create_unicode_buffer(260)
-            status = ctypes.windll.shell32.SHGetFolderPathW(None, 0x0010, None, 0, buffer)
-            if status == 0:
-                path = Path(buffer.value)
-                if path.is_dir():
-                    return path
-        except Exception:
-            pass
-    for candidate in (Path.home() / "Desktop", Path.home() / "桌面"):
-        if candidate.is_dir():
-            return candidate
-    raise VocabularyVideoError("找不到桌面文件夹，无法拷贝成片。请确认当前用户有 Desktop 或「桌面」目录")
-
-
-def _copy_outputs_to_desktop(results: list[dict]) -> list[str]:
-    """中文、韩语成片都拷到桌面；文件名冲突时加上语言方向后缀。"""
-    desktop = _user_desktop()
-    copies = []
-    used_names: set[str] = set()
-    for video in results:
-        mode = str(video.get("learning_mode") or "video").strip() or "video"
-        for path_text in video.get("output_paths") or []:
-            source = Path(path_text).resolve()
-            if not source.is_file():
-                raise VocabularyVideoError(f"成片不存在，无法拷到桌面：{source}")
-            dest_name = source.name
-            if dest_name in used_names:
-                dest_name = f"{source.stem}-{mode}{source.suffix}"
-            used_names.add(dest_name)
-            destination = desktop / dest_name
-            shutil.copy2(source, destination)
-            copies.append(str(destination))
-    return copies
 
 
 def _items(words: list[dict]) -> list[dict]:
@@ -226,14 +183,11 @@ def create_vocabulary_videos(
         for future in as_completed(futures):
             results_by_mode[futures[future]] = future.result()
     results = [results_by_mode[mode] for mode in modes]
-    desktop_copies = _copy_outputs_to_desktop(results)
     return {
         "topic": str(topic).strip(),
         "run_id": run_id,
         "cache_dir": str(cache_root),
         "output_dir": str(output_root),
-        "desktop_dir": str(_user_desktop()),
-        "desktop_copies": desktop_copies,
         "learning_modes": modes,
         "language_pause": language_pause,
         "word_pause": word_pause,

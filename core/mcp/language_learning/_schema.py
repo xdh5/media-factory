@@ -37,7 +37,7 @@ PUBLISH_CONFIG_SCHEMA = {
 
 GET_TOPICS_INPUT_SCHEMA = {
     "type": "object",
-    "properties": {"database_path": {"type": "string", "minLength": 1}},
+    "properties": {},
     "additionalProperties": False,
 }
 OCCUPY_TOPIC_INPUT_SCHEMA = {
@@ -45,12 +45,21 @@ OCCUPY_TOPIC_INPUT_SCHEMA = {
     "properties": {
         "topic": {"type": "string", "minLength": 1, "maxLength": 200},
         "learning_modes": LEARNING_MODES_SCHEMA,
-        "database_path": {"type": "string", "minLength": 1},
     },
     "required": ["topic", "learning_modes"],
     "additionalProperties": False,
 }
-PARSE_VOCABULARY_INPUT_SCHEMA = {"type": "object", "properties": {"response_text": {"type": "string", "minLength": 1, "maxLength": 20000}, "learning_modes": LEARNING_MODES_SCHEMA}, "required": ["response_text", "learning_modes"], "additionalProperties": False}
+PARSE_VOCABULARY_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "response_text": {"type": "string", "minLength": 1, "maxLength": 20000},
+        "learning_modes": LEARNING_MODES_SCHEMA,
+        "topic": {"type": "string", "minLength": 1, "maxLength": 200},
+        "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
+    },
+    "required": ["response_text", "learning_modes", "topic", "run_id"],
+    "additionalProperties": False,
+}
 BUILD_VOCABULARY_PROMPT_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -192,4 +201,4 @@ TASK_POLL_INPUT_SCHEMA = {
     "required": ["task_path"],
     "additionalProperties": False,
 }
-LANGUAGE_LEARNING_ERROR_SCHEMA = {"type": "object", "properties": {"error": {"type": "object", "properties": {"code": {"type": "string", "enum": ["LANGUAGE_LEARNING_ERROR", "INVALID_VOCABULARY", "CARD_COMPOSITION_ERROR", "VOCABULARY_VIDEO_ERROR", "CONFIRMATION_REQUIRED", "PUBLISH_ERROR"]}, "message": {"type": "string"}, "details": {"type": "object"}}, "required": ["code", "message", "details"]}}, "required": ["error"]}
+LANGUAGE_LEARNING_ERROR_SCHEMA = {"type": "object", "properties": {"error": {"type": "object", "properties": {"code": {"type": "string", "enum": ["LANGUAGE_LEARNING_ERROR", "INVALID_VOCABULARY", "VOCABULARY_REUSE_LIMIT", "VOCABULARY_HISTORY_ERROR", "CARD_COMPOSITION_ERROR", "VOCABULARY_VIDEO_ERROR", "CONFIRMATION_REQUIRED", "PUBLISH_ERROR", "TASK_NOT_FOUND"]}, "message": {"type": "string"}, "details": {"type": "object"}}, "required": ["code", "message", "details"]}}, "required": ["error"]}

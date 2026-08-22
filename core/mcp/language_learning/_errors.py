@@ -19,6 +19,14 @@ class InvalidVocabularyError(LanguageLearningError):
     code = "INVALID_VOCABULARY"
 
 
+class VocabularyReuseError(InvalidVocabularyError):
+    code = "VOCABULARY_REUSE_LIMIT"
+
+
+class VocabularyHistoryError(LanguageLearningError):
+    code = "VOCABULARY_HISTORY_ERROR"
+
+
 class CardCompositionError(LanguageLearningError):
     code = "CARD_COMPOSITION_ERROR"
 

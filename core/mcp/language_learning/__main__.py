@@ -22,19 +22,20 @@ from core.tools.generate_image import (
     save_agent_image_tasks,
     submit_agent_image_tasks,
 )
-from core.tools.topic_dedup import DuplicateTopicError, get_topic, update
+from core.tools.topic_dedup import TopicDedupError, get_topic, update
 
 from core.mcp._task_runner import TaskNotFoundError as RunnerTaskNotFoundError
 from core.mcp._task_runner import poll_task as runner_poll_task
 from core.mcp._task_runner import submit_task as runner_submit_task
 
 from ._constants import (
-    DEFAULT_DATABASE_PATH,
     SUBJECT_CUTOUT_CACHE_DIR_NAME,
     SUBJECT_SHEET_IMAGE_ID,
     SUBJECT_SHEET_RADIO,
     SUBJECT_SHEET_SIZE_TEXT,
+    MINIMUM_NEW_WORDS,
     TOPIC_DEDUPLICATION_DAYS,
+    WORD_HISTORY_DAYS,
     WORKFLOW_ID,
     production_dirs,
     production_run_id,
@@ -46,8 +47,10 @@ from .tools import (
     build_vocabulary_prompt,
     compose_fixed_cards,
     create_vocabulary_videos,
+    list_recent_words,
     parse_vocabulary_response,
     publish_vocabulary_videos,
+    validate_and_record_words,
 )
 
 mcp = FastMCP(
@@ -55,6 +58,7 @@ mcp = FastMCP(
     instructions=(
         "语言学习视频编排 MCP。Prompt 由本 MCP 工具返回；TTS 音色、发布账号组等固定参数以 Skill "
         "learn_Chinese_and_Korean 为准，Agent 必须按 Skill 传参。"
+        "每期 10 个英语单词中至少 5 个必须未在最近 100 天使用；解析合格后必须记录全部单词。"
         "耗时步骤（方舟生图、拼卡、出片、发布）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
         "禁止绕过 MCP 自行读写内部文件。"
     ),
@@ -66,7 +70,7 @@ def _map_error(exc: Exception) -> LanguageLearningError:
         return exc
     if isinstance(exc, ImageGenerationError):
         return LanguageLearningError(exc.message, exc.details)
-    if isinstance(exc, DuplicateTopicError):
+    if isinstance(exc, TopicDedupError):
         return LanguageLearningError(str(exc), exc.details)
     if isinstance(exc, ClearCacheConfirmationRequiredError):
         return ConfirmationRequiredError(str(exc))
@@ -102,33 +106,37 @@ def _run_ark_fallback(context_path: str, failures: list, images: list) -> None:
 
 
 @mcp.tool()
-def language_learning_get_topics(database_path: str | None = None) -> dict:
+def language_learning_get_topics() -> dict:
     """返回最近 30 天已占用主题。"""
-    database = Path(database_path or DEFAULT_DATABASE_PATH).resolve()
-    recent = get_topic(database, WORKFLOW_ID, TOPIC_DEDUPLICATION_DAYS)
-    return {
-        "workflow": WORKFLOW_ID,
-        "deduplication_days": TOPIC_DEDUPLICATION_DAYS,
-        "recent_topics": [item["topic"] for item in recent],
-        "supported_learning_modes": ["en-zh", "en-ko"],
-    }
+    try:
+        recent = get_topic(WORKFLOW_ID, TOPIC_DEDUPLICATION_DAYS)
+        recent_words = list_recent_words()
+        return {
+            "workflow": WORKFLOW_ID,
+            "deduplication_days": TOPIC_DEDUPLICATION_DAYS,
+            "recent_topics": [item["topic"] for item in recent],
+            "recent_words": recent_words,
+            "word_history_days": WORD_HISTORY_DAYS,
+            "minimum_new_words": MINIMUM_NEW_WORDS,
+            "supported_learning_modes": ["en-zh", "en-ko"],
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
 
 
 @mcp.tool()
 def language_learning_occupy_topic(
     topic: str,
     learning_modes: list[str],
-    database_path: str | None = None,
 ) -> dict:
     """占用主题并返回 run_id 与生产目录。"""
-    database = Path(database_path or DEFAULT_DATABASE_PATH).resolve()
     modes = [str(item).strip() for item in learning_modes if str(item).strip()]
     if not modes:
         raise LanguageLearningError("learning_modes 不能为空")
     try:
-        record = update(database, WORKFLOW_ID, topic, TOPIC_DEDUPLICATION_DAYS)
-    except DuplicateTopicError as exc:
-        raise LanguageLearningError(str(exc), exc.details) from exc
+        record = update(WORKFLOW_ID, topic, TOPIC_DEDUPLICATION_DAYS)
+    except Exception as exc:
+        raise _map_error(exc) from exc
     run_id = production_run_id(record["id"])
     cache_root, output_root = production_dirs(run_id)
     cache_root.mkdir(parents=True, exist_ok=True)
@@ -144,19 +152,33 @@ def language_learning_occupy_topic(
 
 
 @mcp.tool()
-def language_learning_build_vocabulary_prompt(topic: str, learning_modes: list[str]) -> dict:
+def language_learning_build_vocabulary_prompt(
+    topic: str,
+    learning_modes: list[str],
+) -> dict:
     """返回词表生成 Prompt；Agent 按原样生成纯文本后交给 parse_vocabulary_response。"""
     try:
-        return build_vocabulary_prompt(topic, learning_modes)
+        return build_vocabulary_prompt(topic, learning_modes, list_recent_words())
     except Exception as exc:
         raise _map_error(exc) from exc
 
 
 @mcp.tool()
-def language_learning_parse_vocabulary_response(response_text: str, learning_modes: list[str]) -> dict:
-    """严格解析 Agent 按 MCP Prompt 生成的词表。"""
+def language_learning_parse_vocabulary_response(
+    response_text: str,
+    learning_modes: list[str],
+    topic: str,
+    run_id: str,
+) -> dict:
+    """严格解析词表，校验最近 100 天新词比例，合格后记录全部单词。"""
     try:
-        return parse_vocabulary_response(response_text, learning_modes)
+        parsed = parse_vocabulary_response(response_text, learning_modes)
+        history = validate_and_record_words(
+            run_id=run_id,
+            topic=topic,
+            words_by_mode=parsed,
+        )
+        return {**parsed, "word_history": history}
     except Exception as exc:
         raise _map_error(exc) from exc
 

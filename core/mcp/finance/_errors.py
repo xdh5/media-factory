@@ -1,8 +1,8 @@
 """财经 MCP 错误定义。"""
 
 
-class Text2ImageError(Exception):
-    code = "TEXT2IMAGE_ERROR"
+class FinanceError(Exception):
+    code = "FINANCE_ERROR"
 
     def __init__(self, message: str, details: dict | None = None):
         super().__init__(message)
@@ -13,21 +13,21 @@ class Text2ImageError(Exception):
         return {"error": {"code": self.code, "message": self.message, "details": self.details}}
 
 
-class AgentOutputFormatError(Text2ImageError):
+class AgentOutputFormatError(FinanceError):
     code = "AGENT_OUTPUT_FORMAT_ERROR"
 
 
-class WorkflowStepError(Text2ImageError):
+class WorkflowStepError(FinanceError):
     code = "WORKFLOW_STEP_ERROR"
 
 
-class ConfirmationRequiredError(Text2ImageError):
+class ConfirmationRequiredError(FinanceError):
     code = "CONFIRMATION_REQUIRED"
 
 
-class DraftNotFoundError(Text2ImageError):
+class DraftNotFoundError(FinanceError):
     code = "DRAFT_NOT_FOUND"
 
 
-class TaskNotFoundError(Text2ImageError):
+class TaskNotFoundError(FinanceError):
     code = "TASK_NOT_FOUND"

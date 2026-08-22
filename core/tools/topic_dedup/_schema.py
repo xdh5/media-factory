@@ -7,23 +7,21 @@ from ._constants import DEFAULT_DEDUPLICATION_DAYS, SUPPORTED_TOPIC_STATUSES
 GET_TOPIC_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "database_path": {"type": "string"},
         "workflow": {"type": "string", "minLength": 1},
         "days": {"type": "integer", "minimum": 1, "default": DEFAULT_DEDUPLICATION_DAYS},
     },
-    "required": ["database_path", "workflow"],
+    "required": ["workflow"],
     "additionalProperties": False,
 }
 
 UPDATE_TOPIC_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "database_path": {"type": "string"},
         "workflow": {"type": "string", "minLength": 1},
         "topic": {"type": "string", "minLength": 1},
         "days": {"type": "integer", "minimum": 1, "default": DEFAULT_DEDUPLICATION_DAYS},
     },
-    "required": ["database_path", "workflow", "topic"],
+    "required": ["workflow", "topic"],
     "additionalProperties": False,
 }
 
@@ -57,7 +55,7 @@ TOPIC_DEDUP_ERROR_SCHEMA = {
             "properties": {
                 "code": {
                     "type": "string",
-                    "enum": ["INVALID_PARAMETER", "DUPLICATE_TOPIC", "TOPIC_DATABASE_ERROR"],
+                    "enum": ["INVALID_PARAMETER", "DUPLICATE_TOPIC", "TOPIC_DATA_SERVICE_ERROR"],
                 },
                 "message": {"type": "string"},
                 "details": {"type": "object"},

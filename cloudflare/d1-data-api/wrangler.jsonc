@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "media-factory-data-api",
+  "main": "src/index.mjs",
+  "compatibility_date": "2025-08-21",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "media-factory",
+      "database_id": "a9d3c3fd-9c6b-44b3-8327-a5ff8f673e32",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

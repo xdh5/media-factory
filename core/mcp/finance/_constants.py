@@ -1,8 +1,8 @@
-"""文生图 MCP 技术常量（业务 Prompt 与参数见各 Skill）。"""
+"""财经 MCP 技术常量（业务 Prompt 与参数见财经 Skill）。"""
 
 from pathlib import Path
 
-MCP_ID = "text_to_image"
+MCP_ID = "finance"
 DRAFT_FILE_NAME = "draft.json"
 STORYBOARD_CONTEXT_FILE_NAME = "storyboard-context.json"
 STORYBOARD_TEXT_FILE_NAME = "storyboard.txt"
@@ -28,7 +28,6 @@ _PROJECT_ROOT = _project_root()
 PROJECT_DATA_ROOT = _PROJECT_ROOT / "data"
 PROJECT_CACHE_ROOT = _PROJECT_ROOT / "cache"
 PROJECT_OUTPUT_ROOT = _PROJECT_ROOT / "outputs"
-DEFAULT_DATABASE_PATH = PROJECT_DATA_ROOT / "media_factory.sqlite3"
 
 
 def production_run_id(record_id: int) -> str:

@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from core.tools.publish_to_meta import MetaToolError, publish_to_meta, upload_public_file
+from core.tools.publish_to_meta import MetaToolError, publish_to_meta
 from core.tools.publish_to_youtube import YouTubeToolError, list_youtube_accounts, publish_to_youtube
 
 from .._constants import (
@@ -249,26 +249,40 @@ def _record_meta_flags(published: list[dict]) -> tuple[bool, bool]:
     return (facebook_ok if seen else False, instagram_ok if seen else False)
 
 
-def _publish_chinese_meta(item: dict, run_id: str, platforms: list[str]) -> list[dict]:
+def _validate_meta_video_urls(manifest: dict, platforms: list[str]) -> None:
+    """Meta 只接受生产阶段已经写入清单的公网视频 URL。"""
+    if not [name for name in platforms if name in ("facebook", "instagram")]:
+        return
+    missing = []
+    for item in manifest.get("items") or []:
+        if str(item.get("learning_mode") or "") != "en-zh":
+            continue
+        for video in item.get("videos") or []:
+            if not str(video.get("video_url") or "").strip():
+                missing.append(str(video.get("output_path") or "未知视频"))
+    if missing:
+        raise PublishError(
+            "Meta 发布清单缺少公网 video_url，禁止本地直传或重复上传 R2。"
+            "请先由生产 Workflow 上传成片并把 R2 公网地址写回发布清单",
+            {"missing_videos": missing},
+        )
+
+
+def _publish_chinese_meta(item: dict, platforms: list[str]) -> list[dict]:
     results = []
-    folder = str(run_id or "run").strip() or "run"
     selected = [name for name in platforms if name in ("facebook", "instagram")]
     if not selected:
         return results
     meta_account = str(item.get("youtube_account") or WORKFLOW_ID)
-    for index, video in enumerate(item["videos"], 1):
+    for video in item["videos"]:
         title = str(video.get("title") or item["title"])
         description = _description(title, item["tags"])
+        video_url = str(video.get("video_url") or "").strip()
         try:
-            hosted = upload_public_file(
-                video["output_path"],
-                f"language_learning/{folder}/part-{index:02d}.mp4",
-            )
             upload = publish_to_meta(
-                video["output_path"],
-                title,
+                title=title,
                 description=description,
-                video_url=hosted["url"],
+                video_url=video_url,
                 platforms=selected,
                 account=meta_account,
             )
@@ -276,7 +290,7 @@ def _publish_chinese_meta(item: dict, run_id: str, platforms: list[str]) -> list
                 "channel": "meta",
                 "video": video,
                 "success": all(row.get("success") for row in upload.get("platforms") or []),
-                "result": {**upload, "storage": hosted},
+                "result": {**upload, "storage": {"url": video_url, "reused": True}},
             })
         except MetaToolError as error:
             results.append({
@@ -288,7 +302,7 @@ def _publish_chinese_meta(item: dict, run_id: str, platforms: list[str]) -> list
     return results
 
 
-def _publish_chinese_youtube(item: dict, *, include_youtube: bool, run_id: str, meta_platforms: list[str]) -> dict:
+def _publish_chinese_youtube(item: dict, *, include_youtube: bool, meta_platforms: list[str]) -> dict:
     youtube_account = str(item.get("youtube_account") or WORKFLOW_ID)
     channels = _youtube_channels(item["account_group"], youtube_account) if include_youtube else []
     tags = _normalized_tags(item["tags"])
@@ -320,7 +334,7 @@ def _publish_chinese_youtube(item: dict, *, include_youtube: bool, run_id: str, 
                         "success": False,
                         "error": error.to_dict()["error"],
                     })
-    results.extend(_publish_chinese_meta(item, run_id, meta_platforms))
+    results.extend(_publish_chinese_meta(item, meta_platforms))
     return {
         "learning_mode": item["learning_mode"],
         "account_group": item["account_group"],
@@ -340,6 +354,7 @@ def publish_vocabulary_videos(manifest_path: str | Path, publish_confirmed: bool
     manifest = _load_manifest(manifest_path)
     include_youtube = _should_publish_youtube(manifest)
     meta_platforms = _meta_platforms(manifest)
+    _validate_meta_video_urls(manifest, meta_platforms)
     published = []
     matrixmedia_items = []
     for item in manifest["items"]:
@@ -349,7 +364,6 @@ def publish_vocabulary_videos(manifest_path: str | Path, publish_confirmed: bool
             published.append(_publish_chinese_youtube(
                 item,
                 include_youtube=include_youtube,
-                run_id=str(manifest.get("run_id") or "run"),
                 meta_platforms=meta_platforms,
             ))
             continue

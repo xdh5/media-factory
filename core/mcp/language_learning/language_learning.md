@@ -9,6 +9,7 @@ TTS、发布账号组与完整流程见 `.agents/skills/learn_Chinese_and_Korean
 ```
 language_learning_get_topics
 └─ topic_dedup.get_topic
+└─ tools.vocabulary_history.list_recent_words（最近 100 天）
 
 language_learning_occupy_topic(topic, learning_modes)
 └─ topic_dedup.update
@@ -16,13 +17,15 @@ language_learning_occupy_topic(topic, learning_modes)
 
 language_learning_build_vocabulary_prompt(topic, learning_modes)
 └─ tools.vocabulary_prompt.build_vocabulary_prompt
+└─ tools.vocabulary_history.list_recent_words
    └─ prompts/vocabulary-user.md
 
 [Agent 按 user_prompt 写词表]
 
-language_learning_parse_vocabulary_response
+language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)
 └─ tools.vocabulary_prompt.parse_vocabulary_response
-   └─ 格式校验
+└─ tools.vocabulary_history.validate_and_record_words
+   └─ 格式校验后要求 10 个单词中至少 5 个不在最近 100 天词库，再记录全部 10 个单词
 
 language_learning_prepare_images
 └─ tools.vocabulary_prompt.build_subject_sheet_prompt
@@ -71,6 +74,7 @@ language_learning_clear_run
 | 文件 | 职责 |
 | --- | --- |
 | `tools/vocabulary_prompt.py` | 词表 / 主体图 Prompt 生成与词表解析 |
+| `tools/vocabulary_history.py` | 最近 100 天词库、新词比例校验与历史记录 |
 | `tools/compose_fixed_cards.py` | 主体图抠图并贴到固定模板单词卡 |
 | `tools/create_vocabulary_videos.py` | 卡片 + 双语 TTS → 竖版成片 |
 | `tools/publish_vocabulary_videos.py` | 写发布清单、发 YouTube / Meta |
@@ -79,4 +83,4 @@ language_learning_clear_run
 
 - 缓存：`cache/language_learning/{run_id}/`
 - 成片：`outputs/language_learning/{run_id}/`
-- 话题库：`data/media_factory.sqlite3`
+- 话题与单词历史：通过 `CLOUDFLARE_DATA_API_URL` 指向的鉴权 Worker 访问 Cloudflare D1

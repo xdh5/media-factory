@@ -52,8 +52,8 @@ class AgentImageTaskError(ImageGenerationError):
     code = "AGENT_IMAGE_TASK_ERROR"
 
 
-class ImageLibraryDatabaseError(ImageGenerationError):
-    code = "IMAGE_LIBRARY_DATABASE_ERROR"
+class ImageLibraryDataError(ImageGenerationError):
+    code = "IMAGE_LIBRARY_DATA_ERROR"
 
 
 class ImageLibraryEmptyError(ImageGenerationError):

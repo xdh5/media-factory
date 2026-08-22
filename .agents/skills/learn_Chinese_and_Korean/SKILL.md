@@ -41,6 +41,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 ```
 
 - YouTube / Meta Reels 使用 `.env` 里 `LANGUAGE_LEARNING_*`（`youtube_account` 即账号前缀）
+- Meta 只能复用生产 Workflow 已写入发布清单的 R2 公网 `video_url`；缺少 URL 必须报错，禁止本地直传或在发布阶段重复上传 R2
 - 展示给用户看的账号组名：`Daily Chinese Learning`
 
 **韩语 `en-ko`**
@@ -64,6 +65,8 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 - `language_learning_build_vocabulary_prompt` → `user_prompt`
 - `language_learning_prepare_images` 内部根据词表生成主体图 Prompt
 
+词表固定执行最近 100 天去重：每期 10 个英语单词中，至少 5 个必须未在最近 100 天使用。`build_vocabulary_prompt` 会把历史词库写进 `user_prompt`，`parse_vocabulary_response` 会再次强制校验并在合格后记录全部 10 个单词。
+
 ## 确认门禁
 
 1. **成片**：`language_learning_start_create_videos` 轮询完成后展示成片路径、标题、标签、账号组；未确认不得发布。
@@ -75,7 +78,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 
 1. `language_learning_get_topics`：避开近 30 天重复主题。
 2. 自选主题后 `language_learning_occupy_topic(topic, learning_modes)`，拿到 `run_id`。
-3. `language_learning_build_vocabulary_prompt` 获取词表 Prompt，按原样生成纯文本词表，再 `language_learning_parse_vocabulary_response`。
+3. `language_learning_build_vocabulary_prompt(topic, learning_modes)` 获取包含最近 100 天词库的 Prompt，按原样生成纯文本词表；再调用 `language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)`，由 MCP 强制校验至少 5 个新词并记录本期全部单词。
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
 5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走方舟）→ `language_learning_poll_task`。
 6. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。
@@ -94,10 +97,10 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 
 | 工具 | 作用 |
 | --- | --- |
-| `language_learning_get_topics` | 查已占用主题 |
+| `language_learning_get_topics` | 查已占用主题和最近 100 天单词 |
 | `language_learning_occupy_topic` | 占坑并创建 run |
-| `language_learning_build_vocabulary_prompt` | 返回词表 Prompt |
-| `language_learning_parse_vocabulary_response` | 解析词表 |
+| `language_learning_build_vocabulary_prompt` | 返回包含最近词库的词表 Prompt |
+| `language_learning_parse_vocabulary_response` | 解析词表、校验至少一半新词并记录历史 |
 | `language_learning_prepare_images` | 注册主体图任务 |
 | `language_learning_save_images` | 写入已生成图 |
 | `language_learning_submit_images` | 提交主体图（同步，勿用） |

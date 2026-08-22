@@ -5,15 +5,15 @@ description: 使用项目财经 MCP 制作中文财经短视频；适用于“�
 
 # 财经视频
 
-MCP 入口：`python -m core.mcp.text_to_image`。**本 Skill 提供 Prompt、范文、TTS、BGM、片头、发布账号组与完整流程**；MCP 只负责编排。禁止绕过 MCP 或直接读写内部文件。
+MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文、TTS、BGM、片头、发布账号组与完整流程**；MCP 只负责编排。禁止绕过 MCP 或直接读写内部文件。
 
 ## Prompt
 
 | 用途 | 位置 |
 | --- | --- |
 | 正文、钩子、范文 | 本 Skill：`prompts/finance.md`、`examples/` |
-| 标题标签 | MCP：`text_to_image_get_metadata_prompt` |
-| 分镜 | MCP：`text_to_image_prepare_storyboard` 返回 `storyboard_prompt` |
+| 标题标签 | MCP：`finance_get_metadata_prompt` |
+| 分镜 | MCP：`finance_prepare_storyboard` 返回 `storyboard_prompt` |
 
 ### 正文 Prompt 占位符
 
@@ -25,7 +25,7 @@ MCP 入口：`python -m core.mcp.text_to_image`。**本 Skill 提供 Prompt、�
 
 ## 固定参数（调用 MCP 时必须按此传）
 
-### TTS（`text_to_image_start_storyboard` 的 `tts_config`）
+### TTS（`finance_start_storyboard` 的 `tts_config`）
 
 ```json
 {
@@ -35,7 +35,7 @@ MCP 入口：`python -m core.mcp.text_to_image`。**本 Skill 提供 Prompt、�
 }
 ```
 
-### 镜头图（`text_to_image_prepare_images` 的 `image_config`）
+### 镜头图（`finance_prepare_images` 的 `image_config`）
 
 财经固定使用本地图库，由 Agent 按 caption 与镜头 prompt 语义匹配选图：
 
@@ -48,12 +48,12 @@ MCP 入口：`python -m core.mcp.text_to_image`。**本 Skill 提供 Prompt、�
 
 - 图库目录：`data/image_library/finance/`
 - 图库记录格式：`{id, caption, image_path}`
-- `text_to_image_prepare_images` 返回 `library_catalog` 与 `selection_tasks`；Agent 对照每个镜头的 `match_query` 与各图 `caption`，选出语义最贴近的一张
-- 选好后调用 `text_to_image_submit_images`，`images` 传入 `[{image_id, image_path}]`（`image_path` 用 catalog 中的路径）
+- `finance_prepare_images` 返回 `library_catalog` 与 `selection_tasks`；Agent 对照每个镜头的 `match_query` 与各图 `caption`，选出语义最贴近的一张
+- 选好后调用 `finance_submit_images`，`images` 传入 `[{image_id, image_path}]`（`image_path` 用 catalog 中的路径）
 - 同一期可重复使用同一张图，无需考虑历史选用均分
 - 禁止宿主生图
 
-### 成片（`text_to_image_finish_video` 的 `production_config`）
+### 成片（`finance_finish_video` 的 `production_config`）
 
 ```json
 {
@@ -73,9 +73,8 @@ MCP 入口：`python -m core.mcp.text_to_image`。**本 Skill 提供 Prompt、�
 
 ## 确认门禁
 
-1. **稿件**：`text_to_image_save_draft` 之后展示话题、正文、长标题、短标题、封面断行、四个标签；未确认不得制作。
-2. **成片**：`text_to_image_start_finish_video` 轮询完成后展示 `video_path`、标题、标签、发布文案；未确认不得发布。
-3. **清缓存**：发布结束后用户确认才调用 `text_to_image_clear_run(run_id, confirmed=true)`。
+1. **成片**：稿件生成后直接制作；`finance_start_finish_video` 轮询完成后展示 `video_path`、标题、标签、发布文案；未确认不得发布。
+2. **清缓存**：发布结束后用户确认才调用 `finance_clear_run(run_id, confirmed=true)`。
 
 中间步骤不逐项确认。
 
@@ -102,26 +101,24 @@ SUB|L002|你以为涨薪就能存钱
 
 ### 第一阶段：稿件
 
-1. `text_to_image_get_topics`：避开近 30 天重复话题。
-2. 按本 Skill 正文模板与范文生成正文；调用 `text_to_image_get_metadata_prompt` 后写标题标签行。
+1. `finance_get_topics`：避开近 30 天重复话题。
+2. 按本 Skill 正文模板与范文生成正文；调用 `finance_get_metadata_prompt` 后写标题标签行。
 3. 用**长标题**按语义断成 1～3 行 `cover_lines`（拼接去空白后必须等于长标题 `title`）。封面不自动折行。
-4. `text_to_image_save_draft` → 展示稿件，等用户确认。
+4. `finance_save_draft` → 直接进入制作，不再等待稿件确认。
 
 ### 第二阶段：制作与发布
 
-仅当用户明确确认稿件后：
-
-1. `text_to_image_start_storyboard(draft_path, user_confirmed=true, tts_config=…)` → `text_to_image_poll_task(task_path)` 直至 `done=true`，取 `result` 作为分镜上下文。
+1. `finance_start_storyboard(draft_path, tts_config=…)` → `finance_poll_task(task_path)` 直至 `done=true`，取 `result` 作为分镜上下文。
 2. 按 `result.storyboard_prompt` 写完整分镜文本（IMAGE 行 + 每句一条 `SUB` 行，见上文「字幕重点」）。
-3. `text_to_image_prepare_images`（传入本 Skill 的 `image_config`）→ 按 `library_catalog` 与 `selection_tasks` 为每个镜头选最贴近的图 → `text_to_image_submit_images`（`images` 传 `[{image_id, image_path}]`）。
-4. `text_to_image_start_finish_video` → `text_to_image_poll_task` 直至 `done=true`；传入 `production_config`；配音直接用 `prepare_storyboard` 的 `tts_path`。
+3. `finance_prepare_images`（传入本 Skill 的 `image_config`）→ 按 `library_catalog` 与 `selection_tasks` 为每个镜头选最贴近的图 → `finance_submit_images`（`images` 传 `[{image_id, image_path}]`）。
+4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`；配音直接用 `prepare_storyboard` 的 `tts_path`。
 5. 展示成片；确认后 MatrixMedia `publish_video`：`file` 用 `video_path`，`phone` 用 `心灵鸡汤`，**`bt2` 用 `short_title`**，`title` 用长标题，`tags` 用带 `#` 的空格分隔话题。
 6. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
 
 - 耗时步骤禁止同步调用 `prepare_storyboard` / `finish_video`。
-- `start` 立即返回 `task_path`；每 15～30 秒调用 `text_to_image_poll_task(task_path)`。
+- `start` 立即返回 `task_path`；每 15～30 秒调用 `finance_poll_task(task_path)`。
 - `status=running` 继续等；`succeeded` 读 `result`；`failed` 读 `error` 并停止。
 - 客户端报 MCP 超时后**不要重复 start**，继续 poll 同一 `task_path`。
 
@@ -129,15 +126,15 @@ SUB|L002|你以为涨薪就能存钱
 
 | 工具 | 作用 |
 | --- | --- |
-| `text_to_image_get_topics` | 查已占用话题 |
-| `text_to_image_get_metadata_prompt` | 返回标题标签 Prompt |
-| `text_to_image_save_draft` | 占坑并保存稿件 |
-| `text_to_image_prepare_storyboard` | TTS + 分镜（同步，易超时，勿用） |
-| `text_to_image_start_storyboard` | 启动 TTS + 分镜后台任务 |
-| `text_to_image_poll_task` | 轮询后台任务 |
-| `text_to_image_prepare_images` | 按 image_config 准备镜头图 |
-| `text_to_image_save_images` | 写入已生成图（通常不用） |
-| `text_to_image_submit_images` | 提交选图清单 |
-| `text_to_image_finish_video` | 合成成片（同步，易超时，勿用） |
-| `text_to_image_start_finish_video` | 启动成片合成后台任务 |
-| `text_to_image_clear_run` | 清本次目录 |
+| `finance_get_topics` | 查已占用话题 |
+| `finance_get_metadata_prompt` | 返回标题标签 Prompt |
+| `finance_save_draft` | 占坑并保存稿件 |
+| `finance_prepare_storyboard` | TTS + 分镜（同步，易超时，勿用） |
+| `finance_start_storyboard` | 启动 TTS + 分镜后台任务 |
+| `finance_poll_task` | 轮询后台任务 |
+| `finance_prepare_images` | 按 image_config 准备镜头图 |
+| `finance_save_images` | 写入已生成图（通常不用） |
+| `finance_submit_images` | 提交选图清单 |
+| `finance_finish_video` | 合成成片（同步，易超时，勿用） |
+| `finance_start_finish_video` | 启动成片合成后台任务 |
+| `finance_clear_run` | 清本次目录 |

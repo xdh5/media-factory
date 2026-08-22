@@ -15,7 +15,7 @@ from .._constants import (
     VIDEO_RADIO,
     VIDEO_SIZE,
 )
-from .._errors import ConfirmationRequiredError, WorkflowStepError
+from .._errors import WorkflowStepError
 from .narration import display_subtitle_text
 from .save_draft import load_draft
 from .storyboard import parse_storyboard
@@ -96,7 +96,7 @@ def _prepare_local_library(
         "selection_instructions": (
             "对照每个镜头的 match_query 与 library_catalog 中各图的 caption，"
             "为每个 image_id 选出语义最贴近的一张图；"
-            "然后调用 text_to_image_submit_images，"
+            "然后调用 finance_submit_images，"
             "images 传入 [{image_id, image_path}]，image_path 使用 catalog 中的路径。"
             "同一期可重复使用同一张图，无需考虑历史选用均分。"
         ),
@@ -113,23 +113,20 @@ def prepare_shot_images(
     draft_path: str | Path,
     storyboard_text: str,
     *,
-    user_confirmed: bool,
     image_config: dict,
 ) -> dict:
-    if user_confirmed is not True:
-        raise ConfirmationRequiredError("必须先获得用户对完整稿件的明确确认")
     normalized_storyboard = str(storyboard_text or "").strip()
     if not normalized_storyboard:
         raise WorkflowStepError("storyboard_text 不能为空")
     source, library_line = _image_config(image_config)
-    resolved_draft, draft = load_draft(draft_path, "待确认稿件")
+    resolved_draft, draft = load_draft(draft_path, "财经稿件")
     if not draft.get("title") or not str(draft.get("cache_dir") or "").strip():
-        raise WorkflowStepError("待确认稿件缺少 title 或 cache_dir")
+        raise WorkflowStepError("财经稿件缺少 title 或 cache_dir")
     cache_root = Path(draft["cache_dir"]).resolve()
     _, storyboard_context = load_draft(cache_root / STORYBOARD_CONTEXT_FILE_NAME, "分镜上下文")
     timeline = storyboard_context.get("timeline")
     if not isinstance(timeline, list) or not timeline:
-        raise WorkflowStepError("分镜上下文缺少有效 timeline，请先完成 text_to_image_prepare_storyboard")
+        raise WorkflowStepError("分镜上下文缺少有效 timeline，请先完成 finance_prepare_storyboard")
     shots = parse_storyboard(normalized_storyboard, timeline)
     storyboard_path = cache_root / STORYBOARD_TEXT_FILE_NAME
     storyboard_path.write_text(normalized_storyboard, encoding="utf-8")

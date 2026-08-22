@@ -43,3 +43,7 @@ data/youtube/tokens/
 integrations/MatrixMedia/node_modules/
 integrations/MatrixMedia/mcp/node_modules/
 integrations/MatrixMedia/mcp/dist/
+
+# Cloudflare 本地开发状态与依赖
+cloudflare/**/.wrangler/
+cloudflare/**/node_modules/

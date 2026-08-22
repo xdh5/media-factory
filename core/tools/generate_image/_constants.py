@@ -18,7 +18,6 @@ IMAGE_ASPECT_MAX_PIXEL_ERROR = 1
 # 本地图库
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 IMAGE_LIBRARY_PROJECT_ROOT = _PROJECT_ROOT
-IMAGE_LIBRARY_DATABASE_PATH = _PROJECT_ROOT / "data" / "media_factory.sqlite3"
 IMAGE_LIBRARY_LINE_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
 
 SUPPORTED_STYLE_IDS = ["painterly", "realistic", "paper"]

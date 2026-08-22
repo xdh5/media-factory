@@ -1,4 +1,4 @@
-"""文生图 MCP 输入输出 Schema。"""
+"""财经 MCP 输入输出 Schema。"""
 
 TTS_CONFIG_SCHEMA = {
     "type": "object",
@@ -32,7 +32,7 @@ PRODUCTION_CONFIG_SCHEMA = {
     "required": ["bgm_path", "cover_frame_seconds", "intro", "shot_stickers", "matrixmedia_account_group"],
     "additionalProperties": False,
 }
-TEXT_TO_IMAGE_SAVE_DRAFT_INPUT_SCHEMA = {
+FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "topic": {"type": "string", "minLength": 1},
@@ -46,7 +46,6 @@ TEXT_TO_IMAGE_SAVE_DRAFT_INPUT_SCHEMA = {
             "uniqueItems": True,
             "items": {"type": "string", "minLength": 1},
         },
-        "database_path": {"type": "string"},
         "draft_path": {"type": "string", "description": "修改已生成稿件时传入原 draft_path；话题不得改变"},
         "cover_lines": {
             "type": "array",
@@ -68,7 +67,7 @@ TASK_SUBMIT_OUTPUT_SCHEMA = {
         "step": {"type": "string", "minLength": 1},
         "run_id": {"type": "string", "minLength": 1},
         "reused": {"type": "boolean"},
-        "poll_tool": {"type": "string", "const": "text_to_image_poll_task"},
+        "poll_tool": {"type": "string", "const": "finance_poll_task"},
     },
     "required": ["task_id", "task_path", "status", "step", "run_id", "poll_tool"],
     "additionalProperties": True,

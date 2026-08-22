@@ -8,6 +8,7 @@ from .vocabulary_prompt import (
     build_vocabulary_prompt,
     parse_vocabulary_response,
 )
+from .vocabulary_history import list_recent_words, validate_and_record_words
 
 __all__ = [
     "attach_publish_manifest",
@@ -15,6 +16,8 @@ __all__ = [
     "build_vocabulary_prompt",
     "compose_fixed_cards",
     "create_vocabulary_videos",
+    "list_recent_words",
     "parse_vocabulary_response",
     "publish_vocabulary_videos",
+    "validate_and_record_words",
 ]

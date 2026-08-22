@@ -1,6 +1,6 @@
 """话题去重公开入口。"""
 
-from ._errors import DuplicateTopicError
+from ._errors import DuplicateTopicError, TopicDataServiceError, TopicDedupError
 from .topic_dedup import get_topic, update
 
-__all__ = ["get_topic", "update", "DuplicateTopicError"]
+__all__ = ["get_topic", "update", "DuplicateTopicError", "TopicDataServiceError", "TopicDedupError"]

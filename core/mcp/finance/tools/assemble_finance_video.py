@@ -25,7 +25,7 @@ from core.tools.generate_shot import (
 )
 
 from .._constants import MCP_ID, STORYBOARD_TEXT_FILE_NAME, VIDEO_SIZE
-from .._errors import ConfirmationRequiredError, WorkflowStepError
+from .._errors import WorkflowStepError
 from .narration import display_subtitle_cue, display_subtitle_text
 from .save_draft import load_draft
 from .storyboard import load_prepared_tts, parse_storyboard
@@ -225,19 +225,19 @@ def _load_saved_storyboard(
         expected_hash = str(image_metadata.get("storyboard_sha256") or "").strip()
         if expected_hash and _storyboard_hash(saved) != expected_hash:
             raise WorkflowStepError(
-                "已保存的分镜文本损坏，请重新调用 text_to_image_prepare_images",
+                "已保存的分镜文本损坏，请重新调用 finance_prepare_images",
                 {"storyboard_sha256": expected_hash},
             )
         return saved
     fallback = str(storyboard_text or "").strip()
     if not fallback:
         raise WorkflowStepError(
-            "生图清单里没有分镜文本。请重新调用 text_to_image_prepare_images，出片不必再传 storyboard_text"
+            "生图清单里没有分镜文本。请重新调用 finance_prepare_images，出片不必再传 storyboard_text"
         )
     expected_hash = str(image_metadata.get("storyboard_sha256") or "").strip()
     if expected_hash and _storyboard_hash(fallback) != expected_hash:
         raise WorkflowStepError(
-            "传入的 storyboard_text 与生图时不一致。请重新调用 text_to_image_prepare_images 后直接 text_to_image_finish_video",
+            "传入的 storyboard_text 与生图时不一致。请重新调用 finance_prepare_images 后直接 finance_finish_video",
             {"storyboard_sha256": expected_hash, "received_sha256": _storyboard_hash(fallback)},
         )
     return fallback
@@ -246,17 +246,14 @@ def _load_saved_storyboard(
 def finish_finance_video(
     draft_path: str | Path,
     *,
-    user_confirmed: bool,
     image_manifest_path: str | Path,
     production_config: dict,
     storyboard_text: str | None = None,
     force_shot_ids: list[str] | None = None,
     progress=None,
 ) -> dict:
-    if user_confirmed is not True:
-        raise ConfirmationRequiredError("必须先获得用户对完整稿件的明确确认")
     settings = _production_config(production_config)
-    resolved_draft, draft = load_draft(draft_path, "待确认稿件")
+    resolved_draft, draft = load_draft(draft_path, "财经稿件")
     required_draft_fields = {
         "topic", "run_id", "topic_record_id", "article", "title", "short_title",
         "hashtags", "cache_dir", "output_dir",
@@ -264,7 +261,7 @@ def finish_finance_video(
     missing_fields = sorted(required_draft_fields.difference(draft))
     if missing_fields:
         raise WorkflowStepError(
-            f"待确认稿件缺少字段：{missing_fields}",
+            f"财经稿件缺少字段：{missing_fields}",
             {"draft_path": str(resolved_draft)},
         )
     record = {"id": draft["topic_record_id"], "topic": draft["topic"]}
@@ -294,7 +291,7 @@ def finish_finance_video(
     if not isinstance(image_metadata, dict):
         raise WorkflowStepError("选图清单缺少 metadata")
     if Path(str(image_metadata.get("draft_path") or "")).resolve() != resolved_draft:
-        raise WorkflowStepError("选图清单不属于当前稿件，请重新调用 text_to_image_prepare_images")
+        raise WorkflowStepError("选图清单不属于当前稿件，请重新调用 finance_prepare_images")
     storyboard_output = _load_saved_storyboard(image_metadata, cache_root, storyboard_text)
     shots = parse_storyboard(storyboard_output, tts["timeline"])
     images = image_manifest.get("images")

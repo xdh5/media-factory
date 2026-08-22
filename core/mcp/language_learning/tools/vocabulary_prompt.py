@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .._constants import SUPPORTED_LEARNING_MODES, WORDS_PER_TASK
+from .._constants import MINIMUM_NEW_WORDS, SUPPORTED_LEARNING_MODES, WORD_HISTORY_DAYS, WORDS_PER_TASK
 from .._errors import InvalidVocabularyError
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
@@ -41,18 +41,35 @@ def _language_rule(modes: list[str]) -> str:
     return "同时提供中文和韩语；同一行必须表达同一个英语概念。"
 
 
-def build_vocabulary_prompt(topic: str, learning_modes: list[str]) -> dict:
+def build_vocabulary_prompt(topic: str, learning_modes: list[str], recent_words: list[str] | None = None) -> dict:
     modes = _modes(learning_modes)
     clean_topic = str(topic or "").strip()
     if not clean_topic:
         raise InvalidVocabularyError("主题不能为空")
     table_header, _ = _format(modes)
+    history = [str(word).strip() for word in (recent_words or []) if str(word).strip()]
+    if history:
+        recent_words_rule = (
+            f"最近 {WORD_HISTORY_DAYS} 天已经使用过的英语单词如下：\n"
+            f"{', '.join(history)}\n"
+            f"本次 {WORDS_PER_TASK} 个单词中，至少 {MINIMUM_NEW_WORDS} 个不得出现在上面的历史词库中。"
+        )
+    else:
+        recent_words_rule = f"最近 {WORD_HISTORY_DAYS} 天暂无历史单词，本次全部单词都视为新词。"
     user_prompt = _read_prompt("vocabulary-user.md").format(
         topic=clean_topic,
         language_rule=_language_rule(modes),
+        recent_words_rule=recent_words_rule,
         table_header=table_header,
     )
-    return {"topic": clean_topic, "learning_modes": modes, "user_prompt": user_prompt}
+    return {
+        "topic": clean_topic,
+        "learning_modes": modes,
+        "user_prompt": user_prompt,
+        "recent_words": history,
+        "word_history_days": WORD_HISTORY_DAYS,
+        "minimum_new_words": MINIMUM_NEW_WORDS,
+    }
 
 
 def build_subject_sheet_prompt(topic: str, words: list[dict]) -> dict:

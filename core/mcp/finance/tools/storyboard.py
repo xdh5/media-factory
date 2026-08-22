@@ -8,7 +8,7 @@ from pathlib import Path
 from core.tools.generate_tts import generate_tts
 
 from .._constants import MCP_ID, STORYBOARD_CONTEXT_FILE_NAME, VIDEO_RADIO, VIDEO_SIZE
-from .._errors import AgentOutputFormatError, ConfirmationRequiredError, WorkflowStepError
+from .._errors import AgentOutputFormatError, WorkflowStepError
 from .narration import display_subtitle_text, parse_emphasis_segments, split_narration_lines
 from .prompts import build_metadata_prompt, build_storyboard_prompt
 from .save_draft import load_draft
@@ -147,13 +147,11 @@ def parse_storyboard(value: str, timeline: list[dict]) -> list[dict]:
     return shots
 
 
-def prepare_storyboard(draft_path: str | Path, *, user_confirmed: bool, tts_config: dict) -> dict:
-    if user_confirmed is not True:
-        raise ConfirmationRequiredError("必须先获得用户对完整稿件的明确确认")
-    resolved_draft, draft = load_draft(draft_path, "待确认稿件")
+def prepare_storyboard(draft_path: str | Path, *, tts_config: dict) -> dict:
+    resolved_draft, draft = load_draft(draft_path, "财经稿件")
     for key in ("article", "cache_dir", "topic_record_id"):
         if not draft.get(key):
-            raise WorkflowStepError(f"待确认稿件缺少字段：{key}")
+            raise WorkflowStepError(f"财经稿件缺少字段：{key}")
     cache_root = Path(draft["cache_dir"]).resolve()
     tts_result = compose_tts(str(draft["article"]), cache_root, tts_config)
     prompt = build_storyboard_prompt(tts_result["timeline"], radio=VIDEO_RADIO, size=VIDEO_SIZE)
@@ -180,11 +178,11 @@ def load_prepared_tts(cache_root: str | Path) -> dict:
     timeline = context.get("timeline")
     if not tts_path.is_file():
         raise WorkflowStepError(
-            "分镜上下文没有完整配音文件。请重新调用 text_to_image_prepare_storyboard",
+            "分镜上下文没有完整配音文件。请重新调用 finance_prepare_storyboard",
             {"tts_path": str(tts_path)},
         )
     if not isinstance(timeline, list) or not timeline:
-        raise WorkflowStepError("分镜上下文缺少有效 timeline，请重新调用 text_to_image_prepare_storyboard")
+        raise WorkflowStepError("分镜上下文缺少有效 timeline，请重新调用 finance_prepare_storyboard")
     return {
         "tts_path": tts_path,
         "timeline": timeline,

@@ -1,11 +1,11 @@
-"""把本地竖版视频发到 Facebook Reels 和 Instagram Reels。"""
+"""通过公网视频 URL 发布 Facebook Reels 和 Instagram Reels。"""
 
 from __future__ import annotations
 
 import os
 import re
 import time
-from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -40,6 +40,17 @@ def _normalize_account(account: str) -> str:
         raise InvalidParameterError(
             f"account 必须是小写字母开头的标识，例如 language_learning，当前为 {account!r}",
             {"parameter": "account"},
+        )
+    return value
+
+
+def _public_video_url(video_url: str) -> str:
+    value = str(video_url or "").strip()
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise InvalidParameterError(
+            "Meta 发布必须提供可公网访问的 HTTPS video_url",
+            {"parameter": "video_url"},
         )
     return value
 
@@ -124,15 +135,6 @@ def _raise_graph(response: requests.Response, action: str) -> dict:
     return payload
 
 
-def _validate_video(video_path: str | Path) -> Path:
-    video = Path(video_path).resolve()
-    if not video.is_file():
-        raise InvalidParameterError(f"视频文件不存在：{video}", {"parameter": "video_path"})
-    if video.suffix.lower() != ".mp4":
-        raise InvalidParameterError("Reels 视频必须是 .mp4", {"parameter": "video_path"})
-    return video
-
-
 def list_meta_accounts(account: str | None = None) -> list[dict]:
     """读取 .env 中已配置的 Facebook 主页和 Instagram 专业号，不回传 token。"""
     accounts = []
@@ -153,23 +155,19 @@ def list_meta_accounts(account: str | None = None) -> list[dict]:
 
 
 def publish_facebook_reel(
-    video_path: str | Path | None = None,
     title: str = "",
     *,
     description: str = "",
     video_url: str = "",
     account: str | None = None,
 ) -> dict:
-    """把本地视频或公开 URL 发到 Facebook Page Reels。"""
-    page_id, token = _facebook_credentials(account)
+    """通过公网 URL 发布 Facebook Page Reels。"""
     caption = str(description or title).strip()
     heading = str(title).strip()
     if not heading:
         raise InvalidParameterError("title 不能为空", {"parameter": "title"})
-    hosted = str(video_url or "").strip()
-    local = _validate_video(video_path) if video_path and not hosted else None
-    if not hosted and local is None:
-        raise InvalidParameterError("必须提供 video_path 或 video_url", {"parameter": "video_url"})
+    hosted = _public_video_url(video_url)
+    page_id, token = _facebook_credentials(account)
     start = requests.post(
         f"{FACEBOOK_GRAPH_BASE}/{page_id}/video_reels",
         data={"upload_phase": "start", "access_token": token},
@@ -180,28 +178,14 @@ def publish_facebook_reel(
     upload_url = str(session.get("upload_url") or "")
     if not video_id or not upload_url:
         raise UploadError("Facebook 未返回 video_id 或 upload_url")
-    if hosted:
-        uploaded = requests.post(
-            upload_url,
-            headers={
-                "Authorization": f"OAuth {token}",
-                "file_url": hosted,
-            },
-            timeout=META_UPLOAD_TIMEOUT_SECONDS,
-        )
-    else:
-        size = local.stat().st_size
-        uploaded = requests.post(
-            upload_url,
-            headers={
-                "Authorization": f"OAuth {token}",
-                "offset": "0",
-                "file_size": str(size),
-                "Content-Type": "application/octet-stream",
-            },
-            data=local.read_bytes(),
-            timeout=META_UPLOAD_TIMEOUT_SECONDS,
-        )
+    uploaded = requests.post(
+        upload_url,
+        headers={
+            "Authorization": f"OAuth {token}",
+            "file_url": hosted,
+        },
+        timeout=META_UPLOAD_TIMEOUT_SECONDS,
+    )
     _raise_graph(uploaded, "Facebook Reels 上传文件")
     finish = requests.post(
         f"{FACEBOOK_GRAPH_BASE}/{page_id}/video_reels",
@@ -250,64 +234,6 @@ def _wait_container(base: str, container_id: str, token: str) -> None:
     )
 
 
-def _publish_instagram_resumable(base: str, user_id: str, token: str, video: Path, caption: str) -> dict:
-    init = requests.post(
-        f"{base}/{user_id}/media",
-        data={
-            "media_type": "REELS",
-            "upload_type": "resumable",
-            "share_to_feed": "true",
-            "caption": caption[:2200],
-            "access_token": token,
-        },
-        timeout=META_REQUEST_TIMEOUT_SECONDS,
-    )
-    container = _raise_graph(init, "Instagram Reels 创建容器")
-    container_id = str(container.get("id") or "")
-    upload_uri = str(container.get("uri") or "")
-    if not container_id or not upload_uri:
-        raise UploadError("Instagram 未返回容器 id 或上传地址")
-    size = video.stat().st_size
-    uploaded = requests.post(
-        upload_uri,
-        headers={
-            "Authorization": f"OAuth {token}",
-            "offset": "0",
-            "file_size": str(size),
-            "Content-Type": "application/octet-stream",
-        },
-        data=video.read_bytes(),
-        timeout=META_UPLOAD_TIMEOUT_SECONDS,
-    )
-    if uploaded.status_code >= 400:
-        _raise_graph(uploaded, "Instagram Reels 上传文件")
-    _wait_container(base, container_id, token)
-    published = requests.post(
-        f"{base}/{user_id}/media_publish",
-        data={"creation_id": container_id, "access_token": token},
-        timeout=META_REQUEST_TIMEOUT_SECONDS,
-    )
-    media = _raise_graph(published, "Instagram Reels 发布")
-    media_id = str(media.get("id") or "")
-    if not media_id:
-        raise UploadError("Instagram 未返回媒体 id")
-    permalink = ""
-    details = requests.get(
-        f"{base}/{media_id}",
-        params={"fields": "permalink,id", "access_token": token},
-        timeout=META_REQUEST_TIMEOUT_SECONDS,
-    )
-    if details.ok:
-        permalink = str(_raise_graph(details, "Instagram 读取链接").get("permalink") or "")
-    return {
-        "platform": "instagram",
-        "success": True,
-        "media_id": media_id,
-        "permalink": permalink or f"https://www.instagram.com/reel/{media_id}",
-        "user_id": user_id,
-    }
-
-
 def _publish_instagram_from_url(base: str, user_id: str, token: str, video_url: str, caption: str) -> dict:
     init = requests.post(
         f"{base}/{user_id}/media",
@@ -353,47 +279,25 @@ def _publish_instagram_from_url(base: str, user_id: str, token: str, video_url: 
 
 
 def publish_instagram_reel(
-    video_path: str | Path | None = None,
     caption: str = "",
     *,
     video_url: str = "",
     account: str | None = None,
 ) -> dict:
-    """优先用公开 video_url（R2）；没有 URL 时再尝试断点续传。"""
+    """通过公网 video_url 发布 Instagram Reels。"""
     text = str(caption).strip()
     if not text:
         raise InvalidParameterError("caption 不能为空", {"parameter": "caption"})
-    hosted = str(video_url or "").strip()
+    hosted = _public_video_url(video_url)
     user_id, ig_token = _instagram_credentials(account)
-    if hosted:
-        try:
-            return _publish_instagram_from_url(INSTAGRAM_GRAPH_BASE, user_id, ig_token, hosted, text)
-        except UploadError:
-            _page_id, page_token = _facebook_credentials(account)
-            return _publish_instagram_from_url(FACEBOOK_GRAPH_BASE, user_id, page_token, hosted, text)
-    video = _validate_video(video_path) if video_path else None
-    if video is None:
-        raise InvalidParameterError("必须提供 video_path 或 video_url", {"parameter": "video_url"})
-    errors: list[str] = []
     try:
+        return _publish_instagram_from_url(INSTAGRAM_GRAPH_BASE, user_id, ig_token, hosted, text)
+    except UploadError:
         _page_id, page_token = _facebook_credentials(account)
-        return _publish_instagram_resumable(FACEBOOK_GRAPH_BASE, user_id, page_token, video, text)
-    except (CredentialError, UploadError) as error:
-        errors.append(error.message)
-    try:
-        return _publish_instagram_resumable(INSTAGRAM_GRAPH_BASE, user_id, ig_token, video, text)
-    except UploadError as error:
-        errors.append(error.message)
-        raise UploadError(
-            "Instagram Reels 上传失败。请先把视频传到 Cloudflare R2 再传 video_url，"
-            "或给 Page Token 勾选 pages_read_engagement、instagram_content_publish。"
-            f"详情：{'；'.join(errors)}",
-            {"fix": "R2_PUBLIC_BASE_URL 或 pages_read_engagement"},
-        ) from error
+        return _publish_instagram_from_url(FACEBOOK_GRAPH_BASE, user_id, page_token, hosted, text)
 
 
 def publish_to_meta(
-    video_path: str | Path | None = None,
     title: str = "",
     *,
     description: str = "",
@@ -401,7 +305,7 @@ def publish_to_meta(
     video_url: str = "",
     account: str | None = None,
 ) -> dict:
-    """按平台列表发布同一条视频；有公开 URL 时 Facebook/Instagram 都走该地址。"""
+    """按平台列表发布同一条公网视频；Facebook/Instagram 只使用 video_url。"""
     selected = [str(item).strip().lower() for item in (platforms or list(META_PLATFORMS))]
     unknown = [item for item in selected if item not in META_PLATFORMS]
     if unknown:
@@ -413,17 +317,17 @@ def publish_to_meta(
     if not heading:
         raise InvalidParameterError("title 不能为空", {"parameter": "title"})
     caption = str(description or heading).strip()
-    hosted = str(video_url or "").strip()
+    hosted = _public_video_url(video_url)
     results = []
     for platform in selected:
         try:
             if platform == "facebook":
                 results.append(publish_facebook_reel(
-                    video_path, heading, description=caption, video_url=hosted, account=account,
+                    heading, description=caption, video_url=hosted, account=account,
                 ))
             else:
                 results.append(publish_instagram_reel(
-                    video_path, caption, video_url=hosted, account=account,
+                    caption, video_url=hosted, account=account,
                 ))
         except MetaToolError as error:
             results.append({

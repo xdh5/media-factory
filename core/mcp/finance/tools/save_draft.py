@@ -57,7 +57,6 @@ def save_draft(
     short_title: str,
     hashtags: list[str],
     cover_lines: list[str],
-    database_path: Path,
     draft_path: str | Path | None = None,
 ) -> dict:
     normalized_topic = str(topic or "").strip()
@@ -81,7 +80,7 @@ def save_draft(
         output_root = Path(existing["output_dir"]).resolve()
         target_draft_path = resolved_draft
     else:
-        record = update(database_path, MCP_ID, normalized_topic, TOPIC_DEDUPLICATION_DAYS)
+        record = update(MCP_ID, normalized_topic, TOPIC_DEDUPLICATION_DAYS)
         run_id = production_run_id(record["id"])
         cache_root, output_root = production_dirs(run_id)
         target_draft_path = cache_root / DRAFT_FILE_NAME
@@ -90,9 +89,7 @@ def save_draft(
     draft = {
         "version": 1,
         "line": MCP_ID,
-        "status": "awaiting_article_confirmation",
-        "confirmation_required": "article",
-        "database_path": str(database_path),
+        "status": "ready_for_production",
         "topic": record["topic"],
         "run_id": run_id,
         "topic_record_id": record["id"],

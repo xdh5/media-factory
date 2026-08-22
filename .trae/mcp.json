@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "media-factory-text-to-image": {
+    "media-factory-finance": {
       "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
       "args": [
         "-m",
-        "core.mcp.text_to_image"
+        "core.mcp.finance"
       ],
       "env": {
         "PYTHONPATH": "${workspaceFolder}",
