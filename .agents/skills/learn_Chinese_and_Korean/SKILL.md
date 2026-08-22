@@ -83,8 +83,8 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
 5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走方舟）→ `language_learning_poll_task`。
 6. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。
-7. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。
-8. 展示成品；确认后用 R2 清单 URL 触发 `.github/workflows/publish-from-r2.yml`。发布任务先幂等写入正式话题与本期 10 个单词，再执行中文 YouTube / Meta 与韩语 MatrixMedia 发布。
+7. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。GitHub Action 交接时必须同时保留原始主题图，上传 R2 后在清单写入 `subject_sheet_url`。
+8. 展示原始主题图和成品；确认后用 R2 清单 URL 触发 `.github/workflows/publish-from-r2.yml`。发布任务先幂等写入正式话题与本期 10 个单词，再执行中文 YouTube / Meta 与韩语 MatrixMedia 发布。
 9. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询

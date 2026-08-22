@@ -170,6 +170,7 @@ async def generate_cards(state_path: str | Path) -> dict:
             )
             cards = await mcp.poll("language_learning_poll_task", started["task_path"])
             card_dirs[mode] = cards["output_dir"]
+    state["subject_sheet_path"] = submitted["subject_sheet_path"]
     state["card_dirs"] = card_dirs
     _write_state(state_path, state)
     return state
@@ -201,6 +202,9 @@ async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> di
     destination = Path(handoff_dir).resolve()
     files_dir = destination / "files"
     files_dir.mkdir(parents=True, exist_ok=True)
+    subject_sheet_source = Path(str(state["subject_sheet_path"])).resolve()
+    subject_sheet_target = files_dir / f"subject-sheet{subject_sheet_source.suffix.lower() or '.png'}"
+    shutil.copy2(subject_sheet_source, subject_sheet_target)
     video_files = []
     for source_value in [path for video in manifest["videos"] for path in video["output_paths"]]:
         source = Path(source_value).resolve()
@@ -218,6 +222,7 @@ async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> di
         "run_id": run_id,
         "topic": topic,
         "learning_modes": learning_modes,
+        "subject_sheet_file": str(subject_sheet_target.relative_to(destination)),
         "video_files": video_files,
         "publish_manifest_file": publish_manifest_file,
         "manifest": manifest,
@@ -231,6 +236,7 @@ def upload_handoff(handoff_dir: str | Path) -> dict:
     destination = Path(handoff_dir).resolve()
     handoff = _read_state(destination / "handoff.json")
     video_paths = [destination / value for value in handoff["video_files"]]
+    subject_sheet_path = destination / handoff["subject_sheet_file"]
     publish_manifest_path = (
         destination / handoff["publish_manifest_file"]
         if handoff.get("publish_manifest_file")
@@ -238,18 +244,28 @@ def upload_handoff(handoff_dir: str | Path) -> dict:
     )
     manifest = dict(handoff["manifest"])
     manifest["output_dir"] = str(destination)
+    manifest["subject_sheet_path"] = str(subject_sheet_path)
     remote = upload_run_files(
         "language_learning",
         str(handoff["run_id"]),
-        video_paths,
+        [subject_sheet_path, *video_paths],
         manifest,
         publish_manifest_path=publish_manifest_path,
+    )
+    subject_sheet_url = next(
+        (
+            str(item.get("url") or "")
+            for item in remote.get("files") or []
+            if str(item.get("source_path") or "") == str(subject_sheet_path.resolve())
+        ),
+        "",
     )
     write_summary(
         "语言学习成片已生成并上传 R2",
         [
             ("主题", str(handoff["topic"])),
             ("模式", ", ".join(handoff["learning_modes"])),
+            ("原始主题图", subject_sheet_url),
             ("R2 清单", remote["manifest"]["url"]),
         ],
     )

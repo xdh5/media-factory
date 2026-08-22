@@ -145,6 +145,20 @@ def upload_run_files(
     output_dir = Path(str(manifest["output_dir"])).resolve()
     remote_manifest_path = output_dir / "r2-manifest.json"
     remote_manifest = {**manifest, "r2_files": uploaded}
+    subject_sheet_path = str(manifest.get("subject_sheet_path") or "").strip()
+    if subject_sheet_path:
+        subject_sheet_key = _path_key(subject_sheet_path)
+        subject_sheet_url = next(
+            (
+                str(item.get("url") or "")
+                for item in uploaded
+                if _path_key(item.get("source_path")) == subject_sheet_key
+            ),
+            "",
+        )
+        if not subject_sheet_url:
+            raise RuntimeError(f"R2 上传结果缺少原始主题图：{subject_sheet_path}")
+        remote_manifest["subject_sheet_url"] = subject_sheet_url
     if publish_manifest is not None:
         remote_manifest["publish_manifest"] = publish_manifest
     remote_manifest_path.write_text(
