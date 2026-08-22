@@ -38,7 +38,24 @@ def _language_rule(modes: list[str]) -> str:
         return "提供简体中文和规范汉语拼音，拼音带声调并按音节空格分隔。"
     if modes == ["en-ko"]:
         return "提供简体中文释义、韩语和适合初学者的韩语罗马音；韩语罗马音按音节用连字符分隔。"
-    return "同时提供中文和韩语；同一行必须表达同一个英语概念。"
+    return (
+        "同时提供中文和韩语，同一行必须表达同一个英语概念；"
+        "中文拼音必须带声调并按音节用空格分隔；"
+        "韩语罗马音必须按每个韩文音节用英文半角连字符“-”分隔。"
+    )
+
+
+def _normalize_korean_romanization(korean: str, romanization: str, row_index: int) -> str:
+    """统一连字符并强制韩语罗马音与韩文音节逐一对应。"""
+    normalized = re.sub(r"[‐‑‒–—−]", "-", str(romanization or "").strip())
+    syllable_count = sum("가" <= character <= "힣" for character in str(korean or ""))
+    parts = [part.strip() for part in normalized.split("-")]
+    if syllable_count and (len(parts) != syllable_count or any(not part for part in parts)):
+        raise InvalidVocabularyError(
+            f"第 {row_index} 行韩语罗马音必须按 {syllable_count} 个韩文音节用半角连字符分隔："
+            f"{korean}｜{romanization}"
+        )
+    return "-".join(parts)
 
 
 def build_vocabulary_prompt(topic: str, learning_modes: list[str], recent_words: list[str] | None = None) -> dict:
@@ -122,6 +139,13 @@ def parse_vocabulary_response(content: str, learning_modes: list[str]) -> dict:
         item = dict(zip(fields, values))
         if any(not value for value in item.values()):
             raise InvalidVocabularyError(f"第 {index} 行存在空字段")
+        if "en-ko" in modes:
+            romanization_field = "korean_romanization" if "korean_romanization" in item else "romanization"
+            item[romanization_field] = _normalize_korean_romanization(
+                item["korean"],
+                item[romanization_field],
+                index,
+            )
         key = item["english"].casefold()
         if key in seen:
             raise InvalidVocabularyError(f"英语单词重复：{item['english']}")

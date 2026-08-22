@@ -68,6 +68,8 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 
 TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 天去重：每期 10 个英语单词中，至少 5 个必须未在最近 100 天使用。`build_vocabulary_prompt` 会把历史词库写进 `user_prompt`，`parse_vocabulary_response` 只校验、不写库；用户触发发布后才把话题与全部 10 个单词正式写入 D1。
 
+无论单独生成韩语还是同时生成中英、韩英，韩语罗马音都必须与韩文音节逐一对应，并使用英文半角连字符 `-` 分隔；解析器必须硬校验，不能只依赖 Prompt。
+
 ## 确认门禁
 
 1. **成片**：`language_learning_start_create_videos` 轮询完成后展示成片路径、标题、标签、账号组与 R2 清单 URL；未确认不得触发阿里云发布 Workflow。
