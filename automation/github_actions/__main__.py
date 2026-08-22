@@ -18,6 +18,7 @@ def main() -> None:
             "language_learning_cards",
             "language_learning_videos",
             "language_learning_r2",
+            "language_learning_diagnostics_r2",
             "publish",
         ],
     )
@@ -26,6 +27,7 @@ def main() -> None:
     parser.add_argument("--manifest-url", default="")
     parser.add_argument("--state-path", default="cache/github_actions/language-learning-state.json")
     parser.add_argument("--handoff-dir", default="cache/github_actions/language-learning-handoff")
+    parser.add_argument("--diagnostics-dir", default="cache/github_actions/language-learning-diagnostics")
     arguments = parser.parse_args()
     if arguments.workflow == "finance":
         from .finance import run as run_finance
@@ -47,7 +49,7 @@ def main() -> None:
     elif arguments.workflow == "language_learning_cards":
         from .language_learning import generate_cards
 
-        result = asyncio.run(generate_cards(arguments.state_path))
+        result = asyncio.run(generate_cards(arguments.state_path, arguments.diagnostics_dir))
         payload = {"status": "succeeded", "card_dirs": result["card_dirs"]}
     elif arguments.workflow == "language_learning_videos":
         from .language_learning import generate_videos
@@ -59,6 +61,10 @@ def main() -> None:
 
         result = upload_handoff(arguments.handoff_dir)
         payload = {"status": "succeeded", "r2": result["r2"]}
+    elif arguments.workflow == "language_learning_diagnostics_r2":
+        from .language_learning import upload_failed_subject_sheets
+
+        payload = upload_failed_subject_sheets(arguments.diagnostics_dir)
     else:
         from .publish import run as run_publish
 

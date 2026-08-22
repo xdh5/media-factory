@@ -18,12 +18,6 @@ from .._constants import (
     SUBJECT_GRID_BOXES,
     SUBJECT_REMBG_MODEL,
     SUBJECT_SHEET_SIZE,
-    SUBJECT_VALIDATION_BORDER_IGNORE_PIXELS,
-    SUBJECT_VALIDATION_MARGIN_BOTTOM_RATIO,
-    SUBJECT_VALIDATION_MARGIN_TOP_RATIO,
-    SUBJECT_VALIDATION_MARGIN_X_RATIO,
-    SUBJECT_VALIDATION_MAX_FOREGROUND_RATIO,
-    SUBJECT_VALIDATION_MIN_FOREGROUND_RATIO,
     TEMPLATE_FILENAMES,
     WORDS_PER_TASK,
 )
@@ -176,21 +170,11 @@ def _cutout_cell(cell: Image.Image, session, index: int) -> Image.Image:
     return cut.crop(bbox)
 
 
-def _validation_mask(cut: Image.Image) -> Image.Image:
-    mask = _visible_mask(cut)
-    border = SUBJECT_VALIDATION_BORDER_IGNORE_PIXELS
-    mask.paste(0, (0, 0, mask.width, border))
-    mask.paste(0, (0, mask.height - border, mask.width, mask.height))
-    mask.paste(0, (0, 0, border, mask.height))
-    mask.paste(0, (mask.width - border, 0, mask.width, mask.height))
-    return mask
-
-
 def validate_subject_sheet(
     subject_sheet_path: str | Path,
     cutout_cache_dir: str | Path | None = None,
 ) -> dict:
-    """用 Python 检查十格主体是否完整落在各自安全区，不做文字识别。"""
+    """用 Python 检查十格主体是否为空或触碰格子边界，不做文字识别。"""
     sheet_path = Path(subject_sheet_path).resolve()
     sheet = _sheet(sheet_path)
     session = _rembg_session()
@@ -199,7 +183,7 @@ def validate_subject_sheet(
     issues: list[str] = []
     for index, grid_box in enumerate(SUBJECT_GRID_BOXES, 1):
         cut = _remove_cell_background(sheet.crop(grid_box), session, index)
-        mask = _validation_mask(cut)
+        mask = _visible_mask(cut)
         bbox = mask.getbbox()
         cell_issues: list[str] = []
         if bbox is None:
@@ -208,21 +192,14 @@ def validate_subject_sheet(
         else:
             foreground_pixels = mask.histogram()[255]
             foreground_ratio = foreground_pixels / (mask.width * mask.height)
-            margin_x = round(mask.width * SUBJECT_VALIDATION_MARGIN_X_RATIO)
-            margin_top = round(mask.height * SUBJECT_VALIDATION_MARGIN_TOP_RATIO)
-            margin_bottom = round(mask.height * SUBJECT_VALIDATION_MARGIN_BOTTOM_RATIO)
-            if bbox[0] < margin_x:
-                cell_issues.append("主体过于靠近左边界，可能跨格或被截断")
-            if bbox[2] > mask.width - margin_x:
-                cell_issues.append("主体过于靠近右边界，可能跨格或被截断")
-            if bbox[1] < margin_top:
-                cell_issues.append("主体过于靠近上边界")
-            if bbox[3] > mask.height - margin_bottom:
-                cell_issues.append("主体过于靠近下边界")
-            if foreground_ratio < SUBJECT_VALIDATION_MIN_FOREGROUND_RATIO:
-                cell_issues.append("主体面积过小")
-            if foreground_ratio > SUBJECT_VALIDATION_MAX_FOREGROUND_RATIO:
-                cell_issues.append("主体面积过大")
+            if bbox[0] <= 0:
+                cell_issues.append("主体接触左边界，可能跨格或被截断")
+            if bbox[2] >= mask.width:
+                cell_issues.append("主体接触右边界，可能跨格或被截断")
+            if bbox[1] <= 0:
+                cell_issues.append("主体接触上边界，可能被截断")
+            if bbox[3] >= mask.height:
+                cell_issues.append("主体接触下边界，可能被截断")
             cleaned = cut.copy()
             cleaned.putalpha(mask)
             subjects.append(cleaned.crop(bbox))

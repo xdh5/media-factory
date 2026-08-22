@@ -173,6 +173,34 @@ def upload_run_files(
     return {"files": uploaded, "manifest": remote_manifest_upload}
 
 
+def upload_diagnostic_files(
+    workflow: str,
+    run_id: str,
+    paths: list[str | Path],
+    manifest: dict,
+) -> dict:
+    """把失败诊断文件上传到单独的一日清理目录。"""
+    uploaded = []
+    prefix = f"diagnostics/{workflow}/{run_id}"
+    for value in paths:
+        path = Path(value).resolve()
+        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        stored = upload_public_file(path, f"{prefix}/{path.name}", content_type=content_type)
+        uploaded.append({**stored, "source_path": str(path), "source_name": path.name})
+    diagnostic_manifest = {**manifest, "expires_after_days": 1, "r2_files": uploaded}
+    manifest_path = Path(paths[0]).resolve().parent / "failed-subject-sheets-r2.json"
+    manifest_path.write_text(
+        json.dumps(diagnostic_manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    stored_manifest = upload_public_file(
+        manifest_path,
+        f"{prefix}/failed-subject-sheets.json",
+        content_type="application/json; charset=utf-8",
+    )
+    return {"files": uploaded, "manifest": stored_manifest}
+
+
 def write_summary(title: str, rows: list[tuple[str, str]]) -> None:
     summary_path = os.getenv("GITHUB_STEP_SUMMARY", "").strip()
     if not summary_path:

@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 from ._mcp import MCPCallError, ProjectMCP
-from ._shared import PROJECT_ROOT, qwen, upload_run_files, write_summary
+from ._shared import PROJECT_ROOT, qwen, upload_diagnostic_files, upload_run_files, write_summary
 
 
 VOICES = {"en": "en-US-AriaNeural", "zh": "zh-CN-XiaoxiaoNeural", "ko": "ko-KR-SunHiNeural"}
@@ -134,13 +134,33 @@ async def generate_words(
     return state
 
 
-async def generate_cards(state_path: str | Path) -> dict:
+def _write_diagnostics(diagnostics_dir: Path, payload: dict) -> None:
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    (diagnostics_dir / "diagnostics.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+async def generate_cards(
+    state_path: str | Path,
+    diagnostics_dir: str | Path = "cache/github_actions/language-learning-diagnostics",
+) -> dict:
     """第二段：生成主体图并合成各语言方向的固定模板卡片。"""
     state = _read_state(state_path)
     topic = str(state["topic"])
     learning_modes = list(state["learning_modes"])
     run_id = str(state["run_id"])
     words = dict(state["words"])
+    diagnostic_root = Path(diagnostics_dir).resolve()
+    diagnostic_payload = {
+        "workflow": "language_learning",
+        "run_id": run_id,
+        "topic": topic,
+        "status": "running",
+        "attempts": [],
+    }
+    _write_diagnostics(diagnostic_root, diagnostic_payload)
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
         primary_words = words.get("en-zh") or words.get("en-ko")
         validation_issues: list[str] = []
@@ -171,7 +191,20 @@ async def generate_cards(state_path: str | Path) -> dict:
             if validation.get("valid") is True:
                 break
             validation_issues = [str(item) for item in validation.get("issues") or []]
+            source = Path(str(submitted["subject_sheet_path"])).resolve()
+            failed_image = diagnostic_root / f"subject-sheet-attempt-{generation_attempt}{source.suffix.lower() or '.png'}"
+            shutil.copy2(source, failed_image)
+            diagnostic_payload["attempts"].append({
+                "generation_attempt": generation_attempt,
+                "file": failed_image.name,
+                "issues": validation_issues,
+                "cells": validation.get("cells") or [],
+            })
+            diagnostic_payload["status"] = "retrying"
+            _write_diagnostics(diagnostic_root, diagnostic_payload)
         else:
+            diagnostic_payload["status"] = "failed"
+            _write_diagnostics(diagnostic_root, diagnostic_payload)
             details = "；".join(validation_issues) or "没有返回具体格子错误"
             raise RuntimeError(
                 f"原始主题图连续 {SUBJECT_GENERATION_MAX_ATTEMPTS} 次未通过 Python 格子检查：{details}"
@@ -196,8 +229,39 @@ async def generate_cards(state_path: str | Path) -> dict:
         "generation_attempt": generation_attempt,
     }
     state["card_dirs"] = card_dirs
+    diagnostic_payload["status"] = "succeeded"
+    _write_diagnostics(diagnostic_root, diagnostic_payload)
     _write_state(state_path, state)
     return state
+
+
+def upload_failed_subject_sheets(diagnostics_dir: str | Path) -> dict:
+    """上传所有被 Python 校验拒绝的主体图；没有失败图时直接跳过。"""
+    root = Path(diagnostics_dir).resolve()
+    metadata_path = root / "diagnostics.json"
+    if not metadata_path.is_file():
+        return {"status": "skipped", "reason": "本次任务没有主体图诊断记录"}
+    metadata = _read_state(metadata_path)
+    paths = [root / str(item["file"]) for item in metadata.get("attempts") or []]
+    paths = [path for path in paths if path.is_file()]
+    if not paths:
+        return {"status": "skipped", "reason": "本次任务没有校验失败的主体图"}
+    result = upload_diagnostic_files(
+        "language_learning",
+        str(metadata["run_id"]),
+        paths,
+        metadata,
+    )
+    write_summary(
+        "语言学习失败主题图已上传 R2",
+        [
+            ("主题", str(metadata["topic"])),
+            ("失败图片数", str(len(paths))),
+            ("保留时间", "1 天"),
+            ("R2 诊断清单", str(result["manifest"]["url"])),
+        ],
+    )
+    return {"status": "uploaded", "r2": result}
 
 
 async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> dict:

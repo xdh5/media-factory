@@ -29,6 +29,7 @@ env:
   PYTHONUTF8: "1"
   STATE_PATH: cache/github_actions/language-learning-state.json
   HANDOFF_DIR: cache/github_actions/language-learning-handoff
+  DIAGNOSTICS_DIR: cache/github_actions/language-learning-diagnostics
 
 jobs:
   prepare:
@@ -93,6 +94,12 @@ jobs:
       - name: 检出生产代码
         uses: actions/checkout@v5
 
+      - name: 初始化失败图交接目录
+        shell: bash
+        run: |
+          mkdir -p "$DIAGNOSTICS_DIR"
+          printf '{"status":"not_started"}\n' > "$DIAGNOSTICS_DIR/diagnostics.json"
+
       - name: 生成主题并校验双语词表
         env:
           INPUT_TOPIC: ${{ inputs.topic }}
@@ -108,7 +115,16 @@ jobs:
           python -m automation.github_actions language_learning_words --topic "$INPUT_TOPIC" --modes "$MODES" --state-path "$STATE_PATH"
 
       - name: 生成主体图与双语卡片
-        run: python -m automation.github_actions language_learning_cards --state-path "$STATE_PATH"
+        run: python -m automation.github_actions language_learning_cards --state-path "$STATE_PATH" --diagnostics-dir "$DIAGNOSTICS_DIR"
+
+      - name: 保存失败主题图交接文件
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: language-learning-diagnostics-${{ github.run_id }}
+          path: cache/github_actions/language-learning-diagnostics
+          if-no-files-found: error
+          retention-days: 1
 
       - name: 合成配音与中韩双模式成片
         run: python -m automation.github_actions language_learning_videos --state-path "$STATE_PATH" --handoff-dir "$HANDOFF_DIR"
@@ -152,3 +168,33 @@ jobs:
 
       - name: 展示 R2 成片结果
         run: echo "成片、公网地址和发布清单已写入本次任务摘要。"
+
+  upload_diagnostics:
+    name: 失败主题图：上传 R2
+    needs: generate
+    if: ${{ always() && (needs.generate.result == 'success' || needs.generate.result == 'failure') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: ghcr.io/xdh5/media-factory-runner:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+    steps:
+      - name: 检出上传代码
+        uses: actions/checkout@v5
+
+      - name: 下载失败主题图交接文件
+        uses: actions/download-artifact@v4
+        with:
+          name: language-learning-diagnostics-${{ github.run_id }}
+          path: cache/github_actions/language-learning-diagnostics
+
+      - name: 上传失败主题图
+        run: python -m automation.github_actions language_learning_diagnostics_r2 --diagnostics-dir "$DIAGNOSTICS_DIR"
