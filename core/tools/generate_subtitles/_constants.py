@@ -11,9 +11,9 @@ from pathlib import Path
 
 def _project_root() -> Path:
     for candidate in Path(__file__).resolve().parents:
-        if (candidate / "AGENTS.md").is_file():
+        if any((candidate / name).is_file() for name in ("AGENTS.md", "agents.md")):
             return candidate
-    raise RuntimeError("找不到项目根目录：缺少 AGENTS.md")
+    raise RuntimeError("找不到项目根目录：缺少 AGENTS.md 或 agents.md")
 
 
 SUBTITLE_FONT_DIRECTORY = _project_root() / "static" / "font"

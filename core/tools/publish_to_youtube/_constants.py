@@ -32,7 +32,7 @@ YOUTUBE_REQUIRED_SUFFIXES = (
 
 def load_project_env() -> None:
     for candidate in Path(__file__).resolve().parents:
-        if (candidate / "AGENTS.md").is_file():
+        if any((candidate / name).is_file() for name in ("AGENTS.md", "agents.md")):
             load_dotenv(candidate / ".env", override=True)
             return
     load_dotenv(override=True)
