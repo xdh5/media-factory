@@ -104,8 +104,6 @@ DOUYIN_RESEARCH_RECORD_SCHEMA = {
     "type": "object",
     "properties": {
         "aweme_id": {"type": "string"},
-        "source_keyword": {"type": "string"},
-        "search_rank": {"type": "integer", "minimum": 1},
         "author_name": {"type": "string"},
         "published_at": {"type": ["string", "null"]},
         "caption": {"type": "string"},
@@ -117,7 +115,7 @@ DOUYIN_RESEARCH_RECORD_SCHEMA = {
         "updated_at": {"type": "string"},
     },
     "required": [
-        "aweme_id", "source_keyword", "search_rank", "author_name", "caption",
+        "aweme_id", "author_name", "caption",
         "transcript_raw", "transcript_corrected", "aweme_url", "created_at", "updated_at",
     ],
     "additionalProperties": False,

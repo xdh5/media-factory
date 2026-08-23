@@ -35,7 +35,8 @@ def _map_error(exc: Exception) -> Exception:
 mcp = FastMCP(
     "media-factory-douyin-research",
     instructions=(
-        "抖音关键词研究 MCP。搜索时先用 Cloudflare D1 的作品 ID 去重，再通过 MediaCrawler 按搜索顺序下载前五个新视频，"
+        "抖音关键词研究 MCP。搜索必须传 collection_code 和 collection_name 表明内容用途；"
+        "先用 Cloudflare D1 的作品 ID 全局去重，再通过 MediaCrawler 按搜索顺序下载前五个新视频，"
         "并调用项目 transcribe 工具转写。宿主 Agent 必须只修正明显错别字、补充标点，不得改写原意；"
         "调用 douyin_research_review_transcripts 保存全部修订文本后，向用户只展示编号和修订后的文字，禁止展示作者、时间、文案或链接。"
         "只有用户明确确认编号后，才能调用 douyin_research_commit 写入 D1。搜索为耗时任务，必须 start + poll_task。"
@@ -44,14 +45,25 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-def douyin_research_start_search(keyword: str, limit: int = 5) -> dict:
+def douyin_research_start_search(
+    keyword: str,
+    collection_code: str,
+    collection_name: str,
+    limit: int = 5,
+) -> dict:
     """启动抖音关键词搜索、去重、视频下载和语音转写。"""
     try:
         run_id = f"run-{time.time_ns()}"
         cache_dir = CACHE_ROOT / run_id
 
         def _work() -> dict:
-            return search_candidates(keyword, cache_dir, limit=limit)
+            return search_candidates(
+                keyword,
+                cache_dir,
+                collection_code=collection_code,
+                collection_name=collection_name,
+                limit=limit,
+            )
 
         started = runner_submit_task(
             cache_dir=cache_dir,

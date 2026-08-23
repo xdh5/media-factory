@@ -458,7 +458,9 @@ function douyinResearchRecord(value) {
   const searchRank = positiveInteger(value.search_rank, "search_rank", 1000);
   return {
     aweme_id: awemeId,
-    source_keyword: requiredText(value.source_keyword, "source_keyword", 200),
+    collection_code: requiredText(value.collection_code, "collection_code", 64),
+    collection_name: requiredText(value.collection_name, "collection_name", 100),
+    search_keyword: requiredText(value.search_keyword, "search_keyword", 200),
     search_rank: searchRank,
     author_name: requiredText(value.author_name || "未知作者", "author_name", 200),
     published_at: String(value.published_at || "").trim() || null,
@@ -481,26 +483,54 @@ async function commitDouyinResearch(request, env) {
     throw new Error("records 包含重复 aweme_id");
   }
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-  const statements = records.map((record) => env.DB.prepare(
-    `INSERT INTO douyin_research_contents(
-       aweme_id, source_keyword, search_rank, author_name, published_at, caption,
-       transcript_raw, transcript_corrected, aweme_url, cover_url, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(aweme_id) DO NOTHING
-     RETURNING aweme_id, source_keyword, search_rank, author_name, published_at, caption,
-               transcript_raw, transcript_corrected, aweme_url, cover_url, created_at, updated_at`,
-  ).bind(
-    record.aweme_id, record.source_keyword, record.search_rank, record.author_name,
-    record.published_at, record.caption, record.transcript_raw, record.transcript_corrected,
-    record.aweme_url, record.cover_url, now, now,
-  ));
+  for (const record of records) {
+    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(record.collection_code)) {
+      throw new Error("collection_code 格式不正确");
+    }
+  }
+  const statements = [];
+  for (const record of records) {
+    statements.push(env.DB.prepare(
+      `INSERT INTO douyin_research_collections(code, name, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(code) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`,
+    ).bind(record.collection_code, record.collection_name, now, now));
+    statements.push(env.DB.prepare(
+      `INSERT INTO douyin_research_contents(
+         aweme_id, author_name, published_at, caption, transcript_raw,
+         transcript_corrected, aweme_url, cover_url, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(aweme_id) DO NOTHING`,
+    ).bind(
+      record.aweme_id, record.author_name, record.published_at, record.caption,
+      record.transcript_raw, record.transcript_corrected, record.aweme_url,
+      record.cover_url, now, now,
+    ));
+    statements.push(env.DB.prepare(
+      `INSERT INTO douyin_research_discoveries(
+         aweme_id, collection_code, search_keyword, search_rank, discovered_at
+       ) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(aweme_id, collection_code, search_keyword) DO NOTHING`,
+    ).bind(
+      record.aweme_id, record.collection_code, record.search_keyword,
+      record.search_rank, now,
+    ));
+  }
   const results = await env.DB.batch(statements);
-  const inserted = results.flatMap((result) => result.results || []);
+  const insertedCount = records.filter((_, index) => Number(results[index * 3 + 1]?.meta?.changes || 0) > 0).length;
+  const discoveryCount = records.filter((_, index) => Number(results[index * 3 + 2]?.meta?.changes || 0) > 0).length;
   return jsonResponse({
-    records: inserted,
-    inserted_count: inserted.length,
-    duplicate_count: records.length - inserted.length,
-  }, inserted.length ? 201 : 200);
+    records: records.map((record) => ({
+      aweme_id: record.aweme_id,
+      collection_code: record.collection_code,
+      collection_name: record.collection_name,
+      search_keyword: record.search_keyword,
+      search_rank: record.search_rank,
+    })),
+    inserted_count: insertedCount,
+    duplicate_count: records.length - insertedCount,
+    discovery_count: discoveryCount,
+  }, insertedCount || discoveryCount ? 201 : 200);
 }
 
 export default {

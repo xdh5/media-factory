@@ -9,12 +9,14 @@
 - `publish_accounts`
 - `publish_account_group_members`
 - `douyin_research_contents`
+- `douyin_research_collections`
+- `douyin_research_discoveries`
 
 发布账号表只保存平台、连接器和配置别名，不保存密码、Cookie、Token、手机号，也不导入 MatrixMedia 的账号明细。图片和视频文件继续存 R2，`image_library.image_path` 只保存项目相对路径。
 
 发布账号组通过 `GET /v1/publish-account-groups` 查询；传入 `group` 可按编码或中文名读取单组，例如 `GET /v1/publish-account-groups?group=中文`。
 
-抖音研究 MCP 通过 `GET /v1/douyin-research/ids` 做作品 ID 去重；只有用户确认后才调用 `POST /v1/douyin-research/commit` 保存作者、发布时间、文案和转写文本。
+抖音研究 MCP 通过 `GET /v1/douyin-research/ids` 做作品 ID 全局去重；只有用户确认后才调用 `POST /v1/douyin-research/commit`。作品内容只存一份，内容分类和搜索关键词记录在 `douyin_research_discoveries`。
 
 部署前需要：
 

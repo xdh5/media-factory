@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,11 +54,24 @@ def _load_context(context_path: str | Path) -> tuple[Path, dict]:
     return path, payload
 
 
-def search_candidates(keyword: str, cache_dir: str | Path, *, limit: int = DEFAULT_LIMIT) -> dict:
+def search_candidates(
+    keyword: str,
+    cache_dir: str | Path,
+    *,
+    collection_code: str,
+    collection_name: str,
+    limit: int = DEFAULT_LIMIT,
+) -> dict:
     """通过 MediaCrawler 搜索并下载新作品，再用项目转写工具识别语音。"""
     clean_keyword = str(keyword or "").strip()
     if not clean_keyword:
         raise SearchError("搜索关键词不能为空")
+    clean_collection_code = str(collection_code or "").strip().casefold()
+    clean_collection_name = str(collection_name or "").strip()
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", clean_collection_code):
+        raise SearchError("collection_code 必须是小写英文字母开头的分类编码")
+    if not clean_collection_name or len(clean_collection_name) > 100:
+        raise SearchError("collection_name 必须是 1 到 100 个字符的分类名称")
     if not 1 <= int(limit) <= DEFAULT_LIMIT:
         raise SearchError("候选数量必须为 1 到 5")
     if not MEDIACRAWLER_ROOT.is_dir():
@@ -127,6 +141,8 @@ def search_candidates(keyword: str, cache_dir: str | Path, *, limit: int = DEFAU
     context_path = root / CONTEXT_FILE_NAME
     context = {
         "keyword": clean_keyword,
+        "collection_code": clean_collection_code,
+        "collection_name": clean_collection_name,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": "awaiting_transcript_review",
         "candidates": candidates,
@@ -193,7 +209,9 @@ def commit_candidates(
         published_at = datetime.fromtimestamp(unix_time, tz=timezone.utc).isoformat() if unix_time else ""
         records.append({
             "aweme_id": str(row["aweme_id"]),
-            "source_keyword": str(context["keyword"]),
+            "collection_code": str(context["collection_code"]),
+            "collection_name": str(context["collection_name"]),
+            "search_keyword": str(context["keyword"]),
             "search_rank": int(row["search_rank"]),
             "author_name": str(row.get("author_name") or ""),
             "published_at": published_at,
