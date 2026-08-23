@@ -5,6 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 META_GRAPH_API_BASE_URL = "https://graph.facebook.com"
+INSTAGRAM_GRAPH_API_BASE_URL = "https://graph.instagram.com"
 META_GRAPH_API_VERSION_ENV = "META_GRAPH_API_VERSION"
 DEFAULT_META_GRAPH_API_VERSION = "v23.0"
 INSTAGRAM_USER_ID_ENV = "INSTAGRAM_USER_ID"

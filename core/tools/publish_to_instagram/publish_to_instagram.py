@@ -13,6 +13,7 @@ from ._constants import (
     FAILURE_STATUS_CODES,
     INSTAGRAM_ACCESS_TOKEN_ENV,
     INSTAGRAM_ACCOUNT_TITLE_ENV,
+    INSTAGRAM_GRAPH_API_BASE_URL,
     INSTAGRAM_USERNAME_ENV,
     INSTAGRAM_USER_ID_ENV,
     META_GRAPH_API_BASE_URL,
@@ -34,11 +35,16 @@ def _env(name: str) -> str:
     return os.getenv(name, "").strip()
 
 
-def _settings(user_id: str) -> tuple[str, str, str]:
+def _settings(user_id: str) -> tuple[str, str, str, str]:
     configured_user_id = _env(INSTAGRAM_USER_ID_ENV)
     page_access_token = _env(FACEBOOK_PAGE_ACCESS_TOKEN_ENV)
     instagram_access_token = _env(INSTAGRAM_ACCESS_TOKEN_ENV)
-    access_token = page_access_token or instagram_access_token
+    if instagram_access_token.startswith("IG"):
+        access_token = instagram_access_token
+        graph_base_url = INSTAGRAM_GRAPH_API_BASE_URL
+    else:
+        access_token = page_access_token or instagram_access_token
+        graph_base_url = META_GRAPH_API_BASE_URL
     if not configured_user_id or not access_token:
         raise CredentialError(
             f"缺少 {INSTAGRAM_USER_ID_ENV} 或官方 Graph API 访问令牌",
@@ -56,7 +62,7 @@ def _settings(user_id: str) -> tuple[str, str, str]:
             {"requested_user_id": normalized_user_id},
         )
     version = _env(META_GRAPH_API_VERSION_ENV) or DEFAULT_META_GRAPH_API_VERSION
-    return configured_user_id, access_token, version
+    return configured_user_id, access_token, version, graph_base_url
 
 
 def list_instagram_accounts() -> list[dict]:
@@ -110,9 +116,15 @@ def _request(method: str, url: str, *, token: str, data: dict | None = None, par
     return payload if isinstance(payload, dict) else {}
 
 
-def _wait_container(container_id: str, *, token: str, version: str) -> None:
+def _wait_container(
+    container_id: str,
+    *,
+    token: str,
+    version: str,
+    graph_base_url: str,
+) -> None:
     deadline = time.monotonic() + STATUS_TIMEOUT_SECONDS
-    url = f"{META_GRAPH_API_BASE_URL}/{version}/{container_id}"
+    url = f"{graph_base_url}/{version}/{container_id}"
     while True:
         payload = _request(
             "GET",
@@ -150,8 +162,8 @@ def publish_to_instagram(
     normalized_caption = str(caption or "").strip()
     if len(normalized_caption) > 2200:
         raise InvalidParameterError("Instagram caption 不能超过 2200 个字符", {"parameter": "caption"})
-    normalized_user_id, token, version = _settings(user_id)
-    base = f"{META_GRAPH_API_BASE_URL}/{version}"
+    normalized_user_id, token, version, graph_base_url = _settings(user_id)
+    base = f"{graph_base_url}/{version}"
     created = _request(
         "POST",
         f"{base}/{normalized_user_id}/media",
@@ -166,7 +178,12 @@ def publish_to_instagram(
     container_id = str(created.get("id") or "")
     if not container_id:
         raise PublishError("Instagram 未返回 Reels 容器 ID")
-    _wait_container(container_id, token=token, version=version)
+    _wait_container(
+        container_id,
+        token=token,
+        version=version,
+        graph_base_url=graph_base_url,
+    )
     published = _request(
         "POST",
         f"{base}/{normalized_user_id}/media_publish",
