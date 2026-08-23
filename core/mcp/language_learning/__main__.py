@@ -53,6 +53,7 @@ from .tools import (
     create_vocabulary_videos,
     list_recent_words,
     parse_vocabulary_response,
+    prepare_r2_publish_manifest,
     publish_vocabulary_videos,
     review_subject_cutouts,
     upload_publish_assets_to_r2,
@@ -553,8 +554,15 @@ def language_learning_start_publish(
         cache_root, _ = production_dirs(run_id)
 
         def _work() -> dict:
+            resolved_manifest_path = manifest_path
+            if str(manifest_path).strip().startswith(("http://", "https://")):
+                resolved_manifest_path = prepare_r2_publish_manifest(
+                    manifest_path,
+                    run_id,
+                    cache_root,
+                )
             return publish_vocabulary_videos(
-                manifest_path,
+                resolved_manifest_path,
                 publish_confirmed,
                 targets=targets,
                 publish_at=publish_at,

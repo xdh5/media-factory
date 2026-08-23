@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
-from core.tools.r2_storage import upload_public_file
+from core.tools.r2_storage import download_public_file, upload_public_file
 from core.tools.topic_dedup import commit as commit_topic
 
 from .._constants import (
@@ -198,6 +199,79 @@ def _load_manifest(manifest_path: str | Path) -> dict:
     if not isinstance(payload, dict) or not payload.get("items"):
         raise PublishError(f"发布清单无效：{path}")
     return payload
+
+
+def prepare_r2_publish_manifest(
+    r2_manifest_url: str,
+    run_id: str,
+    cache_root: str | Path,
+) -> str:
+    """把 GitHub Action 的 R2 交付清单还原成本地可发布清单和视频。"""
+    normalized_run_id = str(run_id or "").strip()
+    expected_prefix = f"runs/{WORKFLOW_ID}/{normalized_run_id}/"
+    parsed_url = urlparse(str(r2_manifest_url or "").strip())
+    object_key = unquote(parsed_url.path.lstrip("/"))
+    if parsed_url.scheme not in {"http", "https"} or object_key != f"{expected_prefix}r2-manifest.json":
+        raise PublishError(
+            "manifest_path 必须是本地发布清单，或与 run_id 对应的 R2 r2-manifest.json 公网地址",
+            {"run_id": normalized_run_id, "manifest_path": str(r2_manifest_url)},
+        )
+
+    destination = Path(cache_root).resolve() / "r2-publish"
+    r2_manifest_path = destination / "r2-manifest.json"
+    download_public_file(object_key, r2_manifest_path)
+    try:
+        r2_manifest = json.loads(r2_manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise PublishError(f"读取 R2 交付清单失败：{error}") from error
+    if str(r2_manifest.get("run_id") or "") != normalized_run_id:
+        raise PublishError(
+            "R2 交付清单的 run_id 与发布请求不一致",
+            {"expected": normalized_run_id, "actual": r2_manifest.get("run_id")},
+        )
+
+    r2_files = list(r2_manifest.get("r2_files") or [])
+    publish_file = next(
+        (item for item in r2_files if str(item.get("source_name") or "") == PUBLISH_MANIFEST_FILE_NAME),
+        None,
+    )
+    if not isinstance(publish_file, dict):
+        raise PublishError("R2 交付清单缺少 publish-manifest.json")
+    publish_key = str(publish_file.get("key") or "")
+    if not publish_key.startswith(expected_prefix):
+        raise PublishError("R2 发布清单对象路径与 run_id 不一致")
+
+    publish_manifest_path = destination / PUBLISH_MANIFEST_FILE_NAME
+    download_public_file(publish_key, publish_manifest_path)
+    manifest = _load_manifest(publish_manifest_path)
+    if str(manifest.get("run_id") or "") != normalized_run_id:
+        raise PublishError("发布清单的 run_id 与请求不一致")
+
+    files_by_name = {
+        str(item.get("source_name") or ""): item
+        for item in r2_files
+        if str(item.get("source_name") or "")
+    }
+    videos_dir = destination / "videos"
+    for item in manifest.get("items") or []:
+        for video in item.get("videos") or []:
+            source_name = Path(str(video.get("output_path") or "")).name
+            remote = files_by_name.get(source_name)
+            if not isinstance(remote, dict):
+                raise PublishError(f"R2 交付清单缺少待发布视频：{source_name}")
+            video_key = str(remote.get("key") or "")
+            if not video_key.startswith(expected_prefix):
+                raise PublishError(f"R2 视频对象路径与 run_id 不一致：{source_name}")
+            local_video = videos_dir / source_name
+            download_public_file(video_key, local_video)
+            video["output_path"] = str(local_video)
+            video["video_url"] = str(remote.get("url") or "")
+            video["r2_key"] = video_key
+    publish_manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return str(publish_manifest_path)
 
 
 def upload_publish_assets_to_r2(

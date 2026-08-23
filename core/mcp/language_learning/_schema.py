@@ -258,7 +258,11 @@ CREATE_VIDEOS_INPUT_SCHEMA = {
 UPLOAD_R2_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "manifest_path": {"type": "string", "minLength": 1},
+        "manifest_path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "本地发布清单路径",
+        },
         "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
         "subject_sheet_path": {"type": ["string", "null"]},
     },
@@ -268,7 +272,11 @@ UPLOAD_R2_INPUT_SCHEMA = {
 PUBLISH_VIDEOS_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "manifest_path": {"type": "string", "minLength": 1},
+        "manifest_path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "本地发布清单路径，或 GitHub Action 上传的 R2 r2-manifest.json 公网地址",
+        },
         "publish_confirmed": {"type": "boolean", "const": True},
         "targets": {
             "type": "array",

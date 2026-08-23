@@ -2,7 +2,12 @@
 
 from .compose_fixed_cards import compose_fixed_cards, review_subject_cutouts, validate_subject_sheet
 from .create_vocabulary_videos import create_vocabulary_videos
-from .publish_vocabulary_videos import attach_publish_manifest, publish_vocabulary_videos, upload_publish_assets_to_r2
+from .publish_vocabulary_videos import (
+    attach_publish_manifest,
+    prepare_r2_publish_manifest,
+    publish_vocabulary_videos,
+    upload_publish_assets_to_r2,
+)
 from .vocabulary_prompt import (
     build_subject_sheet_prompt,
     build_visual_validation_prompt,
@@ -21,6 +26,7 @@ __all__ = [
     "create_vocabulary_videos",
     "list_recent_words",
     "parse_vocabulary_response",
+    "prepare_r2_publish_manifest",
     "publish_vocabulary_videos",
     "review_subject_cutouts",
     "upload_publish_assets_to_r2",
