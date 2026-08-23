@@ -438,6 +438,71 @@ async function listPublishAccountGroups(request, env) {
   return jsonResponse({ records });
 }
 
+async function listDouyinResearchIds(env) {
+  const result = await env.DB.prepare(
+    "SELECT aweme_id FROM douyin_research_contents ORDER BY created_at DESC",
+  ).all();
+  return jsonResponse({
+    aweme_ids: (result.results || []).map((row) => String(row.aweme_id)),
+  });
+}
+
+function douyinResearchRecord(value) {
+  if (!value || typeof value !== "object") {
+    throw new Error("records 必须包含对象");
+  }
+  const awemeId = requiredText(value.aweme_id, "aweme_id", 64);
+  if (!/^\d+$/.test(awemeId)) {
+    throw new Error("aweme_id 格式不正确");
+  }
+  const searchRank = positiveInteger(value.search_rank, "search_rank", 1000);
+  return {
+    aweme_id: awemeId,
+    source_keyword: requiredText(value.source_keyword, "source_keyword", 200),
+    search_rank: searchRank,
+    author_name: requiredText(value.author_name || "未知作者", "author_name", 200),
+    published_at: String(value.published_at || "").trim() || null,
+    caption: requiredText(value.caption || "无文案", "caption", 10000),
+    transcript_raw: requiredText(value.transcript_raw, "transcript_raw", 50000),
+    transcript_corrected: requiredText(value.transcript_corrected, "transcript_corrected", 50000),
+    aweme_url: requiredText(value.aweme_url, "aweme_url", 1000),
+    cover_url: String(value.cover_url || "").trim() || null,
+  };
+}
+
+async function commitDouyinResearch(request, env) {
+  const body = await request.json();
+  const rawRecords = Array.isArray(body.records) ? body.records : [];
+  if (!rawRecords.length || rawRecords.length > 5) {
+    throw new Error("records 必须包含 1 到 5 条作品");
+  }
+  const records = rawRecords.map(douyinResearchRecord);
+  if (new Set(records.map((record) => record.aweme_id)).size !== records.length) {
+    throw new Error("records 包含重复 aweme_id");
+  }
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const statements = records.map((record) => env.DB.prepare(
+    `INSERT INTO douyin_research_contents(
+       aweme_id, source_keyword, search_rank, author_name, published_at, caption,
+       transcript_raw, transcript_corrected, aweme_url, cover_url, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(aweme_id) DO NOTHING
+     RETURNING aweme_id, source_keyword, search_rank, author_name, published_at, caption,
+               transcript_raw, transcript_corrected, aweme_url, cover_url, created_at, updated_at`,
+  ).bind(
+    record.aweme_id, record.source_keyword, record.search_rank, record.author_name,
+    record.published_at, record.caption, record.transcript_raw, record.transcript_corrected,
+    record.aweme_url, record.cover_url, now, now,
+  ));
+  const results = await env.DB.batch(statements);
+  const inserted = results.flatMap((result) => result.results || []);
+  return jsonResponse({
+    records: inserted,
+    inserted_count: inserted.length,
+    duplicate_count: records.length - inserted.length,
+  }, inserted.length ? 201 : 200);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -458,6 +523,8 @@ export default {
       if (request.method === "POST" && url.pathname === "/v1/words/validate-and-record") return await validateAndRecordWords(request, env);
       if (request.method === "GET" && url.pathname === "/v1/images") return await listImages(request, env);
       if (request.method === "GET" && url.pathname === "/v1/publish-account-groups") return await listPublishAccountGroups(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/douyin-research/ids") return await listDouyinResearchIds(env);
+      if (request.method === "POST" && url.pathname === "/v1/douyin-research/commit") return await commitDouyinResearch(request, env);
       return errorResponse("NOT_FOUND", "接口不存在", 404);
     } catch (error) {
       if (error instanceof SyntaxError) {

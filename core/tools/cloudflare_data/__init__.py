@@ -7,8 +7,10 @@ from ._errors import (
     CloudflareDataRequestError,
 )
 from .client import (
+    commit_douyin_research,
     commit_publication,
     get_publish_account_group,
+    list_douyin_research_ids,
     list_images,
     list_publish_account_groups,
     list_recent_words,
@@ -22,8 +24,10 @@ __all__ = [
     "CloudflareDataConflictError",
     "CloudflareDataError",
     "CloudflareDataRequestError",
+    "commit_douyin_research",
     "commit_publication",
     "get_publish_account_group",
+    "list_douyin_research_ids",
     "list_images",
     "list_publish_account_groups",
     "list_recent_words",

@@ -99,3 +99,26 @@ CLOUDFLARE_DATA_ERROR_SCHEMA = {
     },
     "required": ["error"],
 }
+
+DOUYIN_RESEARCH_RECORD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "aweme_id": {"type": "string"},
+        "source_keyword": {"type": "string"},
+        "search_rank": {"type": "integer", "minimum": 1},
+        "author_name": {"type": "string"},
+        "published_at": {"type": ["string", "null"]},
+        "caption": {"type": "string"},
+        "transcript_raw": {"type": "string"},
+        "transcript_corrected": {"type": "string"},
+        "aweme_url": {"type": "string"},
+        "cover_url": {"type": ["string", "null"]},
+        "created_at": {"type": "string"},
+        "updated_at": {"type": "string"},
+    },
+    "required": [
+        "aweme_id", "source_keyword", "search_rank", "author_name", "caption",
+        "transcript_raw", "transcript_corrected", "aweme_url", "created_at", "updated_at",
+    ],
+    "additionalProperties": False,
+}

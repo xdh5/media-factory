@@ -223,3 +223,21 @@ def get_publish_account_group(group: str) -> dict:
             {"group": group_name, "record_count": len(payload["records"])},
         )
     return payload["records"][0]
+
+
+def list_douyin_research_ids() -> list[str]:
+    payload = _request("GET", "/v1/douyin-research/ids")
+    if not isinstance(payload, dict) or not isinstance(payload.get("aweme_ids"), list):
+        raise CloudflareDataRequestError("Cloudflare 抖音研究去重接口缺少 aweme_ids 数组")
+    return [str(value) for value in payload["aweme_ids"] if str(value).strip()]
+
+
+def commit_douyin_research(records: list[dict]) -> dict:
+    payload = _request(
+        "POST",
+        "/v1/douyin-research/commit",
+        body={"records": records},
+    )
+    if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+        raise CloudflareDataRequestError("Cloudflare 抖音研究写入接口缺少 records 数组")
+    return payload

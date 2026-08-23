@@ -1,3 +1,6 @@
 [submodule "integrations/MatrixMedia"]
 	path = integrations/MatrixMedia
 	url = https://github.com/xdh5/MatrixMedia.git
+[submodule "integrations/MediaCrawler"]
+	path = integrations/MediaCrawler
+	url = https://github.com/NanmiCoder/MediaCrawler.git
