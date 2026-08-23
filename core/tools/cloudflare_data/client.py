@@ -201,3 +201,25 @@ def list_images(line: str) -> list[dict]:
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
         raise CloudflareDataRequestError("Cloudflare 图库接口缺少 records 数组")
     return payload["records"]
+
+
+def list_publish_account_groups() -> list[dict]:
+    payload = _request("GET", "/v1/publish-account-groups")
+    if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+        raise CloudflareDataRequestError("Cloudflare 发布账号组接口缺少 records 数组")
+    return payload["records"]
+
+
+def get_publish_account_group(group: str) -> dict:
+    group_name = str(group or "").strip()
+    if not group_name:
+        raise CloudflareDataRequestError("发布账号组编码或名称不能为空")
+    payload = _request("GET", "/v1/publish-account-groups", query={"group": group_name})
+    if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+        raise CloudflareDataRequestError("Cloudflare 发布账号组接口缺少 records 数组")
+    if len(payload["records"]) != 1 or not isinstance(payload["records"][0], dict):
+        raise CloudflareDataRequestError(
+            f"Cloudflare 发布账号组接口没有返回唯一账号组：{group_name}",
+            {"group": group_name, "record_count": len(payload["records"])},
+        )
+    return payload["records"][0]

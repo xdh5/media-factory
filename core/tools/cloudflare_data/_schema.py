@@ -38,6 +38,44 @@ IMAGE_RECORD_SCHEMA = {
     "additionalProperties": False,
 }
 
+PUBLISH_ACCOUNT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "code": {"type": "string"},
+        "platform": {"type": "string"},
+        "display_name": {"type": "string"},
+        "connector": {"type": "string"},
+        "config_key": {"type": "string"},
+        "config": {"type": "object"},
+        "position": {"type": "integer", "minimum": 0},
+        "enabled": {"type": "boolean"},
+    },
+    "required": [
+        "code",
+        "platform",
+        "display_name",
+        "connector",
+        "config_key",
+        "config",
+        "position",
+        "enabled",
+    ],
+    "additionalProperties": False,
+}
+
+PUBLISH_ACCOUNT_GROUP_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "code": {"type": "string"},
+        "name": {"type": "string"},
+        "workflow": {"type": "string"},
+        "enabled": {"type": "boolean"},
+        "members": {"type": "array", "items": PUBLISH_ACCOUNT_SCHEMA},
+    },
+    "required": ["code", "name", "workflow", "enabled", "members"],
+    "additionalProperties": False,
+}
+
 CLOUDFLARE_DATA_ERROR_SCHEMA = {
     "type": "object",
     "properties": {

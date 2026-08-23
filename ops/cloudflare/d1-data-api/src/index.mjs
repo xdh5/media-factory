@@ -366,6 +366,78 @@ async function listImages(request, env) {
   return jsonResponse({ records: result.results || [] });
 }
 
+async function listPublishAccountGroups(request, env) {
+  const url = new URL(request.url);
+  const group = String(url.searchParams.get("group") || "").trim();
+  if (group.length > 100) {
+    throw new Error("group 不能超过 100 个字符");
+  }
+  const where = group ? "WHERE groups.code = ? OR groups.name = ?" : "";
+  const statement = env.DB.prepare(
+    `SELECT
+       groups.code AS group_code,
+       groups.name AS group_name,
+       groups.workflow AS group_workflow,
+       groups.enabled AS group_enabled,
+       accounts.code AS account_code,
+       accounts.platform,
+       accounts.display_name,
+       accounts.connector,
+       accounts.config_key,
+       accounts.config_json,
+       members.position,
+       members.enabled AS member_enabled,
+       accounts.enabled AS account_enabled
+     FROM publish_account_groups AS groups
+     LEFT JOIN publish_account_group_members AS members
+       ON members.group_code = groups.code
+     LEFT JOIN publish_accounts AS accounts
+       ON accounts.code = members.account_code
+     ${where}
+     ORDER BY groups.code, members.position, accounts.code`,
+  );
+  const result = group
+    ? await statement.bind(group, group).all()
+    : await statement.all();
+  const records = [];
+  const byCode = new Map();
+  for (const row of result.results || []) {
+    let record = byCode.get(row.group_code);
+    if (!record) {
+      record = {
+        code: row.group_code,
+        name: row.group_name,
+        workflow: row.group_workflow,
+        enabled: Boolean(row.group_enabled),
+        members: [],
+      };
+      byCode.set(row.group_code, record);
+      records.push(record);
+    }
+    if (!row.account_code) continue;
+    let config;
+    try {
+      config = JSON.parse(row.config_json || "{}");
+    } catch {
+      throw new Error(`账号 ${row.account_code} 的 config_json 格式不正确`);
+    }
+    record.members.push({
+      code: row.account_code,
+      platform: row.platform,
+      display_name: row.display_name,
+      connector: row.connector,
+      config_key: row.config_key,
+      config,
+      position: Number(row.position || 0),
+      enabled: Boolean(row.group_enabled && row.member_enabled && row.account_enabled),
+    });
+  }
+  if (group && !records.length) {
+    return errorResponse("ACCOUNT_GROUP_NOT_FOUND", `发布账号组不存在：${group}`, 404, { group });
+  }
+  return jsonResponse({ records });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -385,6 +457,7 @@ export default {
       if (request.method === "GET" && url.pathname === "/v1/words/recent") return await listRecentWords(request, env);
       if (request.method === "POST" && url.pathname === "/v1/words/validate-and-record") return await validateAndRecordWords(request, env);
       if (request.method === "GET" && url.pathname === "/v1/images") return await listImages(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/publish-account-groups") return await listPublishAccountGroups(request, env);
       return errorResponse("NOT_FOUND", "接口不存在", 404);
     } catch (error) {
       if (error instanceof SyntaxError) {

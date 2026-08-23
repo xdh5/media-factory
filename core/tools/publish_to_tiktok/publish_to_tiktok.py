@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import re
+import time
 import uuid
+from copy import deepcopy
 
 import requests
 
@@ -14,6 +16,10 @@ from ._constants import (
     TIKTOK_ACCOUNT_TITLE_SUFFIX,
     TIKTOK_PRIVACY_LEVEL,
     TIKTOK_REQUEST_TIMEOUT_SECONDS,
+    TIKTOK_STATUS_POLL_INTERVAL_SECONDS,
+    TIKTOK_STATUS_TIMEOUT_SECONDS,
+    TIKTOK_SUCCESS_STATUSES,
+    TIKTOK_FAILURE_STATUSES,
     TIKTOK_USERNAME_SUFFIX,
     ZERNIO_API_BASE_URL,
     ZERNIO_API_KEY_ENV,
@@ -88,6 +94,137 @@ def _configured_account(account_id: str, account: str | None) -> dict:
     return matches[0]
 
 
+def _post_data(result: dict) -> dict:
+    post = result.get("post") or result.get("data") or result
+    return post if isinstance(post, dict) else {}
+
+
+def _platform_data(post: dict, account_id: str) -> dict:
+    for item in post.get("platforms") or []:
+        if not isinstance(item, dict):
+            continue
+        raw_account = item.get("accountId")
+        current_id = raw_account.get("_id") if isinstance(raw_account, dict) else raw_account
+        if str(current_id or "") == account_id:
+            return item
+    return {}
+
+
+def _post_status(post: dict, account_id: str) -> tuple[str, str, str]:
+    platform = _platform_data(post, account_id)
+    status = str(platform.get("status") or post.get("status") or "").strip().casefold()
+    message = str(platform.get("errorMessage") or post.get("errorMessage") or "").strip()
+    platform_url = str(
+        platform.get("platformPostUrl")
+        or post.get("platformPostUrl")
+        or ""
+    ).strip()
+    return status, message, platform_url
+
+
+def _get_post(post_id: str) -> dict:
+    try:
+        response = requests.get(
+            f"{ZERNIO_API_BASE_URL}/posts/{post_id}",
+            headers={"Authorization": f"Bearer {_api_key()}"},
+            timeout=TIKTOK_REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        raise PublishError(f"查询 Zernio TikTok 发布状态失败：{exc}", {"post_id": post_id}) from exc
+    try:
+        result = response.json()
+    except ValueError:
+        result = {}
+    if not response.ok:
+        message = str(result.get("error") or result.get("message") or response.text[:500])
+        raise PublishError(
+            f"Zernio TikTok 状态查询失败：HTTP {response.status_code}，{message}",
+            {"post_id": post_id, "status_code": response.status_code},
+        )
+    return _post_data(result)
+
+
+def _wait_for_terminal(post_id: str, account_id: str) -> dict:
+    deadline = time.monotonic() + TIKTOK_STATUS_TIMEOUT_SECONDS
+    while True:
+        post = _get_post(post_id)
+        status, message, platform_url = _post_status(post, account_id)
+        if status in TIKTOK_SUCCESS_STATUSES:
+            return {
+                "post_id": post_id,
+                "platform_url": platform_url,
+                "account_id": account_id,
+                "status": "published",
+            }
+        if status in TIKTOK_FAILURE_STATUSES:
+            reason = message or f"平台终态为 {status}"
+            raise PublishError(
+                f"TikTok 未发布成功：{reason}",
+                {"post_id": post_id, "account_id": account_id, "status": status},
+            )
+        if time.monotonic() >= deadline:
+            raise PublishError(
+                f"等待 TikTok 发布终态超时，当前状态：{status or 'unknown'}",
+                {"post_id": post_id, "account_id": account_id, "status": status},
+            )
+        time.sleep(TIKTOK_STATUS_POLL_INTERVAL_SECONDS)
+
+
+def _create_post(payload: dict, request_id: str) -> tuple[str, bool]:
+    try:
+        response = requests.post(
+            f"{ZERNIO_API_BASE_URL}/posts",
+            headers={
+                "Authorization": f"Bearer {_api_key()}",
+                "Content-Type": "application/json",
+                "x-request-id": request_id,
+            },
+            json=payload,
+            timeout=TIKTOK_REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        raise PublishError(f"请求 Zernio 发布 TikTok 失败：{exc}") from exc
+    try:
+        result = response.json()
+    except ValueError:
+        result = {}
+    if response.status_code == 409:
+        details = result.get("details") if isinstance(result, dict) else {}
+        post_id = str((details or {}).get("existingPostId") or "")
+        if post_id:
+            return post_id, True
+    if not response.ok:
+        message = str(result.get("error") or result.get("message") or response.text[:500])
+        raise PublishError(f"Zernio 拒绝发布 TikTok：HTTP {response.status_code}，{message}")
+    post = _post_data(result)
+    post_id = str(post.get("_id") or post.get("id") or result.get("postId") or "")
+    if not post_id:
+        raise PublishError("Zernio 未返回 post ID，无法确认 TikTok 发布任务")
+    return post_id, False
+
+
+def _is_direct_capacity_error(exc: PublishError) -> bool:
+    return "direct posting is at capacity" in str(exc).casefold()
+
+
+def _deliver_to_creator_inbox(payload: dict, account_id: str, failed_post_id: str) -> dict:
+    draft_payload = deepcopy(payload)
+    settings = dict(draft_payload.get("tiktokSettings") or {})
+    settings["draft"] = True
+    draft_payload["tiktokSettings"] = settings
+    # Zernio 的重复内容哈希会忽略 draft 设置；加入不可见分隔符，避免草稿被错误映射到直发失败记录。
+    draft_payload["content"] = str(draft_payload.get("content") or "") + "\u2060"
+    request_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{failed_post_id}|draft-2"))
+    post_id, duplicate = _create_post(draft_payload, request_id)
+    terminal = _wait_for_terminal(post_id, account_id)
+    return {
+        **terminal,
+        "status": "draft_delivered",
+        "delivery_mode": "draft",
+        "duplicate": duplicate,
+    }
+
+
 def publish_to_tiktok(
     account_id: str,
     video_url: str,
@@ -120,39 +257,22 @@ def publish_to_tiktok(
         },
         "publishNow": True,
     }
+    post_id, duplicate = _create_post(payload, request_id)
     try:
-        response = requests.post(
-            f"{ZERNIO_API_BASE_URL}/posts",
-            headers={
-                "Authorization": f"Bearer {_api_key()}",
-                "Content-Type": "application/json",
-                "x-request-id": request_id,
-            },
-            json=payload,
-            timeout=TIKTOK_REQUEST_TIMEOUT_SECONDS,
-        )
-    except requests.RequestException as exc:
-        raise PublishError(f"请求 Zernio 发布 TikTok 失败：{exc}", {"account_id": account_id}) from exc
-    try:
-        result = response.json()
-    except ValueError:
-        result = {}
-    if response.status_code == 409:
-        details = result.get("details") if isinstance(result, dict) else {}
-        post_id = str((details or {}).get("existingPostId") or "")
-        if post_id:
-            return {"post_id": post_id, "platform_url": "", "account_id": account_id, "duplicate": True}
-    if not response.ok:
-        message = str(result.get("error") or result.get("message") or response.text[:500])
-        raise PublishError(
-            f"Zernio 拒绝发布 TikTok：HTTP {response.status_code}，{message}",
-            {"account_id": account_id, "status_code": response.status_code},
-        )
-    post = result.get("post") or result.get("data") or result
-    if not isinstance(post, dict):
-        post = {}
-    post_id = str(post.get("_id") or post.get("id") or result.get("postId") or "")
-    platform_url = str(post.get("platformPostUrl") or result.get("platformPostUrl") or "")
-    if not post_id:
-        raise PublishError("Zernio 未返回 post ID，无法确认 TikTok 发布任务", {"account_id": account_id})
-    return {"post_id": post_id, "platform_url": platform_url, "account_id": account_id, "duplicate": False}
+        if duplicate:
+            try:
+                terminal = _wait_for_terminal(post_id, account_id)
+            except PublishError as exc:
+                if str(exc.details.get("status") or "") not in TIKTOK_FAILURE_STATUSES:
+                    raise
+                retry_request_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{post_id}|retry-1"))
+                post_id, duplicate = _create_post(payload, retry_request_id)
+                terminal = _wait_for_terminal(post_id, account_id)
+        else:
+            terminal = _wait_for_terminal(post_id, account_id)
+        return {**terminal, "duplicate": duplicate, "delivery_mode": "direct"}
+    except PublishError as exc:
+        if not _is_direct_capacity_error(exc):
+            raise
+        failed_post_id = str(exc.details.get("post_id") or post_id)
+        return _deliver_to_creator_inbox(payload, account_id, failed_post_id)

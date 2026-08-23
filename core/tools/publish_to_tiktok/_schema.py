@@ -35,7 +35,9 @@ PUBLISH_TO_TIKTOK_OUTPUT_SCHEMA = {
         "platform_url": {"type": "string"},
         "account_id": {"type": "string"},
         "duplicate": {"type": "boolean"},
+        "status": {"type": "string", "enum": ["published", "draft_delivered"]},
+        "delivery_mode": {"type": "string", "enum": ["direct", "draft"]},
     },
-    "required": ["post_id", "platform_url", "account_id", "duplicate"],
+    "required": ["post_id", "platform_url", "account_id", "duplicate", "status", "delivery_mode"],
     "additionalProperties": False,
 }

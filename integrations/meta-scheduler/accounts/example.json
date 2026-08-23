@@ -1,0 +1,23 @@
+{
+  "name": "example",
+  "displayName": "Example Brand",
+  "pageName": "Your Facebook Page Name (must match exactly)",
+  "instagramName": "Your linked Instagram account name",
+  "composerUrl": "https://business.facebook.com/latest/composer/?asset_id=YOUR_PAGE_ID&business_id=YOUR_BUSINESS_ID",
+  "reelsComposerUrl": "https://business.facebook.com/latest/reels_composer/?asset_id=YOUR_PAGE_ID&business_id=YOUR_BUSINESS_ID",
+  "carouselsRoot": "../../my-content/example",
+  "imagesSubpath": "Finals/Day-{day}",
+  "captionSubpath": "Day-{day}/caption.md",
+  "captionStartLine": 5,
+  "platforms": ["facebook", "instagram"],
+  "timezone": "America/New_York",
+  "_comments": {
+    "composerUrl": "建议为多账号配置固定 business_id 与 asset_id，避免 Meta 自动切换业务资产。",
+    "reelsComposerUrl": "创建 Reels 页面的固定地址；未填写时会根据 composerUrl 自动生成。",
+    "instagramName": "关联的 Instagram 账号名；发布前会与 Facebook 页面一起强制校验。",
+    "carouselsRoot": "内容根目录，相对于 meta-scheduler 项目根目录。",
+    "imagesSubpath": "图片目录模式，使用 {day} 作为日期占位符。",
+    "captionSubpath": "文案文件模式，使用 {day} 作为日期占位符。",
+    "captionStartLine": "文案正文起始行；遇到第一行 --- 时停止读取。"
+  }
+}

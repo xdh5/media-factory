@@ -296,7 +296,10 @@ def _should_publish_youtube(manifest: dict) -> bool:
 
 def _should_publish_tiktok(manifest: dict) -> bool:
     """TikTok 已成功时不重复提交。"""
-    return manifest.get("tiktok_published") is not True
+    return not (
+        manifest.get("tiktok_published") is True
+        or manifest.get("tiktok_draft_delivered") is True
+    )
 
 
 def _commit_manifest_database(manifest: dict) -> dict:
@@ -387,12 +390,22 @@ def _publish_chinese_tiktok(item: dict) -> dict:
                     "success": False,
                     "error": error.to_dict()["error"],
                 })
+    all_succeeded = all(row["success"] for row in results) if results else False
+    direct_published = all_succeeded and all(
+        str((row.get("result") or {}).get("status") or "") == "published"
+        for row in results
+    )
+    draft_delivered = all_succeeded and any(
+        str((row.get("result") or {}).get("status") or "") == "draft_delivered"
+        for row in results
+    )
     return {
         "learning_mode": item["learning_mode"],
         "account_group": item["account_group"],
         "channel": "tiktok",
-        "tiktok_published": all(row["success"] for row in results),
-        "success": all(row["success"] for row in results) if results else False,
+        "tiktok_published": direct_published,
+        "tiktok_draft_delivered": draft_delivered,
+        "success": all_succeeded,
         "results": results,
     }
 
@@ -442,6 +455,13 @@ def publish_vocabulary_videos(
     )
     if "tiktok" in selected_targets and tiktok_ok:
         manifest["tiktok_published"] = True
+    tiktok_draft_ok = include_tiktok and all(
+        item.get("tiktok_published") or item.get("tiktok_draft_delivered")
+        for item in published
+        if item.get("channel") == "tiktok"
+    )
+    if "tiktok" in selected_targets and tiktok_draft_ok and not tiktok_ok:
+        manifest["tiktok_draft_delivered"] = True
     manifest["status"] = "published" if chinese_success and not matrixmedia_items else (
         "awaiting_matrixmedia" if chinese_success else "publish_failed"
     )

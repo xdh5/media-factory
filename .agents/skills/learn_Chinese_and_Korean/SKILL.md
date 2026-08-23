@@ -33,7 +33,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 
 ```json
 {
-  "account_group": "Daily Chinese Learning",
+  "account_group": "中文",
   "youtube_account": "language_learning",
   "tags": ["#learnchinese", "#chinesevocabulary", "#mandarinchinese", "#dailychinese"],
   "short_title": "中文{topic}怎么说"
@@ -42,7 +42,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 
 - YouTube 使用项目共用的 `YOUTUBE_OAUTH_CLIENT_ID`、`YOUTUBE_OAUTH_CLIENT_SECRET`，并使用 `.env` 里按频道隔离的 `LANGUAGE_LEARNING_YOUTUBE_*`（`youtube_account` 即账号前缀）
 - TikTok 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用共用的 `ZERNIO_API_KEY` 与 `LANGUAGE_LEARNING_TIKTOK_*`
-- 展示给用户看的账号组名：`Daily Chinese Learning`
+- 展示给用户看的账号组名：`中文`；成员从 Cloudflare D1 的发布账号组读取，当前包含 YouTube `language_learning` 与 Meta `daily-chinese-learning` 交叉发布入口。
 
 **韩语 `en-ko`**
 
@@ -56,7 +56,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 ```
 
 - 生产完成后调用 `language_learning_start_upload_r2` 上传 R2
-- 发布服务器上的独立 MatrixMedia MCP 使用账号组 `韩语`
+- 发布路由账号组为 `韩语`；从 Cloudflare D1 解析到发布服务器 MatrixMedia 同名账号组 `韩语`。
 - 跳过掘金、番茄、小红书
 
 ## Prompt

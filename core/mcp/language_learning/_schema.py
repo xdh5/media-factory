@@ -270,6 +270,12 @@ PUBLISH_VIDEOS_INPUT_SCHEMA = {
     "properties": {
         "manifest_path": {"type": "string", "minLength": 1},
         "publish_confirmed": {"type": "boolean", "const": True},
+        "targets": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["youtube", "tiktok"]},
+            "minItems": 1,
+            "uniqueItems": True,
+        },
     },
     "required": ["manifest_path", "publish_confirmed"],
     "additionalProperties": False,

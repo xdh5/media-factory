@@ -68,7 +68,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 - BGM 固定 `cinematic-inspirational-piano-ambient-128209`；Agent 不得改曲目或混音参数
 - 生产完成后调用 `finance_start_upload_r2` 上传 R2
-- 发布服务器上的独立 MatrixMedia MCP 使用账号组 `心灵鸡汤`
+- 发布路由账号组为 `心灵鸡汤`；从 Cloudflare D1 解析到发布服务器 MatrixMedia 同名账号组 `心灵鸡汤`。
 - 跳过掘金、番茄、小红书
 - **视频号必填 `bt2`**：用成片返回的 `short_title`（稿件短标题，已是 6～16 字）。禁止省略，禁止把长标题 `title` 填进短标题框。其它平台也一律带上 `bt2`，避免漏传。
 - `tags` 用空格分隔且带 `#`，例如 `"#存钱 #理财常识 #生活方式 #查理芒格"`（最多 4 个）
