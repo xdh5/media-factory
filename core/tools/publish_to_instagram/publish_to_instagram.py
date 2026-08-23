@@ -9,6 +9,7 @@ import requests
 
 from ._constants import (
     DEFAULT_META_GRAPH_API_VERSION,
+    FACEBOOK_PAGE_ACCESS_TOKEN_ENV,
     FAILURE_STATUS_CODES,
     INSTAGRAM_ACCESS_TOKEN_ENV,
     INSTAGRAM_ACCOUNT_TITLE_ENV,
@@ -35,11 +36,18 @@ def _env(name: str) -> str:
 
 def _settings(user_id: str) -> tuple[str, str, str]:
     configured_user_id = _env(INSTAGRAM_USER_ID_ENV)
-    access_token = _env(INSTAGRAM_ACCESS_TOKEN_ENV)
+    page_access_token = _env(FACEBOOK_PAGE_ACCESS_TOKEN_ENV)
+    instagram_access_token = _env(INSTAGRAM_ACCESS_TOKEN_ENV)
+    access_token = page_access_token or instagram_access_token
     if not configured_user_id or not access_token:
         raise CredentialError(
-            f"缺少 {INSTAGRAM_USER_ID_ENV} 或 {INSTAGRAM_ACCESS_TOKEN_ENV}",
-            {"fix": "请在 .env 配置 Instagram 专业账号 ID 和长期访问令牌"},
+            f"缺少 {INSTAGRAM_USER_ID_ENV} 或官方 Graph API 访问令牌",
+            {
+                "fix": (
+                    f"请在 .env 配置 Instagram 专业账号 ID，以及 {FACEBOOK_PAGE_ACCESS_TOKEN_ENV} "
+                    f"或 {INSTAGRAM_ACCESS_TOKEN_ENV}"
+                )
+            },
         )
     normalized_user_id = str(user_id or "").strip()
     if normalized_user_id != configured_user_id:
@@ -55,7 +63,9 @@ def list_instagram_accounts() -> list[dict]:
     """列出本机已配置的 Instagram Graph API 账号。"""
     load_project_env()
     user_id = _env(INSTAGRAM_USER_ID_ENV)
-    if not user_id or not _env(INSTAGRAM_ACCESS_TOKEN_ENV):
+    if not user_id or not (
+        _env(FACEBOOK_PAGE_ACCESS_TOKEN_ENV) or _env(INSTAGRAM_ACCESS_TOKEN_ENV)
+    ):
         return []
     return [{
         "user_id": user_id,
