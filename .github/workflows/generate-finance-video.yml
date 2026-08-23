@@ -1,0 +1,84 @@
+name: 生成财经视频
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: 可选；留空时自动选择未重复话题
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: generate-finance-video
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: 第一步：准备生产环境
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    container:
+      image: ghcr.io/xdh5/media-factory-runner:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: 检出生产代码
+        uses: actions/checkout@v5
+      - name: 检查依赖与云端配置
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
+          CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        shell: bash
+        run: |
+          python -c "import boto3, edge_tts, mcp, PIL; print('Python 项目依赖可用')"
+          ffmpeg -version | head -n 1
+          for name in DASHSCOPE_API_KEY CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL; do
+            test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
+          done
+
+  generate:
+    name: 第二步：制作财经视频并上传 R2
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    container:
+      image: ghcr.io/xdh5/media-factory-runner:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      PYTHONUTF8: "1"
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
+      CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+    steps:
+      - name: 检出生产代码
+        uses: actions/checkout@v5
+      - name: 恢复财经图库缓存
+        uses: actions/cache@v4
+        with:
+          path: cache/assets/finance-images.tar
+          key: finance-images-r2-v1
+      - name: 生成财经成片并交付 R2
+        env:
+          INPUT_TOPIC: ${{ inputs.topic }}
+        run: python -m ops.github_actions finance --topic "$INPUT_TOPIC"
+
+      - name: 确认未执行平台发布
+        run: echo "本工作流到 R2 成片交付结束，不执行任何平台发布。"
