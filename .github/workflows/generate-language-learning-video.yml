@@ -16,6 +16,10 @@ on:
           - both
           - en-zh
           - en-ko
+      source_run_id:
+        description: 可选；填写旧 run ID 时复用原主题图、词表和裁剪框重新合成
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -95,6 +99,7 @@ jobs:
           printf '{"status":"not_started"}\n' > "$DIAGNOSTICS_DIR/diagnostics.json"
 
       - name: 生成主题并校验双语词表
+        if: ${{ inputs.source_run_id == '' }}
         env:
           INPUT_TOPIC: ${{ inputs.topic }}
           INPUT_MODES: ${{ inputs.modes }}
@@ -109,7 +114,19 @@ jobs:
           python -m ops.github_actions language_learning_words --topic "$INPUT_TOPIC" --modes "$MODES" --state-path "$STATE_PATH"
 
       - name: 生成主题图并逐张检查十个抠图
+        if: ${{ inputs.source_run_id == '' }}
         run: python -m ops.github_actions language_learning_cards --state-path "$STATE_PATH" --diagnostics-dir "$DIAGNOSTICS_DIR"
+
+      - name: 复用旧主题图、词表和裁剪框重新拼卡
+        if: ${{ inputs.source_run_id != '' }}
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: python -m ops.github_actions language_learning_recompose_cards --source-run-id "$SOURCE_RUN_ID" --state-path "$STATE_PATH"
 
       - name: 合成配音与语言学习成片
         run: python -m ops.github_actions language_learning_videos --state-path "$STATE_PATH" --handoff-dir "$HANDOFF_DIR"

@@ -17,6 +17,7 @@ def main() -> None:
             "finance",
             "language_learning_words",
             "language_learning_cards",
+            "language_learning_recompose_cards",
             "language_learning_videos",
             "language_learning_r2",
             "language_learning_diagnostics_r2",
@@ -27,6 +28,7 @@ def main() -> None:
     parser.add_argument("--state-path", default="cache/github_actions/language-learning-state.json")
     parser.add_argument("--handoff-dir", default="cache/github_actions/language-learning-handoff")
     parser.add_argument("--diagnostics-dir", default="cache/github_actions/language-learning-diagnostics")
+    parser.add_argument("--source-run-id", default="")
     arguments = parser.parse_args()
     if arguments.workflow == "finance":
         from .finance import run as run_finance
@@ -44,6 +46,11 @@ def main() -> None:
 
         result = asyncio.run(generate_cards(arguments.state_path, arguments.diagnostics_dir))
         payload = {"status": "succeeded", "card_dirs": result["card_dirs"]}
+    elif arguments.workflow == "language_learning_recompose_cards":
+        from .language_learning import recompose_cards_from_r2
+
+        result = asyncio.run(recompose_cards_from_r2(arguments.source_run_id, arguments.state_path))
+        payload = {"status": "succeeded", "run_id": result["run_id"], "card_dirs": result["card_dirs"]}
     elif arguments.workflow == "language_learning_videos":
         from .language_learning import generate_videos
 

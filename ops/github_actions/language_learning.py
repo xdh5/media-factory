@@ -8,6 +8,8 @@ import shutil
 from pathlib import Path
 
 from ._mcp import MCPCallError, ProjectMCP
+from core.tools.r2_storage import download_public_file
+
 from ._shared import PROJECT_ROOT, qwen, qwen_vision, upload_diagnostic_files, upload_run_files, write_summary
 
 
@@ -280,6 +282,108 @@ async def generate_cards(
     state["card_dirs"] = card_dirs
     diagnostic_payload["status"] = "succeeded"
     _write_diagnostics(diagnostic_root, diagnostic_payload)
+    _write_state(state_path, state)
+    return state
+
+
+def _source_words(manifest: dict) -> dict:
+    """从旧成片清单恢复中英、韩英两套原始词表。"""
+    by_mode = {str(item.get("learning_mode") or ""): item for item in manifest.get("videos") or []}
+    result = {"_topic_english": str(manifest.get("topic") or "").strip()}
+    for mode in ("en-zh", "en-ko"):
+        timeline = by_mode.get(mode, {}).get("timeline") or []
+        if len(timeline) != 10:
+            raise RuntimeError(f"旧 R2 清单的 {mode} 词表不是 10 个词，不能原样重组")
+        result[mode] = [
+            {
+                "english": str(item.get("english") or "").strip(),
+                "chinese": str(item.get("chinese") or "").strip(),
+                "korean": str(item.get("korean") or "").strip(),
+                "romanization": str(item.get("romanization") or "").strip(),
+            }
+            for item in timeline
+        ]
+    return result
+
+
+async def recompose_cards_from_r2(source_run_id: str, state_path: str | Path) -> dict:
+    """复用旧 R2 主题图、词表和视觉框，只重新拼卡与出片。"""
+    source_id = str(source_run_id or "").strip()
+    if not re.fullmatch(r"run-\d+", source_id):
+        raise ValueError("source_run_id 必须是 run-数字 格式")
+    source_prefix = f"runs/language_learning/{source_id}"
+    source_root = PROJECT_ROOT / "cache" / "github_actions" / "recompose-source" / source_id
+    source_manifest_path = source_root / "r2-manifest.json"
+    source_sheet_path = source_root / "subject-sheet.png"
+    download_public_file(f"{source_prefix}/r2-manifest.json", source_manifest_path)
+    download_public_file(f"{source_prefix}/subject-sheet.png", source_sheet_path)
+    source_manifest = _read_state(source_manifest_path)
+    topic = str(source_manifest.get("topic") or "").strip()
+    words = _source_words(source_manifest)
+    modes = [mode for mode in ("en-zh", "en-ko") if mode in words]
+    source_validation = dict(source_manifest.get("subject_sheet_validation") or {})
+    visual_layout = dict(source_validation.get("vision") or {})
+    source_reviews = list(source_validation.get("reviews") or [])
+    if not visual_layout or len(source_reviews) != 10:
+        raise RuntimeError("旧 R2 清单缺少视觉框或十张抠图检查结果，不能安全原样重组")
+    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+        occupied = await mcp.call(
+            "language_learning_occupy_topic",
+            {"topic": topic, "learning_modes": modes},
+        )
+        run_id = str(occupied["run_id"])
+        validation = await mcp.call(
+            "language_learning_validate_subject_sheet",
+            {
+                "subject_sheet_path": str(source_sheet_path),
+                "visual_layout": visual_layout,
+                "run_id": run_id,
+            },
+        )
+        if validation.get("valid") is not True:
+            raise RuntimeError(f"旧主题图重新抠图失败：{'；'.join(validation.get('issues') or [])}")
+        approved_reviews = [
+            {"index": index, "valid": True, "failure_kind": "", "issue": "复用旧成片已通过的抠图"}
+            for index in range(1, 11)
+        ]
+        review = await mcp.call(
+            "language_learning_review_cutouts",
+            {
+                "subject_sheet_path": str(source_sheet_path),
+                "reviews": approved_reviews,
+                "run_id": run_id,
+            },
+        )
+        if review.get("approved") is not True:
+            raise RuntimeError("旧主题图的十张抠图未能重新批准")
+        card_dirs = {}
+        for mode in modes:
+            started = await mcp.call(
+                "language_learning_start_compose_cards",
+                {
+                    "subject_sheet_path": str(source_sheet_path),
+                    "words": words[mode],
+                    "learning_mode": mode,
+                    "topic_english": words["_topic_english"],
+                    "run_id": run_id,
+                },
+            )
+            cards = await mcp.poll("language_learning_poll_task", started["task_path"])
+            card_dirs[mode] = cards["output_dir"]
+    state = {
+        "topic": topic,
+        "learning_modes": modes,
+        "run_id": run_id,
+        "words": words,
+        "subject_sheet_path": str(source_sheet_path),
+        "subject_sheet_validation": {
+            **validation,
+            "reviews": approved_reviews,
+            "source_run_id": source_id,
+            "recomposed": True,
+        },
+        "card_dirs": card_dirs,
+    }
     _write_state(state_path, state)
     return state
 
