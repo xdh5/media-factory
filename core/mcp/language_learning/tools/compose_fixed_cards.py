@@ -436,9 +436,13 @@ def _extract_subjects(sheet: Image.Image, sheet_path: Path, cache_dir: Path | No
 def _paste_subject(card: Image.Image, subject: Image.Image, box: tuple[int, int, int, int]) -> None:
     target_width = box[2] - box[0]
     target_height = box[3] - box[1]
-    fitted_width = max(1, round(subject.width * target_height / subject.height))
-    fitted = subject.resize((fitted_width, target_height), Image.Resampling.LANCZOS)
-    card.alpha_composite(fitted, (box[0] + (target_width - fitted.width) // 2, box[1]))
+    scale = min(target_width / subject.width, target_height / subject.height)
+    fitted_width = max(1, round(subject.width * scale))
+    fitted_height = max(1, round(subject.height * scale))
+    fitted = subject.resize((fitted_width, fitted_height), Image.Resampling.LANCZOS)
+    left = box[0] + (target_width - fitted_width) // 2
+    top = box[1] + (target_height - fitted_height) // 2
+    card.alpha_composite(fitted, (left, top))
 
 
 def _draw(draw, value: str, spec: tuple[int, int, int], kind: str):

@@ -86,7 +86,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问兜底生图）→ `language_learning_poll_task`。MCP 不调用千问文本或视觉模型。
 6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 亲自检查主题图是否恰好十个主体、上排五个、下排五个且无文字，并返回按上排从左到右、下排从左到右排序的十个保守边界框；调用 `language_learning_validate_subject_sheet` 后，Python 去背景并输出十张抠图。
 7. 宿主 Agent 必须打开十张抠图逐张检查，再调用 `language_learning_review_cutouts` 提交十条结论。第一次仅裁剪框有问题时调整完整十框并重新调用 `language_learning_validate_subject_sheet`；第二次仍抠坏，或源图本身残缺、重叠、被背景色吃掉时，调用 `language_learning_prepare_images` 重新生主题图。主题图最多生成 3 次，第三次仍失败必须报错停止。未通过逐张检查时禁止拼卡。
-8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例，统一缩放到固定图片区域的完整高度并水平居中。
+8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
 9. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。
 10. `language_learning_start_upload_r2` 上传成片、主题图和本地发布清单 → poll 至 `done=true`，保留返回的 `manifest_url` 与 `subject_sheet_url`。
 11. 用户确认发布后：韩语条目交给发布服务器上的 MatrixMedia MCP；中文调用 `language_learning_start_publish` 发布 YouTube 和 TikTok。发布 MCP 幂等写入正式话题与本期 10 个单词。
