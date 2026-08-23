@@ -54,6 +54,9 @@ def save_draft(
     short_title: str,
     hashtags: list[str],
     cover_lines: list[str],
+    source_aweme_id: str,
+    source_reservation_token: str,
+    source_hook: str,
     draft_path: str | Path | None = None,
 ) -> dict:
     normalized_topic = str(topic or "").strip()
@@ -62,6 +65,17 @@ def save_draft(
         raise WorkflowStepError("topic 不能为空")
     if not normalized_article:
         raise WorkflowStepError("article 不能为空")
+    normalized_source_aweme_id = str(source_aweme_id or "").strip()
+    normalized_source_token = str(source_reservation_token or "").strip()
+    normalized_source_hook = str(source_hook or "").strip()
+    if not normalized_source_aweme_id.isdigit():
+        raise WorkflowStepError("source_aweme_id 必须是有效的抖音作品 ID")
+    if not normalized_source_token:
+        raise WorkflowStepError("source_reservation_token 不能为空")
+    if not normalized_source_hook:
+        raise WorkflowStepError("source_hook 不能为空")
+    if not normalized_article.startswith(normalized_source_hook):
+        raise WorkflowStepError("正文必须以数据库原稿的黄金钩子原样开头，不能增删或改写")
     if not isinstance(hashtags, list):
         raise WorkflowStepError("hashtags 必须是包含四个标签的列表")
     metadata_line = "|".join([str(title), str(short_title), *(str(item) for item in hashtags)])
@@ -71,6 +85,10 @@ def save_draft(
         resolved_draft, existing = load_draft(draft_path, "待修改稿件")
         if normalized_topic != str(existing.get("topic") or "").strip():
             raise WorkflowStepError("修改已有稿件时不能更换话题；请重新开始一次财经制作")
+        if normalized_source_aweme_id != str(existing.get("source_aweme_id") or "").strip():
+            raise WorkflowStepError("修改已有稿件时不能更换数据库来源稿件")
+        if normalized_source_token != str(existing.get("source_reservation_token") or "").strip():
+            raise WorkflowStepError("修改已有稿件时必须沿用原来源稿件的占用令牌")
         record = {"id": int(existing["topic_record_id"]), "topic": normalized_topic}
         run_id = str(existing["run_id"])
         cache_root = Path(existing["cache_dir"]).resolve()
@@ -91,6 +109,10 @@ def save_draft(
         "run_id": run_id,
         "topic_record_id": record["id"],
         "database_status": "pending_publish",
+        "source_aweme_id": normalized_source_aweme_id,
+        "source_reservation_token": normalized_source_token,
+        "source_hook": normalized_source_hook,
+        "source_database_status": str(existing.get("source_database_status") or "reserved") if draft_path is not None else "reserved",
         "article": normalized_article,
         **metadata,
         "cover_lines": normalized_cover_lines,
@@ -99,4 +121,12 @@ def save_draft(
         "draft_path": str(target_draft_path),
     }
     target_draft_path.write_text(json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
+    return draft
+
+
+def save_source_usage(draft_path: str | Path, usage: dict) -> dict:
+    resolved, draft = load_draft(draft_path, "财经稿件")
+    draft["source_database_status"] = "used"
+    draft["source_usage"] = usage
+    resolved.write_text(json.dumps(draft, ensure_ascii=False, indent=2), encoding="utf-8")
     return draft

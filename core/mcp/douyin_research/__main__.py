@@ -1,4 +1,4 @@
-"""抖音研究 MCP：`python -m core.mcp.douyin_research`。"""
+"""抖音链接入库 MCP：`python -m core.mcp.douyin_research`。"""
 
 from __future__ import annotations
 
@@ -15,12 +15,7 @@ from mcp.server.fastmcp import FastMCP
 from core.mcp._task_runner import TaskNotFoundError as RunnerTaskNotFoundError
 from core.mcp._task_runner import poll_task as runner_poll_task
 from core.mcp._task_runner import submit_task as runner_submit_task
-from core.tools.douyin_research import (
-    DouyinResearchError,
-    commit_candidates,
-    review_transcripts,
-    search_candidates,
-)
+from core.tools.douyin_research import DouyinResearchError, ingest_link
 
 from ._constants import CACHE_ROOT
 from ._errors import TaskNotFoundError, WorkflowStepError
@@ -35,41 +30,35 @@ def _map_error(exc: Exception) -> Exception:
 mcp = FastMCP(
     "media-factory-douyin-research",
     instructions=(
-        "抖音关键词研究 MCP。keyword 是实际传给抖音搜索的原始关键词，禁止与分类拼接或改写；"
-        "collection_code 和 collection_name 仅表示用户确认后写入数据库的内容分类，不参与搜索；"
-        "先用 Cloudflare D1 的作品 ID 全局去重，再通过 MediaCrawler 按搜索顺序下载前五个新视频，"
-        "并调用项目 transcribe 工具转写。宿主 Agent 必须只修正明显错别字、补充标点，不得改写原意；"
-        "调用 douyin_research_review_transcripts 保存全部修订文本后，向用户只展示编号和修订后的文字，禁止展示作者、时间、文案或链接。"
-        "只有用户明确确认编号后，才能调用 douyin_research_commit 写入 D1。搜索为耗时任务，必须 start + poll_task。"
+        "抖音链接下载、转写和分类入库 MCP。用户只需提供抖音分享链接或分享文字以及中文分类名。"
+        "必须调用 douyin_research_start_ingest 启动后台任务，再用返回的 task_path 调用 "
+        "douyin_research_poll_task，直到 done=true；不得重复启动同一链接。"
+        "流程只编排 core.tools.download、core.tools.transcribe 和 Cloudflare D1 写入，禁止调用 MediaCrawler 或浏览器搜索。"
     ),
 )
 
 
 @mcp.tool()
-def douyin_research_start_search(
-    keyword: str,
-    collection_code: str,
+def douyin_research_start_ingest(
+    share_text: str,
     collection_name: str,
-    limit: int = 5,
 ) -> dict:
-    """按 keyword 原样搜索抖音，并携带仅供入库使用的分类信息启动去重、下载和转写。"""
+    """启动抖音链接下载、中文转写和分类入库后台任务。"""
     try:
         run_id = f"run-{time.time_ns()}"
         cache_dir = CACHE_ROOT / run_id
 
         def _work() -> dict:
-            return search_candidates(
-                keyword,
+            return ingest_link(
+                share_text,
                 cache_dir,
-                collection_code=collection_code,
                 collection_name=collection_name,
-                limit=limit,
             )
 
         started = runner_submit_task(
             cache_dir=cache_dir,
             run_id=run_id,
-            step="search_and_transcribe",
+            step="download_transcribe_commit",
             fn=_work,
         )
         return {**started, "poll_tool": "douyin_research_poll_task"}
@@ -79,37 +68,11 @@ def douyin_research_start_search(
 
 @mcp.tool()
 def douyin_research_poll_task(task_path: str) -> dict:
-    """轮询搜索和转写任务。"""
+    """轮询抖音链接下载、转写和入库任务。"""
     try:
         return runner_poll_task(task_path=task_path)
     except RunnerTaskNotFoundError as exc:
         raise TaskNotFoundError(str(exc)) from exc
-
-
-@mcp.tool()
-def douyin_research_review_transcripts(context_path: str, reviews: list[dict]) -> dict:
-    """保存宿主 Agent 对全部候选转写的错别字修正和标点整理。"""
-    try:
-        return review_transcripts(context_path, reviews)
-    except Exception as exc:
-        raise _map_error(exc) from exc
-
-
-@mcp.tool()
-def douyin_research_commit(
-    context_path: str,
-    candidate_numbers: list[int],
-    confirmed: bool,
-) -> dict:
-    """用户确认后，把指定作品元数据和最终转写写入 Cloudflare D1。"""
-    try:
-        return commit_candidates(
-            context_path,
-            candidate_numbers,
-            confirmed=confirmed,
-        )
-    except Exception as exc:
-        raise _map_error(exc) from exc
 
 
 if __name__ == "__main__":

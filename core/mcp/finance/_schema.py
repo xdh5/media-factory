@@ -13,12 +13,23 @@ TTS_CONFIG_SCHEMA = {
 IMAGE_CONFIG_SCHEMA = {
     "type": "object",
     "properties": {
-        "source": {"type": "string", "enum": ["local_library"]},
+        "source": {"type": "string", "enum": ["local_library", "qwen_reference"]},
         "library_line": {"type": "string", "minLength": 1},
+        "reference_image_path": {"type": "string", "minLength": 1},
     },
     "required": ["source"],
     "additionalProperties": False,
 }
+
+FINANCE_QWEN_IMAGE_TASK_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "context_path": {"type": "string", "minLength": 1},
+    },
+    "required": ["context_path"],
+    "additionalProperties": False,
+}
+
 PRODUCTION_CONFIG_SCHEMA = {
     "type": "object",
     "properties": {
@@ -63,8 +74,44 @@ FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
             "items": {"type": "string", "minLength": 1},
             "description": "封面用长标题的断行，由 Agent 按语义拆行，拼接后必须等于 title",
         },
+        "source_aweme_id": {
+            "type": "string",
+            "pattern": r"^\d+$",
+            "description": "finance_get_source_script 返回的抖音作品 ID",
+        },
+        "source_reservation_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "finance_get_source_script 返回的占用令牌",
+        },
+        "source_hook": {
+            "type": "string",
+            "minLength": 1,
+            "description": "数据库原稿开头的黄金钩子，正文必须原样以此开头",
+        },
     },
-    "required": ["topic", "article", "title", "short_title", "hashtags", "cover_lines"],
+    "required": [
+        "topic",
+        "article",
+        "title",
+        "short_title",
+        "hashtags",
+        "cover_lines",
+        "source_aweme_id",
+        "source_reservation_token",
+        "source_hook",
+    ],
+    "additionalProperties": False,
+}
+
+FINANCE_SOURCE_SCRIPT_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "source": {"type": "object"},
+        "reservation": {"type": "object"},
+        "reservation_minutes": {"type": "integer", "minimum": 1},
+    },
+    "required": ["source", "reservation", "reservation_minutes"],
     "additionalProperties": False,
 }
 TASK_SUBMIT_OUTPUT_SCHEMA = {

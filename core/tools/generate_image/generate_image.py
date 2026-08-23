@@ -56,11 +56,16 @@ def _final_prompt(
     if style:
         parts.append(f"画风要求：{style['description']}")
     if has_references:
+        reference_purpose = (
+            "第一张用于参考画法、笔触、材质、光影和配色；其余图片如有，"
+            "用于参考业务指定的人物气质、服饰和场景。"
+            if style
+            else "全部图片用于参考画风、人物气质、服饰和场景。"
+        )
         parts.append(
             "随附图片均为视觉参考图。"
-            + ("第一张用于参考画法、笔触、材质、光影和配色；" if style else "")
-            + "其余图片如有，用于参考业务指定的人物气质、服饰和场景。"
-            "不得复制参考图中的具体人物身份、物体摆放或构图。"
+            + reference_purpose
+            + "不得复制参考图中的具体人物身份、物体摆放或构图。"
         )
     parts.append(f"画面比例：{radio}。像素不必正好是 {size}，程序会缩放到 {size}。")
     return "\n\n".join(parts)

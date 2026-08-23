@@ -38,6 +38,37 @@ IMAGE_RECORD_SCHEMA = {
     "additionalProperties": False,
 }
 
+FINANCE_GENERATED_IMAGE_COMMIT_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "records": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "caption": {"type": "string", "minLength": 1, "maxLength": 4000},
+                    "image_path": {"type": "string", "minLength": 1, "maxLength": 1000},
+                },
+                "required": ["caption", "image_path"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["records"],
+    "additionalProperties": False,
+}
+
+FINANCE_GENERATED_IMAGE_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "records": {"type": "array", "items": IMAGE_RECORD_SCHEMA},
+    },
+    "required": ["records"],
+    "additionalProperties": False,
+}
+
 PUBLISH_ACCOUNT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -118,5 +149,78 @@ DOUYIN_RESEARCH_RECORD_SCHEMA = {
         "aweme_id", "author_name", "caption",
         "transcript_raw", "transcript_corrected", "aweme_url", "created_at", "updated_at",
     ],
+    "additionalProperties": False,
+}
+
+DOUYIN_RESEARCH_SCRIPT_SOURCE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "aweme_id": {"type": "string"},
+        "caption": {"type": "string"},
+        "transcript": {"type": "string"},
+        "aweme_url": {"type": "string"},
+        "collection_code": {"type": "string"},
+    },
+    "required": ["aweme_id", "caption", "transcript", "aweme_url", "collection_code"],
+    "additionalProperties": False,
+}
+
+DOUYIN_RESEARCH_SCRIPT_RESERVATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "aweme_id": {"type": "string"},
+        "workflow": {"type": "string"},
+        "status": {"type": "string", "enum": ["reserved", "used"]},
+        "reservation_token": {"type": "string"},
+        "reserved_at": {"type": "string"},
+        "used_at": {"type": ["string", "null"]},
+        "run_id": {"type": ["string", "null"]},
+    },
+    "required": ["aweme_id", "workflow", "status", "reservation_token", "reserved_at"],
+    "additionalProperties": False,
+}
+
+DOUYIN_RESEARCH_SCRIPT_RESERVE_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "collection_code": {"type": "string", "minLength": 1, "maxLength": 64},
+        "workflow": {"type": "string", "minLength": 1, "maxLength": 64},
+        "reservation_minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
+    },
+    "required": ["collection_code", "workflow"],
+    "additionalProperties": False,
+}
+
+DOUYIN_RESEARCH_SCRIPT_RESERVE_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "source": DOUYIN_RESEARCH_SCRIPT_SOURCE_SCHEMA,
+        "reservation": DOUYIN_RESEARCH_SCRIPT_RESERVATION_SCHEMA,
+        "reservation_minutes": {"type": "integer", "minimum": 1},
+    },
+    "required": ["source", "reservation", "reservation_minutes"],
+    "additionalProperties": False,
+}
+
+DOUYIN_RESEARCH_SCRIPT_USED_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "aweme_id": {"type": "string", "pattern": "^\\d+$"},
+        "workflow": {"type": "string", "minLength": 1, "maxLength": 64},
+        "reservation_token": {"type": "string", "minLength": 1, "maxLength": 100},
+        "run_id": {"type": "string", "minLength": 1, "maxLength": 100},
+        "source_hook": {"type": "string", "minLength": 1, "maxLength": 2000},
+    },
+    "required": ["aweme_id", "workflow", "reservation_token", "run_id", "source_hook"],
+    "additionalProperties": False,
+}
+
+DOUYIN_RESEARCH_SCRIPT_USED_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "record": DOUYIN_RESEARCH_SCRIPT_RESERVATION_SCHEMA,
+        "already_used": {"type": "boolean"},
+    },
+    "required": ["record", "already_used"],
     "additionalProperties": False,
 }

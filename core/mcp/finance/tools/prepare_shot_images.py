@@ -6,9 +6,10 @@ import hashlib
 import json
 from pathlib import Path
 
-from core.tools.generate_image import ImageGenerationError, list_local_images
+from core.tools.generate_image import ImageGenerationError, list_local_images, prepare_agent_image_tasks
 
 from .._constants import (
+    GENERATED_IMAGE_LIBRARY_ROOT,
     MCP_ID,
     STORYBOARD_CONTEXT_FILE_NAME,
     STORYBOARD_TEXT_FILE_NAME,
@@ -21,7 +22,7 @@ from .save_draft import load_draft
 from .storyboard import parse_storyboard
 
 
-def _image_config(config: dict) -> tuple[str, str]:
+def _image_config(config: dict) -> dict:
     if not isinstance(config, dict):
         raise WorkflowStepError("image_config 必须是对象")
     source = str(config.get("source") or "").strip()
@@ -29,10 +30,15 @@ def _image_config(config: dict) -> tuple[str, str]:
         library_line = str(config.get("library_line") or "").strip()
         if not library_line:
             raise WorkflowStepError("image_config.library_line 不能为空（local_library 时必填）")
-        return source, library_line
+        return {"source": source, "library_line": library_line}
+    if source == "qwen_reference":
+        reference_image_path = str(config.get("reference_image_path") or "").strip()
+        if not reference_image_path:
+            raise WorkflowStepError("image_config.reference_image_path 不能为空（qwen_reference 时必填）")
+        return {"source": source, "reference_image_path": reference_image_path}
     raise WorkflowStepError(
-        f"不支持的 image_config.source：{source or '(空)'}；当前仅支持 local_library",
-        {"supported_sources": ["local_library"]},
+        f"不支持的 image_config.source：{source or '(空)'}",
+        {"supported_sources": ["local_library", "qwen_reference"]},
     )
 
 
@@ -109,6 +115,75 @@ def _prepare_local_library(
     }
 
 
+def _prepare_qwen_reference(
+    shots: list[dict],
+    cache_root: Path,
+    metadata: dict,
+    reference_image_path: str,
+    run_id: str,
+) -> dict:
+    tasks = []
+    captions = {}
+    for shot in shots:
+        prompt = str(shot["prompt"]).strip()
+        image_id = str(shot["id"])
+        captions[image_id] = prompt
+        tasks.append(
+            {
+                "image_id": image_id,
+                "kind": "shot",
+                "prompt": (
+                    f"{prompt}\n\n"
+                    "画风硬性要求：明亮、通透、温暖的轻油画风，可见自然细腻的油画笔触，"
+                    "使用高亮自然光、浅色背景与清爽配色，不得阴暗、压抑、厚重或脏灰。"
+                    "人物硬性要求：必须以人像为明确主体，每张图至少出现一名东亚人；"
+                    "画面中的所有人物都必须是东亚人，具有自然真实的东亚面孔、发色与肤色，"
+                    "不得出现欧美人或其他族裔面孔。人物姿态挺拔舒展，神态坚定从容，"
+                    "呈现有力量、正能量、自信、积极向上的气质，不得软弱、颓丧、焦虑或消沉。"
+                    "统一沿用参考图的视觉风格、光影、色彩和质感，但不得复制参考图的具体人物身份、"
+                    "办公室构图、文字、书名或物体摆放。画面中禁止出现文字、字母、Logo 和水印。"
+                ),
+            }
+        )
+    output_root = GENERATED_IMAGE_LIBRARY_ROOT / run_id
+    context_path = cache_root / "qwen-images" / "agent-image-context.json"
+    try:
+        context = prepare_agent_image_tasks(
+            tasks,
+            None,
+            VIDEO_RADIO,
+            VIDEO_SIZE,
+            output_root,
+            additional_reference_image_paths=[reference_image_path],
+            context_path=context_path,
+            metadata={
+                **metadata,
+                "image_source": "qwen_reference",
+                "run_id": run_id,
+                "generated_image_dir": str(output_root.resolve()),
+                "caption_by_image_id": captions,
+            },
+        )
+    except ImageGenerationError as extra:
+        raise WorkflowStepError(extra.message, extra.details) from extra
+    if len(context["tasks"]) != len(shots):
+        raise WorkflowStepError("千问生图任务没有完整覆盖全部镜头")
+    context["status"] = "awaiting_qwen_generation"
+    for task in context["tasks"]:
+        task["provider"] = "dashscope"
+    Path(context["context_path"]).write_text(
+        json.dumps(context, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return {
+        **context,
+        "image_source": "qwen_reference",
+        "generated_image_dir": str(output_root.resolve()),
+        "generation_task_count": len(context["tasks"]),
+        "next_tool": "finance_start_generate_images",
+    }
+
+
 def prepare_shot_images(
     draft_path: str | Path,
     storyboard_text: str,
@@ -118,7 +193,8 @@ def prepare_shot_images(
     normalized_storyboard = str(storyboard_text or "").strip()
     if not normalized_storyboard:
         raise WorkflowStepError("storyboard_text 不能为空")
-    source, library_line = _image_config(image_config)
+    normalized_config = _image_config(image_config)
+    source = normalized_config["source"]
     resolved_draft, draft = load_draft(draft_path, "财经稿件")
     if not draft.get("title") or not str(draft.get("cache_dir") or "").strip():
         raise WorkflowStepError("财经稿件缺少 title 或 cache_dir")
@@ -141,5 +217,13 @@ def prepare_shot_images(
         "tts_path": storyboard_context.get("tts_path"),
     }
     if source == "local_library":
-        return _prepare_local_library(shots, cache_root, metadata, library_line)
+        return _prepare_local_library(shots, cache_root, metadata, normalized_config["library_line"])
+    if source == "qwen_reference":
+        return _prepare_qwen_reference(
+            shots,
+            cache_root,
+            metadata,
+            normalized_config["reference_image_path"],
+            str(draft["run_id"]),
+        )
     raise WorkflowStepError(f"未实现的 image_config.source：{source}")

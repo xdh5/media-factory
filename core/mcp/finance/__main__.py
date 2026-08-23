@@ -14,6 +14,11 @@ from mcp.server.fastmcp import FastMCP
 
 from core.tools.clear_cache import ConfirmationRequiredError as ClearCacheConfirmationRequiredError
 from core.tools.clear_cache import clear_run
+from core.tools.cloudflare_data import (
+    CloudflareDataError,
+    mark_douyin_research_script_used,
+    reserve_douyin_research_script,
+)
 from core.tools.generate_image import (
     ImageGenerationError,
     save_agent_image_tasks,
@@ -31,9 +36,11 @@ from ._errors import ConfirmationRequiredError, FinanceError, TaskNotFoundError,
 from .tools import (
     build_metadata_prompt,
     finish_finance_video,
+    generate_qwen_shot_images,
     prepare_shot_images,
     prepare_storyboard,
     save_draft,
+    save_source_usage,
     upload_finance_assets_to_r2,
 )
 from .tools.save_draft import load_draft
@@ -50,6 +57,12 @@ def _map_error(exc: Exception) -> FinanceError:
         return WorkflowStepError(exc.message, exc.details)
     if isinstance(exc, ClearCacheConfirmationRequiredError):
         return ConfirmationRequiredError(str(exc))
+    if isinstance(exc, CloudflareDataError):
+        details = dict(exc.details)
+        remote_code = str(getattr(exc, "remote_code", "")).strip()
+        if remote_code:
+            details["remote_code"] = remote_code
+        return WorkflowStepError(exc.message, details)
     raise exc
 
 
@@ -58,11 +71,28 @@ mcp = FastMCP(
     instructions=(
         "财经短视频编排 MCP。业务 Prompt、生图方案、TTS、BGM、片头等以财经 Skill 为准，"
         "Agent 必须按 Skill 传参。"
+        "第一步必须从抖音研究数据库选择未使用的财经稿件，禁止自行从零写正文；"
+        "保存稿件成功后必须把数据库来源标记为已使用。"
+        "本地交互制作使用用户参考图逐镜头调用千问生图，每张图都必须有独立任务；"
+        "旧本地图库选图路径继续保留给 GitHub Action。"
         "稿件生成后直接制作视频；成品完成后展示成片并等待确认再发布。"
         "耗时步骤（TTS、成片合成）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
         "禁止绕过 MCP 运行本地脚本。"
     ),
 )
+
+
+@mcp.tool()
+def finance_get_source_script() -> dict:
+    """从抖音研究数据库选择并临时占用一条未使用的财经稿件。"""
+    try:
+        return reserve_douyin_research_script(
+            collection_code="finance",
+            workflow=MCP_ID,
+            reservation_minutes=120,
+        )
+    except Exception as exc:
+        raise _map_error(exc) from exc
 
 
 @mcp.tool()
@@ -96,9 +126,12 @@ def finance_save_draft(
     short_title: str,
     hashtags: list[str],
     cover_lines: list[str],
+    source_aweme_id: str,
+    source_reservation_token: str,
+    source_hook: str,
     draft_path: str | None = None,
 ) -> dict:
-    """保存完整稿件并直接返回制作所需数据；新稿只查重，发布时才入库。"""
+    """保存数据库改编稿，随后把来源稿件标记为已使用。"""
     try:
         if draft_path is None:
             clean_topic = str(topic or "").strip()
@@ -109,15 +142,26 @@ def finance_save_draft(
                 raise WorkflowStepError(
                     f"财经话题最近 {TOPIC_DEDUPLICATION_DAYS} 天已经发布：{clean_topic}"
                 )
-        return save_draft(
+        draft = save_draft(
             topic,
             article,
             title,
             short_title,
             hashtags,
             cover_lines,
+            source_aweme_id,
+            source_reservation_token,
+            source_hook,
             draft_path,
         )
+        usage = mark_douyin_research_script_used(
+            aweme_id=str(draft["source_aweme_id"]),
+            workflow=MCP_ID,
+            reservation_token=str(draft["source_reservation_token"]),
+            run_id=str(draft["run_id"]),
+            source_hook=str(draft["source_hook"]),
+        )
+        return save_source_usage(str(draft["draft_path"]), usage)
     except Exception as exc:
         raise _map_error(exc) from exc
 
@@ -174,7 +218,7 @@ def finance_prepare_images(
     storyboard_text: str,
     image_config: dict,
 ) -> dict:
-    """按 Skill 的 image_config 准备镜头图任务；本地图库时返回 catalog 与 selection_tasks，由 Agent 选图后 submit。"""
+    """按 Skill 准备镜头图；支持旧图库选图和用户参考图千问生图两种模式。"""
     try:
         return prepare_shot_images(
             draft_path,
@@ -192,6 +236,33 @@ def finance_save_images(context_path: str, images: list[dict]) -> dict:
         return save_agent_image_tasks(context_path, images)
     except ImageGenerationError as exc:
         raise WorkflowStepError(exc.message, exc.details) from exc
+
+
+@mcp.tool()
+def finance_start_generate_images(context_path: str) -> dict:
+    """启动全部镜头的千问参考图生图与独立图库入库。"""
+    try:
+        _, context = load_draft(context_path, "千问生图任务上下文")
+        metadata = context.get("metadata")
+        if not isinstance(metadata, dict):
+            raise WorkflowStepError("千问生图任务上下文缺少 metadata")
+        draft_path = str(metadata.get("draft_path") or "")
+        _, draft = load_draft(draft_path, "财经稿件")
+        cache_dir = Path(str(draft["cache_dir"]))
+        run_id = str(draft["run_id"])
+
+        def _work(progress=None) -> dict:
+            return generate_qwen_shot_images(context_path, progress=progress)
+
+        started = runner_submit_task(
+            cache_dir=cache_dir,
+            run_id=run_id,
+            step="generate_qwen_images",
+            fn=_work,
+        )
+        return {**started, "poll_tool": "finance_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
 
 
 @mcp.tool()

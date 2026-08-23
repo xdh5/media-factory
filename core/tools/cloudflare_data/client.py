@@ -203,6 +203,24 @@ def list_images(line: str) -> list[dict]:
     return payload["records"]
 
 
+def list_finance_generated_images() -> list[dict]:
+    payload = _request("GET", "/v1/finance-generated-images")
+    if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+        raise CloudflareDataRequestError("Cloudflare 财经生成图库接口缺少 records 数组")
+    return payload["records"]
+
+
+def commit_finance_generated_images(records: list[dict]) -> dict:
+    payload = _request(
+        "POST",
+        "/v1/finance-generated-images/commit",
+        body={"records": records},
+    )
+    if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+        raise CloudflareDataRequestError("Cloudflare 财经生成图库写入接口缺少 records 数组")
+    return payload
+
+
 def list_publish_account_groups() -> list[dict]:
     payload = _request("GET", "/v1/publish-account-groups")
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
@@ -240,4 +258,50 @@ def commit_douyin_research(records: list[dict]) -> dict:
     )
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
         raise CloudflareDataRequestError("Cloudflare 抖音研究写入接口缺少 records 数组")
+    return payload
+
+
+def reserve_douyin_research_script(
+    *,
+    collection_code: str,
+    workflow: str,
+    reservation_minutes: int = 120,
+) -> dict:
+    payload = _request(
+        "POST",
+        "/v1/douyin-research/scripts/reserve",
+        body={
+            "collection_code": collection_code,
+            "workflow": workflow,
+            "reservation_minutes": reservation_minutes,
+        },
+    )
+    if not isinstance(payload, dict):
+        raise CloudflareDataRequestError("Cloudflare 财经稿件选择接口响应格式不正确")
+    if not isinstance(payload.get("source"), dict) or not isinstance(payload.get("reservation"), dict):
+        raise CloudflareDataRequestError("Cloudflare 财经稿件选择接口缺少 source 或 reservation 对象")
+    return payload
+
+
+def mark_douyin_research_script_used(
+    *,
+    aweme_id: str,
+    workflow: str,
+    reservation_token: str,
+    run_id: str,
+    source_hook: str,
+) -> dict:
+    payload = _request(
+        "POST",
+        "/v1/douyin-research/scripts/used",
+        body={
+            "aweme_id": aweme_id,
+            "workflow": workflow,
+            "reservation_token": reservation_token,
+            "run_id": run_id,
+            "source_hook": source_hook,
+        },
+    )
+    if not isinstance(payload, dict) or not isinstance(payload.get("record"), dict):
+        raise CloudflareDataRequestError("Cloudflare 财经稿件使用标记接口缺少 record 对象")
     return payload

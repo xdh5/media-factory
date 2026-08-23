@@ -1,6 +1,6 @@
-"""抖音研究工具公开入口。"""
+"""抖音链接入库工具公开入口。"""
 
-from ._errors import DouyinResearchError
-from .research import commit_candidates, review_transcripts, search_candidates
+from ._errors import DouyinResearchError, IngestError
+from .research import ingest_link
 
-__all__ = ["search_candidates", "review_transcripts", "commit_candidates", "DouyinResearchError"]
+__all__ = ["ingest_link", "DouyinResearchError", "IngestError"]

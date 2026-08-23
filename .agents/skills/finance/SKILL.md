@@ -13,17 +13,28 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 | 用途 | 位置 |
 | --- | --- |
-| 正文、钩子、范文 | 本 Skill：`prompts/finance.md`、`examples/` |
+| 数据库原稿改编 | 本 Skill：`prompts/finance.md` |
 | 标题标签 | MCP：`finance_get_metadata_prompt` |
 | 分镜 | MCP：`finance_prepare_storyboard` 返回 `storyboard_prompt` |
 
-### 正文 Prompt 占位符
+### 数据库原稿改编
 
-按选定 `topic` 填入本 Skill 的 `prompts/finance.md`：
+第一步必须调用 `finance_get_source_script`，从抖音研究数据库的“财经”分类选择一条未使用稿件。禁止自行从零写正文，也禁止从 `examples/` 选择范文代替数据库原稿。
 
-- `{{topic}}`：中文话题
-- `{{hooks}}`：`examples/hooks.txt` 全文
-- `{{article_examples}}`：各范文 `### 文件名\n正文` 拼接
+如果工具返回 `DOUYIN_SCRIPTS_EXHAUSTED`，说明所有财经稿件都已使用；必须向用户报告并停止制作，不得复用旧稿或自行写稿。如果返回 `DOUYIN_SCRIPTS_BUSY`，说明剩余稿件正在其他任务中制作，也必须停止本次制作。
+
+按返回的 `source.transcript` 识别原稿开头完整的黄金钩子，填入本 Skill 的 `prompts/finance.md`：
+
+- `{{source_text}}`：`source.transcript` 原文
+- `{{source_hook}}`：原稿开头的完整黄金钩子
+
+改编必须满足：
+
+- 黄金钩子一字不改，改编正文必须以它原样开头。
+- 保留原稿论述顺序、段落功能、案例位置、正反对比和结尾结构；只删减或补充细节。
+- 正文目标 500 字左右，允许 450～550 字。过长则删重复解释和次要细节；不足则在原段落位置补细节，不得新增分支结构。
+- 原稿出现作者、账号、课程、机构或其他宣传品牌时，统一替换为【财富研习岛】。
+- `finance_save_draft` 必须传回 `source.aweme_id`、`reservation.reservation_token` 和 `source_hook`；保存成功后 MCP 自动将数据库来源标记为已使用，下次不再选择。
 
 ## 固定参数（调用 MCP 时必须按此传）
 
@@ -39,7 +50,25 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 ### 镜头图（`finance_prepare_images` 的 `image_config`）
 
-财经固定使用本地图库，由 Agent 按 caption 与镜头 prompt 语义匹配选图：
+本地交互式财经制作使用用户提供的单张参考图，通过千问逐镜头生图：
+
+```json
+{
+  "source": "qwen_reference",
+  "reference_image_path": "data/reference_images/finance/bright-light-oil-painting.png"
+}
+```
+
+- 每个分镜镜头必须建立一条独立生图任务，任务数量必须完整覆盖全部镜头。
+- 每张图必须以人像为明确主体，至少出现一名东亚人，且画面中的所有人物都必须是东亚人。
+- 画面固定为明亮、通透、温暖的轻油画风，使用高亮自然光、浅色背景、清爽配色和细腻可见的油画笔触；禁止阴暗、压抑、厚重或脏灰。
+- 人物必须姿态挺拔舒展、神态坚定从容，呈现有力量、正能量、自信、积极向上的气质；禁止软弱、颓丧、焦虑或消沉。
+- 所有任务必须携带同一张用户参考图，以统一画风、光影、色彩和质感；不得复制参考图中的具体人物、文字、书名、Logo、办公室构图或物体摆放，生成画面禁止文字和水印。
+- 调用 `finance_start_generate_images(context_path)` 后，用 `finance_poll_task` 轮询；任一镜头失败即停止，不得用旧图库图片补位。
+- 每次图片保存到 `data/image_library/finance_generated/<run_id>/` 独立目录。
+- 全部生图成功后，MCP 自动把图片描述和路径写入独立 `finance_generated_images` 图库；编号从 1 开始，后续运行继续递增。
+
+GitHub Action 暂时继续使用原本的本地图库选图模式，不得删除或改成千问生图：
 
 ```json
 {
@@ -60,7 +89,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 ```json
 {
-  "bgm_path": "core/tools/generate_bgm/static/cinematic-inspirational-piano-ambient-128209.mp3",
+  "bgm_path": "从下方两个路径中随机选择一个",
   "cover_frame_seconds": 0.03333333333333333,
   "intro": "slide_in_shutter",
   "shot_stickers": ["rec"],
@@ -68,7 +97,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 }
 ```
 
-- BGM 固定 `cinematic-inspirational-piano-ambient-128209`；Agent 不得改曲目或混音参数
+- 每期 BGM 必须从 `core/tools/generate_bgm/static/nothing_to_fare.mp3` 和 `core/tools/generate_bgm/static/aware.mp3` 中随机选择一首；同一期只选择一次并沿用到成片，Agent 不得使用其他曲目或修改混音参数
 - 生产完成后调用 `finance_start_upload_r2` 上传 R2
 - 发布路由账号组为 `心灵鸡汤`；从 Cloudflare D1 解析到发布服务器 MatrixMedia 同名账号组 `心灵鸡汤`。
 - 跳过掘金、番茄、小红书
@@ -105,20 +134,22 @@ SUB|L002|你以为涨薪就能存钱
 
 ### 第一阶段：稿件
 
-1. `finance_get_topics`：避开近 30 天重复话题。
-2. 按本 Skill 正文模板与范文生成正文；调用 `finance_get_metadata_prompt` 后写标题标签行。
-3. 用**长标题**按语义断成 1～3 行 `cover_lines`（拼接去空白后必须等于长标题 `title`）。封面不自动折行。
-4. `finance_save_draft` → 只保存本次生产稿件，不写 D1，直接进入制作。
+1. `finance_get_source_script`：选择并临时占用一条未使用的财经数据库原稿。
+2. 按本 Skill 的 `prompts/finance.md` 把原稿改为 450～550 字；黄金钩子和原结构不得改变，宣传品牌统一替换为【财富研习岛】。
+3. 从改编正文提炼 `topic`；调用 `finance_get_metadata_prompt` 后写标题标签行。
+4. 用**长标题**按语义断成 1～3 行 `cover_lines`（拼接去空白后必须等于长标题 `title`）。封面不自动折行。
+5. `finance_save_draft`：除原参数外传入 `source_aweme_id`、`source_reservation_token`、`source_hook`。保存成功后 MCP 自动将数据库原稿标记为已使用，直接进入制作。
 
 ### 第二阶段：制作与发布
 
 1. `finance_start_storyboard(draft_path, tts_config=…)` → `finance_poll_task(task_path)` 直至 `done=true`，取 `result` 作为分镜上下文。
 2. 按 `result.storyboard_prompt` 写完整分镜文本（IMAGE 行 + 每句一条 `SUB` 行，见上文「字幕重点」）。
-3. `finance_prepare_images`（传入本 Skill 的 `image_config`）→ 按 `library_catalog` 与 `selection_tasks` 为每个镜头选最贴近的图 → `finance_submit_images`（`images` 传 `[{image_id, image_path}]`）。
-4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`；配音直接用 `prepare_storyboard` 的 `tts_path`。
-5. 调用 `finance_start_upload_r2(manifest_path, run_id)` → `finance_poll_task` 直至完成，展示成片和 `manifest_url`。
-6. 用户确认后，把 R2 清单 URL 交给发布服务器上的独立 MatrixMedia MCP；发布 MCP 先把正式话题幂等写入 D1，再用账号组 `心灵鸡汤` 发布。
-7. 展示发布结果后，确认清缓存。
+3. 本地交互制作调用 `finance_prepare_images`，传入 `qwen_reference` 配置和用户参考图；确认返回的任务数量覆盖全部镜头。
+4. 调用 `finance_start_generate_images(context_path)` → `finance_poll_task` 直至 `done=true`；全部生成后直接写入图库，结果包含生图清单、当次图片目录和数据库连续编号，不设置人物、画风或情绪检查门禁。
+5. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`；配音直接用 `prepare_storyboard` 的 `tts_path`。
+6. 调用 `finance_start_upload_r2(manifest_path, run_id)` → `finance_poll_task` 直至完成，展示成片和 `manifest_url`。
+7. 用户确认后，把 R2 清单 URL 交给发布服务器上的独立 MatrixMedia MCP；发布 MCP 先把正式话题幂等写入 D1，再用账号组 `心灵鸡汤` 发布。
+8. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
 
@@ -131,13 +162,15 @@ SUB|L002|你以为涨薪就能存钱
 
 | 工具 | 作用 |
 | --- | --- |
-| `finance_get_topics` | 查已占用话题 |
+| `finance_get_source_script` | 选择并临时占用未使用的财经数据库原稿；全部用完时报错 |
+| `finance_get_topics` | 兼容保留的已占用话题查询；新流程不作为第一步 |
 | `finance_get_metadata_prompt` | 返回标题标签 Prompt |
-| `finance_save_draft` | 占坑并保存稿件 |
+| `finance_save_draft` | 保存数据库改编稿并将来源标记为已使用 |
 | `finance_prepare_storyboard` | TTS + 分镜（同步，易超时，勿用） |
 | `finance_start_storyboard` | 启动 TTS + 分镜后台任务 |
 | `finance_poll_task` | 轮询后台任务 |
 | `finance_prepare_images` | 按 image_config 准备镜头图 |
+| `finance_start_generate_images` | 按用户参考图逐镜头调用千问生图，并直接写入独立连续编号图库 |
 | `finance_save_images` | 写入已生成图（通常不用） |
 | `finance_submit_images` | 提交选图清单 |
 | `finance_finish_video` | 合成成片（同步，易超时，勿用） |

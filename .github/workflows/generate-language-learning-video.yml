@@ -137,7 +137,7 @@ jobs:
           name: language-learning-${{ github.run_id }}
           path: cache/github_actions/language-learning-handoff
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
       - name: 保存失败主题图记录
         if: ${{ always() }}
@@ -179,6 +179,20 @@ jobs:
 
       - name: 确认未执行平台发布
         run: echo "本工作流到 R2 成片交付结束，不执行任何平台发布。"
+
+  deliver:
+    name: 第四步：提供产物下载
+    needs: [upload, upload_diagnostics]
+    if: ${{ always() && needs.upload.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: 显示下载入口
+        shell: bash
+        run: |
+          echo "## 下载本次语言学习产物" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "[⬇️ 下载 language-learning-${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts)" >> "$GITHUB_STEP_SUMMARY"
 
   upload_diagnostics:
     name: 失败主题图：上传 R2

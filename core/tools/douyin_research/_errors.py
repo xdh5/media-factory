@@ -13,17 +13,5 @@ class DouyinResearchError(Exception):
         return {"error": {"code": self.code, "message": self.message, "details": self.details}}
 
 
-class ConfigurationError(DouyinResearchError):
-    code = "DOUYIN_RESEARCH_CONFIGURATION_ERROR"
-
-
-class SearchError(DouyinResearchError):
-    code = "DOUYIN_RESEARCH_SEARCH_ERROR"
-
-
-class ContextError(DouyinResearchError):
-    code = "DOUYIN_RESEARCH_CONTEXT_ERROR"
-
-
-class ConfirmationRequiredError(DouyinResearchError):
-    code = "DOUYIN_RESEARCH_CONFIRMATION_REQUIRED"
+class IngestError(DouyinResearchError):
+    code = "DOUYIN_RESEARCH_INGEST_ERROR"

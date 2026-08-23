@@ -1,13 +1,20 @@
-"""抖音研究 MCP Schema。"""
+"""抖音链接入库 MCP Schema。"""
 
-SEARCH_INPUT_SCHEMA = {
+INGEST_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "keyword": {"type": "string", "minLength": 1, "maxLength": 200},
-        "collection_code": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
-        "collection_name": {"type": "string", "minLength": 1, "maxLength": 100},
-        "limit": {"type": "integer", "minimum": 1, "maximum": 5, "default": 5},
+        "share_text": {
+            "type": "string",
+            "minLength": 1,
+            "description": "抖音分享链接或包含链接的分享文字",
+        },
+        "collection_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "写入数据库的中文分类名",
+        },
     },
-    "required": ["keyword", "collection_code", "collection_name"],
+    "required": ["share_text", "collection_name"],
     "additionalProperties": False,
 }

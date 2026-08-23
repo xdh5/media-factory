@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       topic:
-        description: 可选；留空时自动选择未重复话题
+        description: 可选；仅作为数据库原稿改编后的话题侧重点
         required: false
         type: string
 
@@ -82,3 +82,22 @@ jobs:
 
       - name: 确认未执行平台发布
         run: echo "本工作流到 R2 成片交付结束，不执行任何平台发布。"
+
+      - name: 上传财经成片供下载
+        uses: actions/upload-artifact@v4
+        with:
+          name: finance-video-${{ github.run_id }}
+          path: |
+            outputs/finance/**/*.mp4
+            outputs/finance/**/*.txt
+            cache/finance/**/cover.png
+            cache/finance/**/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 显示下载入口
+        shell: bash
+        run: |
+          echo "## 下载本次财经产物" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "[⬇️ 下载 finance-video-${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts)" >> "$GITHUB_STEP_SUMMARY"

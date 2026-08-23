@@ -366,6 +366,39 @@ async function listImages(request, env) {
   return jsonResponse({ records: result.results || [] });
 }
 
+async function listFinanceGeneratedImages(request, env) {
+  const result = await env.DB.prepare(
+    "SELECT id, caption, image_path FROM finance_generated_images ORDER BY id",
+  ).all();
+  return jsonResponse({ records: result.results || [] });
+}
+
+async function commitFinanceGeneratedImages(request, env) {
+  const body = await request.json();
+  const records = body.records;
+  if (!Array.isArray(records) || records.length < 1 || records.length > 100) {
+    throw new Error("records 必须是包含 1 到 100 条图片记录的数组");
+  }
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const saved = [];
+  for (const item of records) {
+    if (!item || typeof item !== "object") throw new Error("每条图片记录都必须是对象");
+    const caption = requiredText(item.caption, "caption", 4000);
+    const imagePath = requiredText(item.image_path, "image_path", 1000);
+    if (!/^data\/image_library\/finance_generated\/run-\d+\/[A-Za-z0-9_-]+\.png$/.test(imagePath)) {
+      throw new Error(`image_path 格式不正确：${imagePath}`);
+    }
+    const row = await env.DB.prepare(
+      `INSERT INTO finance_generated_images(line, caption, image_path, created_at, updated_at)
+       VALUES ('finance_generated', ?, ?, ?, ?)
+       ON CONFLICT(image_path) DO UPDATE SET caption = excluded.caption, updated_at = excluded.updated_at
+       RETURNING id, caption, image_path`,
+    ).bind(caption, imagePath, now, now).first();
+    saved.push(row);
+  }
+  return jsonResponse({ records: saved }, 201);
+}
+
 async function listPublishAccountGroups(request, env) {
   const url = new URL(request.url);
   const group = String(url.searchParams.get("group") || "").trim();
@@ -444,6 +477,129 @@ async function listDouyinResearchIds(env) {
   ).all();
   return jsonResponse({
     aweme_ids: (result.results || []).map((row) => String(row.aweme_id)),
+  });
+}
+
+async function reserveDouyinResearchScript(request, env) {
+  const body = await request.json();
+  const collectionCode = requiredText(body.collection_code, "collection_code", 64);
+  const workflow = requiredText(body.workflow, "workflow", 64);
+  const reservationMinutes = positiveInteger(body.reservation_minutes || 120, "reservation_minutes", 1440);
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const expiredBefore = new Date(Date.now() - reservationMinutes * 60000).toISOString().replace(/\.\d{3}Z$/, "Z");
+  await env.DB.prepare(
+    `DELETE FROM douyin_research_script_usage
+     WHERE workflow = ? AND status = 'reserved' AND reserved_at < ?`,
+  ).bind(workflow, expiredBefore).run();
+
+  const candidates = await env.DB.prepare(
+    `SELECT c.aweme_id, c.caption, c.transcript_corrected, c.aweme_url, c.created_at
+     FROM douyin_research_contents c
+     WHERE EXISTS (
+       SELECT 1 FROM douyin_research_discoveries d
+       WHERE d.aweme_id = c.aweme_id AND d.collection_code = ?
+     )
+     AND NOT EXISTS (
+       SELECT 1 FROM douyin_research_script_usage u
+       WHERE u.aweme_id = c.aweme_id AND u.workflow = ?
+     )
+     ORDER BY c.created_at ASC, c.aweme_id ASC
+     LIMIT 20`,
+  ).bind(collectionCode, workflow).all();
+
+  for (const candidate of candidates.results || []) {
+    const reservationToken = crypto.randomUUID();
+    const reserved = await env.DB.prepare(
+      `INSERT INTO douyin_research_script_usage(
+         aweme_id, workflow, status, reservation_token, reserved_at
+       ) VALUES (?, ?, 'reserved', ?, ?)
+       ON CONFLICT(aweme_id, workflow) DO NOTHING
+       RETURNING aweme_id, workflow, status, reservation_token, reserved_at`,
+    ).bind(candidate.aweme_id, workflow, reservationToken, now).first();
+    if (reserved) {
+      return jsonResponse({
+        source: {
+          aweme_id: String(candidate.aweme_id),
+          caption: String(candidate.caption || ""),
+          transcript: String(candidate.transcript_corrected || ""),
+          aweme_url: String(candidate.aweme_url || ""),
+          collection_code: collectionCode,
+        },
+        reservation: reserved,
+        reservation_minutes: reservationMinutes,
+      }, 201);
+    }
+  }
+
+  const stats = await env.DB.prepare(
+    `SELECT
+       COUNT(DISTINCT c.aweme_id) AS total_count,
+       COUNT(DISTINCT CASE WHEN u.status = 'used' THEN c.aweme_id END) AS used_count,
+       COUNT(DISTINCT CASE WHEN u.status = 'reserved' THEN c.aweme_id END) AS reserved_count
+     FROM douyin_research_contents c
+     JOIN douyin_research_discoveries d ON d.aweme_id = c.aweme_id AND d.collection_code = ?
+     LEFT JOIN douyin_research_script_usage u ON u.aweme_id = c.aweme_id AND u.workflow = ?`,
+  ).bind(collectionCode, workflow).first();
+  const totalCount = Number(stats?.total_count || 0);
+  const usedCount = Number(stats?.used_count || 0);
+  const reservedCount = Number(stats?.reserved_count || 0);
+  if (totalCount > 0 && usedCount >= totalCount) {
+    return errorResponse("DOUYIN_SCRIPTS_EXHAUSTED", "财经稿件库已全部使用", 409, {
+      collection_code: collectionCode,
+      total_count: totalCount,
+      used_count: usedCount,
+    });
+  }
+  if (reservedCount > 0) {
+    return errorResponse("DOUYIN_SCRIPTS_BUSY", "财经稿件库中未使用的稿件当前均已被占用", 409, {
+      collection_code: collectionCode,
+      total_count: totalCount,
+      used_count: usedCount,
+      reserved_count: reservedCount,
+    });
+  }
+  return errorResponse("DOUYIN_SCRIPTS_EMPTY", "财经稿件库没有可用稿件", 404, {
+    collection_code: collectionCode,
+    total_count: totalCount,
+  });
+}
+
+async function markDouyinResearchScriptUsed(request, env) {
+  const body = await request.json();
+  const awemeId = requiredText(body.aweme_id, "aweme_id", 64);
+  const workflow = requiredText(body.workflow, "workflow", 64);
+  const reservationToken = requiredText(body.reservation_token, "reservation_token", 100);
+  const runId = requiredText(body.run_id, "run_id", 100);
+  const sourceHook = requiredText(body.source_hook, "source_hook", 2000);
+  const source = await env.DB.prepare(
+    "SELECT transcript_corrected FROM douyin_research_contents WHERE aweme_id = ?",
+  ).bind(awemeId).first();
+  if (!source || !String(source.transcript_corrected || "").startsWith(sourceHook)) {
+    return errorResponse("DOUYIN_SCRIPT_HOOK_MISMATCH", "黄金钩子不是数据库原稿的原样开头", 409, {
+      aweme_id: awemeId,
+    });
+  }
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const updated = await env.DB.prepare(
+    `UPDATE douyin_research_script_usage
+     SET status = 'used', used_at = ?, run_id = ?
+     WHERE aweme_id = ? AND workflow = ? AND status = 'reserved' AND reservation_token = ?
+     RETURNING aweme_id, workflow, status, reservation_token, reserved_at, used_at, run_id`,
+  ).bind(now, runId, awemeId, workflow, reservationToken).first();
+  if (updated) {
+    return jsonResponse({ record: updated, already_used: false });
+  }
+  const existing = await env.DB.prepare(
+    `SELECT aweme_id, workflow, status, reservation_token, reserved_at, used_at, run_id
+     FROM douyin_research_script_usage
+     WHERE aweme_id = ? AND workflow = ?`,
+  ).bind(awemeId, workflow).first();
+  if (existing?.status === "used" && existing?.reservation_token === reservationToken) {
+    return jsonResponse({ record: existing, already_used: true });
+  }
+  return errorResponse("DOUYIN_SCRIPT_RESERVATION_INVALID", "财经来源稿件的占用不存在、已过期或令牌不匹配", 409, {
+    aweme_id: awemeId,
+    workflow,
   });
 }
 
@@ -552,9 +708,13 @@ export default {
       if (request.method === "GET" && url.pathname === "/v1/words/recent") return await listRecentWords(request, env);
       if (request.method === "POST" && url.pathname === "/v1/words/validate-and-record") return await validateAndRecordWords(request, env);
       if (request.method === "GET" && url.pathname === "/v1/images") return await listImages(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/finance-generated-images") return await listFinanceGeneratedImages(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/finance-generated-images/commit") return await commitFinanceGeneratedImages(request, env);
       if (request.method === "GET" && url.pathname === "/v1/publish-account-groups") return await listPublishAccountGroups(request, env);
       if (request.method === "GET" && url.pathname === "/v1/douyin-research/ids") return await listDouyinResearchIds(env);
       if (request.method === "POST" && url.pathname === "/v1/douyin-research/commit") return await commitDouyinResearch(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/douyin-research/scripts/reserve") return await reserveDouyinResearchScript(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/douyin-research/scripts/used") return await markDouyinResearchScriptUsed(request, env);
       return errorResponse("NOT_FOUND", "接口不存在", 404);
     } catch (error) {
       if (error instanceof SyntaxError) {
