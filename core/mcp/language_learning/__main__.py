@@ -528,6 +528,7 @@ def language_learning_publish(
     publish_confirmed: bool,
     targets: list[str] | None = None,
     publish_at: str | None = None,
+    video_parts: list[int] | None = None,
 ) -> dict:
     """通过 MCP 发布中文视频；同步接口仅用于兼容旧客户端。"""
     try:
@@ -536,6 +537,7 @@ def language_learning_publish(
             publish_confirmed,
             targets=targets,
             publish_at=publish_at,
+            video_parts=video_parts,
         )
     except Exception as exc:
         raise _map_error(exc) from exc
@@ -548,6 +550,7 @@ def language_learning_start_publish(
     run_id: str,
     targets: list[str] | None = None,
     publish_at: str | None = None,
+    video_parts: list[int] | None = None,
 ) -> dict:
     """启动 MCP 发布；立即返回 task_path，用 language_learning_poll_task 轮询。"""
     try:
@@ -566,6 +569,7 @@ def language_learning_start_publish(
                 publish_confirmed,
                 targets=targets,
                 publish_at=publish_at,
+                video_parts=video_parts,
             )
 
         started = runner_submit_task(

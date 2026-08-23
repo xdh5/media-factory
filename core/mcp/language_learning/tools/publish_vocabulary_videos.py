@@ -376,6 +376,12 @@ def _should_publish_tiktok(manifest: dict) -> bool:
     )
 
 
+def _pending_instagram_parts(manifest: dict, video_parts: list[int] | None) -> set[int]:
+    requested = {int(part) for part in (video_parts or [1, 2])}
+    published = {int(part) for part in (manifest.get("instagram_published_parts") or [])}
+    return requested - published
+
+
 def _commit_manifest_database(manifest: dict) -> dict:
     """用户通过 MCP 触发发布后，幂等写入正式话题和十个单词。"""
     payload = manifest.get("database_commit")
@@ -485,24 +491,82 @@ def _publish_chinese_tiktok(item: dict) -> dict:
     }
 
 
+def _publish_chinese_instagram(item: dict, video_parts: set[int]) -> dict:
+    from core.tools.publish_to_instagram import (
+        InstagramToolError,
+        list_instagram_accounts,
+        publish_to_instagram,
+    )
+
+    accounts = list_instagram_accounts()
+    if not accounts:
+        raise PublishError(
+            "Instagram Graph API 账号未配置。请在 .env 填写 INSTAGRAM_USER_ID 和 INSTAGRAM_ACCESS_TOKEN"
+        )
+    results = []
+    for part, video in enumerate(item["videos"], 1):
+        if part not in video_parts:
+            continue
+        title = str(video.get("title") or item["title"])
+        caption = _description(title, item["tags"])
+        video_url = str(video.get("video_url") or "").strip()
+        for account in accounts:
+            try:
+                upload = publish_to_instagram(
+                    account["user_id"],
+                    video_url,
+                    caption,
+                    share_to_feed=True,
+                )
+                results.append({
+                    "channel": "instagram",
+                    "part": part,
+                    "account": account,
+                    "video": video,
+                    "success": True,
+                    "result": upload,
+                })
+            except InstagramToolError as error:
+                results.append({
+                    "channel": "instagram",
+                    "part": part,
+                    "account": account,
+                    "video": video,
+                    "success": False,
+                    "error": error.to_dict()["error"],
+                })
+    succeeded_parts = sorted({row["part"] for row in results if row["success"]})
+    return {
+        "learning_mode": item["learning_mode"],
+        "account_group": item["account_group"],
+        "channel": "instagram",
+        "instagram_published_parts": succeeded_parts,
+        "success": all(row["success"] for row in results) if results else False,
+        "results": results,
+    }
+
+
 def publish_vocabulary_videos(
     manifest_path: str | Path,
     publish_confirmed: bool,
     *,
     targets: list[str] | None = None,
     publish_at: str | None = None,
+    video_parts: list[int] | None = None,
 ) -> dict:
-    """通过语言学习 MCP 把中文视频发布到 YouTube 或 TikTok。"""
+    """通过语言学习 MCP 把中文视频发布到 YouTube、TikTok 或 Instagram。"""
     if publish_confirmed is not True:
         raise ConfirmationRequiredError("必须先让用户看过成片并获得明确确认后再发布")
     manifest = _load_manifest(manifest_path)
     database = _commit_manifest_database(manifest)
     selected_targets = {str(item).strip().casefold() for item in (targets or ["youtube", "tiktok"])}
-    unknown_targets = selected_targets - {"youtube", "tiktok"}
+    unknown_targets = selected_targets - {"youtube", "tiktok", "instagram"}
     if unknown_targets:
         raise PublishError(f"不支持的官方发布目标：{sorted(unknown_targets)}")
     include_youtube = "youtube" in selected_targets and _should_publish_youtube(manifest)
     include_tiktok = "tiktok" in selected_targets and _should_publish_tiktok(manifest)
+    instagram_parts = _pending_instagram_parts(manifest, video_parts)
+    include_instagram = "instagram" in selected_targets and bool(instagram_parts)
     published = []
     matrixmedia_items = []
     for item in manifest["items"]:
@@ -513,6 +577,8 @@ def publish_vocabulary_videos(
                 published.append(_publish_chinese_youtube(item, publish_at=publish_at))
             if include_tiktok:
                 published.append(_publish_chinese_tiktok(item))
+            if include_instagram:
+                published.append(_publish_chinese_instagram(item, instagram_parts))
             continue
         if mode == "en-ko" and channel == "matrixmedia":
             matrixmedia_items.append(item)
@@ -538,6 +604,18 @@ def publish_vocabulary_videos(
     )
     if "tiktok" in selected_targets and tiktok_draft_ok and not tiktok_ok:
         manifest["tiktok_draft_delivered"] = True
+    instagram_ok = include_instagram and all(
+        item.get("success") for item in published if item.get("channel") == "instagram"
+    )
+    if "instagram" in selected_targets and instagram_ok:
+        previous_parts = {int(part) for part in (manifest.get("instagram_published_parts") or [])}
+        completed_parts = {
+            int(part)
+            for item in published
+            if item.get("channel") == "instagram"
+            for part in (item.get("instagram_published_parts") or [])
+        }
+        manifest["instagram_published_parts"] = sorted(previous_parts | completed_parts)
     manifest["status"] = "published" if chinese_success and not matrixmedia_items else (
         "awaiting_matrixmedia" if chinese_success else "publish_failed"
     )

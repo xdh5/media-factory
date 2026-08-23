@@ -43,6 +43,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 - YouTube 使用项目共用的 `YOUTUBE_OAUTH_CLIENT_ID`、`YOUTUBE_OAUTH_CLIENT_SECRET`，并使用 `.env` 里按频道隔离的 `LANGUAGE_LEARNING_YOUTUBE_*`（`youtube_account` 即账号前缀）
 - YouTube 定时发布时，给 `language_learning_start_publish` 传带时区的 ISO 8601 `publish_at`，例如北京时间 `2026-08-23T16:00:00+08:00`。视频会提前上传为私密并由 YouTube 到点公开；不传则保持立即公开。
 - TikTok 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用共用的 `ZERNIO_API_KEY` 与 `LANGUAGE_LEARNING_TIKTOK_*`
+- Instagram 使用 Graph API 和 R2 公网成片；只发指定分段时，给 `language_learning_start_publish` 传 `targets=["instagram"]` 与 `video_parts=[1]` 或 `[2]`。
 - 展示给用户看的账号组名：`中文`；成员从 Cloudflare D1 的发布账号组读取，当前包含 YouTube `language_learning` 与 Meta `daily-chinese-learning` 交叉发布入口。
 
 **韩语 `en-ko`**

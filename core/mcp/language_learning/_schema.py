@@ -280,7 +280,7 @@ PUBLISH_VIDEOS_INPUT_SCHEMA = {
         "publish_confirmed": {"type": "boolean", "const": True},
         "targets": {
             "type": "array",
-            "items": {"type": "string", "enum": ["youtube", "tiktok"]},
+            "items": {"type": "string", "enum": ["youtube", "tiktok", "instagram"]},
             "minItems": 1,
             "uniqueItems": True,
         },
@@ -288,6 +288,13 @@ PUBLISH_VIDEOS_INPUT_SCHEMA = {
             "type": "string",
             "minLength": 1,
             "description": "YouTube 平台定时发布时间，必须是带时区的 ISO 8601",
+        },
+        "video_parts": {
+            "type": "array",
+            "items": {"type": "integer", "enum": [1, 2]},
+            "minItems": 1,
+            "uniqueItems": True,
+            "description": "只发布指定分段；当前用于 Instagram",
         },
     },
     "required": ["manifest_path", "publish_confirmed"],
