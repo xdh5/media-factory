@@ -1,11 +1,13 @@
 ---
 name: finance-video
-description: 使用项目财经 MCP 制作中文财经短视频；适用于“做财经视频”“运行 Finance”“生成理财短视频”等请求。
+description: 使用项目财经 MCP 制作中文财经短视频；适用于“做财经视频”“运行 Finance”“生成理财短视频”等请求。不适用于抖音关键词搜索、爬取或内容研究请求。
 ---
 
 # 财经视频
 
 MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文、TTS、BGM、片头、发布账号组与完整流程**；MCP 只负责编排。禁止绕过 MCP 或直接读写内部文件。
+
+如果用户要求“抖音搜索”“爬抖音”“找抖音前几名”等内容研究，即使同时提到财经，也必须使用抖音研究 Skill 与 `douyin_research` MCP；不得调用本 Skill 的话题查询代替真实抖音搜索。
 
 ## Prompt
 
