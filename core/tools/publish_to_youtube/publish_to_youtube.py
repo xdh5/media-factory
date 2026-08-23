@@ -6,6 +6,7 @@ import mimetypes
 import os
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -147,6 +148,32 @@ def _load_credentials(channel_id: str, account: str | None = None) -> Credential
         ) from exc
 
 
+def _normalize_publish_at(publish_at: str | None) -> str | None:
+    """校验定时时间并转换为 YouTube 接受的 UTC ISO 8601。"""
+    value = str(publish_at or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise InvalidParameterError(
+            "publish_at 必须是带时区的 ISO 8601 时间，例如 2026-08-23T16:00:00+08:00",
+            {"parameter": "publish_at", "value": value},
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise InvalidParameterError(
+            "publish_at 必须明确包含时区，例如北京时间使用 +08:00",
+            {"parameter": "publish_at", "value": value},
+        )
+    normalized = parsed.astimezone(timezone.utc).replace(microsecond=0)
+    if normalized <= datetime.now(timezone.utc):
+        raise InvalidParameterError(
+            "publish_at 必须是未来时间",
+            {"parameter": "publish_at", "value": value},
+        )
+    return normalized.isoformat().replace("+00:00", "Z")
+
+
 def publish_to_youtube(
     channel_id: str,
     video_path: str | Path,
@@ -160,9 +187,10 @@ def publish_to_youtube(
     caption_path: str | Path | None = None,
     language: str = DEFAULT_LANGUAGE,
     account: str | None = None,
+    publish_at: str | None = None,
     on_progress: Callable[[float, str], None] | None = None,
 ) -> dict:
-    """上传单个视频，可选设置封面和字幕。"""
+    """上传单个视频，可选设置封面、字幕和 YouTube 平台定时发布。"""
     video = Path(video_path).resolve()
     if not video.is_file():
         raise InvalidParameterError(f"视频文件不存在：{video}", {"parameter": "video_path"})
@@ -174,12 +202,22 @@ def publish_to_youtube(
             f"privacy_status 必须从 {YOUTUBE_PRIVACY_STATUSES} 中选择",
             {"parameter": "privacy_status"},
         )
+    normalized_publish_at = _normalize_publish_at(publish_at)
+    effective_privacy_status = "private" if normalized_publish_at else privacy_status
     normalized_tags = [str(tag).strip().lstrip("#") for tag in (tags or []) if str(tag).strip()]
     thumbnail = Path(thumbnail_path).resolve() if thumbnail_path else None
     caption = Path(caption_path).resolve() if caption_path else None
     credentials = _load_credentials(channel_id, account)
     try:
         with build("youtube", "v3", credentials=credentials) as youtube:
+            video_status = {
+                "privacyStatus": effective_privacy_status,
+                "selfDeclaredMadeForKids": False,
+                "embeddable": True,
+                "license": "youtube",
+            }
+            if normalized_publish_at:
+                video_status["publishAt"] = normalized_publish_at
             request = youtube.videos().insert(
                 part="snippet,status",
                 body={
@@ -191,12 +229,7 @@ def publish_to_youtube(
                         "defaultLanguage": language,
                         "defaultAudioLanguage": language,
                     },
-                    "status": {
-                        "privacyStatus": privacy_status,
-                        "selfDeclaredMadeForKids": False,
-                        "embeddable": True,
-                        "license": "youtube",
-                    },
+                    "status": video_status,
                 },
                 media_body=MediaFileUpload(
                     str(video), mimetype="video/*", resumable=True, chunksize=UPLOAD_CHUNK_SIZE,
@@ -239,4 +272,11 @@ def publish_to_youtube(
         raise UploadError(f"YouTube API 拒绝上传：{exc}", {"channel_id": channel_id}) from exc
     except Exception as exc:
         raise UploadError(f"YouTube 上传失败：{exc}", {"channel_id": channel_id}) from exc
-    return {"video_id": video_id, "video_url": f"https://www.youtube.com/watch?v={video_id}", "channel_id": channel_id}
+    return {
+        "video_id": video_id,
+        "video_url": f"https://www.youtube.com/watch?v={video_id}",
+        "channel_id": channel_id,
+        "privacy_status": effective_privacy_status,
+        "publish_at": normalized_publish_at,
+        "scheduled": normalized_publish_at is not None,
+    }

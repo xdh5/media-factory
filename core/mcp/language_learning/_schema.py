@@ -276,6 +276,11 @@ PUBLISH_VIDEOS_INPUT_SCHEMA = {
             "minItems": 1,
             "uniqueItems": True,
         },
+        "publish_at": {
+            "type": "string",
+            "minLength": 1,
+            "description": "YouTube 平台定时发布时间，必须是带时区的 ISO 8601",
+        },
     },
     "required": ["manifest_path", "publish_confirmed"],
     "additionalProperties": False,

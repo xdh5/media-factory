@@ -526,10 +526,16 @@ def language_learning_publish(
     manifest_path: str,
     publish_confirmed: bool,
     targets: list[str] | None = None,
+    publish_at: str | None = None,
 ) -> dict:
     """通过 MCP 发布中文视频；同步接口仅用于兼容旧客户端。"""
     try:
-        return publish_vocabulary_videos(manifest_path, publish_confirmed, targets=targets)
+        return publish_vocabulary_videos(
+            manifest_path,
+            publish_confirmed,
+            targets=targets,
+            publish_at=publish_at,
+        )
     except Exception as exc:
         raise _map_error(exc) from exc
 
@@ -540,13 +546,19 @@ def language_learning_start_publish(
     publish_confirmed: bool,
     run_id: str,
     targets: list[str] | None = None,
+    publish_at: str | None = None,
 ) -> dict:
     """启动 MCP 发布；立即返回 task_path，用 language_learning_poll_task 轮询。"""
     try:
         cache_root, _ = production_dirs(run_id)
 
         def _work() -> dict:
-            return publish_vocabulary_videos(manifest_path, publish_confirmed, targets=targets)
+            return publish_vocabulary_videos(
+                manifest_path,
+                publish_confirmed,
+                targets=targets,
+                publish_at=publish_at,
+            )
 
         started = runner_submit_task(
             cache_dir=cache_root,

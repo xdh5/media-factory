@@ -318,7 +318,7 @@ def _commit_manifest_database(manifest: dict) -> dict:
     )
 
 
-def _publish_chinese_youtube(item: dict) -> dict:
+def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
     youtube_account = str(item.get("youtube_account") or WORKFLOW_ID)
     channels = _youtube_channels(item["account_group"], youtube_account)
     tags = _normalized_tags(item["tags"])
@@ -341,6 +341,7 @@ def _publish_chinese_youtube(item: dict) -> dict:
                     privacy_status="public",
                     language=language,
                     account=youtube_account,
+                    publish_at=publish_at,
                 )
                 results.append({"channel": "youtube", "account": account, "video": video, "success": True, "result": upload})
             except YouTubeToolError as error:
@@ -415,6 +416,7 @@ def publish_vocabulary_videos(
     publish_confirmed: bool,
     *,
     targets: list[str] | None = None,
+    publish_at: str | None = None,
 ) -> dict:
     """通过语言学习 MCP 把中文视频发布到 YouTube 或 TikTok。"""
     if publish_confirmed is not True:
@@ -434,7 +436,7 @@ def publish_vocabulary_videos(
         mode = str(item.get("learning_mode") or "")
         if mode == "en-zh" and channel == "youtube":
             if include_youtube:
-                published.append(_publish_chinese_youtube(item))
+                published.append(_publish_chinese_youtube(item, publish_at=publish_at))
             if include_tiktok:
                 published.append(_publish_chinese_tiktok(item))
             continue
