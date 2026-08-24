@@ -39,29 +39,6 @@ def _request(method: str, payload: dict) -> dict:
     return {"sent": True, "message_id": int(message.get("message_id") or 0)}
 
 
-def _send_delivery(topic: str, subject_sheet_url: str, chinese_video_url: str, korean_video_url: str) -> dict:
-    normalized_topic = str(topic or "").strip()
-    normalized_sheet = str(subject_sheet_url or "").strip()
-    if not normalized_topic or not normalized_sheet:
-        raise RuntimeError("成功通知缺少主题或原始主题图")
-    buttons = []
-    if str(chinese_video_url or "").strip():
-        buttons.append([{"text": "下载中文学习视频", "url": chinese_video_url}])
-    if str(korean_video_url or "").strip():
-        buttons.append([{"text": "下载韩语学习视频", "url": korean_video_url}])
-    if not buttons:
-        raise RuntimeError("成功通知至少需要一个成片下载链接")
-    return _request(
-        "sendPhoto",
-        {
-            "photo": normalized_sheet,
-            "caption": f"主题：{normalized_topic}",
-            "reply_markup": {"inline_keyboard": buttons},
-            "disable_notification": True,
-        },
-    )
-
-
 def _failed_stages(needs: dict) -> list[str]:
     failed = []
     for job, details in needs.items():
@@ -72,7 +49,7 @@ def _failed_stages(needs: dict) -> list[str]:
 
 
 def notify_generic_workflow(needs_json: str, workflow_name: str, run_url: str) -> dict:
-    """成功时静默通知，失败或取消时发送有声音的 Telegram 系统通知。"""
+    """成功时只发送“已成功”，失败或取消时发送具体阶段。"""
     try:
         needs = json.loads(str(needs_json or "{}"))
     except json.JSONDecodeError as exc:
@@ -87,10 +64,7 @@ def notify_generic_workflow(needs_json: str, workflow_name: str, run_url: str) -
         if url:
             text += f"\n查看：{url}"
         return _request("sendMessage", {"text": text, "disable_notification": False})
-    text = f"✅ {name} 成功"
-    if url:
-        text += f"\n查看：{url}"
-    return _request("sendMessage", {"text": text, "disable_notification": True})
+    return _request("sendMessage", {"text": "已成功", "disable_notification": True})
 
 
 def notify_workflow(
@@ -100,7 +74,7 @@ def notify_workflow(
     chinese_video_url: str = "",
     korean_video_url: str = "",
 ) -> dict:
-    """根据全部 Job 结论发送一次成功交付或具体失败阶段通知。"""
+    """根据全部 Job 结论发送“已成功”或具体失败阶段通知。"""
     try:
         needs = json.loads(str(needs_json or "{}"))
     except json.JSONDecodeError as exc:
@@ -125,4 +99,4 @@ def notify_workflow(
             "sendMessage",
             {"text": "语言学习任务失败\n阶段：" + "、".join(failed), "disable_notification": False},
         )
-    return _send_delivery(topic, subject_sheet_url, chinese_video_url, korean_video_url)
+    return _request("sendMessage", {"text": "已成功", "disable_notification": True})
