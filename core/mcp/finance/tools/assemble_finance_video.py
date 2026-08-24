@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from core.tools.generate_cover_image import CoverError, generate_cover_image
+from core.tools.cloudflare_data import commit_production_outputs
 from core.tools.generate_final_video import generate_final_video, safe_filename
 from core.tools.generate_shot import (
     INTRO_RENDERER_VERSION,
@@ -29,6 +30,7 @@ from .._constants import (
     MCP_ID,
     STORYBOARD_TEXT_FILE_NAME,
     TOPIC_DEDUPLICATION_DAYS,
+    publish_date_from_run_id,
     VIDEO_SIZE,
 )
 from .._errors import WorkflowStepError
@@ -256,6 +258,7 @@ def finish_finance_video(
     production_config: dict,
     storyboard_text: str | None = None,
     force_shot_ids: list[str] | None = None,
+    production_source: str = "local_mcp",
     progress=None,
 ) -> dict:
     settings = _production_config(production_config)
@@ -270,6 +273,8 @@ def finish_finance_video(
             f"财经稿件缺少字段：{missing_fields}",
             {"draft_path": str(resolved_draft)},
         )
+    if production_source not in {"local_mcp", "github_workflow"}:
+        raise WorkflowStepError("production_source 必须是 local_mcp 或 github_workflow")
     record = {"id": draft["topic_record_id"], "topic": draft["topic"]}
     run_id = str(draft["run_id"])
     article = str(draft["article"])
@@ -380,6 +385,21 @@ def finish_finance_video(
     except Exception as extra:
         raise WorkflowStepError(f"财经成片失败：{extra}") from extra
     final_path = Path(final_result["output_path"])
+    publish_date = publish_date_from_run_id(run_id)
+    production_outputs = None
+    if production_source == "local_mcp":
+        production_outputs = commit_production_outputs([{
+            "production_id": f"local_mcp:finance:{run_id}:finance:1",
+            "run_id": run_id,
+            "publish_date": publish_date,
+            "business_line": "finance",
+            "content_kind": "finance",
+            "content_part": 1,
+            "title": metadata["title"],
+            "source": "local_mcp",
+            "local_path": str(final_path),
+            "r2_url": None,
+        }])
 
     publish_copy = "【" + metadata["short_title"] + " " + " ".join(
         f"#{tag.lstrip('#')}" for tag in metadata["hashtags"]
@@ -412,6 +432,9 @@ def finish_finance_video(
         "matrixmedia_account_group": settings["matrixmedia_account_group"],
         "creativeStatement": MATRIXMEDIA_AI_CREATIVE_STATEMENT,
         "created_at": created_at,
+        "publish_date": publish_date,
+        "production_source": production_source,
+        "production_outputs": production_outputs,
         "topic_record_id": record["id"],
         "database_commit": {
             "workflow": MCP_ID,

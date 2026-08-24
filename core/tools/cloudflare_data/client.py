@@ -218,12 +218,15 @@ def list_publication_records(
     *,
     business_line: str | None = None,
     platform: str | None = None,
+    publish_date: str | None = None,
 ) -> list[dict]:
     query = {}
     if business_line:
         query["business_line"] = business_line
     if platform:
         query["platform"] = platform
+    if publish_date:
+        query["publish_date"] = publish_date
     payload = _request("GET", "/v1/publication-records", query=query)
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
         raise CloudflareDataRequestError("Cloudflare 发布记录接口缺少 records 数组")
@@ -234,6 +237,32 @@ def commit_publication_records(records: list[dict]) -> dict:
     payload = _request("POST", "/v1/publication-records/commit", body={"records": records})
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
         raise CloudflareDataRequestError("Cloudflare 发布记录写入接口缺少 records 数组")
+    return payload
+
+
+def list_production_outputs(
+    *,
+    publish_date: str | None = None,
+    business_line: str | None = None,
+    source: str | None = None,
+) -> list[dict]:
+    query = {}
+    if publish_date:
+        query["publish_date"] = publish_date
+    if business_line:
+        query["business_line"] = business_line
+    if source:
+        query["source"] = source
+    payload = _request("GET", "/v1/production-outputs", query=query)
+    if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+        raise CloudflareDataRequestError("Cloudflare 产物记录接口缺少 records 数组")
+    return payload["records"]
+
+
+def commit_production_outputs(records: list[dict]) -> dict:
+    payload = _request("POST", "/v1/production-outputs/commit", body={"records": records})
+    if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+        raise CloudflareDataRequestError("Cloudflare 产物记录写入接口缺少 records 数组")
     return payload
 
 

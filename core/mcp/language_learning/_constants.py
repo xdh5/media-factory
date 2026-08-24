@@ -1,7 +1,8 @@
 """语言学习 MCP 技术常量（TTS、发布等业务参数见 SKILL）。"""
 
-import time
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 WORKFLOW_ID = "language_learning"
 SUPPORTED_LEARNING_MODES = ("en-zh", "en-ko")
@@ -47,15 +48,40 @@ def _project_root() -> Path:
 PROJECT_ROOT = _project_root()
 PROJECT_DATA_ROOT = PROJECT_ROOT / "data"
 PROJECT_CACHE_ROOT = PROJECT_ROOT / "cache"
-PROJECT_OUTPUT_ROOT = PROJECT_ROOT / "outputs"
+PROJECT_OUTPUT_ROOT = PROJECT_ROOT / "output"
 DEFAULT_DATA_ROOT = PROJECT_DATA_ROOT / WORKFLOW_ID
+BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
-def production_run_id(record_id: int | None = None) -> str:
-    """生成不依赖数据库主键的数字 run_id；发布时才正式写入 D1。"""
-    if record_id is not None:
-        return f"run-{int(record_id):06d}"
-    return f"run-{time.time_ns()}"
+def normalize_publish_date(publish_date: str) -> str:
+    """校验北京时间计划发布日期，返回 YYYY-MM-DD。"""
+    value = str(publish_date or "").strip()
+    try:
+        resolved = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("publish_date 必须是 YYYY-MM-DD，例如 2026-08-25") from exc
+    today = datetime.now(BEIJING_TIMEZONE).date()
+    if resolved < today:
+        raise ValueError(f"publish_date 不能早于北京时间当天 {today.isoformat()}")
+    return resolved.isoformat()
+
+
+def production_run_id(publish_date: str) -> str:
+    """按北京时间计划发布日期生成 run-YYYYMMDD。"""
+    normalized = normalize_publish_date(publish_date)
+    return f"run-{normalized.replace('-', '')}"
+
+
+def publish_date_from_run_id(run_id: str) -> str:
+    """从新格式 run-YYYYMMDD 还原北京时间计划发布日期。"""
+    value = str(run_id or "").strip()
+    if len(value) != 12 or not value.startswith("run-") or not value[4:].isdigit():
+        raise ValueError("run_id 必须是 run-YYYYMMDD，例如 run-20260825")
+    raw = value[4:]
+    try:
+        return date(int(raw[:4]), int(raw[4:6]), int(raw[6:8])).isoformat()
+    except ValueError as exc:
+        raise ValueError(f"run_id 包含无效日期：{value}") from exc
 
 
 def production_dirs(run_id: str) -> tuple[Path, Path]:

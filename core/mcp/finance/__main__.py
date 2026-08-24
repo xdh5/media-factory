@@ -18,6 +18,7 @@ from core.tools.cloudflare_data import (
     CloudflareDataError,
     commit_publication_records,
     get_douyin_research_script_stats,
+    list_production_outputs,
     mark_douyin_research_script_used,
     reserve_douyin_research_script,
 )
@@ -128,6 +129,22 @@ def finance_record_publications(
 
 
 @mcp.tool()
+def finance_get_production_outputs(publish_date: str) -> dict:
+    """查询某个北京时间计划发布日期的财经成片。"""
+    try:
+        return {
+            "publish_date": publish_date,
+            "business_line": MCP_ID,
+            "records": list_production_outputs(
+                publish_date=publish_date,
+                business_line=MCP_ID,
+            ),
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
 def finance_get_source_script() -> dict:
     """从抖音研究数据库选择并临时占用一条未使用的财经稿件。"""
     try:
@@ -174,6 +191,7 @@ def finance_save_draft(
     source_aweme_id: str,
     source_reservation_token: str,
     source_hook: str,
+    publish_date: str,
     draft_path: str | None = None,
     cover_highlights: list[str] | None = None,
 ) -> dict:
@@ -198,6 +216,7 @@ def finance_save_draft(
             source_aweme_id,
             source_reservation_token,
             source_hook,
+            publish_date,
             draft_path,
             cover_highlights,
         )
@@ -341,6 +360,7 @@ def finance_finish_video(
     production_config: dict,
     storyboard_text: str | None = None,
     force_shot_ids: list[str] | None = None,
+    production_source: str = "local_mcp",
 ) -> dict:
     """合成成片（同步，易超时）。优先使用 finance_start_finish_video + poll_task。"""
     try:
@@ -350,6 +370,7 @@ def finance_finish_video(
             production_config=production_config,
             storyboard_text=storyboard_text,
             force_shot_ids=force_shot_ids,
+            production_source=production_source,
         )
     except Exception as exc:
         raise _map_error(exc) from exc
@@ -362,6 +383,7 @@ def finance_start_finish_video(
     production_config: dict,
     storyboard_text: str | None = None,
     force_shot_ids: list[str] | None = None,
+    production_source: str = "local_mcp",
 ) -> dict:
     """启动成片合成；立即返回 task_path，用 finance_poll_task 轮询至 done=true。"""
     try:
@@ -376,6 +398,7 @@ def finance_start_finish_video(
                 production_config=production_config,
                 storyboard_text=storyboard_text,
                 force_shot_ids=force_shot_ids,
+                production_source=production_source,
                 progress=progress,
             )
 

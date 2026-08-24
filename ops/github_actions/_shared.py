@@ -6,16 +6,85 @@ import json
 import mimetypes
 import os
 import tarfile
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import boto3
 
 from core.tools.qwen_text import generate_text
 from core.tools.qwen_vision import analyze_image
 from core.tools.r2_storage import upload_public_file
+from core.tools.cloudflare_data import list_production_outputs, list_publication_records
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+LANGUAGE_PUBLISH_TARGETS = ("youtube", "tiktok", "instagram", "facebook")
+
+
+def resolve_publish_date(value: str = "") -> str:
+    """解析手动输入；留空时使用北京时间当天，禁止选择过去日期。"""
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    text = str(value or "").strip()
+    if not text:
+        return today.isoformat()
+    try:
+        resolved = date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError("publish_date 必须是 YYYY-MM-DD，例如 2026-08-25") from exc
+    if resolved < today:
+        raise ValueError(f"publish_date 不能早于北京时间当天 {today.isoformat()}")
+    return resolved.isoformat()
+
+
+def daily_production_preflight(business_line: str, publish_date: str = "") -> dict:
+    """按计划发布日期查询成片和发布记录，决定是否生产及需要补发的平台。"""
+    publish_date = resolve_publish_date(publish_date)
+    outputs = list_production_outputs(
+        publish_date=publish_date,
+        business_line=business_line,
+    )
+    publications = list_publication_records(
+        business_line=business_line,
+        publish_date=publish_date,
+    )
+    published_platforms = {
+        str(item.get("platform") or "").strip()
+        for item in publications
+        if str(item.get("platform") or "").strip()
+    }
+    pending_targets = [
+        target for target in LANGUAGE_PUBLISH_TARGETS
+        if target not in published_platforms
+    ] if business_line == "language_learning" else []
+    github_outputs = [
+        item for item in outputs
+        if item.get("source") == "github_workflow" and item.get("r2_url")
+    ]
+    existing_run_id = str(github_outputs[0].get("run_id") or "") if github_outputs else ""
+    should_generate = not outputs and not publications
+    should_resume_publish = (
+        business_line == "language_learning"
+        and not should_generate
+        and bool(existing_run_id)
+        and bool(pending_targets)
+    )
+    return {
+        "publish_date": publish_date,
+        "business_line": business_line,
+        "should_generate": should_generate,
+        "should_resume_publish": should_resume_publish,
+        "existing_run_id": existing_run_id,
+        "pending_targets": pending_targets,
+        "output_count": len(outputs),
+        "publication_count": len(publications),
+        "published_platforms": sorted(published_platforms),
+        "skip_reason": (
+            "该计划发布日期没有可复用的 GitHub R2 成片"
+            if should_generate
+            else f"该计划发布日期已有 {len(outputs)} 条成片记录、{len(publications)} 条发布记录"
+        ),
+    }
 
 
 def restore_finance_library() -> Path:

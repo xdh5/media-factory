@@ -4,6 +4,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from core.tools.cloudflare_data import commit_production_outputs
 from core.tools.generate_final_video import generate_final_video, safe_filename
 from core.tools.generate_tts import generate_tts
 
@@ -11,6 +12,7 @@ from .._constants import (
     CARD_CANVAS_SIZE,
     WORDS_PER_TASK,
     WORDS_PER_VIDEO,
+    publish_date_from_run_id,
     production_dirs,
 )
 from .._errors import VocabularyVideoError
@@ -127,6 +129,7 @@ def _one_mode(
         except Exception as extra:
             raise VocabularyVideoError(f"第 {part} 段拼接失败：{extra}") from extra
         outputs.append({
+            "part": part,
             "output_path": video["output_path"],
             "title": title,
             "word_start": start + 1,
@@ -151,6 +154,7 @@ def create_vocabulary_videos(
     topic: str = "",
     language_pause: float = 0.3,
     word_pause: float = 0.3,
+    production_source: str = "local_mcp",
     *,
     voices: dict[str, str],
 ) -> dict:
@@ -161,6 +165,8 @@ def create_vocabulary_videos(
     modes = [mode for mode in ("en-zh", "en-ko") if mode in card_dirs]
     if not modes:
         raise VocabularyVideoError("card_dirs 至少需要一个受支持的语言方向，值为卡片文件夹路径")
+    if production_source not in {"local_mcp", "github_workflow"}:
+        raise VocabularyVideoError("production_source 必须是 local_mcp 或 github_workflow")
     cache_root, output_root = production_dirs(run_id)
     output_root.mkdir(parents=True, exist_ok=True)
     results_by_mode: dict[str, dict] = {}
@@ -183,9 +189,12 @@ def create_vocabulary_videos(
         for future in as_completed(futures):
             results_by_mode[futures[future]] = future.result()
     results = [results_by_mode[mode] for mode in modes]
-    return {
+    publish_date = publish_date_from_run_id(run_id)
+    payload = {
         "topic": str(topic).strip(),
         "run_id": run_id,
+        "publish_date": publish_date,
+        "production_source": production_source,
         "cache_dir": str(cache_root),
         "output_dir": str(output_root),
         "learning_modes": modes,
@@ -193,3 +202,21 @@ def create_vocabulary_videos(
         "word_pause": word_pause,
         "videos": results,
     }
+    if production_source == "local_mcp":
+        payload["production_outputs"] = commit_production_outputs([
+            {
+                "production_id": f"local_mcp:language_learning:{run_id}:{video['learning_mode']}:{part['part']}",
+                "run_id": run_id,
+                "publish_date": publish_date,
+                "business_line": "language_learning",
+                "content_kind": video["learning_mode"],
+                "content_part": part["part"],
+                "title": part["title"],
+                "source": "local_mcp",
+                "local_path": part["output_path"],
+                "r2_url": None,
+            }
+            for video in results
+            for part in video["video_parts"]
+        ])
+    return payload

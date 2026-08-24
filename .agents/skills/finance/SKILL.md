@@ -99,7 +99,7 @@ GitHub Action 暂时继续使用原本的本地图库选图模式，不得删除
 ```
 
 - 每期 BGM 必须从 `core/tools/generate_bgm/static/nothing_to_fare.mp3` 和 `core/tools/generate_bgm/static/aware.mp3` 中随机选择一首；同一期只选择一次并沿用到成片，Agent 不得使用其他曲目或修改混音参数
-- 生产完成后调用 `finance_start_upload_r2` 上传 R2
+- 本地生产完成后保留本地产物，不自动上传 R2；只有 GitHub Workflow 或用户明确要求远程交付时才调用 `finance_start_upload_r2`
 - 发布服务器 MatrixMedia 使用账号组 `心灵鸡汤`，账号配置由发布环境提供，不再从 D1 读取发布账号组。
 - MatrixMedia 发布所有平台时必须传 `creativeStatement="ai_generated"`，给成片添加各平台对应的 AI 生成内容标记；不得省略或改为无标注。
 - 跳过掘金、番茄、小红书
@@ -109,8 +109,10 @@ GitHub Action 暂时继续使用原本的本地图库选图模式，不得删除
 
 ## 确认门禁
 
-1. **成片**：稿件生成后直接制作；`finance_start_finish_video` 与 `finance_start_upload_r2` 轮询完成后展示 `video_path`、标题、标签、发布文案与 R2 清单 URL；未确认不得调用发布 MCP。
+1. **成片**：稿件生成后直接制作；`finance_start_finish_video` 完成后展示 `output/finance/run-YYYYMMDD/` 中的 `video_path`、标题、标签与发布文案；`YYYYMMDD` 必须是北京时间计划发布日期。未确认不得调用发布 MCP。本地 MCP 制作不得自动上传 R2；GitHub Workflow 产物才自动交付 R2。成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；查询某天是否有财经产物使用 `finance_get_production_outputs(publish_date)`。
 2. **清缓存**：发布结束后用户确认才调用 `finance_clear_run(run_id, confirmed=true)`。
+
+财经 GitHub Workflow 每天北京时间 00:00 自动生产，也可按计划发布日期手动触发；开始前若同日已有财经成片或发布记录则跳过。Workflow 只把成片交付 R2，不执行平台发布。
 
 中间步骤不逐项确认。
 
@@ -142,7 +144,7 @@ SUB|L002|你以为涨薪就能存钱
 3. 从改编正文提炼 `topic`；调用 `finance_get_metadata_prompt` 后写标题标签行。
 4. 用**长标题**按语义断成 1～3 行 `cover_lines`（拼接去空白后必须等于长标题 `title`）。封面不自动折行。
 5. 从长标题中选出 1～3 个真正承载点击理由的重点词，作为 `cover_highlights` 传入；每项必须原样出现在 `title` 中。封面重点词使用 `#F2A623` 金黄色，其他文字使用白色，统一加 6px 黑色描边。
-6. `finance_save_draft`：除原参数外传入 `source_aweme_id`、`source_reservation_token`、`source_hook` 和 `cover_highlights`。保存成功后 MCP 自动将数据库原稿标记为已使用，直接进入制作。
+6. 先确定北京时间计划发布日期 `publish_date`（`YYYY-MM-DD`，不得早于当天）；`finance_save_draft` 除原参数外传入 `publish_date`、`source_aweme_id`、`source_reservation_token`、`source_hook` 和 `cover_highlights`。MCP 创建 `output/finance/run-YYYYMMDD/`；日期只表示计划发布日，不包含具体时间。保存成功后 MCP 自动将数据库原稿标记为已使用，直接进入制作。
 
 ### 第二阶段：制作与发布
 
@@ -151,8 +153,8 @@ SUB|L002|你以为涨薪就能存钱
 3. 本地交互制作调用 `finance_prepare_images`，传入 `qwen_reference` 配置和用户参考图；确认返回的任务数量覆盖全部镜头。
 4. 调用 `finance_start_generate_images(context_path)` → `finance_poll_task` 直至 `done=true`；全部生成后直接写入图库，结果包含生图清单、当次图片目录和数据库连续编号，不设置人物、画风或情绪检查门禁。
 5. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`；配音直接用 `prepare_storyboard` 的 `tts_path`。
-6. 调用 `finance_start_upload_r2(manifest_path, run_id)` → `finance_poll_task` 直至完成，展示成片和 `manifest_url`。
-7. 用户确认后，把 R2 清单 URL 交给发布服务器上的独立 MatrixMedia MCP；发布 MCP 先把正式话题幂等写入 D1，再用账号组 `心灵鸡汤` 发布，并对每个平台传入清单中的 `creativeStatement="ai_generated"`。
+6. 展示本地成片路径和发布信息，不在本地制作阶段调用 `finance_start_upload_r2`。
+7. 用户确认后，把本地清单和成片交给 MatrixMedia MCP；发布 MCP 先把正式话题幂等写入 D1，再用账号组 `心灵鸡汤` 发布，并对每个平台传入清单中的 `creativeStatement="ai_generated"`。只有用户明确要求远程交付时才上传 R2。
 8. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
@@ -167,6 +169,7 @@ SUB|L002|你以为涨薪就能存钱
 | 工具 | 作用 |
 | --- | --- |
 | `finance_get_source_stats` | 只读统计财经原稿总数、可用数、有效占用数和已使用数；不会占用稿件 |
+| `finance_get_production_outputs` | 按北京时间计划发布日期查询财经成片及本地/R2位置 |
 | `finance_get_source_script` | 选择并临时占用未使用的财经数据库原稿；全部用完时报错 |
 | `finance_get_topics` | 兼容保留的已占用话题查询；新流程不作为第一步 |
 | `finance_get_metadata_prompt` | 返回标题标签 Prompt |

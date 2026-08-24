@@ -5,9 +5,19 @@ from __future__ import annotations
 import json
 import random
 import re
+from pathlib import Path
 
 from ._mcp import MCPCallError, ProjectMCP
-from ._shared import PROJECT_ROOT, json_text, qwen, restore_finance_library, upload_run_files, write_summary
+from core.tools.cloudflare_data import commit_production_outputs
+from ._shared import (
+    PROJECT_ROOT,
+    json_text,
+    qwen,
+    resolve_publish_date,
+    restore_finance_library,
+    upload_run_files,
+    write_summary,
+)
 
 
 TTS_CONFIG = {"voice": "zh-CN-YunjianNeural", "rate": "+20%", "trim_trailing_silence": True}
@@ -137,8 +147,9 @@ def _select_images(prepared: dict) -> list[dict]:
     return result
 
 
-async def run(requested_topic: str = "") -> dict:
+async def run(requested_topic: str = "", publish_date: str = "") -> dict:
     restore_finance_library()
+    publish_date = resolve_publish_date(publish_date)
     async with ProjectMCP("core.mcp.finance", PROJECT_ROOT) as mcp:
         selected = await mcp.call("finance_get_source_script")
         source = selected["source"]
@@ -161,6 +172,7 @@ async def run(requested_topic: str = "") -> dict:
                         "source_aweme_id": str(source["aweme_id"]),
                         "source_reservation_token": str(reservation["reservation_token"]),
                         "source_hook": source_hook,
+                        "publish_date": publish_date,
                         **metadata,
                     },
                 )
@@ -203,6 +215,7 @@ async def run(requested_topic: str = "") -> dict:
                 "image_manifest_path": image_manifest["manifest_path"],
                 "production_config": production_config,
                 "storyboard_text": storyboard,
+                "production_source": "github_workflow",
             },
         )
         manifest = await mcp.poll("finance_poll_task", started["task_path"])
@@ -212,6 +225,25 @@ async def run(requested_topic: str = "") -> dict:
         [manifest["video_path"], manifest["cover_path"], manifest["title_path"], manifest["short_title_path"], manifest["publish_copy_path"]],
         manifest,
     )
+    uploaded_by_name = {
+        str(item.get("source_name") or ""): str(item.get("url") or "")
+        for item in remote.get("files") or []
+    }
+    video_url = uploaded_by_name.get(Path(manifest["video_path"]).name, "")
+    if not video_url:
+        raise RuntimeError("财经成片已上传，但 R2 返回结果缺少视频地址")
+    production_outputs = commit_production_outputs([{
+        "production_id": f"github_workflow:finance:{manifest['run_id']}:finance:1",
+        "run_id": manifest["run_id"],
+        "publish_date": manifest["publish_date"],
+        "business_line": "finance",
+        "content_kind": "finance",
+        "content_part": 1,
+        "title": manifest["title"],
+        "source": "github_workflow",
+        "local_path": None,
+        "r2_url": video_url,
+    }])
     write_summary(
         "财经成片已生成",
         [
@@ -222,4 +254,4 @@ async def run(requested_topic: str = "") -> dict:
             ("平台发布", "未执行"),
         ],
     )
-    return {"manifest": manifest, "r2": remote}
+    return {"manifest": manifest, "r2": remote, "production_outputs": production_outputs}

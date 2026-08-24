@@ -75,6 +75,7 @@ def save_draft(
     source_aweme_id: str,
     source_reservation_token: str,
     source_hook: str,
+    publish_date: str,
     draft_path: str | Path | None = None,
     cover_highlights: list[str] | None = None,
 ) -> dict:
@@ -115,7 +116,10 @@ def save_draft(
         output_root = Path(existing["output_dir"]).resolve()
         target_draft_path = resolved_draft
     else:
-        run_id = production_run_id()
+        try:
+            run_id = production_run_id(publish_date)
+        except ValueError as exc:
+            raise WorkflowStepError(str(exc)) from exc
         record = {"id": int(run_id.removeprefix("run-")), "topic": normalized_topic}
         cache_root, output_root = production_dirs(run_id)
         target_draft_path = cache_root / DRAFT_FILE_NAME
@@ -129,6 +133,11 @@ def save_draft(
         "run_id": run_id,
         "topic_record_id": record["id"],
         "database_status": "pending_publish",
+        "publish_date": (
+            str(existing.get("publish_date") or publish_date).strip()
+            if draft_path is not None
+            else str(publish_date).strip()
+        ),
         "source_aweme_id": normalized_source_aweme_id,
         "source_reservation_token": normalized_source_token,
         "source_hook": normalized_source_hook,

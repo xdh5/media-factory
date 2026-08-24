@@ -62,6 +62,14 @@ PUBLICATION_RECORDS_INPUT_SCHEMA = {
     "required": ["publication_id", "run_id", "records"],
     "additionalProperties": False,
 }
+PRODUCTION_OUTPUTS_QUERY_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "publish_date": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+    },
+    "required": ["publish_date"],
+    "additionalProperties": False,
+}
 FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -106,6 +114,11 @@ FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
             "minLength": 1,
             "description": "数据库原稿开头的黄金钩子，正文必须原样以此开头",
         },
+        "publish_date": {
+            "type": "string",
+            "pattern": r"^\d{4}-\d{2}-\d{2}$",
+            "description": "北京时间计划发布日期；run_id 将生成为 run-YYYYMMDD",
+        },
     },
     "required": [
         "topic",
@@ -118,6 +131,7 @@ FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
         "source_aweme_id",
         "source_reservation_token",
         "source_hook",
+        "publish_date",
     ],
     "additionalProperties": False,
 }

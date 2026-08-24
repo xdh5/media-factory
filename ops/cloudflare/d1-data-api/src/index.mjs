@@ -6,6 +6,7 @@ const PUBLICATION_PLATFORMS = [
 ];
 const PUBLICATION_MODES = ["immediate", "scheduled"];
 const PUBLICATION_STATUSES = ["published", "scheduled"];
+const PRODUCTION_SOURCES = ["local_mcp", "github_workflow"];
 
 function jsonResponse(payload, status = 200) {
   return Response.json(payload, {
@@ -49,6 +50,19 @@ function publicationTimestamp(value) {
   const result = requiredText(value, "publish_at", 64);
   if (!/(?:Z|[+-]\d{2}:\d{2})$/.test(result) || Number.isNaN(Date.parse(result))) {
     throw new Error("publish_at 必须是带时区的 ISO 8601 日期时间");
+  }
+  return result;
+}
+
+function productionDate(value) {
+  const result = requiredText(value, "publish_date", 10);
+  const parsed = new Date(`${result}T00:00:00Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(result)
+    || Number.isNaN(parsed.getTime())
+    || parsed.toISOString().slice(0, 10) !== result
+  ) {
+    throw new Error("publish_date 必须是 YYYY-MM-DD 格式的有效日期");
   }
   return result;
 }
@@ -422,12 +436,14 @@ async function listPublicationRecords(request, env) {
   const url = new URL(request.url);
   const businessLine = String(url.searchParams.get("business_line") || "").trim();
   const platform = String(url.searchParams.get("platform") || "").trim();
+  const publishDate = String(url.searchParams.get("publish_date") || "").trim();
   if (businessLine && !PUBLICATION_BUSINESS_LINES.includes(businessLine)) {
     throw new Error(`business_line 必须从 ${PUBLICATION_BUSINESS_LINES.join(", ")} 中选择`);
   }
   if (platform && !PUBLICATION_PLATFORMS.includes(platform)) {
     throw new Error(`platform 必须从 ${PUBLICATION_PLATFORMS.join(", ")} 中选择`);
   }
+  if (publishDate) productionDate(publishDate);
   const clauses = [];
   const values = [];
   if (businessLine) {
@@ -437,6 +453,10 @@ async function listPublicationRecords(request, env) {
   if (platform) {
     clauses.push("platform = ?");
     values.push(platform);
+  }
+  if (publishDate) {
+    clauses.push("substr(publish_at, 1, 10) = ?");
+    values.push(publishDate);
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const statement = env.DB.prepare(
@@ -506,6 +526,100 @@ async function commitPublicationRecords(request, env) {
     ).bind(
       publicationId, runId, businessLine, platform, connector, accountId,
       contentPart, title, publishMode, publishAt, status, externalId, externalUrl,
+    );
+  });
+  const results = await env.DB.batch(statements);
+  return jsonResponse({ records: results.map((result) => result.results?.[0]).filter(Boolean) }, 201);
+}
+
+async function listProductionOutputs(request, env) {
+  const url = new URL(request.url);
+  const publishDate = String(url.searchParams.get("publish_date") || "").trim();
+  const businessLine = String(url.searchParams.get("business_line") || "").trim();
+  const source = String(url.searchParams.get("source") || "").trim();
+  if (publishDate) productionDate(publishDate);
+  if (businessLine && !PUBLICATION_BUSINESS_LINES.includes(businessLine)) {
+    throw new Error(`business_line 必须从 ${PUBLICATION_BUSINESS_LINES.join(", ")} 中选择`);
+  }
+  if (source && !PRODUCTION_SOURCES.includes(source)) {
+    throw new Error(`source 必须从 ${PRODUCTION_SOURCES.join(", ")} 中选择`);
+  }
+  const clauses = [];
+  const values = [];
+  if (publishDate) {
+    clauses.push("publish_date = ?");
+    values.push(publishDate);
+  }
+  if (businessLine) {
+    clauses.push("business_line = ?");
+    values.push(businessLine);
+  }
+  if (source) {
+    clauses.push("source = ?");
+    values.push(source);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const statement = env.DB.prepare(
+    `SELECT id, production_id, run_id, publish_date, business_line, content_kind,
+            content_part, title, source, local_path, r2_url, created_at, updated_at
+     FROM production_outputs ${where}
+     ORDER BY publish_date DESC, business_line, content_kind, content_part LIMIT 500`,
+  );
+  const result = values.length ? await statement.bind(...values).all() : await statement.all();
+  return jsonResponse({ records: result.results || [] });
+}
+
+async function commitProductionOutputs(request, env) {
+  const body = await request.json();
+  const records = body.records;
+  if (!Array.isArray(records) || records.length < 1 || records.length > 100) {
+    throw new Error("records 必须是包含 1 到 100 条产物记录的数组");
+  }
+  const statements = records.map((item) => {
+    if (!item || typeof item !== "object") throw new Error("每条产物记录都必须是对象");
+    const productionId = requiredText(item.production_id, "production_id", 200);
+    const runId = requiredText(item.run_id, "run_id", 200);
+    const publishDate = productionDate(item.publish_date);
+    const businessLine = requiredText(item.business_line, "business_line", 64);
+    const contentKind = requiredText(item.content_kind, "content_kind", 100);
+    const contentPart = positiveInteger(item.content_part || 1, "content_part", 1000);
+    const title = requiredText(item.title, "title", 1000);
+    const source = requiredText(item.source, "source", 32);
+    const localPath = optionalText(item.local_path, "local_path", 2000);
+    const r2Url = optionalText(item.r2_url, "r2_url", 2000);
+    if (!PUBLICATION_BUSINESS_LINES.includes(businessLine)) {
+      throw new Error(`business_line 必须从 ${PUBLICATION_BUSINESS_LINES.join(", ")} 中选择`);
+    }
+    if (!PRODUCTION_SOURCES.includes(source)) {
+      throw new Error(`source 必须从 ${PRODUCTION_SOURCES.join(", ")} 中选择`);
+    }
+    if (!localPath && !r2Url) {
+      throw new Error("local_path 和 r2_url 至少需要填写一个");
+    }
+    if (source === "github_workflow" && (localPath || !r2Url)) {
+      throw new Error("github_workflow 产物只能记录最终 r2_url，不能记录 Runner 临时路径");
+    }
+    const expectedRunId = `run-${publishDate.replaceAll("-", "")}`;
+    if (runId !== expectedRunId) {
+      throw new Error(`run_id 必须与 publish_date 一致，期望 ${expectedRunId}`);
+    }
+    return env.DB.prepare(
+      `INSERT INTO production_outputs(
+         production_id, run_id, publish_date, business_line, content_kind,
+         content_part, title, source, local_path, r2_url
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(source, business_line, run_id, content_kind, content_part) DO UPDATE SET
+         production_id = excluded.production_id,
+         publish_date = excluded.publish_date,
+         title = excluded.title,
+         local_path = COALESCE(excluded.local_path, production_outputs.local_path),
+         r2_url = COALESCE(excluded.r2_url, production_outputs.r2_url),
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING id, production_id, run_id, publish_date, business_line, content_kind,
+                 content_part, title, source, local_path, r2_url, created_at, updated_at`,
+    ).bind(
+      productionId, runId, publishDate, businessLine, contentKind,
+      contentPart, title, source, localPath, r2Url,
     );
   });
   const results = await env.DB.batch(statements);
@@ -791,6 +905,8 @@ export default {
       if (request.method === "POST" && url.pathname === "/v1/finance-generated-images/commit") return await commitFinanceGeneratedImages(request, env);
       if (request.method === "GET" && url.pathname === "/v1/publication-records") return await listPublicationRecords(request, env);
       if (request.method === "POST" && url.pathname === "/v1/publication-records/commit") return await commitPublicationRecords(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/production-outputs") return await listProductionOutputs(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/production-outputs/commit") return await commitProductionOutputs(request, env);
       if (request.method === "GET" && url.pathname === "/v1/douyin-research/ids") return await listDouyinResearchIds(env);
       if (request.method === "POST" && url.pathname === "/v1/douyin-research/commit") return await commitDouyinResearch(request, env);
       if (request.method === "GET" && url.pathname === "/v1/douyin-research/scripts/stats") {

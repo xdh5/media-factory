@@ -14,7 +14,9 @@ def main() -> None:
     parser.add_argument(
         "workflow",
         choices=[
+            "finance_preflight",
             "finance",
+            "language_learning_preflight",
             "language_learning_words",
             "language_learning_cards",
             "language_learning_recompose_cards",
@@ -37,17 +39,35 @@ def main() -> None:
     parser.add_argument("--subject-sheet-url", default="")
     parser.add_argument("--chinese-video-url", default="")
     parser.add_argument("--korean-video-url", default="")
+    parser.add_argument("--targets", default="")
+    parser.add_argument("--publish-date", default="")
     arguments = parser.parse_args()
-    if arguments.workflow == "finance":
+    if arguments.workflow in {"finance_preflight", "language_learning_preflight"}:
+        from ._shared import daily_production_preflight
+
+        business_line = "finance" if arguments.workflow == "finance_preflight" else "language_learning"
+        payload = daily_production_preflight(business_line, arguments.publish_date)
+        output_path = os.getenv("GITHUB_OUTPUT", "").strip()
+        if output_path:
+            with Path(output_path).open("a", encoding="utf-8") as stream:
+                stream.write(f"publish_date={payload['publish_date']}\n")
+                stream.write(f"should_generate={str(payload['should_generate']).lower()}\n")
+                stream.write(f"should_resume_publish={str(payload['should_resume_publish']).lower()}\n")
+                stream.write(f"existing_run_id={payload['existing_run_id']}\n")
+                stream.write(f"pending_targets={','.join(payload['pending_targets'])}\n")
+                stream.write(f"skip_reason={payload['skip_reason']}\n")
+    elif arguments.workflow == "finance":
         from .finance import run as run_finance
 
-        result = asyncio.run(run_finance(arguments.topic))
+        result = asyncio.run(run_finance(arguments.topic, arguments.publish_date))
         payload = {"status": "succeeded", "r2": result["r2"]}
     elif arguments.workflow == "language_learning_words":
         from .language_learning import generate_words
 
         modes = [item.strip() for item in arguments.modes.split(",") if item.strip()]
-        result = asyncio.run(generate_words(arguments.topic, modes, arguments.state_path))
+        result = asyncio.run(
+            generate_words(arguments.topic, modes, arguments.state_path, arguments.publish_date)
+        )
         payload = {"status": "succeeded", "run_id": result["run_id"], "topic": result["topic"]}
     elif arguments.workflow == "language_learning_cards":
         from .language_learning import generate_cards
@@ -57,7 +77,13 @@ def main() -> None:
     elif arguments.workflow == "language_learning_recompose_cards":
         from .language_learning import recompose_cards_from_r2
 
-        result = asyncio.run(recompose_cards_from_r2(arguments.source_run_id, arguments.state_path))
+        result = asyncio.run(
+            recompose_cards_from_r2(
+                arguments.source_run_id,
+                arguments.state_path,
+                arguments.publish_date,
+            )
+        )
         payload = {"status": "succeeded", "run_id": result["run_id"], "card_dirs": result["card_dirs"]}
     elif arguments.workflow == "language_learning_videos":
         from .language_learning import generate_videos
@@ -85,7 +111,10 @@ def main() -> None:
     elif arguments.workflow == "language_learning_publish":
         from .language_learning import schedule_publication
 
-        payload = asyncio.run(schedule_publication(arguments.manifest_url, arguments.run_id))
+        targets = [item.strip() for item in arguments.targets.split(",") if item.strip()]
+        payload = asyncio.run(
+            schedule_publication(arguments.manifest_url, arguments.run_id, targets=targets or None)
+        )
     else:
         from .telegram import notify_workflow
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from core.tools.r2_storage import download_public_file, upload_public_file
-from core.tools.cloudflare_data import commit_publication_records
+from core.tools.cloudflare_data import commit_production_outputs, commit_publication_records
 from core.tools.topic_dedup import commit as commit_topic
 
 from .._constants import (
@@ -167,6 +167,8 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
         "confirmation_required": "publish",
         "topic": topic,
         "run_id": video_result.get("run_id"),
+        "publish_date": video_result.get("publish_date"),
+        "production_source": video_result.get("production_source", "local_mcp"),
         "cache_dir": video_result.get("cache_dir"),
         "output_dir": str(output_dir),
         "items": items,
@@ -289,6 +291,7 @@ def upload_publish_assets_to_r2(
     if not run_id:
         raise PublishError("发布清单缺少 run_id，无法生成 R2 对象路径")
     uploaded: list[dict] = []
+    output_records = []
     for item in manifest.get("items") or []:
         mode = str(item.get("learning_mode") or "unknown").strip() or "unknown"
         for index, video in enumerate(item.get("videos") or [], 1):
@@ -301,6 +304,19 @@ def upload_publish_assets_to_r2(
             video["video_url"] = stored["url"]
             video["r2_key"] = stored["key"]
             uploaded.append({"kind": "video", "learning_mode": mode, **stored})
+            if manifest.get("production_source") == "local_mcp":
+                output_records.append({
+                    "production_id": f"local_mcp:{WORKFLOW_ID}:{run_id}:{mode}:{index}",
+                    "run_id": run_id,
+                    "publish_date": str(manifest.get("publish_date") or "").strip(),
+                    "business_line": WORKFLOW_ID,
+                    "content_kind": mode,
+                    "content_part": index,
+                    "title": str(video.get("title") or item.get("title") or "").strip(),
+                    "source": "local_mcp",
+                    "local_path": str(video_path),
+                    "r2_url": stored["url"],
+                })
     if subject_sheet_path:
         sheet_path = Path(subject_sheet_path).resolve()
         suffix = sheet_path.suffix.lower()
@@ -314,6 +330,8 @@ def upload_publish_assets_to_r2(
         manifest["subject_sheet_r2_key"] = stored["key"]
         uploaded.append({"kind": "subject_sheet", **stored})
     manifest["r2_uploaded"] = True
+    if output_records:
+        manifest["production_outputs"] = commit_production_outputs(output_records)
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     stored_manifest = upload_public_file(
         path,

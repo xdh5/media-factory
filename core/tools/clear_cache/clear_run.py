@@ -45,7 +45,7 @@ def _delete_dir(target: Path) -> bool:
 
 
 def clear_run(workflow: str, run_id: str, *, confirmed: bool) -> dict:
-    """删除 cache/{workflow}/{run_id} 与 outputs/{workflow}/{run_id}；不改话题库。"""
+    """删除 cache/{workflow}/{run_id} 与 output/{workflow}/{run_id}；不改话题库。"""
     if confirmed is not True:
         raise ConfirmationRequiredError("必须先获得用户对删除本次生产文件的明确确认")
     wf, rid = _validated_ids(workflow, run_id)

@@ -16,7 +16,11 @@ from mcp.server.fastmcp import FastMCP
 
 from core.tools.clear_cache import ConfirmationRequiredError as ClearCacheConfirmationRequiredError
 from core.tools.clear_cache import clear_run
-from core.tools.cloudflare_data import CloudflareDataError, commit_publication_records
+from core.tools.cloudflare_data import (
+    CloudflareDataError,
+    commit_publication_records,
+    list_production_outputs,
+)
 from core.tools.generate_image import (
     ImageGenerationError,
     generate_qwen_image,
@@ -115,6 +119,22 @@ def language_learning_record_publications(
         raise _map_error(exc) from exc
 
 
+@mcp.tool()
+def language_learning_get_production_outputs(publish_date: str) -> dict:
+    """查询某个北京时间计划发布日期的语言学习成片。"""
+    try:
+        return {
+            "publish_date": publish_date,
+            "business_line": WORKFLOW_ID,
+            "records": list_production_outputs(
+                publish_date=publish_date,
+                business_line=WORKFLOW_ID,
+            ),
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
 def _run_qwen_fallback(context_path: str, failures: list, images: list) -> None:
     """宿主无能力或单张失败三次后，才调用千问。"""
     provided = {str(item.get("image_id") or "").strip() for item in images if isinstance(item, dict)}
@@ -166,8 +186,9 @@ def language_learning_get_topics() -> dict:
 def language_learning_occupy_topic(
     topic: str,
     learning_modes: list[str],
+    publish_date: str,
 ) -> dict:
-    """创建本次生产目录；正式话题只在用户触发发布后写入 D1。"""
+    """按北京时间计划发布日期创建生产目录；正式话题仅在发布后写入 D1。"""
     modes = [str(item).strip() for item in learning_modes if str(item).strip()]
     if not modes:
         raise LanguageLearningError("learning_modes 不能为空")
@@ -179,7 +200,10 @@ def language_learning_occupy_topic(
         str(item.get("topic") or "").strip().casefold() for item in recent
     }:
         raise LanguageLearningError(f"语言学习 topic 最近 {TOPIC_DEDUPLICATION_DAYS} 天已经发布：{clean_topic}")
-    run_id = production_run_id()
+    try:
+        run_id = production_run_id(publish_date)
+    except ValueError as exc:
+        raise LanguageLearningError(str(exc)) from exc
     record_id = int(run_id.removeprefix("run-"))
     cache_root, output_root = production_dirs(run_id)
     cache_root.mkdir(parents=True, exist_ok=True)
@@ -189,6 +213,7 @@ def language_learning_occupy_topic(
         "learning_modes": modes,
         "topic_record_id": record_id,
         "database_status": "pending_publish",
+        "publish_date": str(publish_date).strip(),
         "run_id": run_id,
         "cache_dir": str(cache_root),
         "output_dir": str(output_root),
@@ -490,6 +515,7 @@ def language_learning_create_videos(
     topic: str = "",
     language_pause: float = 0.3,
     word_pause: float = 0.3,
+    production_source: str = "local_mcp",
 ) -> dict:
     """TTS + 出片（同步，易超时）。优先使用 language_learning_start_create_videos + poll_task。"""
     try:
@@ -500,6 +526,7 @@ def language_learning_create_videos(
             topic,
             language_pause,
             word_pause,
+            production_source,
             voices=voices,
         )
         return attach_publish_manifest(result, words_by_mode, publish_config)
@@ -517,6 +544,7 @@ def language_learning_start_create_videos(
     topic: str = "",
     language_pause: float = 0.3,
     word_pause: float = 0.3,
+    production_source: str = "local_mcp",
 ) -> dict:
     """启动 TTS + 出片；立即返回 task_path，用 language_learning_poll_task 轮询至 done=true。"""
     try:
@@ -530,6 +558,7 @@ def language_learning_start_create_videos(
                 topic,
                 language_pause,
                 word_pause,
+                production_source,
                 voices=voices,
             )
             return attach_publish_manifest(result, words_by_mode, publish_config)

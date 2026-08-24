@@ -6,6 +6,7 @@
 - `language_learning_words`
 - `finance_generated_images`：财经千问生成图库，编号与 `data/image_library_finance/<id>.png` 一致并持续递增
 - `publication_records`：记录财经和语言学习内容在各具体平台的标题、发布方式和精确发布时间
+- `production_outputs`：按北京时间计划发布日期记录财经和语言学习成片；明确区分本地 MCP 与 GitHub Workflow 来源
 - `douyin_research_contents`
 - `douyin_research_collections`
 - `douyin_research_discoveries`
@@ -13,7 +14,9 @@
 
 发布记录把 MatrixMedia 视为连接器，最终平台细分为 YouTube、Facebook、Instagram、TikTok、快手、抖音、百家号、小红书、头条号和视频号。`publish_at` 保存带时区的完整 ISO 8601 日期时间：立即发布写实际发送成功时间，预约发布写预约时间。
 
-通过 `POST /v1/publication-records/commit` 幂等写入发布记录；通过 `GET /v1/publication-records` 查询，可选按 `business_line` 和 `platform` 过滤。
+通过 `POST /v1/publication-records/commit` 幂等写入发布记录；通过 `GET /v1/publication-records` 查询，可选按 `business_line`、`platform` 和 `publish_date` 过滤。
+
+通过 `POST /v1/production-outputs/commit` 幂等写入成片记录；通过 `GET /v1/production-outputs` 查询，可选按 `publish_date`、`business_line` 和 `source` 过滤。`source=local_mcp` 保留 `local_path`，按需上传 R2 后补充 `r2_url`；`source=github_workflow` 只在 R2 交付成功后写入 `r2_url`，禁止保存 Runner 临时路径。
 
 抖音研究 MCP 接收用户提供的抖音链接和分类，完成下载、转写后调用 `POST /v1/douyin-research/commit`。作品内容只存一份，内容分类和来源标识记录在 `douyin_research_discoveries`；链接直投的来源标识固定为 `direct_link`。
 

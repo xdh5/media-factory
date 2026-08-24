@@ -42,9 +42,9 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 
 - YouTube 使用项目共用的 `YOUTUBE_OAUTH_CLIENT_ID`、`YOUTUBE_OAUTH_CLIENT_SECRET`，并使用 `.env` 里按频道隔离的 `LANGUAGE_LEARNING_YOUTUBE_*`（`youtube_account` 即账号前缀）
 - 多平台发布时间不一致时，给 `language_learning_start_publish` 传 `publish_at_by_target`，键为 `youtube`、`tiktok`、`instagram`、`facebook`，值为带时区的 ISO 8601；值为 `null` 表示立即发布。例如 YouTube、TikTok 在北京时间 16:00 发布而 Meta 立即发布：`{"youtube":"2026-08-24T16:00:00+08:00","tiktok":"2026-08-24T16:00:00+08:00","instagram":null,"facebook":null}`。四个平台同一时间时可继续使用兼容参数 `publish_at`。
-- TikTok 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用共用的 `ZERNIO_API_KEY` 与 `LANGUAGE_LEARNING_TIKTOK_*`
-- Instagram 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用 Meta 专用的 `zernio_api_key_meta`。Zernio 只有一个健康 Instagram 账号时自动选择；连接多个账号时必须在 `.env` 配置 `LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID`。只发指定分段时，传 `targets=["instagram"]` 与 `video_parts=[1]` 或 `[2]`。
-- Facebook 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用 Meta 专用的 `zernio_api_key_meta`。Zernio 只有一个健康 Facebook Page 时自动选择；连接多个 Page 时必须在 `.env` 配置 `LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID`。只发指定分段时，传 `targets=["facebook"]` 与 `video_parts=[1]` 或 `[2]`。
+- TikTok 通过 Zernio 发布中文成片，使用共用的 `ZERNIO_API_KEY` 与 `LANGUAGE_LEARNING_TIKTOK_*`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址
+- Instagram 通过 Zernio 发布中文成片，使用 Meta 专用的 `zernio_api_key_meta`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址。Zernio 只有一个健康 Instagram 账号时自动选择；连接多个账号时必须在 `.env` 配置 `LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID`。只发指定分段时，传 `targets=["instagram"]` 与 `video_parts=[1]` 或 `[2]`。
+- Facebook 通过 Zernio 发布中文成片，使用 Meta 专用的 `zernio_api_key_meta`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址。Zernio 只有一个健康 Facebook Page 时自动选择；连接多个 Page 时必须在 `.env` 配置 `LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID`。只发指定分段时，传 `targets=["facebook"]` 与 `video_parts=[1]` 或 `[2]`。
 - 展示给用户看的账号组名为 `中文`；账号配置由 YouTube 与 Zernio 的环境变量提供，不再从 D1 读取发布账号组。官方平台发布成功或预约成功后由语言学习 MCP 自动写入发布记录。
 
 **韩语 `en-ko`**
@@ -58,7 +58,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 }
 ```
 
-- 生产完成后调用 `language_learning_start_upload_r2` 上传 R2
+- 本地生产完成后保留本地产物，不自动上传 R2；只有 GitHub Workflow 或已确认发布的平台需要公网视频地址时才调用 `language_learning_start_upload_r2`
 - 发布服务器 MatrixMedia 使用账号组 `韩语`，账号配置由发布环境提供，不再从 D1 读取发布账号组。
 - MatrixMedia 发布所有平台时必须传 `creativeStatement="ai_generated"`，给成片添加各平台对应的 AI 生成内容标记；不得省略或改为无标注。
 - 跳过掘金、番茄
@@ -77,17 +77,17 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 
 ## 确认门禁
 
-1. **成片**：`language_learning_start_create_videos` 与 `language_learning_start_upload_r2` 轮询完成后展示成片路径、标题、标签、账号组与 R2 清单 URL；未确认不得调用发布 MCP。
+1. **成片**：本地制作完成后展示 `output/language_learning/run-YYYYMMDD/` 中的成片路径、标题、标签与账号组；`YYYYMMDD` 必须是北京时间计划发布日期。未确认不得调用发布 MCP。本地制作不得在成片阶段自动上传 R2；仅 GitHub Workflow 生产完成后自动交付 R2，本地只有在用户确认发布且目标平台需要公网视频地址时才上传发布资产。本地成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；GitHub Workflow 只在 R2 交付成功后以 `source=github_workflow` 写入。查询某天产物使用 `language_learning_get_production_outputs(publish_date)`。
 2. **清缓存**：发布结束后用户确认才调用 `language_learning_clear_run(run_id, confirmed=true)`。
 
-用户明确启用的每日自动 Workflow 属于持续发布授权：生产成功后可直接把中文成片通过 YouTube 官方 API和 Zernio 排期到当天北京时间 16:00，无需逐日再次确认；手动制作仍执行上述成片确认门禁。自动 Workflow 不清缓存。
+用户明确启用的自动 Workflow 属于持续发布授权：生产与发布分别使用独立 Workflow，生产成功后可顺序调用发布，发布也可按计划发布日期单独手动触发。发布 Workflow 只复用 GitHub 已交付 R2 的中文成片，通过 YouTube 官方 API 和 Zernio 排期到计划发布日期北京时间 16:00，并按 D1 记录只补发尚未发布的平台，无需逐日再次确认；手动 MCP 制作仍执行上述成片确认门禁。自动 Workflow 不清缓存。
 
 词表、主体图、卡片、出片中间步骤不逐项确认。
 
 ## 制作流程
 
 1. `language_learning_get_topics`：避开近 30 天重复主题。
-2. 自选单个英文单词主题后 `language_learning_occupy_topic(topic, learning_modes)`，只创建本次生产目录并拿到 `run_id`，不写 D1。
+2. 先确定北京时间计划发布日期 `publish_date`（`YYYY-MM-DD`，不得早于当天）；自选单个英文单词主题后调用 `language_learning_occupy_topic(topic, learning_modes, publish_date)`，创建 `output/language_learning/run-YYYYMMDD/` 并拿到 `run_id`，不写 D1。日期只表示计划发布日，不包含具体时间。
 3. `language_learning_build_vocabulary_prompt(topic, learning_modes)` 获取包含最近 100 天词库的 Prompt，按原样生成纯文本词表；再调用 `language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)`，由 MCP 强制校验至少 5 个新词，但暂不写库。
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
 5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问兜底生图）→ `language_learning_poll_task`。MCP 不调用千问文本或视觉模型。
@@ -95,8 +95,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 7. 调用 `language_learning_get_cutout_validation_prompt`，宿主 Agent 必须打开十张透明抠图，按返回 Prompt 逐张检查主体完整性以及轮廓是否残留原背景色的彩边、描边、光晕、色块或毛边，再调用 `language_learning_review_cutouts` 提交十条结论。色边标记为 `failure_kind=background_edge`，MCP 必须直接要求换一种与上一张明显不同、且与全部主体反差更大的纯色背景重新生成主题图；不得只改裁剪框。第一次仅 `crop` 时调整完整十框并重新调用 `language_learning_validate_subject_sheet`；第二次仍抠坏，或出现 `source`、`background_edge` 时，调用 `language_learning_prepare_images` 重新生主题图。主题图最多生成 3 次，第三次仍失败必须报错停止。未通过逐张检查时禁止拼卡。GitHub Action 没有宿主 Agent 时，由 Runner 调用千问视觉执行同一个 MCP Prompt。
 8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
 9. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。
-10. `language_learning_start_upload_r2` 上传成片、主题图和本地发布清单 → poll 至 `done=true`，保留返回的 `manifest_url` 与 `subject_sheet_url`。
-11. 用户确认发布后：韩语条目交给发布服务器上的 MatrixMedia MCP，并对每个平台传入条目中的 `creativeStatement="ai_generated"`；中文调用 `language_learning_start_publish`，默认发布 YouTube 和 TikTok，也可用 `targets` 显式发布 Instagram 或 Facebook。发布 MCP 幂等写入正式话题与本期 10 个单词。
+10. 用户确认发布后：韩语条目直接使用本地产物交给 MatrixMedia MCP，并对每个平台传入条目中的 `creativeStatement="ai_generated"`；中文调用 `language_learning_start_publish`，默认发布 YouTube 和 TikTok，也可用 `targets` 显式发布 Instagram 或 Facebook。目标平台需要公网视频地址时，才调用 `language_learning_start_upload_r2` 上传发布资产。发布 MCP 幂等写入正式话题与本期 10 个单词。
 9. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
@@ -111,6 +110,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 | 工具 | 作用 |
 | --- | --- |
 | `language_learning_get_topics` | 查已占用主题和最近 100 天单词 |
+| `language_learning_get_production_outputs` | 按北京时间计划发布日期查询语言学习成片并区分本地与 GitHub 来源 |
 | `language_learning_occupy_topic` | 占坑并创建 run |
 | `language_learning_build_vocabulary_prompt` | 返回包含最近词库的词表 Prompt |
 | `language_learning_parse_vocabulary_response` | 解析词表、校验至少一半新词，发布前不写历史 |

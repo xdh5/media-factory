@@ -10,9 +10,18 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ._mcp import MCPCallError, ProjectMCP
+from core.tools.cloudflare_data import commit_production_outputs
 from core.tools.r2_storage import download_public_file
 
-from ._shared import PROJECT_ROOT, qwen, qwen_vision, upload_diagnostic_files, upload_run_files, write_summary
+from ._shared import (
+    PROJECT_ROOT,
+    qwen,
+    qwen_vision,
+    resolve_publish_date,
+    upload_diagnostic_files,
+    upload_run_files,
+    write_summary,
+)
 
 
 VOICES = {"en": "en-US-AriaNeural", "zh": "zh-CN-XiaoxiaoNeural", "ko": "ko-KR-SunHiNeural"}
@@ -74,15 +83,21 @@ def _write_state(state_path: str | Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-async def generate_words(requested_topic: str, modes: list[str], state_path: str | Path) -> dict:
+async def generate_words(
+    requested_topic: str,
+    modes: list[str],
+    state_path: str | Path,
+    publish_date: str = "",
+) -> dict:
     """第一段：选题、创建生产目录并生成通过校验的双语词表。"""
     learning_modes = modes or ["en-zh", "en-ko"]
+    publish_date = resolve_publish_date(publish_date)
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
         topics = await mcp.call("language_learning_get_topics")
         topic = _choose_topic(topics.get("recent_topics") or [], requested_topic)
         occupied = await mcp.call(
             "language_learning_occupy_topic",
-            {"topic": topic, "learning_modes": learning_modes},
+            {"topic": topic, "learning_modes": learning_modes, "publish_date": publish_date},
         )
         run_id = occupied["run_id"]
         prompt = await mcp.call(
@@ -112,7 +127,13 @@ async def generate_words(requested_topic: str, modes: list[str], state_path: str
                 prompt["user_prompt"] += f"\n\n上一次词表校验失败，必须换词并修正：{exc}"
         else:
             raise RuntimeError(f"语言词表连续三次不合格：{last_error}")
-    state = {"topic": topic, "learning_modes": learning_modes, "run_id": run_id, "words": words}
+    state = {
+        "topic": topic,
+        "learning_modes": learning_modes,
+        "publish_date": publish_date,
+        "run_id": run_id,
+        "words": words,
+    }
     _write_state(state_path, state)
     return state
 
@@ -310,7 +331,11 @@ def _source_words(manifest: dict) -> dict:
     return result
 
 
-async def recompose_cards_from_r2(source_run_id: str, state_path: str | Path) -> dict:
+async def recompose_cards_from_r2(
+    source_run_id: str,
+    state_path: str | Path,
+    publish_date: str = "",
+) -> dict:
     """复用旧 R2 主题图、词表和视觉框，只重新拼卡与出片。"""
     source_id = str(source_run_id or "").strip()
     if not re.fullmatch(r"run-\d+", source_id):
@@ -328,12 +353,13 @@ async def recompose_cards_from_r2(source_run_id: str, state_path: str | Path) ->
     source_validation = dict(source_manifest.get("subject_sheet_validation") or {})
     visual_layout = dict(source_validation.get("vision") or {})
     source_reviews = list(source_validation.get("reviews") or [])
+    publish_date = resolve_publish_date(publish_date)
     if not visual_layout or len(source_reviews) != 10:
         raise RuntimeError("旧 R2 清单缺少视觉框或十张抠图检查结果，不能安全原样重组")
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
         occupied = await mcp.call(
             "language_learning_occupy_topic",
-            {"topic": topic, "learning_modes": modes},
+            {"topic": topic, "learning_modes": modes, "publish_date": publish_date},
         )
         run_id = str(occupied["run_id"])
         validation = await mcp.call(
@@ -377,6 +403,7 @@ async def recompose_cards_from_r2(source_run_id: str, state_path: str | Path) ->
     state = {
         "topic": topic,
         "learning_modes": modes,
+        "publish_date": publish_date,
         "run_id": run_id,
         "words": words,
         "subject_sheet_path": str(source_sheet_path),
@@ -431,6 +458,7 @@ async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> di
                 "topic": topic,
                 "language_pause": 0.3,
                 "word_pause": 0.3,
+                "production_source": "github_workflow",
             },
         )
         manifest = await mcp.poll("language_learning_poll_task", started["task_path"])
@@ -456,6 +484,7 @@ async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> di
     handoff = {
         "workflow": "language_learning",
         "run_id": run_id,
+        "publish_date": str(state.get("publish_date") or ""),
         "topic": topic,
         "learning_modes": learning_modes,
         "subject_sheet_file": str(subject_sheet_target.relative_to(destination)),
@@ -484,6 +513,32 @@ def upload_handoff(handoff_dir: str | Path) -> dict:
         str(item.get("source_name") or ""): str(item.get("url") or "")
         for item in remote.get("files") or []
     }
+    publish_date = str(handoff.get("publish_date") or "").strip()
+    if not publish_date:
+        raw_date = str(handoff["run_id"]).removeprefix("run-")
+        publish_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+    output_records = []
+    for video in manifest.get("videos") or []:
+        mode = str(video.get("learning_mode") or "").strip()
+        for fallback_part, part in enumerate(video.get("video_parts") or [], 1):
+            part_number = int(part.get("part") or fallback_part)
+            source_name = Path(str(part.get("output_path") or "")).name
+            r2_url = uploaded_by_name.get(source_name, "")
+            if not r2_url:
+                raise RuntimeError(f"R2 上传结果缺少成片地址：{source_name}")
+            output_records.append({
+                "production_id": f"github_workflow:language_learning:{handoff['run_id']}:{mode}:{part_number}",
+                "run_id": str(handoff["run_id"]),
+                "publish_date": publish_date,
+                "business_line": "language_learning",
+                "content_kind": mode,
+                "content_part": part_number,
+                "title": str(part.get("title") or "").strip(),
+                "source": "github_workflow",
+                "local_path": None,
+                "r2_url": r2_url,
+            })
+    production_outputs = commit_production_outputs(output_records)
     subject_sheet_url = uploaded_by_name.get(subject_sheet_path.name, "")
     download_urls = {}
     for video in manifest.get("videos") or []:
@@ -498,19 +553,41 @@ def upload_handoff(handoff_dir: str | Path) -> dict:
     return {
         "manifest": manifest,
         "r2": remote,
+        "production_outputs": production_outputs,
         "topic": str(handoff["topic"]),
         "subject_sheet_url": subject_sheet_url,
         "download_urls": download_urls,
     }
 
 
-async def schedule_publication(manifest_url: str, run_id: str) -> dict:
-    """通过语言学习 MCP 给四个平台排到当天北京时间 16:00。"""
+async def schedule_publication(
+    manifest_url: str,
+    run_id: str,
+    *,
+    targets: list[str] | None = None,
+) -> dict:
+    """通过语言学习 MCP 把尚未发布的平台排到计划发布日期北京时间 16:00。"""
     now = datetime.now(ZoneInfo("Asia/Shanghai"))
-    publish_time = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    try:
+        publish_time = datetime.strptime(
+            f"{str(run_id).removeprefix('run-')} 16:00",
+            "%Y%m%d %H:%M",
+        ).replace(tzinfo=ZoneInfo("Asia/Shanghai"))
+    except ValueError as exc:
+        raise RuntimeError("run_id 必须是包含有效计划发布日期的 run-YYYYMMDD") from exc
     if publish_time <= now:
-        raise RuntimeError("当前已超过北京时间 16:00，禁止把当天任务误排到过去或次日")
+        raise RuntimeError("计划发布日期的北京时间 16:00 已经过期，禁止预约到过去")
     publish_at = publish_time.isoformat()
+    selected_targets = [
+        str(item).strip().casefold()
+        for item in (targets or ["youtube", "tiktok", "instagram", "facebook"])
+        if str(item).strip()
+    ]
+    unknown = set(selected_targets) - {"youtube", "tiktok", "instagram", "facebook"}
+    if unknown:
+        raise RuntimeError(f"不支持的语言学习发布平台：{', '.join(sorted(unknown))}")
+    if not selected_targets:
+        return {"success": True, "skipped": True, "reason": "该计划发布日期四个平台都已有发布记录"}
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
         started = await mcp.call(
             "language_learning_start_publish",
@@ -518,7 +595,7 @@ async def schedule_publication(manifest_url: str, run_id: str) -> dict:
                 "manifest_path": str(manifest_url),
                 "publish_confirmed": True,
                 "run_id": str(run_id),
-                "targets": ["youtube", "tiktok", "instagram", "facebook"],
+                "targets": selected_targets,
                 "publish_at": publish_at,
             },
         )
@@ -530,7 +607,7 @@ async def schedule_publication(manifest_url: str, run_id: str) -> dict:
         for item in result.get("published") or []
         if item.get("success") is True
     }
-    missing_channels = {"youtube", "tiktok", "instagram", "facebook"} - completed_channels
+    missing_channels = set(selected_targets) - completed_channels
     if missing_channels:
         raise RuntimeError(f"四平台排期返回不完整，缺少：{', '.join(sorted(missing_channels))}")
     return {"publish_at": publish_at, **result}

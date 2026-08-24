@@ -19,3 +19,5 @@ PUBLICATION_PLATFORMS = (
 )
 PUBLICATION_MODES = ("immediate", "scheduled")
 PUBLICATION_STATUSES = ("published", "scheduled")
+PRODUCTION_BUSINESS_LINES = ("finance", "language_learning")
+PRODUCTION_SOURCES = ("local_mcp", "github_workflow")

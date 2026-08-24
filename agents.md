@@ -26,8 +26,11 @@
 5. MCP 与 Agent 只能调用 `tools/` 各包 `__init__.py` 公开的方法与异常；禁止 import 或调用 `_` 开头的模块、文件、函数。下划线仅供该包内部使用。
 
 ## 制作管线
-1. 语言学习 Prompt 放在 `core/mcp/language_learning/prompts/`；财经 MCP 的标题标签与分镜 Prompt 放在 `core/mcp/finance/prompts/`；财经正文范文与业务参数放在 `.agents/skills/finance`，TTS 与发布参数放在 `.agents/skills/learn_Chinese_and_Korean`，对应 MCP 只负责编排。耗时步骤必须通过 MCP 的 `*_start_*` + `*_poll_task` 后台任务轮询（实现见 `core/mcp/_task_runner.py`），禁止同步调用以免 Cursor MCP 客户端超时。
-2. 每个 MCP 必须使用共用话题去重 `get_topic` / `update` 做去重与占坑，禁止另起一套主题库。
-3. 发布与清缓存分开：发布成功后必须再向用户确认是否删除本次生产文件，确认后调用共用 `clear_run`（`core.tools.clear_cache`，MCP 封装为 `*_clear_run`）；不得把清缓存写进发布工具的返回或自动删除。
-4. GitHub Actions 默认只创建财经和语言学习视频、构建生产镜像并上传 R2。用户明确启用的语言学习每日定时 Workflow 可以通过语言学习 MCP 调用 YouTube 官方 API及 Zernio 的 TikTok、Facebook、Instagram 发布能力，并发送 Telegram 任务通知；禁止在 Workflow 中复制或绕过对应工具实现。视频业务编排必须通过对应 MCP Tool，跨 Job 的 R2 成片交付可调用 `core.tools.r2_storage` 公开方法；禁止直接导入 MCP 内部实现。
-5. 交互式生产的文本生成、词表生成、分镜生成与图片视觉验收由宿主 Agent 完成；GitHub Action 没有宿主 Agent 时，允许生产 Runner 调用千问文本、千问视觉和千问兜底生图完成同等步骤，MCP 本身仍禁止直接调用千问文本或千问视觉模型。
+1. 本地 MCP 成片统一保存在 `output/{业务线}/run-YYYYMMDD/`，其中 `YYYYMMDD` 是北京时间计划发布日期，只表示日期、不包含具体发布时间；精确发布时间继续使用带时区的 `publish_at`。本地制作产物默认只保存在本机，GitHub Workflow 产物才自动交付 R2。
+2. 每个实际成片成功后必须幂等写入 D1 `production_outputs`：本地来源使用 `source=local_mcp` 并保存 `local_path`，GitHub 来源使用 `source=github_workflow` 且仅在 R2 交付成功后保存 `r2_url`；禁止把 GitHub Runner 临时路径当作本地产物。本地产物按需上传 R2 时只补充原记录的 `r2_url`，不得改变来源。
+3. 语言学习 Prompt 放在 `core/mcp/language_learning/prompts/`；财经 MCP 的标题标签与分镜 Prompt 放在 `core/mcp/finance/prompts/`；财经正文范文与业务参数放在 `.agents/skills/finance`，TTS 与发布参数放在 `.agents/skills/learn_Chinese_and_Korean`，对应 MCP 只负责编排。耗时步骤必须通过 MCP 的 `*_start_*` + `*_poll_task` 后台任务轮询（实现见 `core/mcp/_task_runner.py`），禁止同步调用以免 Cursor MCP 客户端超时。
+4. 每个 MCP 必须使用共用话题去重 `get_topic` / `update` 做去重与占坑，禁止另起一套主题库。
+5. 发布与清缓存分开：发布成功后必须再向用户确认是否删除本次生产文件，确认后调用共用 `clear_run`（`core.tools.clear_cache`，MCP 封装为 `*_clear_run`）；不得把清缓存写进发布工具的返回或自动删除。
+6. 财经与语言学习生产 Workflow 每天北京时间 00:00 定时运行；手动触发时可填写计划发布日期，留空按北京时间当天处理。生产必须使用该日期创建 `run-YYYYMMDD` 并写入产物记录。开始生产前先查询同业务线同日期的 `production_outputs` 与发布记录，任一存在就不得重复生产。财经 Workflow 只生产并交付 R2，不发布。
+7. 语言学习生产与发布必须使用两个独立 Workflow：生产成功后顺序调用发布 Workflow，同时发布 Workflow 允许按计划发布日期单独手动触发。发布只能复用 `source=github_workflow` 的 R2 成片，统一预约到计划发布日期北京时间 16:00；发布前按平台查询同日发布记录，只补发尚未记录的 YouTube、TikTok、Facebook、Instagram。禁止在 Workflow 中复制或绕过对应工具实现。视频业务编排必须通过对应 MCP Tool，跨 Job 的 R2 成片交付可调用 `core.tools.r2_storage` 公开方法；禁止直接导入 MCP 内部实现。
+8. 交互式生产的文本生成、词表生成、分镜生成与图片视觉验收由宿主 Agent 完成；GitHub Action 没有宿主 Agent 时，允许生产 Runner 调用千问文本、千问视觉和千问兜底生图完成同等步骤，MCP 本身仍禁止直接调用千问文本或千问视觉模型。

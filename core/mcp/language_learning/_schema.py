@@ -45,8 +45,13 @@ OCCUPY_TOPIC_INPUT_SCHEMA = {
     "properties": {
         "topic": {"type": "string", "pattern": r"^[A-Za-z]+$", "maxLength": 200},
         "learning_modes": LEARNING_MODES_SCHEMA,
+        "publish_date": {
+            "type": "string",
+            "pattern": r"^\d{4}-\d{2}-\d{2}$",
+            "description": "北京时间计划发布日期；run_id 将生成为 run-YYYYMMDD",
+        },
     },
-    "required": ["topic", "learning_modes"],
+    "required": ["topic", "learning_modes", "publish_date"],
     "additionalProperties": False,
 }
 PARSE_VOCABULARY_INPUT_SCHEMA = {
@@ -254,6 +259,11 @@ CREATE_VIDEOS_INPUT_SCHEMA = {
         "word_pause": {"type": "number", "minimum": 0},
         "voices": VOICES_SCHEMA,
         "publish_config": PUBLISH_CONFIG_SCHEMA,
+        "production_source": {
+            "type": "string",
+            "enum": ["local_mcp", "github_workflow"],
+            "default": "local_mcp",
+        },
     },
     "required": ["card_dirs", "words_by_mode", "run_id", "voices", "publish_config"],
     "additionalProperties": False,
@@ -322,6 +332,14 @@ PUBLICATION_RECORDS_INPUT_SCHEMA = {
         "records": {"type": "array", "minItems": 1, "items": {"type": "object"}},
     },
     "required": ["publication_id", "run_id", "records"],
+    "additionalProperties": False,
+}
+PRODUCTION_OUTPUTS_QUERY_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "publish_date": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+    },
+    "required": ["publish_date"],
     "additionalProperties": False,
 }
 CLEAR_RUN_INPUT_SCHEMA = {

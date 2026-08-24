@@ -11,8 +11,8 @@ language_learning_get_topics
 └─ topic_dedup.get_topic
 └─ tools.vocabulary_history.list_recent_words（最近 100 天）
 
-language_learning_occupy_topic(topic, learning_modes)
-└─ 查重后创建 cache/outputs 目录，返回 run_id；暂不写 D1
+language_learning_occupy_topic(topic, learning_modes, publish_date)
+└─ 查重后创建 cache/output 目录，返回按计划发布日期生成的 run_id；暂不写 D1
 
 language_learning_build_vocabulary_prompt(topic, learning_modes)
 └─ tools.vocabulary_prompt.build_vocabulary_prompt
@@ -99,5 +99,6 @@ language_learning_clear_run
 ## 目录
 
 - 缓存：`cache/language_learning/{run_id}/`
-- 成片：`outputs/language_learning/{run_id}/`
+- 成片：`output/language_learning/run-YYYYMMDD/`，日期为北京时间计划发布日期
+- 产物记录：本地成片成功后写入 `source=local_mcp`；GitHub 在 R2 交付成功后写入 `source=github_workflow`；`language_learning_get_production_outputs(publish_date)` 可按日期查询
 - 话题与单词历史：通过 `CLOUDFLARE_DATA_API_URL` 指向的鉴权 Worker 访问 Cloudflare D1

@@ -35,6 +35,7 @@ Thumbs.db
 /data/
 /cache/
 /outputs/
+/output/
 
 # 本地 OAuth 凭据，不进入版本库
 data/youtube/tokens/

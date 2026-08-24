@@ -101,7 +101,8 @@ finance_clear_run
 ## 目录
 
 - 缓存：`cache/finance/{run_id}/`
-- 成片：`outputs/finance/{run_id}/`
+- 成片：`output/finance/run-YYYYMMDD/`，日期为北京时间计划发布日期
+- 产物记录：成片成功后自动写入 D1 `production_outputs`；`finance_get_production_outputs(publish_date)` 可按日期查询
 - 千问生成图库：`data/image_library_finance/{连续编号}.png`
 - 话题库：通过 `CLOUDFLARE_DATA_API_URL` 指向的鉴权 Worker 访问 Cloudflare D1
 - 来源稿件：抖音研究数据库“财经”分类；占用两小时后自动过期，保存稿件成功后永久标记已使用

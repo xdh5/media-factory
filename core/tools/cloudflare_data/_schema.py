@@ -128,6 +128,51 @@ PUBLICATION_RECORDS_OUTPUT_SCHEMA = {
     "additionalProperties": False,
 }
 
+PRODUCTION_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "integer"},
+        "production_id": {"type": "string"},
+        "run_id": {"type": "string"},
+        "publish_date": {"type": "string", "format": "date"},
+        "business_line": {"type": "string", "enum": ["finance", "language_learning"]},
+        "content_kind": {"type": "string"},
+        "content_part": {"type": "integer", "minimum": 1},
+        "title": {"type": "string"},
+        "source": {"type": "string", "enum": ["local_mcp", "github_workflow"]},
+        "local_path": {"type": ["string", "null"]},
+        "r2_url": {"type": ["string", "null"]},
+        "created_at": {"type": "string"},
+        "updated_at": {"type": "string"},
+    },
+    "required": [
+        "production_id", "run_id", "publish_date", "business_line", "content_kind",
+        "content_part", "title", "source", "local_path", "r2_url",
+    ],
+    "additionalProperties": False,
+}
+
+PRODUCTION_OUTPUTS_COMMIT_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "records": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": PRODUCTION_OUTPUT_SCHEMA,
+        },
+    },
+    "required": ["records"],
+    "additionalProperties": False,
+}
+
+PRODUCTION_OUTPUTS_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {"records": {"type": "array", "items": PRODUCTION_OUTPUT_SCHEMA}},
+    "required": ["records"],
+    "additionalProperties": False,
+}
+
 CLOUDFLARE_DATA_ERROR_SCHEMA = {
     "type": "object",
     "properties": {

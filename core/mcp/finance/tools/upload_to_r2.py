@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from core.tools.cloudflare_data import commit_production_outputs
 from core.tools.r2_storage import upload_public_file
 
 from .._constants import MCP_ID
@@ -40,6 +41,20 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
     manifest["cover_url"] = cover["url"]
     manifest["cover_r2_key"] = cover["key"]
     manifest["r2_uploaded"] = True
+    source = str(manifest.get("production_source") or "local_mcp").strip()
+    production_outputs = commit_production_outputs([{
+        "production_id": f"{source}:{MCP_ID}:{run_id}:finance:1",
+        "run_id": run_id,
+        "publish_date": str(manifest.get("publish_date") or "").strip(),
+        "business_line": MCP_ID,
+        "content_kind": "finance",
+        "content_part": 1,
+        "title": str(manifest.get("title") or "").strip(),
+        "source": source,
+        "local_path": str(video_path) if source == "local_mcp" else None,
+        "r2_url": video["url"],
+    }])
+    manifest["production_outputs"] = production_outputs
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     remote = upload_public_file(
         path,
@@ -56,4 +71,5 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
         "video_url": video["url"],
         "cover_url": cover["url"],
         "uploaded": [video, cover, remote],
+        "production_outputs": production_outputs,
     }
