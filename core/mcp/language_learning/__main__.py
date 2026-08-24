@@ -529,6 +529,11 @@ def language_learning_create_videos(
             word_pause,
             production_source,
             voices=voices,
+            hashtags_by_mode={
+                mode: list(config.get("tags") or [])
+                for mode, config in publish_config.items()
+                if isinstance(config, dict)
+            },
         )
         return attach_publish_manifest(result, words_by_mode, publish_config)
     except Exception as exc:
@@ -561,6 +566,11 @@ def language_learning_start_create_videos(
                 word_pause,
                 production_source,
                 voices=voices,
+                hashtags_by_mode={
+                    mode: list(config.get("tags") or [])
+                    for mode, config in publish_config.items()
+                    if isinstance(config, dict)
+                },
             )
             return attach_publish_manifest(result, words_by_mode, publish_config)
 

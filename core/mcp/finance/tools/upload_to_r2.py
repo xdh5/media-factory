@@ -50,9 +50,15 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
         "content_kind": "finance",
         "content_part": 1,
         "title": str(manifest.get("title") or "").strip(),
+        "hashtags": " ".join(
+            f"#{str(tag).strip().lstrip('#')}"
+            for tag in manifest.get("hashtags") or []
+            if str(tag).strip().lstrip("#")
+        ),
         "source": source,
         "local_path": str(video_path) if source == "local_mcp" else None,
         "r2_url": video["url"],
+        "r2_expires_at": None,
     }])
     manifest["production_outputs"] = production_outputs
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

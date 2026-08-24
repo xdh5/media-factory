@@ -148,6 +148,15 @@ def _publish_matrixmedia(item: dict, route: dict, scheduled_cli: str | None) -> 
     status = str(payload.get("status") or payload.get("resultStatus") or "success")
     if status in {"needs_attention", "failed", "failure"}:
         raise MatrixMediaCommandError(f"MatrixMedia 发布未成功：{payload.get('message') or status}")
+    if scheduled_cli and payload.get("officialScheduled") is not True:
+        raise MatrixMediaCommandError(
+            "MatrixMedia 未确认平台官方预约成功，已拒绝把应用内定时任务记为发布成功",
+            {
+                "platform": platform,
+                "publish_at": scheduled_cli,
+                "fix": "请使用已移除应用内定时队列、支持官方预约结果标记的 MatrixMedia 版本",
+            },
+        )
     return payload
 
 

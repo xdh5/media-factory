@@ -527,6 +527,18 @@ def upload_handoff(handoff_dir: str | Path) -> dict:
         raw_date = str(handoff["run_id"]).removeprefix("run-")
         publish_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
     output_records = []
+    publish_items = [
+        *(manifest.get("publish_items") or []),
+        *(manifest.get("matrixmedia_items") or []),
+    ]
+    hashtags_by_mode = {
+        str(item.get("learning_mode") or ""): " ".join(
+            f"#{str(tag).strip().lstrip('#')}"
+            for tag in item.get("tags") or []
+            if str(tag).strip().lstrip("#")
+        )
+        for item in publish_items
+    }
     for video in manifest.get("videos") or []:
         mode = str(video.get("learning_mode") or "").strip()
         for fallback_part, part in enumerate(video.get("video_parts") or [], 1):
@@ -543,9 +555,11 @@ def upload_handoff(handoff_dir: str | Path) -> dict:
                 "content_kind": mode,
                 "content_part": part_number,
                 "title": str(part.get("title") or "").strip(),
+                "hashtags": hashtags_by_mode.get(mode, ""),
                 "source": "github_workflow",
                 "local_path": None,
                 "r2_url": r2_url,
+                "r2_expires_at": None,
             })
     production_outputs = commit_production_outputs(output_records)
     subject_sheet_url = uploaded_by_name.get(subject_sheet_path.name, "")

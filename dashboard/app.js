@@ -13,9 +13,6 @@ const platformNames = {
   wechat_channels: "视频号",
 };
 
-const lineNames = { finance: "财经", language_learning: "学语言" };
-const sourceNames = { local_mcp: "本地产物", github_workflow: "GitHub 产物" };
-
 const loginLayer = document.querySelector("#loginLayer");
 const loginForm = document.querySelector("#loginForm");
 const pinInput = document.querySelector("#pinInput");
@@ -49,6 +46,34 @@ function showDashboard() {
   logoutButton.hidden = false;
 }
 
+function copyText(value) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
+  const input = document.createElement("textarea");
+  input.value = value;
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.append(input);
+  input.select();
+  document.execCommand("copy");
+  input.remove();
+  return Promise.resolve();
+}
+
+function copyValue(content) {
+  const hashtags = String(content.hashtags || "").trim();
+  return hashtags ? `${content.title}\n\n${hashtags}` : String(content.title || "");
+}
+
+function downloadState(outputs) {
+  const rows = Array.isArray(outputs) ? outputs : [];
+  const available = rows.find((item) => item.r2_url && !item.r2_expired);
+  if (available) return { enabled: true, url: available.r2_url, label: "下载产物" };
+  if (rows.some((item) => item.r2_url && item.r2_expired)) {
+    return { enabled: false, url: "", label: "产物已过期" };
+  }
+  return { enabled: false, url: "", label: "仅本地产物" };
+}
+
 function render(data) {
   results.replaceChildren();
   const dates = Array.isArray(data.dates) ? data.dates : [];
@@ -65,14 +90,11 @@ function render(data) {
     const grid = element("div", "content-grid");
     for (const content of day.contents) {
       const card = element("article", "content-card");
-      const meta = element("div", "content-meta");
-      meta.append(element("span", "badge", lineNames[content.business_line] || content.business_line));
-      if (content.content_kind) meta.append(element("span", "badge neutral", content.content_kind));
-      if (Number(content.content_part || 1) > 1) meta.append(element("span", "badge neutral", `第 ${content.content_part} 段`));
-      for (const source of new Set((content.outputs || []).map((item) => item.source))) {
-        meta.append(element("span", "badge neutral", sourceNames[source] || source));
+      card.append(element("h3", "", content.title));
+      const hashtags = String(content.hashtags || "").trim();
+      if (hashtags) {
+        card.append(element("p", "hashtags", hashtags));
       }
-      card.append(meta, element("h3", "", content.title));
       const publications = content.publications || [];
       if (!publications.length) {
         card.append(element("span", "unpublished", "未发布"));
@@ -94,6 +116,34 @@ function render(data) {
         }
         card.append(platforms);
       }
+      const actions = element("div", "card-actions");
+      const copyButton = element("button", "card-button", "复制标题和标签");
+      copyButton.type = "button";
+      copyButton.addEventListener("click", async () => {
+        try {
+          await copyText(copyValue(content));
+          copyButton.textContent = "已复制";
+          window.setTimeout(() => { copyButton.textContent = "复制标题和标签"; }, 1200);
+        } catch (error) {
+          status.textContent = `复制失败：${error.message}`;
+        }
+      });
+      actions.append(copyButton);
+      const download = downloadState(content.outputs);
+      if (download.enabled) {
+        const link = element("a", "card-button download-button", download.label);
+        link.href = download.url;
+        link.download = "";
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        actions.append(link);
+      } else {
+        const button = element("button", "card-button download-button", download.label);
+        button.type = "button";
+        button.disabled = true;
+        actions.append(button);
+      }
+      card.append(actions);
       grid.append(card);
     }
     section.append(grid);

@@ -240,9 +240,11 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
         "content_kind": "finance",
         "content_part": 1,
         "title": manifest["title"],
+        "hashtags": " ".join(f"#{str(tag).lstrip('#')}" for tag in manifest.get("hashtags") or []),
         "source": "github_workflow",
         "local_path": None,
         "r2_url": video_url,
+        "r2_expires_at": None,
     }])
     write_summary(
         "财经成片已生成",

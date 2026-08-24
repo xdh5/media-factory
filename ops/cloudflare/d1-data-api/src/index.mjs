@@ -78,6 +78,15 @@ function publicationTimestamp(value) {
   return result;
 }
 
+function optionalTimestamp(value, name) {
+  const result = optionalText(value, name, 64);
+  if (result === null) return null;
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/.test(result) || Number.isNaN(Date.parse(result))) {
+    throw new Error(`${name} 必须是带时区的 ISO 8601 日期时间或 null`);
+  }
+  return result;
+}
+
 function productionDate(value) {
   const result = requiredText(value, "publish_date", 10);
   const parsed = new Date(`${result}T00:00:00Z`);
@@ -543,13 +552,13 @@ async function dashboardRecords(request, env) {
   const outputStatement = selectedDate
     ? env.DB.prepare(
       `SELECT production_id, run_id, publish_date, business_line, content_kind,
-              content_part, title, source, local_path, r2_url
+              content_part, title, hashtags, source, local_path, r2_url, r2_expires_at
        FROM production_outputs WHERE publish_date = ?
        ORDER BY business_line, content_kind, content_part`,
     ).bind(selectedDate)
     : env.DB.prepare(
       `SELECT production_id, run_id, publish_date, business_line, content_kind,
-              content_part, title, source, local_path, r2_url
+              content_part, title, hashtags, source, local_path, r2_url, r2_expires_at
        FROM production_outputs ORDER BY publish_date DESC, business_line, content_kind, content_part
        LIMIT 1000`,
     );
@@ -585,6 +594,7 @@ async function dashboardRecords(request, env) {
       content_kind: output.content_kind,
       content_part: Number(output.content_part || 1),
       title: output.title,
+      hashtags: output.hashtags || "",
       outputs: [],
       publications: [],
     };
@@ -592,6 +602,11 @@ async function dashboardRecords(request, env) {
       source: output.source,
       local_available: Boolean(output.local_path),
       r2_available: Boolean(output.r2_url),
+      r2_url: output.r2_url || "",
+      r2_expires_at: output.r2_expires_at || null,
+      r2_expired: Boolean(
+        output.r2_expires_at && Date.parse(output.r2_expires_at) <= Date.now()
+      ),
     });
     byKey.set(key, item);
   }
@@ -604,6 +619,7 @@ async function dashboardRecords(request, env) {
       content_kind: "",
       content_part: Number(publication.content_part || 1),
       title: publication.title,
+      hashtags: "",
       outputs: [],
       publications: [],
     };
@@ -726,7 +742,7 @@ async function listProductionOutputs(request, env) {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const statement = env.DB.prepare(
     `SELECT id, production_id, run_id, publish_date, business_line, content_kind,
-            content_part, title, source, local_path, r2_url, created_at, updated_at
+            content_part, title, hashtags, source, local_path, r2_url, r2_expires_at, created_at, updated_at
      FROM production_outputs ${where}
      ORDER BY publish_date DESC, business_line, content_kind, content_part LIMIT 500`,
   );
@@ -749,9 +765,11 @@ async function commitProductionOutputs(request, env) {
     const contentKind = requiredText(item.content_kind, "content_kind", 100);
     const contentPart = positiveInteger(item.content_part || 1, "content_part", 1000);
     const title = requiredText(item.title, "title", 1000);
+    const hashtags = optionalText(item.hashtags, "hashtags", 1000) || "";
     const source = requiredText(item.source, "source", 32);
     const localPath = optionalText(item.local_path, "local_path", 2000);
     const r2Url = optionalText(item.r2_url, "r2_url", 2000);
+    const r2ExpiresAt = optionalTimestamp(item.r2_expires_at, "r2_expires_at");
     if (!PUBLICATION_BUSINESS_LINES.includes(businessLine)) {
       throw new Error(`business_line 必须从 ${PUBLICATION_BUSINESS_LINES.join(", ")} 中选择`);
     }
@@ -771,20 +789,22 @@ async function commitProductionOutputs(request, env) {
     return env.DB.prepare(
       `INSERT INTO production_outputs(
          production_id, run_id, publish_date, business_line, content_kind,
-         content_part, title, source, local_path, r2_url
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         content_part, title, hashtags, source, local_path, r2_url, r2_expires_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(source, business_line, run_id, content_kind, content_part) DO UPDATE SET
          production_id = excluded.production_id,
          publish_date = excluded.publish_date,
          title = excluded.title,
+         hashtags = excluded.hashtags,
          local_path = COALESCE(excluded.local_path, production_outputs.local_path),
          r2_url = COALESCE(excluded.r2_url, production_outputs.r2_url),
+         r2_expires_at = COALESCE(excluded.r2_expires_at, production_outputs.r2_expires_at),
          updated_at = CURRENT_TIMESTAMP
        RETURNING id, production_id, run_id, publish_date, business_line, content_kind,
-                 content_part, title, source, local_path, r2_url, created_at, updated_at`,
+                 content_part, title, hashtags, source, local_path, r2_url, r2_expires_at, created_at, updated_at`,
     ).bind(
       productionId, runId, publishDate, businessLine, contentKind,
-      contentPart, title, source, localPath, r2Url,
+      contentPart, title, hashtags, source, localPath, r2Url, r2ExpiresAt,
     );
   });
   const results = await env.DB.batch(statements);

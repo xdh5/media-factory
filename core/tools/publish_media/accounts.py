@@ -37,6 +37,10 @@ def _matrixmedia_command() -> tuple[list[str], Path]:
                 {"fix": "请配置已安装的 MatrixMedia 可执行文件绝对路径"},
             )
         return [str(executable), "cli"], matrix_dir
+    electron = matrix_dir / "node_modules" / "electron" / "dist" / "electron.exe"
+    built_main = matrix_dir / "dist" / "electron" / "main.js"
+    if electron.is_file() and built_main.is_file():
+        return [str(electron), ".", "--", "cli"], matrix_dir
     installed = shutil.which("matrixmedia")
     if installed:
         return [installed, "cli"], matrix_dir
@@ -44,9 +48,6 @@ def _matrixmedia_command() -> tuple[list[str], Path]:
     installed_executable = local_app_data / "Programs" / "matrixmedia" / "matrixmedia.exe"
     if installed_executable.is_file():
         return [str(installed_executable), "cli"], matrix_dir
-    electron = matrix_dir / "node_modules" / "electron" / "dist" / "electron.exe"
-    if electron.is_file():
-        return [str(electron), ".", "--", "cli"], matrix_dir
     raise MatrixMediaCommandError(
         "找不到 MatrixMedia CLI，无法查询本机账号组",
         {

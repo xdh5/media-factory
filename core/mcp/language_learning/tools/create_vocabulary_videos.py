@@ -157,6 +157,7 @@ def create_vocabulary_videos(
     production_source: str = "local_mcp",
     *,
     voices: dict[str, str],
+    hashtags_by_mode: dict[str, list[str]] | None = None,
 ) -> dict:
     try:
         language_pause, word_pause = max(0.0, float(language_pause)), max(0.0, float(word_pause))
@@ -203,6 +204,7 @@ def create_vocabulary_videos(
         "videos": results,
     }
     if production_source == "local_mcp":
+        configured_hashtags = hashtags_by_mode or {}
         payload["production_outputs"] = commit_production_outputs([
             {
                 "production_id": f"local_mcp:language_learning:{run_id}:{video['learning_mode']}:{part['part']}",
@@ -212,9 +214,15 @@ def create_vocabulary_videos(
                 "content_kind": video["learning_mode"],
                 "content_part": part["part"],
                 "title": part["title"],
+                "hashtags": " ".join(
+                    f"#{str(tag).strip().lstrip('#')}"
+                    for tag in configured_hashtags.get(video["learning_mode"], [])
+                    if str(tag).strip().lstrip("#")
+                ),
                 "source": "local_mcp",
                 "local_path": part["output_path"],
                 "r2_url": None,
+                "r2_expires_at": None,
             }
             for video in results
             for part in video["video_parts"]

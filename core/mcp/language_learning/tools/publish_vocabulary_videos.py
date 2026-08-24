@@ -313,9 +313,11 @@ def upload_publish_assets_to_r2(
                     "content_kind": mode,
                     "content_part": index,
                     "title": str(video.get("title") or item.get("title") or "").strip(),
+                    "hashtags": _hashtags(list(item.get("tags") or [])),
                     "source": "local_mcp",
                     "local_path": str(video_path),
                     "r2_url": stored["url"],
+                    "r2_expires_at": None,
                 })
     if subject_sheet_path:
         sheet_path = Path(subject_sheet_path).resolve()

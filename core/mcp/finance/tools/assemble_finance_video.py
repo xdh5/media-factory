@@ -396,9 +396,11 @@ def finish_finance_video(
             "content_kind": "finance",
             "content_part": 1,
             "title": metadata["title"],
+            "hashtags": " ".join(f"#{str(tag).lstrip('#')}" for tag in metadata["hashtags"]),
             "source": "local_mcp",
             "local_path": str(final_path),
             "r2_url": None,
+            "r2_expires_at": None,
         }])
 
     publish_copy = "【" + metadata["short_title"] + " " + " ".join(

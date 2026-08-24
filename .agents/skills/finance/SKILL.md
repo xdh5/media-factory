@@ -107,7 +107,7 @@ GitHub Action 暂时继续使用原本的本地图库选图模式，不得删除
 - 跳过掘金、番茄、小红书
 - **视频号必填 `bt2`**：用成片返回的 `short_title`（稿件短标题，已是 6～16 字）。禁止省略，禁止把长标题 `title` 填进短标题框。其它平台也一律带上 `bt2`，避免漏传。
 - `tags` 用空格分隔且带 `#`，例如 `"#存钱 #理财常识 #生活方式 #查理芒格"`（最多 4 个）
-- MatrixMedia 返回成功或预约成功结果后，必须调用 `finance_record_publications`。心灵鸡汤账号组只记录 `ks→kuaishou`、`dy→douyin`、`bjh→baijiahao`、`tt→toutiao`、`sph→wechat_channels`，不得写入小红书；立即发布的 `publish_at` 写实际成功时间，预约发布写预约时间，均使用带时区的 ISO 8601。
+- MatrixMedia 返回成功或平台官方预约成功结果后，必须调用 `finance_record_publications`。预约发布只接受 `officialScheduled=true` 的平台官方确认结果，禁止把应用内定时任务入库。心灵鸡汤账号组只记录 `ks→kuaishou`、`dy→douyin`、`bjh→baijiahao`、`tt→toutiao`、`sph→wechat_channels`，不得写入小红书；立即发布的 `publish_at` 写实际成功时间，预约发布写预约时间，均使用带时区的 ISO 8601。
 
 ## 确认门禁
 

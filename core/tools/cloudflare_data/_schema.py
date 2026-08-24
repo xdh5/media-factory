@@ -149,15 +149,17 @@ PRODUCTION_OUTPUT_SCHEMA = {
         "content_kind": {"type": "string"},
         "content_part": {"type": "integer", "minimum": 1},
         "title": {"type": "string"},
+        "hashtags": {"type": "string"},
         "source": {"type": "string", "enum": ["local_mcp", "github_workflow"]},
         "local_path": {"type": ["string", "null"]},
         "r2_url": {"type": ["string", "null"]},
+        "r2_expires_at": {"type": ["string", "null"], "format": "date-time"},
         "created_at": {"type": "string"},
         "updated_at": {"type": "string"},
     },
     "required": [
         "production_id", "run_id", "publish_date", "business_line", "content_kind",
-        "content_part", "title", "source", "local_path", "r2_url",
+        "content_part", "title", "hashtags", "source", "local_path", "r2_url", "r2_expires_at",
     ],
     "additionalProperties": False,
 }
