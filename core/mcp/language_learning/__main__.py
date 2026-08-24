@@ -235,7 +235,7 @@ def language_learning_build_vocabulary_prompt(
 
 @mcp.tool()
 def language_learning_get_visual_validation_prompt() -> dict:
-    """返回宿主 Agent 检查主题图和定位十个主体所需的 Prompt。"""
+    """返回宿主 Agent 定位十个主体所需的 Prompt，不做内容质检。"""
     try:
         return build_visual_validation_prompt()
     except Exception as exc:
@@ -244,7 +244,7 @@ def language_learning_get_visual_validation_prompt() -> dict:
 
 @mcp.tool()
 def language_learning_get_cutout_validation_prompt() -> dict:
-    """返回宿主 Agent 逐张检查透明抠图和背景色残边所需的 Prompt。"""
+    """返回宿主 Agent 逐张检查透明抠图背景残色所需的 Prompt。"""
     try:
         return build_cutout_validation_prompt()
     except Exception as exc:

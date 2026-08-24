@@ -26,7 +26,7 @@ def _read_prompt(name: str) -> str:
 
 
 def build_visual_validation_prompt() -> dict:
-    """返回给宿主 Agent 使用的主题图视觉验收 Prompt。"""
+    """返回给宿主 Agent 使用的主题图坐标定位 Prompt。"""
     return {
         "system_prompt": _read_prompt("visual-validation-system.md"),
         "user_prompt": _read_prompt("visual-validation-user.md"),
@@ -36,7 +36,7 @@ def build_visual_validation_prompt() -> dict:
 
 
 def build_cutout_validation_prompt() -> dict:
-    """返回宿主 Agent 逐张检查透明抠图与背景色残边所需的 Prompt。"""
+    """返回宿主 Agent 逐张检查透明抠图背景残色所需的 Prompt。"""
     return {
         "system_prompt": _read_prompt("cutout-validation-system.md"),
         "user_prompt": _read_prompt("cutout-validation-user.md"),

@@ -41,21 +41,20 @@ language_learning_start_submit_images
 └─ core.mcp._task_runner.submit_task
 
 language_learning_get_visual_validation_prompt
-└─ 返回宿主 Agent 检查主题图和定位十个主体所需的 Prompt
+└─ 返回宿主 Agent 只定位十个主体坐标所需的 Prompt
 
-[宿主 Agent 按 Prompt 检查主题图并提交十个主体框]
+[宿主 Agent 按 Prompt 提交十个主体框，不做内容质检]
 
 language_learning_validate_subject_sheet
 └─ tools.compose_fixed_cards.validate_subject_sheet
    └─ Python 去背景并输出十张抠图
 
 [宿主 Agent 打开十张抠图逐张检查]
-  └─ 先调用 language_learning_get_cutout_validation_prompt，重点检查背景色彩边、描边、光晕和毛边
+  └─ 先调用 language_learning_get_cutout_validation_prompt，只检查背景色彩边、描边、光晕和毛边
 
 language_learning_review_cutouts
-└─ 第一次裁坏时要求调整框重抠
-└─ 第二次仍坏或源图损坏时要求重新生图
-└─ 未全部通过时禁止拼卡
+└─ 发现背景残色时要求更换反差更大的纯色背景重新生图
+└─ 背景残色未全部通过时禁止拼卡
 
 language_learning_compose_cards
 └─ tools.compose_fixed_cards.compose_fixed_cards  （同步）

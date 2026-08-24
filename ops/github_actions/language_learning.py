@@ -147,10 +147,11 @@ def _write_diagnostics(diagnostics_dir: Path, payload: dict) -> None:
 
 
 async def _visual_layout(mcp: ProjectMCP, subject_sheet_path: str, feedback: list[str]) -> dict:
+    """只让千问视觉提取抠图所需的十个坐标，不承担质量验收。"""
     prompt = await mcp.call("language_learning_get_visual_validation_prompt")
     user_prompt = str(prompt["user_prompt"])
     if feedback:
-        user_prompt += "\n\n上一次检查或抠图的问题如下。请重新观察原图并给出更保守、更准确的完整十框：\n- " + "\n- ".join(feedback)
+        user_prompt += "\n\n上一次坐标不可用，请重新观察原图并给出更保守、更准确的完整十框：\n- " + "\n- ".join(feedback)
     return qwen_vision(subject_sheet_path, str(prompt["system_prompt"]), user_prompt)
 
 
@@ -164,8 +165,8 @@ def _inspect_cutout(path: str, index: int, prompt: dict) -> dict:
     if not isinstance(valid, bool):
         raise RuntimeError(f"千问没有正确判断第 {index} 张抠图")
     failure_kind = str(result.get("failure_kind") or "").strip().casefold()
-    if not valid and failure_kind not in {"crop", "source", "background_edge"}:
-        failure_kind = "crop"
+    if not valid:
+        failure_kind = "background_edge"
     return {
         "index": index,
         "valid": valid,
@@ -178,7 +179,7 @@ async def generate_cards(
     state_path: str | Path,
     diagnostics_dir: str | Path = "cache/github_actions/language-learning-diagnostics",
 ) -> dict:
-    """第二段：生成主体图，经视觉验收和十张抠图检查后合成卡片。"""
+    """第二段：生成主体图、定位抠图，并仅检查十张抠图的背景残色。"""
     state = _read_state(state_path)
     topic = str(state["topic"])
     learning_modes = list(state["learning_modes"])

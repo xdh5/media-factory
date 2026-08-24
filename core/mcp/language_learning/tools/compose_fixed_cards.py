@@ -157,7 +157,7 @@ def review_subject_cutouts(
     cutout_cache_dir: str | Path,
     reviews: list[dict],
 ) -> dict:
-    """记录宿主 Agent 对十张抠图的逐张检查，并决定重抠或重新生成。"""
+    """记录十张抠图的背景残色检查，发现残色时要求更换背景重新生成。"""
     sheet_path = Path(subject_sheet_path).resolve()
     cache_dir = Path(cutout_cache_dir).resolve()
     signature = _sheet_signature(sheet_path)
@@ -183,9 +183,9 @@ def review_subject_cutouts(
         issue = str(raw.get("issue") or "").strip()
         if valid:
             failure_kind = ""
-        elif failure_kind not in {"crop", "source", "background_edge"}:
+        elif failure_kind != "background_edge":
             raise CardCompositionError(
-                f"第 {index} 张坏图必须标记 failure_kind=crop、source 或 background_edge"
+                f"第 {index} 张发现背景残色时必须标记 failure_kind=background_edge"
             )
         normalized.append({"index": index, "valid": valid, "failure_kind": failure_kind, "issue": issue})
     normalized.sort(key=lambda item: item["index"])
@@ -213,11 +213,7 @@ def review_subject_cutouts(
         json.dumps({"signature": signature, "failed_rounds": failed_rounds}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    must_regenerate = any(
-        item["failure_kind"] in {"source", "background_edge"}
-        for item in invalid
-    )
-    action = "regenerate" if must_regenerate or failed_rounds >= 2 else "revise_boxes"
+    action = "regenerate"
     validation_issues = [
         f"第 {item['index']} 个主体 [{item['failure_kind']}]：{item['issue'] or item['failure_kind']}"
         for item in invalid
@@ -229,12 +225,8 @@ def review_subject_cutouts(
         "failed_rounds": failed_rounds,
         "action": action,
         "validation_issues": validation_issues,
-        "regeneration_instruction": (
-            "换一种与上一张明显不同、且与全部主体颜色反差更大的均匀纯色背景重新生成"
-            if any(item["failure_kind"] == "background_edge" for item in invalid)
-            else ""
-        ),
-        "next_tool": "language_learning_prepare_images" if action == "regenerate" else "language_learning_validate_subject_sheet",
+        "regeneration_instruction": "换一种与上一张明显不同、且与全部主体颜色反差更大的均匀纯色背景重新生成",
+        "next_tool": "language_learning_prepare_images",
         "reviews": normalized,
     }
 
@@ -275,19 +267,9 @@ def _remove_sheet_background(sheet: Image.Image) -> tuple[Image.Image, tuple[int
 
 
 def _validated_visual_layout(payload: dict) -> dict:
-    """校验宿主 Agent 提交的十个主体位置，不在 MCP 内调用视觉模型。"""
+    """只校验宿主 Agent 提交的十个定位框，不做内容质量判断。"""
     if not isinstance(payload, dict):
-        raise CardCompositionError("宿主 Agent 的视觉验收结果必须是对象")
-    try:
-        object_count = int(payload["object_count"])
-        top_count = int(payload["top_count"])
-        bottom_count = int(payload["bottom_count"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise CardCompositionError("宿主 Agent 的视觉验收结果缺少有效的 object_count、top_count 或 bottom_count") from exc
-    has_text = payload.get("has_text")
-    if not isinstance(has_text, bool):
-        raise CardCompositionError("宿主 Agent 的视觉验收结果的 has_text 必须是布尔值")
-    background_color = str(payload.get("background_color") or "").strip()
+        raise CardCompositionError("宿主 Agent 的主体定位结果必须是对象")
     raw_boxes = payload.get("boxes")
     boxes: list[list[int]] = []
     issues: list[str] = []
@@ -311,24 +293,13 @@ def _validated_visual_layout(payload: dict) -> dict:
                 issues.append(f"宿主 Agent 返回的第 {index} 个边界框范围无效")
                 continue
             boxes.append(box)
-    if object_count != WORDS_PER_TASK:
-        issues.append(f"宿主 Agent 判断主体总数为 {object_count}，必须为 {WORDS_PER_TASK}")
-    if top_count != CARD_GRID_COLUMNS or bottom_count != CARD_GRID_COLUMNS:
-        issues.append(
-            f"宿主 Agent 判断上排 {top_count} 个、下排 {bottom_count} 个，"
-            f"必须各为 {CARD_GRID_COLUMNS} 个"
-        )
-    if has_text:
-        issues.append("宿主 Agent 检测到可见文字、字母、数字、标签或水印")
-    if not background_color:
-        issues.append("宿主 Agent 没有返回统一纯色背景的颜色")
     return {
         "valid": not issues,
-        "object_count": object_count,
-        "top_count": top_count,
-        "bottom_count": bottom_count,
-        "has_text": has_text,
-        "background_color": background_color,
+        "object_count": WORDS_PER_TASK,
+        "top_count": CARD_GRID_COLUMNS,
+        "bottom_count": CARD_GRID_COLUMNS,
+        "has_text": False,
+        "background_color": "",
         "reason": str(payload.get("reason") or "").strip(),
         "boxes": boxes,
         "issues": issues,

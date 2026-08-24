@@ -157,7 +157,7 @@ VISUAL_LAYOUT_SCHEMA = {
             },
         },
     },
-    "required": ["object_count", "top_count", "bottom_count", "has_text", "background_color", "boxes"],
+    "required": ["boxes"],
     "additionalProperties": False,
 }
 VALIDATE_SUBJECT_SHEET_INPUT_SCHEMA = {
@@ -185,7 +185,7 @@ REVIEW_CUTOUTS_INPUT_SCHEMA = {
                     "valid": {"type": "boolean"},
                     "failure_kind": {
                         "type": "string",
-                        "enum": ["", "crop", "source", "background_edge"],
+                        "enum": ["", "background_edge"],
                     },
                     "issue": {"type": "string"},
                 },
