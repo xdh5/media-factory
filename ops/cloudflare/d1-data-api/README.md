@@ -6,6 +6,7 @@
 - `language_learning_words`
 - `finance_generated_images`：财经千问生成图库，编号与 `data/image_library_finance/<id>.png` 一致并持续递增
 - `publication_records`：记录财经和语言学习内容在各具体平台的标题、发布方式和精确发布时间
+- `publishing_account_groups` / `publishing_account_group_members`：统一发布账号组与非敏感路由引用；不保存密码、Cookie、Token 或手机号凭据
 - `production_outputs`：按北京时间计划发布日期记录财经和语言学习成片；明确区分本地 MCP 与 GitHub Workflow 来源
 - `douyin_research_contents`
 - `douyin_research_collections`
@@ -14,7 +15,7 @@
 
 发布记录把 MatrixMedia 视为连接器，最终平台细分为 YouTube、Facebook、Instagram、TikTok、快手、抖音、百家号、小红书、头条号和视频号。`publish_at` 保存带时区的完整 ISO 8601 日期时间：立即发布写实际发送成功时间，预约发布写预约时间。
 
-通过 `POST /v1/publication-records/commit` 幂等写入发布记录；通过 `GET /v1/publication-records` 查询，可选按 `business_line`、`platform` 和 `publish_date` 过滤。
+通过 `POST /v1/publication-records/commit` 幂等写入发布记录；通过 `GET /v1/publication-records` 查询，可选按 `business_line`、`platform`、`publish_date` 和 `run_id` 过滤。通过 `GET /v1/publishing-account-groups` 查询数据库账号组。
 
 通过 `POST /v1/production-outputs/commit` 幂等写入成片记录；通过 `GET /v1/production-outputs` 查询，可选按 `publish_date`、`business_line` 和 `source` 过滤。`source=local_mcp` 保留 `local_path`，按需上传 R2 后补充 `r2_url`；`source=github_workflow` 只在 R2 交付成功后写入 `r2_url`，禁止保存 Runner 临时路径。
 
@@ -33,7 +34,8 @@
 1. 创建名为 `media-factory` 的 D1 数据库，把数据库 ID 写入 `wrangler.jsonc`。
 2. 执行 `wrangler d1 migrations apply media-factory --remote`。
 3. 为 Worker 设置秘密 `DATA_API_TOKEN`。
-4. 部署 Worker，并把地址与相同令牌填入 MCP 宿主环境变量：
+4. 为 GitHub Pages 发布看板设置六位数字秘密 `DASHBOARD_PIN`。看板只读接口为 `GET /v1/dashboard/records`，使用 `X-Dashboard-Pin` 请求头校验；响应不会返回本地路径、账号凭据或数据 API Token。
+5. 部署 Worker，并把地址与相同令牌填入 MCP 宿主环境变量：
    - `CLOUDFLARE_DATA_API_URL`
    - `CLOUDFLARE_DATA_API_TOKEN`
 

@@ -128,6 +128,16 @@ PUBLICATION_RECORDS_OUTPUT_SCHEMA = {
     "additionalProperties": False,
 }
 
+PUBLISHING_ACCOUNT_GROUPS_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "groups": {"type": "array", "items": {"type": "object"}},
+        "members": {"type": "array", "items": {"type": "object"}},
+    },
+    "required": ["groups", "members"],
+    "additionalProperties": False,
+}
+
 PRODUCTION_OUTPUT_SCHEMA = {
     "type": "object",
     "properties": {

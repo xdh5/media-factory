@@ -7,6 +7,8 @@ description: 使用项目财经 MCP 制作中文财经短视频；适用于“�
 
 MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文、TTS、BGM、片头、发布账号组与完整流程**；MCP 只负责编排。禁止绕过 MCP 或直接读写内部文件。
 
+开始交互式生产前，必须先让用户明确这期视频的北京时间计划发布日期 `publish_date`。用户没说清是哪一天时必须先追问；禁止默认今天、禁止先选稿或创建 run，也禁止在日期不明确时生成成片并写入 `production_outputs`。
+
 如果用户要求“抖音搜索”“爬抖音”“找抖音前几名”等内容研究，即使同时提到财经，也必须使用抖音研究 Skill 与 `douyin_research` MCP；不得调用本 Skill 的话题查询代替真实抖音搜索。
 
 ## Prompt

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="按计划发布日期查看媒体工厂的本地产物和平台发布状态。">
+    <title>媒体发布日历</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">MEDIA FACTORY</p>
+          <h1>媒体发布日历</h1>
+          <p class="subtitle">按计划发布日期核对产物，以及每条内容已经到达的平台。</p>
+        </div>
+        <button id="logoutButton" class="ghost-button" type="button" hidden>退出</button>
+      </header>
+
+      <section id="toolbar" class="toolbar" hidden aria-label="查询条件">
+        <label>
+          <span>计划发布日期</span>
+          <input id="dateInput" type="date">
+        </label>
+        <div class="toolbar-actions">
+          <button id="queryButton" class="primary-button" type="button">查询这一天</button>
+          <button id="allButton" class="secondary-button" type="button">查看全部</button>
+        </div>
+      </section>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <section id="results" class="results" aria-label="产物与发布记录"></section>
+    </main>
+
+    <div id="loginLayer" class="login-layer">
+      <form id="loginForm" class="login-card">
+        <p class="eyebrow">PRIVATE ACCESS</p>
+        <h2>输入 6 位 PIN</h2>
+        <p>验证通过后会保存在当前浏览器，下次无需重复输入。</p>
+        <label class="pin-field">
+          <span class="sr-only">6 位 PIN</span>
+          <input id="pinInput" type="password" inputmode="numeric" pattern="\d{6}" maxlength="6" autocomplete="current-password" placeholder="••••••" required autofocus>
+        </label>
+        <button class="primary-button full-button" type="submit">进入看板</button>
+        <p id="loginError" class="login-error" role="alert"></p>
+      </form>
+    </div>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

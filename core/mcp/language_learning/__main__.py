@@ -70,7 +70,8 @@ from .tools import (
 mcp = FastMCP(
     "media-factory-language-learning",
     instructions=(
-        "语言学习视频编排 MCP。Prompt 由本 MCP 工具返回；TTS 音色、发布账号组等固定参数以 Skill "
+        "语言学习视频编排 MCP。交互式生产前必须先向用户确认北京时间计划发布日期 publish_date；"
+        "日期不明确时禁止占用话题、创建 run、生产或落库。Prompt 由本 MCP 工具返回；TTS 音色、发布账号组等固定参数以 Skill "
         "learn_Chinese_and_Korean 为准，Agent 必须按 Skill 传参。"
         "每期 10 个英语单词中至少 5 个必须未在最近 100 天使用；只有用户触发发布后才记录话题与全部单词。"
         "文本生成和图片视觉验收由宿主 Agent 完成；千问只用于宿主生图失败后的兜底。"

@@ -7,6 +7,8 @@ description: 使用语言学习 MCP 制作中英/韩英词汇短视频；适用�
 
 MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt；**本 Skill 提供 TTS 音色、发布账号组与完整流程**。禁止绕过 MCP 或直接读写内部文件。
 
+开始交互式生产前，必须先让用户明确这期视频的北京时间计划发布日期 `publish_date`。用户没说清是哪一天时必须先追问；禁止默认今天、禁止占用话题或创建 run，也禁止在日期不明确时生成成片并写入 `production_outputs`。
+
 ## 固定参数（调用 MCP 时必须按此传）
 
 ### 语言方向

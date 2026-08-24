@@ -99,3 +99,23 @@ jobs:
         run: |
           MANIFEST_URL="${R2_PUBLIC_BASE_URL%/}/runs/language_learning/${RUN_ID}/r2-manifest.json"
           python -m ops.github_actions language_learning_publish --manifest-url "$MANIFEST_URL" --run-id "$RUN_ID" --targets "$TARGETS"
+
+  notify:
+    name: 第三步：Telegram 收尾通知
+    needs: [preflight, publish]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: 检出通知代码
+        uses: actions/checkout@v5
+      - name: 成功静默、失败有声通知
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WORKFLOW_NEEDS_JSON: ${{ toJSON(needs) }}
+        run: >-
+          python -m ops.github_actions workflow_notify
+          --workflow-name "${{ github.workflow }}"
+          --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

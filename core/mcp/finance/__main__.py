@@ -80,6 +80,7 @@ mcp = FastMCP(
     instructions=(
         "财经短视频编排 MCP。业务 Prompt、生图方案、TTS、BGM、片头等以财经 Skill 为准，"
         "Agent 必须按 Skill 传参。"
+        "交互式生产前必须先向用户确认北京时间计划发布日期 publish_date；日期不明确时禁止选稿、创建 run、生产或落库。"
         "第一步必须从抖音研究数据库选择未使用的财经稿件，禁止自行从零写正文；"
         "保存稿件成功后必须把数据库来源标记为已使用。"
         "查询稿件余量必须使用只读的 finance_get_source_stats，不得用选稿工具代替统计。"

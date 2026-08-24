@@ -219,6 +219,7 @@ def list_publication_records(
     business_line: str | None = None,
     platform: str | None = None,
     publish_date: str | None = None,
+    run_id: str | None = None,
 ) -> list[dict]:
     query = {}
     if business_line:
@@ -227,6 +228,8 @@ def list_publication_records(
         query["platform"] = platform
     if publish_date:
         query["publish_date"] = publish_date
+    if run_id:
+        query["run_id"] = run_id
     payload = _request("GET", "/v1/publication-records", query=query)
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
         raise CloudflareDataRequestError("Cloudflare 发布记录接口缺少 records 数组")
@@ -237,6 +240,18 @@ def commit_publication_records(records: list[dict]) -> dict:
     payload = _request("POST", "/v1/publication-records/commit", body={"records": records})
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
         raise CloudflareDataRequestError("Cloudflare 发布记录写入接口缺少 records 数组")
+    return payload
+
+
+def list_publishing_account_groups(*, business_line: str | None = None) -> dict:
+    query = {"business_line": business_line} if business_line else None
+    payload = _request("GET", "/v1/publishing-account-groups", query=query)
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(payload.get("groups"), list)
+        or not isinstance(payload.get("members"), list)
+    ):
+        raise CloudflareDataRequestError("Cloudflare 发布账号组接口缺少 groups 或 members 数组")
     return payload
 
 

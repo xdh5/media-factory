@@ -19,6 +19,24 @@ function errorResponse(code, message, status = 400, details = {}) {
   return jsonResponse({ error: { code, message, details } }, status);
 }
 
+function dashboardResponse(payload, status = 200) {
+  return Response.json(payload, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "Content-Type, X-Dashboard-Pin",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+    },
+  });
+}
+
+function isDashboardAuthorized(request, env) {
+  const configured = String(env.DASHBOARD_PIN || "").trim();
+  const provided = String(request.headers.get("X-Dashboard-Pin") || "").trim();
+  return /^\d{6}$/.test(configured) && provided === configured;
+}
+
 function requiredText(value, name, maxLength = 500) {
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`${name} 必须是非空字符串`);
@@ -437,6 +455,7 @@ async function listPublicationRecords(request, env) {
   const businessLine = String(url.searchParams.get("business_line") || "").trim();
   const platform = String(url.searchParams.get("platform") || "").trim();
   const publishDate = String(url.searchParams.get("publish_date") || "").trim();
+  const runId = String(url.searchParams.get("run_id") || "").trim();
   if (businessLine && !PUBLICATION_BUSINESS_LINES.includes(businessLine)) {
     throw new Error(`business_line 必须从 ${PUBLICATION_BUSINESS_LINES.join(", ")} 中选择`);
   }
@@ -444,6 +463,7 @@ async function listPublicationRecords(request, env) {
     throw new Error(`platform 必须从 ${PUBLICATION_PLATFORMS.join(", ")} 中选择`);
   }
   if (publishDate) productionDate(publishDate);
+  if (runId) requiredText(runId, "run_id", 200);
   const clauses = [];
   const values = [];
   if (businessLine) {
@@ -458,6 +478,10 @@ async function listPublicationRecords(request, env) {
     clauses.push("substr(publish_at, 1, 10) = ?");
     values.push(publishDate);
   }
+  if (runId) {
+    clauses.push("run_id = ?");
+    values.push(runId);
+  }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const statement = env.DB.prepare(
     `SELECT id, publication_id, run_id, business_line, platform, connector, account_id,
@@ -468,6 +492,140 @@ async function listPublicationRecords(request, env) {
   );
   const result = values.length ? await statement.bind(...values).all() : await statement.all();
   return jsonResponse({ records: result.results || [] });
+}
+
+async function listPublishingAccountGroups(request, env) {
+  const url = new URL(request.url);
+  const businessLine = String(url.searchParams.get("business_line") || "").trim();
+  if (businessLine && !PUBLICATION_BUSINESS_LINES.includes(businessLine)) {
+    throw new Error(`business_line 必须从 ${PUBLICATION_BUSINESS_LINES.join(", ")} 中选择`);
+  }
+  const where = businessLine ? "WHERE business_line = ? AND enabled = 1" : "WHERE enabled = 1";
+  const groupStatement = env.DB.prepare(
+    `SELECT code, name, business_line, enabled, created_at, updated_at
+     FROM publishing_account_groups ${where}
+     ORDER BY business_line, name`,
+  );
+  const groupResult = businessLine
+    ? await groupStatement.bind(businessLine).all()
+    : await groupStatement.all();
+  const groups = groupResult.results || [];
+  if (!groups.length) return jsonResponse({ groups: [], members: [] });
+  const placeholders = groups.map(() => "?").join(",");
+  const memberResult = await env.DB.prepare(
+    `SELECT id, group_code, platform, connector, account_ref, display_name,
+            position, enabled, created_at, updated_at
+     FROM publishing_account_group_members
+     WHERE enabled = 1 AND group_code IN (${placeholders})
+     ORDER BY group_code, position, platform, id`,
+  ).bind(...groups.map((item) => item.code)).all();
+  return jsonResponse({ groups, members: memberResult.results || [] });
+}
+
+function runDate(runId, fallback) {
+  const matched = /^run-(\d{4})(\d{2})(\d{2})$/.exec(String(runId || ""));
+  return matched ? `${matched[1]}-${matched[2]}-${matched[3]}` : String(fallback || "").slice(0, 10);
+}
+
+async function dashboardRecords(request, env) {
+  if (!isDashboardAuthorized(request, env)) {
+    return dashboardResponse({ error: { code: "INVALID_PIN", message: "PIN 不正确" } }, 401);
+  }
+  const url = new URL(request.url);
+  const selectedDate = String(url.searchParams.get("date") || "").trim();
+  if (selectedDate) productionDate(selectedDate);
+  const outputStatement = selectedDate
+    ? env.DB.prepare(
+      `SELECT production_id, run_id, publish_date, business_line, content_kind,
+              content_part, title, source, local_path, r2_url
+       FROM production_outputs WHERE publish_date = ?
+       ORDER BY business_line, content_kind, content_part`,
+    ).bind(selectedDate)
+    : env.DB.prepare(
+      `SELECT production_id, run_id, publish_date, business_line, content_kind,
+              content_part, title, source, local_path, r2_url
+       FROM production_outputs ORDER BY publish_date DESC, business_line, content_kind, content_part
+       LIMIT 1000`,
+    );
+  const publicationStatement = selectedDate
+    ? env.DB.prepare(
+      `SELECT publication_id, run_id, business_line, platform, content_part, title,
+              publish_mode, publish_at, status, external_url
+       FROM publication_records WHERE run_id = ?
+       ORDER BY business_line, title, content_part, platform`,
+    ).bind(`run-${selectedDate.replaceAll("-", "")}`)
+    : env.DB.prepare(
+      `SELECT publication_id, run_id, business_line, platform, content_part, title,
+              publish_mode, publish_at, status, external_url
+       FROM publication_records ORDER BY id DESC LIMIT 1000`,
+    );
+  const [outputResult, publicationResult] = await Promise.all([
+    outputStatement.all(),
+    publicationStatement.all(),
+  ]);
+  const byKey = new Map();
+  const itemKey = (item) => [
+    item.business_line,
+    item.run_id,
+    item.title,
+    Number(item.content_part || 1),
+  ].join("|");
+  for (const output of outputResult.results || []) {
+    const key = itemKey(output);
+    const item = byKey.get(key) || {
+      publish_date: output.publish_date,
+      run_id: output.run_id,
+      business_line: output.business_line,
+      content_kind: output.content_kind,
+      content_part: Number(output.content_part || 1),
+      title: output.title,
+      outputs: [],
+      publications: [],
+    };
+    item.outputs.push({
+      source: output.source,
+      local_available: Boolean(output.local_path),
+      r2_available: Boolean(output.r2_url),
+    });
+    byKey.set(key, item);
+  }
+  for (const publication of publicationResult.results || []) {
+    const key = itemKey(publication);
+    const item = byKey.get(key) || {
+      publish_date: runDate(publication.run_id, publication.publish_at),
+      run_id: publication.run_id,
+      business_line: publication.business_line,
+      content_kind: "",
+      content_part: Number(publication.content_part || 1),
+      title: publication.title,
+      outputs: [],
+      publications: [],
+    };
+    item.publications.push({
+      platform: publication.platform,
+      publish_mode: publication.publish_mode,
+      publish_at: publication.publish_at,
+      status: publication.status,
+      external_url: publication.external_url || "",
+    });
+    byKey.set(key, item);
+  }
+  const dates = new Map();
+  for (const item of byKey.values()) {
+    if (!dates.has(item.publish_date)) dates.set(item.publish_date, []);
+    dates.get(item.publish_date).push(item);
+  }
+  return dashboardResponse({
+    dates: [...dates.entries()]
+      .sort(([left], [right]) => right.localeCompare(left))
+      .map(([date, contents]) => ({
+        date,
+        contents: contents.sort((left, right) =>
+          left.business_line.localeCompare(right.business_line)
+          || left.title.localeCompare(right.title)
+          || left.content_part - right.content_part),
+      })),
+  });
 }
 
 async function commitPublicationRecords(request, env) {
@@ -892,6 +1050,27 @@ export default {
         headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
       });
     }
+    if (request.method === "OPTIONS" && url.pathname === "/v1/dashboard/records") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Headers": "Content-Type, X-Dashboard-Pin",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+        },
+      });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/dashboard/records") {
+      try {
+        return await dashboardRecords(request, env);
+      } catch (error) {
+        if (error instanceof Error && /必须|不能|格式/.test(error.message)) {
+          return dashboardResponse({ error: { code: "INVALID_PARAMETER", message: error.message } }, 400);
+        }
+        console.error(error);
+        return dashboardResponse({ error: { code: "D1_ERROR", message: "读取发布看板失败" } }, 500);
+      }
+    }
     if (!isAuthorized(request, env)) {
       return errorResponse("UNAUTHORIZED", "鉴权失败", 401);
     }
@@ -905,6 +1084,7 @@ export default {
       if (request.method === "POST" && url.pathname === "/v1/finance-generated-images/commit") return await commitFinanceGeneratedImages(request, env);
       if (request.method === "GET" && url.pathname === "/v1/publication-records") return await listPublicationRecords(request, env);
       if (request.method === "POST" && url.pathname === "/v1/publication-records/commit") return await commitPublicationRecords(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/publishing-account-groups") return await listPublishingAccountGroups(request, env);
       if (request.method === "GET" && url.pathname === "/v1/production-outputs") return await listProductionOutputs(request, env);
       if (request.method === "POST" && url.pathname === "/v1/production-outputs/commit") return await commitProductionOutputs(request, env);
       if (request.method === "GET" && url.pathname === "/v1/douyin-research/ids") return await listDouyinResearchIds(env);

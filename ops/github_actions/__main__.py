@@ -25,6 +25,7 @@ def main() -> None:
             "language_learning_diagnostics_r2",
             "language_learning_publish",
             "language_learning_notify",
+            "workflow_notify",
         ],
     )
     parser.add_argument("--topic", default="")
@@ -41,6 +42,8 @@ def main() -> None:
     parser.add_argument("--korean-video-url", default="")
     parser.add_argument("--targets", default="")
     parser.add_argument("--publish-date", default="")
+    parser.add_argument("--workflow-name", default="")
+    parser.add_argument("--run-url", default="")
     arguments = parser.parse_args()
     if arguments.workflow in {"finance_preflight", "language_learning_preflight"}:
         from ._shared import daily_production_preflight
@@ -115,7 +118,7 @@ def main() -> None:
         payload = asyncio.run(
             schedule_publication(arguments.manifest_url, arguments.run_id, targets=targets or None)
         )
-    else:
+    elif arguments.workflow == "language_learning_notify":
         from .telegram import notify_workflow
 
         payload = notify_workflow(
@@ -124,6 +127,14 @@ def main() -> None:
             arguments.subject_sheet_url,
             arguments.chinese_video_url,
             arguments.korean_video_url,
+        )
+    else:
+        from .telegram import notify_generic_workflow
+
+        payload = notify_generic_workflow(
+            os.getenv("WORKFLOW_NEEDS_JSON", "{}"),
+            arguments.workflow_name,
+            arguments.run_url,
         )
     print(json.dumps(payload, ensure_ascii=False))
 

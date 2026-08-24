@@ -57,8 +57,40 @@ def _send_delivery(topic: str, subject_sheet_url: str, chinese_video_url: str, k
             "photo": normalized_sheet,
             "caption": f"主题：{normalized_topic}",
             "reply_markup": {"inline_keyboard": buttons},
+            "disable_notification": True,
         },
     )
+
+
+def _failed_stages(needs: dict) -> list[str]:
+    failed = []
+    for job, details in needs.items():
+        result = str((details or {}).get("result") or "").strip().casefold()
+        if result in {"failure", "cancelled", "timed_out", "action_required"}:
+            failed.append(f"{job}（{result}）")
+    return failed
+
+
+def notify_generic_workflow(needs_json: str, workflow_name: str, run_url: str) -> dict:
+    """成功时静默通知，失败或取消时发送有声音的 Telegram 系统通知。"""
+    try:
+        needs = json.loads(str(needs_json or "{}"))
+    except json.JSONDecodeError as exc:
+        raise ValueError("WORKFLOW_NEEDS_JSON 不是有效 JSON") from exc
+    if not isinstance(needs, dict):
+        raise ValueError("WORKFLOW_NEEDS_JSON 必须是 JSON 对象")
+    failed = _failed_stages(needs)
+    name = str(workflow_name or "GitHub Workflow").strip()
+    url = str(run_url or "").strip()
+    if failed:
+        text = f"⚠️ {name} 失败\n阶段：{'、'.join(failed)}"
+        if url:
+            text += f"\n查看：{url}"
+        return _request("sendMessage", {"text": text, "disable_notification": False})
+    text = f"✅ {name} 成功"
+    if url:
+        text += f"\n查看：{url}"
+    return _request("sendMessage", {"text": text, "disable_notification": True})
 
 
 def notify_workflow(
@@ -89,5 +121,8 @@ def notify_workflow(
         if result in {"failure", "cancelled", "timed_out", "action_required"}:
             failed.append(f"{stage_names.get(job, job)}（{result}）")
     if failed:
-        return _request("sendMessage", {"text": "语言学习任务失败\n阶段：" + "、".join(failed)})
+        return _request(
+            "sendMessage",
+            {"text": "语言学习任务失败\n阶段：" + "、".join(failed), "disable_notification": False},
+        )
     return _send_delivery(topic, subject_sheet_url, chinese_video_url, korean_video_url)
