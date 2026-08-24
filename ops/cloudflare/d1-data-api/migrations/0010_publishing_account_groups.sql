@@ -53,7 +53,4 @@ VALUES
     ('finance-inspiration', 'toutiao', 'matrixmedia', '心灵鸡汤', '心灵鸡汤头条号', 40),
     ('finance-inspiration', 'wechat_channels', 'matrixmedia', '心灵鸡汤', '心灵鸡汤视频号', 50),
     ('language-korean', 'douyin', 'matrixmedia', '韩语', '韩语抖音', 10),
-    ('language-korean', 'kuaishou', 'matrixmedia', '韩语', '韩语快手', 20),
-    ('language-korean', 'baijiahao', 'matrixmedia', '韩语', '韩语百家号', 30),
-    ('language-korean', 'toutiao', 'matrixmedia', '韩语', '韩语头条号', 40),
-    ('language-korean', 'wechat_channels', 'matrixmedia', '韩语', '韩语视频号', 50);
+    ('language-korean', 'kuaishou', 'matrixmedia', '韩语', '韩语快手', 20);

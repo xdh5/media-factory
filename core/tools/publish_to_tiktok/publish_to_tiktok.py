@@ -84,9 +84,26 @@ def _normalize_account(account: str) -> str:
 
 
 def list_tiktok_accounts(account: str | None = None) -> list[dict]:
-    """列出本地已配置的 TikTok 账号；account 传入时只返回该账号。"""
+    """列出本地已配置的 TikTok 账号，并返回 TikTok 签发的真实账号 ID。"""
     load_project_env()
     wanted = _normalize_account(account) if account else None
+    try:
+        response = requests.get(
+            f"{ZERNIO_API_BASE_URL}/accounts",
+            headers={"Authorization": f"Bearer {_api_key()}"},
+            params={"platform": "tiktok", "status": "connected"},
+            timeout=TIKTOK_REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise PublishError(f"查询 Zernio TikTok 账号失败：{exc}") from exc
+    platform_ids = {
+        str(item.get("_id") or item.get("id") or "").strip():
+            str(item.get("platformUserId") or "").strip()
+        for item in (payload.get("accounts") or [])
+        if isinstance(item, dict)
+    }
     accounts = []
     for key, value in os.environ.items():
         if not key.endswith(TIKTOK_ACCOUNT_ID_SUFFIX) or not str(value).strip():
@@ -95,9 +112,17 @@ def list_tiktok_accounts(account: str | None = None) -> list[dict]:
         slug = prefix.lower()
         if wanted and slug != wanted:
             continue
+        connector_account_id = str(value).strip()
+        platform_account_id = platform_ids.get(connector_account_id, "")
+        if not platform_account_id:
+            raise AccountNotFoundError(
+                f"TikTok 账号 {connector_account_id} 缺少平台返回的 platformUserId，不能作为真实账号入组",
+                {"account": slug, "connector_account_id": connector_account_id},
+            )
         accounts.append({
             "account": slug,
-            "account_id": str(value).strip(),
+            "account_id": connector_account_id,
+            "platform_account_id": platform_account_id,
             "account_title": _env(prefix + TIKTOK_ACCOUNT_TITLE_SUFFIX) or slug,
             "username": _env(prefix + TIKTOK_USERNAME_SUFFIX),
         })

@@ -94,7 +94,7 @@ def preview_publication(
             key = _content_key(
                 str(item["title"]),
                 str(route["platform"]),
-                str(route["account_id"]),
+                str(route["platform_account_id"]),
                 int(item.get("content_part") or 1),
             )
             tasks.append({"item": item, "route": route, "already_published": key in existing})
@@ -194,7 +194,7 @@ def publish_local_outputs(
         {
             "production_id": task["item"]["production_id"],
             "platform": task["route"]["platform"],
-            "account_id": task["route"]["account_id"],
+            "account_id": task["route"]["platform_account_id"],
             "reason": "数据库已有相同产物、平台、账号和分段的发布记录",
         }
         for task in preview["tasks"] if task["already_published"]
@@ -220,7 +220,7 @@ def publish_local_outputs(
             "business_line": business_line,
             "platform": str(route["platform"]),
             "connector": connector,
-            "account_id": str(route["account_id"]),
+            "account_id": str(route["platform_account_id"]),
             "content_part": int(item.get("content_part") or 1),
             "title": str(item["title"]),
             "publish_mode": publish_mode,

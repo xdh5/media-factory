@@ -519,7 +519,7 @@ async function listPublishingAccountGroups(request, env) {
   if (!groups.length) return jsonResponse({ groups: [], members: [] });
   const placeholders = groups.map(() => "?").join(",");
   const memberResult = await env.DB.prepare(
-    `SELECT id, group_code, platform, connector, account_ref, display_name,
+    `SELECT id, platform_account_id, group_code, platform, connector, account_ref, display_name,
             position, enabled, created_at, updated_at
      FROM publishing_account_group_members
      WHERE enabled = 1 AND group_code IN (${placeholders})

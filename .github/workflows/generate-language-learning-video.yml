@@ -121,7 +121,7 @@ jobs:
       DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
       CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
       CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
-      DASHSCOPE_IMAGE_MODEL: qwen-image-2.0-pro
+      DASHSCOPE_IMAGE_MODEL: ${{ vars.DASHSCOPE_IMAGE_MODEL }}
       PUBLISH_DATE: ${{ needs.prepare.outputs.publish_date }}
     steps:
       - name: 检出生产代码

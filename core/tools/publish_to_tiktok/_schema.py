@@ -25,10 +25,11 @@ TIKTOK_ACCOUNT_SCHEMA = {
     "properties": {
         "account": {"type": "string"},
         "account_id": {"type": "string"},
+        "platform_account_id": {"type": "string"},
         "account_title": {"type": "string"},
         "username": {"type": "string"},
     },
-    "required": ["account", "account_id", "account_title", "username"],
+    "required": ["account", "account_id", "platform_account_id", "account_title", "username"],
     "additionalProperties": False,
 }
 

@@ -118,10 +118,13 @@ def _account_rows() -> list[dict]:
         if not isinstance(item, dict):
             continue
         account_id = str(item.get("_id") or item.get("id") or "").strip()
-        if not account_id:
+        raw_platform_account_id = str(item.get("platformUserId") or "").strip()
+        platform_account_id = raw_platform_account_id.rsplit(":page:", 1)[-1]
+        if not account_id or not platform_account_id:
             continue
         rows.append({
             "page_id": account_id,
+            "platform_account_id": platform_account_id,
             "page_name": str(item.get("displayName") or item.get("username") or account_id),
         })
     return rows

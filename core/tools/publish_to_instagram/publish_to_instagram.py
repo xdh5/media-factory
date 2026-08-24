@@ -118,11 +118,13 @@ def _account_rows() -> list[dict]:
         if not isinstance(item, dict):
             continue
         account_id = str(item.get("_id") or item.get("id") or "").strip()
-        if not account_id:
+        platform_account_id = str(item.get("platformUserId") or "").strip()
+        if not account_id or not platform_account_id:
             continue
         username = str(item.get("username") or "").strip()
         rows.append({
             "user_id": account_id,
+            "platform_account_id": platform_account_id,
             "account_title": str(item.get("displayName") or username or account_id),
             "username": username,
         })

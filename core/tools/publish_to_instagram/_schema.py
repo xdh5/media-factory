@@ -37,10 +37,11 @@ INSTAGRAM_ACCOUNT_SCHEMA = {
     "type": "object",
     "properties": {
         "user_id": {"type": "string"},
+        "platform_account_id": {"type": "string"},
         "account_title": {"type": "string"},
         "username": {"type": "string"},
     },
-    "required": ["user_id", "account_title", "username"],
+    "required": ["user_id", "platform_account_id", "account_title", "username"],
     "additionalProperties": False,
 }
 

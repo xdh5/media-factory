@@ -37,9 +37,10 @@ FACEBOOK_ACCOUNT_SCHEMA = {
     "type": "object",
     "properties": {
         "page_id": {"type": "string"},
+        "platform_account_id": {"type": "string"},
         "page_name": {"type": "string"},
     },
-    "required": ["page_id", "page_name"],
+    "required": ["page_id", "platform_account_id", "page_name"],
     "additionalProperties": False,
 }
 

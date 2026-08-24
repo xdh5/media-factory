@@ -211,19 +211,51 @@ def _official_members(member: dict) -> list[dict]:
     platform = str(member["platform"])
     account_ref = str(member.get("account_ref") or "").strip()
     display_name = str(member.get("display_name") or account_ref)
+    stored_platform_account_id = str(member.get("platform_account_id") or "").strip()
+    if not stored_platform_account_id:
+        raise PublishAccountGroupError(
+            f"账号组成员 {member['group_code']}/{platform} 缺少 platform_account_id，不能发布",
+            {"group_code": member["group_code"], "platform": platform},
+        )
+
+    def verified(row: dict, connector_account_id: str, current_platform_account_id: str) -> dict:
+        actual = str(current_platform_account_id or "").strip()
+        if actual != stored_platform_account_id:
+            raise PublishAccountGroupError(
+                f"账号组成员 {member['group_code']}/{platform} 的真实账号 ID 与当前授权账号不一致",
+                {
+                    "group_code": member["group_code"],
+                    "platform": platform,
+                    "stored_platform_account_id": stored_platform_account_id,
+                    "current_platform_account_id": actual,
+                },
+            )
+        return {
+            **member,
+            **row,
+            "account_id": connector_account_id,
+            "platform_account_id": stored_platform_account_id,
+        }
+
     if platform == "youtube":
         rows = list_youtube_accounts(account=account_ref)
-        return [{**member, "account_id": row["channel_id"], "display_name": row["channel_title"]} for row in rows]
+        return [verified({"display_name": row["channel_title"]}, row["channel_id"], row["channel_id"]) for row in rows]
     if platform == "tiktok":
         rows = list_tiktok_accounts(account=None if account_ref == "configured" else account_ref)
-        return [{**member, "account_id": row["account_id"], "account_ref": row["account"], "display_name": row["account_title"]} for row in rows]
+        return [
+            verified(
+                {"account_ref": row["account"], "display_name": row["account_title"]},
+                row["account_id"], row["platform_account_id"],
+            )
+            for row in rows
+        ]
     if platform == "instagram":
         rows = list_instagram_accounts()
-        return [{**member, "account_id": row["user_id"], "display_name": row["account_title"]} for row in rows]
+        return [verified({"display_name": row["account_title"]}, row["user_id"], row["platform_account_id"]) for row in rows]
     if platform == "facebook":
         rows = list_facebook_accounts()
-        return [{**member, "account_id": row["page_id"], "display_name": row["page_name"]} for row in rows]
-    return [{**member, "account_id": account_ref, "display_name": display_name}]
+        return [verified({"display_name": row["page_name"]}, row["page_id"], row["platform_account_id"]) for row in rows]
+    return [{**member, "account_id": account_ref, "platform_account_id": stored_platform_account_id, "display_name": display_name}]
 
 
 def resolve_account_group(account_group: str, business_line: str, platforms: list[str]) -> list[dict]:
@@ -249,8 +281,14 @@ def resolve_account_group(account_group: str, business_line: str, platforms: lis
             if member["platform"] not in requested:
                 continue
             if member["connector"] == "matrixmedia":
+                platform_account_id = str(member.get("platform_account_id") or "").strip()
+                if not platform_account_id:
+                    raise PublishAccountGroupError(
+                        f"账号组成员 {member['group_code']}/{member['platform']} 缺少 platform_account_id，不能发布",
+                        {"group_code": member["group_code"], "platform": member["platform"]},
+                    )
                 matches = [
-                    item for item in live_matrix
+                    {**item, "platform_account_id": platform_account_id} for item in live_matrix
                     if item["platform"] == member["platform"]
                     and item["account_ref"] == member["account_ref"]
                 ]
@@ -258,10 +296,10 @@ def resolve_account_group(account_group: str, business_line: str, platforms: lis
             else:
                 routes.extend(_official_members(member))
     else:
-        routes = [
-            item for item in live_matrix
-            if item["account_ref"] == account_group and item["platform"] in requested
-        ]
+        raise PublishAccountGroupError(
+            f"找不到数据库账号组“{account_group}”；未入库的 MatrixMedia 登录态不能直接用于发布",
+            {"account_group": account_group},
+        )
     missing = sorted(requested - {str(item["platform"]) for item in routes})
     if missing:
         raise PublishAccountGroupError(

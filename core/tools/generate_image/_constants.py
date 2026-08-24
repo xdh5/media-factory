@@ -6,7 +6,7 @@ from pathlib import Path
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-QWEN_IMAGE_MODEL = "qwen-image-2.0-pro-2026-06-22"
+QWEN_IMAGE_MODEL = "qwen-image-2.0-pro-2026-04-22"
 QWEN_IMAGE_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 AGENT_IMAGE_TASK_VERSION = 4
 AGENT_IMAGE_CONTEXT_NAME = "agent-image-context.json"
