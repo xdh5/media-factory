@@ -1,4 +1,4 @@
-"""通过 Zernio HTTP API 把 R2 公网视频发布为 Instagram Reel。"""
+"""通过 Zernio HTTP API 把 R2 公网视频发布为 Facebook Page Reel。"""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from datetime import datetime, timezone
 import requests
 
 from ._constants import (
-    INSTAGRAM_ACCOUNT_ID_ENV,
-    INSTAGRAM_FAILURE_STATUSES,
-    INSTAGRAM_REQUEST_TIMEOUT_SECONDS,
-    INSTAGRAM_STATUS_POLL_INTERVAL_SECONDS,
-    INSTAGRAM_STATUS_TIMEOUT_SECONDS,
-    INSTAGRAM_SUCCESS_STATUSES,
+    FACEBOOK_ACCOUNT_ID_ENV,
+    FACEBOOK_FAILURE_STATUSES,
+    FACEBOOK_REQUEST_TIMEOUT_SECONDS,
+    FACEBOOK_STATUS_POLL_INTERVAL_SECONDS,
+    FACEBOOK_STATUS_TIMEOUT_SECONDS,
+    FACEBOOK_SUCCESS_STATUSES,
     ZERNIO_API_BASE_URL,
     ZERNIO_META_API_KEY_ENV,
     load_project_env,
@@ -23,10 +23,10 @@ from ._constants import (
 from ._errors import CredentialError, InvalidParameterError, PublishError
 
 __all__ = [
-    "check_instagram_connection",
-    "list_instagram_accounts",
-    "publish_instagram_post_now",
-    "publish_to_instagram",
+    "check_facebook_connection",
+    "list_facebook_accounts",
+    "publish_facebook_post_now",
+    "publish_to_facebook",
 ]
 
 load_project_env()
@@ -91,10 +91,10 @@ def _request(
             headers=headers,
             params=params,
             json=json,
-            timeout=INSTAGRAM_REQUEST_TIMEOUT_SECONDS,
+            timeout=FACEBOOK_REQUEST_TIMEOUT_SECONDS,
         )
     except requests.RequestException as exc:
-        raise PublishError(f"请求 Zernio Instagram API 失败：{exc}") from exc
+        raise PublishError(f"请求 Zernio Facebook API 失败：{exc}") from exc
     try:
         payload = response.json()
     except ValueError:
@@ -102,7 +102,7 @@ def _request(
     if not response.ok:
         message = str(payload.get("error") or payload.get("message") or response.text[:500])
         raise PublishError(
-            f"Zernio Instagram API 返回 HTTP {response.status_code}：{message}",
+            f"Zernio Facebook API 返回 HTTP {response.status_code}：{message}",
             {"status_code": response.status_code, "response": payload},
         )
     return payload if isinstance(payload, dict) else {}
@@ -112,7 +112,7 @@ def _account_rows() -> list[dict]:
     payload = _request(
         "GET",
         "/accounts",
-        params={"platform": "instagram", "status": "connected"},
+        params={"platform": "facebook", "status": "connected"},
     )
     rows = []
     for item in payload.get("accounts") or []:
@@ -121,62 +121,56 @@ def _account_rows() -> list[dict]:
         account_id = str(item.get("_id") or item.get("id") or "").strip()
         if not account_id:
             continue
-        username = str(item.get("username") or "").strip()
         rows.append({
-            "user_id": account_id,
-            "account_title": str(item.get("displayName") or username or account_id),
-            "username": username,
+            "page_id": account_id,
+            "page_name": str(item.get("displayName") or item.get("username") or account_id),
         })
     return rows
 
 
-def list_instagram_accounts() -> list[dict]:
-    """列出用于语言学习发布的 Zernio Instagram 账号。"""
+def list_facebook_accounts() -> list[dict]:
+    """列出用于语言学习发布的 Zernio Facebook Page 账号。"""
     load_project_env()
     rows = _account_rows()
-    configured_id = _env(INSTAGRAM_ACCOUNT_ID_ENV)
+    configured_id = _env(FACEBOOK_ACCOUNT_ID_ENV)
     if configured_id:
-        selected = [item for item in rows if item["user_id"] == configured_id]
+        selected = [item for item in rows if item["page_id"] == configured_id]
         if not selected:
             raise CredentialError(
-                f"Zernio 中找不到已配置的 Instagram 账号 {configured_id}",
-                {"environment": INSTAGRAM_ACCOUNT_ID_ENV},
+                f"Zernio 中找不到已配置的 Facebook 账号 {configured_id}",
+                {"environment": FACEBOOK_ACCOUNT_ID_ENV},
             )
         return selected
     if len(rows) > 1:
         raise CredentialError(
-            "Zernio 中连接了多个 Instagram 账号，禁止自动选择",
+            "Zernio 中连接了多个 Facebook 账号，禁止自动选择",
             {
-                "fix": f"请在 .env 设置 {INSTAGRAM_ACCOUNT_ID_ENV}",
+                "fix": f"请在 .env 设置 {FACEBOOK_ACCOUNT_ID_ENV}",
                 "accounts": rows,
             },
         )
     return rows
 
 
-def check_instagram_connection() -> dict:
-    """只读检查 Zernio Instagram 账号是否已连接且可发布。"""
-    accounts = list_instagram_accounts()
+def check_facebook_connection() -> dict:
+    """只读检查 Zernio Facebook 账号是否已连接且可发布。"""
+    accounts = list_facebook_accounts()
     if not accounts:
-        raise CredentialError("Zernio 尚未连接 Instagram 专业账号")
+        raise CredentialError("Zernio 尚未连接 Facebook Page")
     account = accounts[0]
-    health = _request("GET", f"/accounts/{account['user_id']}/health")
+    health = _request("GET", f"/accounts/{account['page_id']}/health")
     can_post = health.get("canPost") is not False
     token_valid = health.get("tokenValid") is not False
     if not can_post or not token_valid:
         raise CredentialError(
-            "Zernio Instagram 账号当前不可发布",
+            "Zernio Facebook 账号当前不可发布",
             {
-                "user_id": account["user_id"],
+                "page_id": account["page_id"],
                 "status": health.get("status"),
                 "issues": health.get("issues") or [],
             },
         )
-    return {
-        "connected": True,
-        "user_id": account["user_id"],
-        "username": account["username"],
-    }
+    return {"connected": True, **account}
 
 
 def _post_data(payload: dict) -> dict:
@@ -204,28 +198,28 @@ def _post_status(post: dict, account_id: str) -> tuple[str, str, str]:
 
 
 def _wait_for_terminal(post_id: str, account_id: str) -> dict:
-    deadline = time.monotonic() + INSTAGRAM_STATUS_TIMEOUT_SECONDS
+    deadline = time.monotonic() + FACEBOOK_STATUS_TIMEOUT_SECONDS
     while True:
         post = _post_data(_request("GET", f"/posts/{post_id}"))
         status, message, platform_url = _post_status(post, account_id)
-        if status in INSTAGRAM_SUCCESS_STATUSES:
+        if status in FACEBOOK_SUCCESS_STATUSES:
             return {
                 "post_id": post_id,
                 "platform_url": platform_url,
                 "account_id": account_id,
                 "status": "published",
             }
-        if status in INSTAGRAM_FAILURE_STATUSES:
+        if status in FACEBOOK_FAILURE_STATUSES:
             raise PublishError(
-                f"Instagram 未发布成功：{message or f'平台终态为 {status}'}",
+                f"Facebook 未发布成功：{message or f'平台终态为 {status}'}",
                 {"post_id": post_id, "account_id": account_id, "status": status},
             )
         if time.monotonic() >= deadline:
             raise PublishError(
-                f"等待 Instagram 发布终态超时，当前状态：{status or 'unknown'}",
+                f"等待 Facebook 发布终态超时，当前状态：{status or 'unknown'}",
                 {"post_id": post_id, "account_id": account_id, "status": status},
             )
-        time.sleep(INSTAGRAM_STATUS_POLL_INTERVAL_SECONDS)
+        time.sleep(FACEBOOK_STATUS_POLL_INTERVAL_SECONDS)
 
 
 def _create_post(payload: dict, request_id: str) -> tuple[str, bool]:
@@ -242,42 +236,42 @@ def _create_post(payload: dict, request_id: str) -> tuple[str, bool]:
     post = _post_data(result)
     post_id = str(post.get("_id") or post.get("id") or result.get("postId") or "")
     if not post_id:
-        raise PublishError("Zernio 未返回 post ID，无法确认 Instagram 发布任务")
+        raise PublishError("Zernio 未返回 post ID，无法确认 Facebook 发布任务")
     return post_id, duplicate
 
 
-def publish_to_instagram(
-    user_id: str,
+def publish_to_facebook(
+    page_id: str,
     video_url: str,
-    caption: str,
+    description: str,
     *,
-    share_to_feed: bool = True,
+    title: str = "",
     publish_at: str | None = None,
 ) -> dict:
-    """立即或定时发布单个 Instagram Reel。"""
-    account_id = str(user_id or "").strip()
+    """立即或定时发布单个 Facebook Page Reel。"""
+    account_id = str(page_id or "").strip()
     if not account_id:
-        raise InvalidParameterError("user_id 不能为空", {"parameter": "user_id"})
-    accounts = list_instagram_accounts()
-    if account_id not in {item["user_id"] for item in accounts}:
-        raise CredentialError("请求的 Instagram 账号不在 Zernio 已选账号中", {"user_id": account_id})
+        raise InvalidParameterError("page_id 不能为空", {"parameter": "page_id"})
+    accounts = list_facebook_accounts()
+    if account_id not in {item["page_id"] for item in accounts}:
+        raise CredentialError("请求的 Facebook 账号不在 Zernio 已选账号中", {"page_id": account_id})
     normalized_url = str(video_url or "").strip()
     if not normalized_url.startswith(("https://", "http://")):
         raise InvalidParameterError("video_url 必须是 R2 的 HTTP(S) 公网地址", {"parameter": "video_url"})
-    normalized_caption = str(caption or "").strip()
-    if len(normalized_caption) > 2200:
-        raise InvalidParameterError("Instagram caption 不能超过 2200 个字符", {"parameter": "caption"})
+    normalized_description = str(description or "").strip()
+    if len(normalized_description) > 63206:
+        raise InvalidParameterError("Facebook description 不能超过 63206 个字符", {"parameter": "description"})
+    normalized_title = str(title or "").strip()
+    if len(normalized_title) > 255:
+        raise InvalidParameterError("Facebook title 不能超过 255 个字符", {"parameter": "title"})
     scheduled_for = _normalize_publish_at(publish_at)
     payload = {
-        "content": normalized_caption,
+        "content": normalized_description,
         "mediaItems": [{"type": "video", "url": normalized_url}],
         "platforms": [{
-            "platform": "instagram",
+            "platform": "facebook",
             "accountId": account_id,
-            "platformSpecificData": {
-                "contentType": "reel",
-                "shareToFeed": bool(share_to_feed),
-            },
+            "platformSpecificData": {"contentType": "reel", "title": normalized_title},
         }],
     }
     if scheduled_for:
@@ -286,7 +280,7 @@ def publish_to_instagram(
         payload["publishNow"] = True
     request_id = str(uuid.uuid5(
         uuid.NAMESPACE_URL,
-        f"{account_id}|{normalized_url}|{normalized_caption}|{bool(share_to_feed)}|{scheduled_for or 'now'}",
+        f"{account_id}|{normalized_url}|{normalized_description}|{normalized_title}|{scheduled_for or 'now'}",
     ))
     post_id, duplicate = _create_post(payload, request_id)
     if scheduled_for:
@@ -301,15 +295,15 @@ def publish_to_instagram(
     return {**terminal, "duplicate": duplicate}
 
 
-def publish_instagram_post_now(post_id: str, account_id: str) -> dict:
-    """把 Zernio 中已有的 Instagram 定时帖子改成立即发布。"""
+def publish_facebook_post_now(post_id: str, account_id: str) -> dict:
+    """把 Zernio 中已有的 Facebook 定时帖子改成立即发布。"""
     normalized_post_id = str(post_id or "").strip()
     normalized_account_id = str(account_id or "").strip()
     if not normalized_post_id:
         raise InvalidParameterError("post_id 不能为空", {"parameter": "post_id"})
-    if normalized_account_id not in {item["user_id"] for item in list_instagram_accounts()}:
+    if normalized_account_id not in {item["page_id"] for item in list_facebook_accounts()}:
         raise CredentialError(
-            "请求的 Instagram 账号不在 Zernio 已选账号中",
+            "请求的 Facebook 账号不在 Zernio 已选账号中",
             {"account_id": normalized_account_id},
         )
     _request("PUT", f"/posts/{normalized_post_id}", json={"publishNow": True})

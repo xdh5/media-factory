@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import re
 import shutil
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from ._mcp import MCPCallError, ProjectMCP
 from core.tools.r2_storage import download_public_file
@@ -131,19 +133,17 @@ async def _visual_layout(mcp: ProjectMCP, subject_sheet_path: str, feedback: lis
     return qwen_vision(subject_sheet_path, str(prompt["system_prompt"]), user_prompt)
 
 
-def _inspect_cutout(path: str, index: int) -> dict:
+def _inspect_cutout(path: str, index: int, prompt: dict) -> dict:
     result = qwen_vision(
         path,
-        "你是透明物体抠图质检员。只检查主体是否完整，不评价画风。只返回 JSON。",
-        "检查白色画布上的这一张透明抠图。主体必须只有一个且完整，任何把手、尖端、边缘、孔洞都不能被裁断，也不能混入相邻物体。"
-        "如果完整返回 {\"valid\":true,\"failure_kind\":\"\",\"issue\":\"\"}；"
-        "如果裁边有误返回 failure_kind=crop；如果源图本身残缺、重叠或被背景色吃掉返回 failure_kind=source。",
+        str(prompt["system_prompt"]),
+        str(prompt["user_prompt"]),
     )
     valid = result.get("valid")
     if not isinstance(valid, bool):
         raise RuntimeError(f"千问没有正确判断第 {index} 张抠图")
     failure_kind = str(result.get("failure_kind") or "").strip().casefold()
-    if not valid and failure_kind not in {"crop", "source"}:
+    if not valid and failure_kind not in {"crop", "source", "background_edge"}:
         failure_kind = "crop"
     return {
         "index": index,
@@ -176,6 +176,7 @@ async def generate_cards(
     submitted = None
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
         primary_words = words.get("en-zh") or words.get("en-ko")
+        cutout_prompt = await mcp.call("language_learning_get_cutout_validation_prompt")
         generation_issues: list[str] = []
         for generation_attempt in range(1, SUBJECT_GENERATION_MAX_ATTEMPTS + 1):
             prepared = await mcp.call(
@@ -224,7 +225,10 @@ async def generate_cards(
                 if len(cutout_paths) != 10:
                     visual_feedback = [f"Python 只输出了 {len(cutout_paths)} 张抠图，必须重新定位完整十个主体"]
                     continue
-                reviews = [_inspect_cutout(path, index) for index, path in enumerate(cutout_paths, 1)]
+                reviews = [
+                    _inspect_cutout(path, index, cutout_prompt)
+                    for index, path in enumerate(cutout_paths, 1)
+                ]
                 review = await mcp.call(
                     "language_learning_review_cutouts",
                     {
@@ -237,7 +241,7 @@ async def generate_cards(
                     approved_validation = {**validation, "reviews": reviews, "visual_round": visual_round}
                     break
                 visual_feedback = [
-                    f"第 {item['index']} 个主体：{item['issue'] or item['failure_kind']}"
+                    f"第 {item['index']} 个主体 [{item['failure_kind']}]：{item['issue'] or item['failure_kind']}"
                     for item in reviews
                     if not item["valid"]
                 ]
@@ -476,12 +480,57 @@ def upload_handoff(handoff_dir: str | Path) -> dict:
     if metadata_path is not None:
         paths.append(metadata_path)
     remote = upload_run_files("language_learning", str(handoff["run_id"]), paths, manifest)
-    subject_sheet_url = next(
-        (str(item.get("url") or "") for item in remote.get("files") or [] if str(item.get("source_path") or "") == str(subject_sheet_path.resolve())),
-        "",
-    )
-    write_summary(
-        "语言学习成片已生成并上传 R2",
-        [("主题", str(handoff["topic"])), ("模式", ", ".join(handoff["learning_modes"])), ("原始主题图", subject_sheet_url), ("R2 清单", remote["manifest"]["url"]), ("平台发布", "未执行")],
-    )
-    return {"manifest": manifest, "r2": remote}
+    uploaded_by_name = {
+        str(item.get("source_name") or ""): str(item.get("url") or "")
+        for item in remote.get("files") or []
+    }
+    subject_sheet_url = uploaded_by_name.get(subject_sheet_path.name, "")
+    download_urls = {}
+    for video in manifest.get("videos") or []:
+        mode = str(video.get("learning_mode") or "").strip()
+        urls = [
+            uploaded_by_name.get(Path(value).name, "")
+            for value in video.get("output_paths") or []
+        ]
+        urls = [url for url in urls if url]
+        if urls:
+            download_urls[mode] = urls[0]
+    return {
+        "manifest": manifest,
+        "r2": remote,
+        "topic": str(handoff["topic"]),
+        "subject_sheet_url": subject_sheet_url,
+        "download_urls": download_urls,
+    }
+
+
+async def schedule_publication(manifest_url: str, run_id: str) -> dict:
+    """通过语言学习 MCP 给四个平台排到当天北京时间 16:00。"""
+    now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    publish_time = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    if publish_time <= now:
+        raise RuntimeError("当前已超过北京时间 16:00，禁止把当天任务误排到过去或次日")
+    publish_at = publish_time.isoformat()
+    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+        started = await mcp.call(
+            "language_learning_start_publish",
+            {
+                "manifest_path": str(manifest_url),
+                "publish_confirmed": True,
+                "run_id": str(run_id),
+                "targets": ["youtube", "tiktok", "instagram", "facebook"],
+                "publish_at": publish_at,
+            },
+        )
+        result = await mcp.poll("language_learning_poll_task", started["task_path"])
+    if result.get("success") is not True:
+        raise RuntimeError(f"四平台排期存在失败：{json.dumps(result, ensure_ascii=False)}")
+    completed_channels = {
+        str(item.get("channel") or "").strip().casefold()
+        for item in result.get("published") or []
+        if item.get("success") is True
+    }
+    missing_channels = {"youtube", "tiktok", "instagram", "facebook"} - completed_channels
+    if missing_channels:
+        raise RuntimeError(f"四平台排期返回不完整，缺少：{', '.join(sorted(missing_channels))}")
+    return {"publish_at": publish_at, **result}

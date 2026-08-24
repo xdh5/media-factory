@@ -50,6 +50,7 @@ language_learning_validate_subject_sheet
    └─ Python 去背景并输出十张抠图
 
 [宿主 Agent 打开十张抠图逐张检查]
+  └─ 先调用 language_learning_get_cutout_validation_prompt，重点检查背景色彩边、描边、光晕和毛边
 
 language_learning_review_cutouts
 └─ 第一次裁坏时要求调整框重抠
@@ -79,7 +80,7 @@ language_learning_publish
 └─ 兼容旧客户端的同步发布入口
 
 language_learning_start_publish
-└─ 后台发布中文 YouTube 与 TikTok，并幂等写入正式话题和十个单词
+└─ 后台发布中文 YouTube、TikTok、Instagram 或 Facebook，并幂等写入正式话题和十个单词
 
 language_learning_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task
@@ -96,7 +97,7 @@ language_learning_clear_run
 | `tools/vocabulary_history.py` | 最近 100 天词库、新词比例校验与历史记录 |
 | `tools/compose_fixed_cards.py` | 接收宿主 Agent 主体框、抠图、逐张检查门禁并贴到固定模板单词卡 |
 | `tools/create_vocabulary_videos.py` | 卡片 + 双语 TTS → 竖版成片 |
-| `tools/publish_vocabulary_videos.py` | 写发布清单、上传 R2，并通过 MCP 发布 YouTube 与 TikTok |
+| `tools/publish_vocabulary_videos.py` | 写发布清单、上传 R2，并通过 MCP 发布 YouTube、TikTok、Instagram 或 Facebook |
 
 ## 目录
 

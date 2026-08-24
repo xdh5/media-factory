@@ -1,4 +1,4 @@
-"""Zernio Instagram 发布常量。"""
+"""Zernio Facebook 发布常量。"""
 
 from pathlib import Path
 
@@ -6,12 +6,12 @@ from dotenv import load_dotenv
 
 ZERNIO_API_BASE_URL = "https://zernio.com/api/v1"
 ZERNIO_META_API_KEY_ENV = "zernio_api_key_meta"
-INSTAGRAM_ACCOUNT_ID_ENV = "LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID"
-INSTAGRAM_REQUEST_TIMEOUT_SECONDS = 120
-INSTAGRAM_STATUS_POLL_INTERVAL_SECONDS = 2
-INSTAGRAM_STATUS_TIMEOUT_SECONDS = 180
-INSTAGRAM_SUCCESS_STATUSES = frozenset({"published", "success"})
-INSTAGRAM_FAILURE_STATUSES = frozenset({"failed", "cancelled", "canceled"})
+FACEBOOK_ACCOUNT_ID_ENV = "LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID"
+FACEBOOK_REQUEST_TIMEOUT_SECONDS = 120
+FACEBOOK_STATUS_POLL_INTERVAL_SECONDS = 2
+FACEBOOK_STATUS_TIMEOUT_SECONDS = 180
+FACEBOOK_SUCCESS_STATUSES = frozenset({"published", "success"})
+FACEBOOK_FAILURE_STATUSES = frozenset({"failed", "cancelled", "canceled"})
 
 
 def load_project_env() -> None:

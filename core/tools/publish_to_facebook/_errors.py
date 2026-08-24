@@ -1,8 +1,8 @@
-"""Instagram 发布错误。"""
+"""Zernio Facebook 发布错误。"""
 
 
-class InstagramToolError(Exception):
-    code = "INSTAGRAM_TOOL_ERROR"
+class FacebookToolError(Exception):
+    code = "FACEBOOK_TOOL_ERROR"
 
     def __init__(self, message: str, details: dict | None = None):
         super().__init__(message)
@@ -13,13 +13,13 @@ class InstagramToolError(Exception):
         return {"error": {"code": self.code, "message": self.message, "details": self.details}}
 
 
-class InvalidParameterError(InstagramToolError):
+class InvalidParameterError(FacebookToolError):
     code = "INVALID_PARAMETER"
 
 
-class CredentialError(InstagramToolError):
+class CredentialError(FacebookToolError):
     code = "ZERNIO_CREDENTIAL_ERROR"
 
 
-class PublishError(InstagramToolError):
-    code = "ZERNIO_INSTAGRAM_PUBLISH_FAILED"
+class PublishError(FacebookToolError):
+    code = "ZERNIO_FACEBOOK_PUBLISH_FAILED"

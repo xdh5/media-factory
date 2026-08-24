@@ -183,8 +183,10 @@ def review_subject_cutouts(
         issue = str(raw.get("issue") or "").strip()
         if valid:
             failure_kind = ""
-        elif failure_kind not in {"crop", "source"}:
-            raise CardCompositionError(f"第 {index} 张坏图必须标记 failure_kind=crop 或 source")
+        elif failure_kind not in {"crop", "source", "background_edge"}:
+            raise CardCompositionError(
+                f"第 {index} 张坏图必须标记 failure_kind=crop、source 或 background_edge"
+            )
         normalized.append({"index": index, "valid": valid, "failure_kind": failure_kind, "issue": issue})
     normalized.sort(key=lambda item: item["index"])
     if any(not path.is_file() for path in cutout_paths):
@@ -211,14 +213,27 @@ def review_subject_cutouts(
         json.dumps({"signature": signature, "failed_rounds": failed_rounds}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    source_broken = any(item["failure_kind"] == "source" for item in invalid)
-    action = "regenerate" if source_broken or failed_rounds >= 2 else "revise_boxes"
+    must_regenerate = any(
+        item["failure_kind"] in {"source", "background_edge"}
+        for item in invalid
+    )
+    action = "regenerate" if must_regenerate or failed_rounds >= 2 else "revise_boxes"
+    validation_issues = [
+        f"第 {item['index']} 个主体 [{item['failure_kind']}]：{item['issue'] or item['failure_kind']}"
+        for item in invalid
+    ]
     return {
         "approved": False,
         "inspection_count": len(normalized),
         "bad_indices": [item["index"] for item in invalid],
         "failed_rounds": failed_rounds,
         "action": action,
+        "validation_issues": validation_issues,
+        "regeneration_instruction": (
+            "换一种与上一张明显不同、且与全部主体颜色反差更大的均匀纯色背景重新生成"
+            if any(item["failure_kind"] == "background_edge" for item in invalid)
+            else ""
+        ),
         "next_tool": "language_learning_prepare_images" if action == "regenerate" else "language_learning_validate_subject_sheet",
         "reviews": normalized,
     }

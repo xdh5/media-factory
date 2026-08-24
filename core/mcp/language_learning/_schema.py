@@ -178,7 +178,10 @@ REVIEW_CUTOUTS_INPUT_SCHEMA = {
                 "properties": {
                     "index": {"type": "integer", "minimum": 1, "maximum": 10},
                     "valid": {"type": "boolean"},
-                    "failure_kind": {"type": "string", "enum": ["", "crop", "source"]},
+                    "failure_kind": {
+                        "type": "string",
+                        "enum": ["", "crop", "source", "background_edge"],
+                    },
                     "issue": {"type": "string"},
                 },
                 "required": ["index", "valid"],
@@ -280,24 +283,46 @@ PUBLISH_VIDEOS_INPUT_SCHEMA = {
         "publish_confirmed": {"type": "boolean", "const": True},
         "targets": {
             "type": "array",
-            "items": {"type": "string", "enum": ["youtube", "tiktok", "instagram"]},
+            "items": {"type": "string", "enum": ["youtube", "tiktok", "instagram", "facebook"]},
             "minItems": 1,
             "uniqueItems": True,
         },
         "publish_at": {
             "type": "string",
             "minLength": 1,
-            "description": "YouTube 平台定时发布时间，必须是带时区的 ISO 8601",
+            "description": "YouTube、TikTok、Instagram、Facebook 定时发布时间，必须是带时区的 ISO 8601",
+        },
+        "publish_at_by_target": {
+            "type": "object",
+            "description": "按平台设置定时时间；值为 null 表示该平台立即发布",
+            "properties": {
+                "youtube": {"type": ["string", "null"]},
+                "tiktok": {"type": ["string", "null"]},
+                "instagram": {"type": ["string", "null"]},
+                "facebook": {"type": ["string", "null"]},
+            },
+            "additionalProperties": False,
         },
         "video_parts": {
             "type": "array",
             "items": {"type": "integer", "enum": [1, 2]},
             "minItems": 1,
             "uniqueItems": True,
-            "description": "只发布指定分段；当前用于 Instagram",
+            "description": "只发布指定分段；当前用于 Instagram 和 Facebook",
         },
     },
     "required": ["manifest_path", "publish_confirmed"],
+    "additionalProperties": False,
+}
+PUBLISH_META_NOW_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
+        "publish_confirmed": {"type": "boolean", "const": True},
+        "facebook_posts": {"type": "array", "items": {"type": "object"}, "minItems": 1},
+        "instagram_posts": {"type": "array", "items": {"type": "object"}, "minItems": 1},
+    },
+    "required": ["run_id", "publish_confirmed", "facebook_posts", "instagram_posts"],
     "additionalProperties": False,
 }
 CLEAR_RUN_INPUT_SCHEMA = {

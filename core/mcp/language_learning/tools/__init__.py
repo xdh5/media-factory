@@ -5,10 +5,12 @@ from .create_vocabulary_videos import create_vocabulary_videos
 from .publish_vocabulary_videos import (
     attach_publish_manifest,
     prepare_r2_publish_manifest,
+    publish_meta_posts_now,
     publish_vocabulary_videos,
     upload_publish_assets_to_r2,
 )
 from .vocabulary_prompt import (
+    build_cutout_validation_prompt,
     build_subject_sheet_prompt,
     build_visual_validation_prompt,
     build_vocabulary_prompt,
@@ -18,6 +20,7 @@ from .vocabulary_history import build_database_word_entries, list_recent_words, 
 
 __all__ = [
     "attach_publish_manifest",
+    "build_cutout_validation_prompt",
     "build_subject_sheet_prompt",
     "build_visual_validation_prompt",
     "build_vocabulary_prompt",
@@ -27,6 +30,7 @@ __all__ = [
     "list_recent_words",
     "parse_vocabulary_response",
     "prepare_r2_publish_manifest",
+    "publish_meta_posts_now",
     "publish_vocabulary_videos",
     "review_subject_cutouts",
     "upload_publish_assets_to_r2",

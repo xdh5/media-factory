@@ -1,4 +1,4 @@
-"""语言学习成片发布：中文发 YouTube，韩语由 MatrixMedia 发布到「韩语」。"""
+"""语言学习成片发布：中文发官方平台，韩语由 MatrixMedia 发布到「韩语」。"""
 
 from __future__ import annotations
 
@@ -372,6 +372,7 @@ def _should_publish_tiktok(manifest: dict) -> bool:
     """TikTok 已成功时不重复提交。"""
     return not (
         manifest.get("tiktok_published") is True
+        or manifest.get("tiktok_scheduled") is True
         or manifest.get("tiktok_draft_delivered") is True
     )
 
@@ -379,6 +380,12 @@ def _should_publish_tiktok(manifest: dict) -> bool:
 def _pending_instagram_parts(manifest: dict, video_parts: list[int] | None) -> set[int]:
     requested = {int(part) for part in (video_parts or [1, 2])}
     published = {int(part) for part in (manifest.get("instagram_published_parts") or [])}
+    return requested - published
+
+
+def _pending_facebook_parts(manifest: dict, video_parts: list[int] | None) -> set[int]:
+    requested = {int(part) for part in (video_parts or [1, 2])}
+    published = {int(part) for part in (manifest.get("facebook_published_parts") or [])}
     return requested - published
 
 
@@ -444,7 +451,7 @@ def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
     }
 
 
-def _publish_chinese_tiktok(item: dict) -> dict:
+def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
     from core.tools.publish_to_tiktok import TikTokToolError, publish_to_tiktok
 
     tiktok_account = str(item.get("tiktok_account") or item.get("youtube_account") or WORKFLOW_ID)
@@ -461,6 +468,7 @@ def _publish_chinese_tiktok(item: dict) -> dict:
                     video_url,
                     content,
                     account=tiktok_account,
+                    publish_at=publish_at,
                 )
                 results.append({"channel": "tiktok", "account": account, "video": video, "success": True, "result": upload})
             except TikTokToolError as error:
@@ -480,18 +488,27 @@ def _publish_chinese_tiktok(item: dict) -> dict:
         str((row.get("result") or {}).get("status") or "") == "draft_delivered"
         for row in results
     )
+    scheduled = all_succeeded and all(
+        str((row.get("result") or {}).get("status") or "") == "scheduled"
+        for row in results
+    )
     return {
         "learning_mode": item["learning_mode"],
         "account_group": item["account_group"],
         "channel": "tiktok",
         "tiktok_published": direct_published,
+        "tiktok_scheduled": scheduled,
         "tiktok_draft_delivered": draft_delivered,
         "success": all_succeeded,
         "results": results,
     }
 
 
-def _publish_chinese_instagram(item: dict, video_parts: set[int]) -> dict:
+def _publish_chinese_instagram(
+    item: dict,
+    video_parts: set[int],
+    publish_at: str | None = None,
+) -> dict:
     from core.tools.publish_to_instagram import (
         InstagramToolError,
         list_instagram_accounts,
@@ -501,7 +518,7 @@ def _publish_chinese_instagram(item: dict, video_parts: set[int]) -> dict:
     accounts = list_instagram_accounts()
     if not accounts:
         raise PublishError(
-            "Instagram Graph API 账号未配置。请在 .env 填写 INSTAGRAM_USER_ID 和 INSTAGRAM_ACCESS_TOKEN"
+            "Zernio 尚未连接 Instagram 专业账号。请先在 Zernio 完成 Instagram OAuth 连接"
         )
     results = []
     for part, video in enumerate(item["videos"], 1):
@@ -517,6 +534,7 @@ def _publish_chinese_instagram(item: dict, video_parts: set[int]) -> dict:
                     video_url,
                     caption,
                     share_to_feed=True,
+                    publish_at=publish_at,
                 )
                 results.append({
                     "channel": "instagram",
@@ -546,27 +564,96 @@ def _publish_chinese_instagram(item: dict, video_parts: set[int]) -> dict:
     }
 
 
+def _publish_chinese_facebook(
+    item: dict,
+    video_parts: set[int],
+    publish_at: str | None = None,
+) -> dict:
+    from core.tools.publish_to_facebook import (
+        FacebookToolError,
+        list_facebook_accounts,
+        publish_to_facebook,
+    )
+
+    accounts = list_facebook_accounts()
+    if not accounts:
+        raise PublishError(
+            "Zernio 尚未连接 Facebook Page。请先在 Zernio 完成 Facebook OAuth 连接"
+        )
+    results = []
+    for part, video in enumerate(item["videos"], 1):
+        if part not in video_parts:
+            continue
+        title = str(video.get("title") or item["title"])
+        description = _description(title, item["tags"])
+        video_url = str(video.get("video_url") or "").strip()
+        for account in accounts:
+            try:
+                upload = publish_to_facebook(
+                    account["page_id"],
+                    video_url,
+                    description,
+                    title=title,
+                    publish_at=publish_at,
+                )
+                results.append({
+                    "channel": "facebook",
+                    "part": part,
+                    "account": account,
+                    "video": video,
+                    "success": True,
+                    "result": upload,
+                })
+            except FacebookToolError as error:
+                results.append({
+                    "channel": "facebook",
+                    "part": part,
+                    "account": account,
+                    "video": video,
+                    "success": False,
+                    "error": error.to_dict()["error"],
+                })
+    succeeded_parts = sorted({row["part"] for row in results if row["success"]})
+    return {
+        "learning_mode": item["learning_mode"],
+        "account_group": item["account_group"],
+        "channel": "facebook",
+        "facebook_published_parts": succeeded_parts,
+        "success": all(row["success"] for row in results) if results else False,
+        "results": results,
+    }
+
+
 def publish_vocabulary_videos(
     manifest_path: str | Path,
     publish_confirmed: bool,
     *,
     targets: list[str] | None = None,
     publish_at: str | None = None,
+    publish_at_by_target: dict[str, str | None] | None = None,
     video_parts: list[int] | None = None,
 ) -> dict:
-    """通过语言学习 MCP 把中文视频发布到 YouTube、TikTok 或 Instagram。"""
+    """通过语言学习 MCP 把中文视频发布到 YouTube、TikTok、Instagram 或 Facebook。"""
     if publish_confirmed is not True:
         raise ConfirmationRequiredError("必须先让用户看过成片并获得明确确认后再发布")
     manifest = _load_manifest(manifest_path)
     database = _commit_manifest_database(manifest)
     selected_targets = {str(item).strip().casefold() for item in (targets or ["youtube", "tiktok"])}
-    unknown_targets = selected_targets - {"youtube", "tiktok", "instagram"}
+    unknown_targets = selected_targets - {"youtube", "tiktok", "instagram", "facebook"}
     if unknown_targets:
         raise PublishError(f"不支持的官方发布目标：{sorted(unknown_targets)}")
+
+    def _publish_time(target: str) -> str | None:
+        if isinstance(publish_at_by_target, dict) and target in publish_at_by_target:
+            return publish_at_by_target[target]
+        return publish_at
+
     include_youtube = "youtube" in selected_targets and _should_publish_youtube(manifest)
     include_tiktok = "tiktok" in selected_targets and _should_publish_tiktok(manifest)
     instagram_parts = _pending_instagram_parts(manifest, video_parts)
     include_instagram = "instagram" in selected_targets and bool(instagram_parts)
+    facebook_parts = _pending_facebook_parts(manifest, video_parts)
+    include_facebook = "facebook" in selected_targets and bool(facebook_parts)
     published = []
     matrixmedia_items = []
     for item in manifest["items"]:
@@ -574,11 +661,17 @@ def publish_vocabulary_videos(
         mode = str(item.get("learning_mode") or "")
         if mode == "en-zh" and channel == "youtube":
             if include_youtube:
-                published.append(_publish_chinese_youtube(item, publish_at=publish_at))
+                published.append(_publish_chinese_youtube(item, publish_at=_publish_time("youtube")))
             if include_tiktok:
-                published.append(_publish_chinese_tiktok(item))
+                published.append(_publish_chinese_tiktok(item, _publish_time("tiktok")))
             if include_instagram:
-                published.append(_publish_chinese_instagram(item, instagram_parts))
+                published.append(
+                    _publish_chinese_instagram(item, instagram_parts, _publish_time("instagram"))
+                )
+            if include_facebook:
+                published.append(
+                    _publish_chinese_facebook(item, facebook_parts, _publish_time("facebook"))
+                )
             continue
         if mode == "en-ko" and channel == "matrixmedia":
             matrixmedia_items.append(item)
@@ -597,6 +690,11 @@ def publish_vocabulary_videos(
     )
     if "tiktok" in selected_targets and tiktok_ok:
         manifest["tiktok_published"] = True
+    tiktok_scheduled_ok = include_tiktok and all(
+        item.get("tiktok_scheduled") for item in published if item.get("channel") == "tiktok"
+    )
+    if "tiktok" in selected_targets and tiktok_scheduled_ok:
+        manifest["tiktok_scheduled"] = True
     tiktok_draft_ok = include_tiktok and all(
         item.get("tiktok_published") or item.get("tiktok_draft_delivered")
         for item in published
@@ -616,6 +714,18 @@ def publish_vocabulary_videos(
             for part in (item.get("instagram_published_parts") or [])
         }
         manifest["instagram_published_parts"] = sorted(previous_parts | completed_parts)
+    facebook_ok = include_facebook and all(
+        item.get("success") for item in published if item.get("channel") == "facebook"
+    )
+    if "facebook" in selected_targets and facebook_ok:
+        previous_parts = {int(part) for part in (manifest.get("facebook_published_parts") or [])}
+        completed_parts = {
+            int(part)
+            for item in published
+            if item.get("channel") == "facebook"
+            for part in (item.get("facebook_published_parts") or [])
+        }
+        manifest["facebook_published_parts"] = sorted(previous_parts | completed_parts)
     manifest["status"] = "published" if chinese_success and not matrixmedia_items else (
         "awaiting_matrixmedia" if chinese_success else "publish_failed"
     )
@@ -629,3 +739,35 @@ def publish_vocabulary_videos(
         "published": published,
         "matrixmedia_items": matrixmedia_items,
     }
+
+
+def publish_meta_posts_now(
+    facebook_posts: list[dict],
+    instagram_posts: list[dict],
+    publish_confirmed: bool,
+) -> dict:
+    """把 Zernio 中已有的 Meta 定时帖子切换成立即发布。"""
+    if publish_confirmed is not True:
+        raise ConfirmationRequiredError("必须获得用户明确确认后才能立即发布 Meta 帖子")
+    from core.tools.publish_to_facebook import publish_facebook_post_now
+    from core.tools.publish_to_instagram import publish_instagram_post_now
+
+    results = []
+    for platform, rows, publisher in (
+        ("facebook", facebook_posts, publish_facebook_post_now),
+        ("instagram", instagram_posts, publish_instagram_post_now),
+    ):
+        for row in rows:
+            post_id = str(row.get("post_id") or "").strip()
+            account_id = str(row.get("account_id") or "").strip()
+            result = publisher(post_id, account_id)
+            results.append({
+                "platform": platform,
+                "post_id": post_id,
+                "account_id": account_id,
+                "success": True,
+                "result": result,
+            })
+    if not results:
+        raise PublishError("没有需要立即发布的 Meta 帖子")
+    return {"success": True, "results": results}

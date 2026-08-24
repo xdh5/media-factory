@@ -51,22 +51,29 @@ def _final_prompt(
     size: str,
     *,
     has_references: bool,
+    reference_usage: str,
 ) -> str:
     parts = [prompt.strip()]
     if style:
         parts.append(f"画风要求：{style['description']}")
     if has_references:
-        reference_purpose = (
-            "第一张用于参考画法、笔触、材质、光影和配色；其余图片如有，"
-            "用于参考业务指定的人物气质、服饰和场景。"
-            if style
-            else "全部图片用于参考画风、人物气质、服饰和场景。"
-        )
-        parts.append(
-            "随附图片均为视觉参考图。"
-            + reference_purpose
-            + "不得复制参考图中的具体人物身份、物体摆放或构图。"
-        )
+        if reference_usage == "style_only":
+            parts.append(
+                "随附图片仅作为视觉风格参考图，只参考画法、笔触、材质、光影、色彩和画面质感。"
+                "禁止参考或复制图中的人物身份、面孔、发型、服装、场景、构图或物体摆放。"
+            )
+        else:
+            reference_purpose = (
+                "第一张用于参考画法、笔触、材质、光影和配色；其余图片如有，"
+                "用于参考业务指定的人物气质、服饰和场景。"
+                if style
+                else "全部图片用于参考画风、人物气质、服饰和场景。"
+            )
+            parts.append(
+                "随附图片均为视觉参考图。"
+                + reference_purpose
+                + "不得复制参考图中的具体人物身份、物体摆放或构图。"
+            )
     parts.append(f"画面比例：{radio}。像素不必正好是 {size}，程序会缩放到 {size}。")
     return "\n\n".join(parts)
 
@@ -132,12 +139,19 @@ def prepare_agent_image_tasks(
     force_image_ids: list[str] | None = None,
     force_images: bool = False,
     metadata: dict | None = None,
+    reference_usage: str = "style_and_context",
 ) -> dict:
     """生成与具体工作流无关的宿主 Agent 生图任务和缓存状态。"""
     if not isinstance(tasks, list) or not tasks:
         raise InvalidParameterError("tasks", "tasks 必须是非空生图任务列表")
     if not isinstance(force_images, bool):
         raise InvalidParameterError("force_images", "force_images 必须是布尔值")
+    normalized_reference_usage = str(reference_usage or "").strip()
+    if normalized_reference_usage not in {"style_only", "style_and_context"}:
+        raise InvalidParameterError(
+            "reference_usage",
+            "reference_usage 只能是 style_only 或 style_and_context",
+        )
     width, height, normalized_radio, normalized_size = _validate_dimensions(radio, size)
     style_name = str(style or "").strip()
     selected_style = _select_style(style_name) if style_name else None
@@ -182,6 +196,7 @@ def prepare_agent_image_tasks(
             normalized_radio,
             normalized_size,
             has_references=has_references,
+            reference_usage=normalized_reference_usage,
         )
         cache_signature = _cache_signature(
             final_prompt,

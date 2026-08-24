@@ -1,26 +1,26 @@
-"""Zernio Instagram 发布 Schema。"""
+"""Zernio Facebook 发布 Schema。"""
 
-PUBLISH_TO_INSTAGRAM_INPUT_SCHEMA = {
+PUBLISH_TO_FACEBOOK_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "user_id": {
+        "page_id": {
             "type": "string",
             "minLength": 1,
-            "description": "Zernio 已连接的 Instagram 账号 ID",
+            "description": "Zernio 已连接的 Facebook Page 账号 ID",
         },
         "video_url": {"type": "string", "pattern": r"^https?://"},
-        "caption": {"type": "string", "maxLength": 2200},
-        "share_to_feed": {"type": "boolean", "default": True},
+        "description": {"type": "string", "maxLength": 63206},
+        "title": {"type": "string", "maxLength": 255},
         "publish_at": {
             "type": ["string", "null"],
             "description": "可选的带时区 ISO 8601 定时时间",
         },
     },
-    "required": ["user_id", "video_url", "caption"],
+    "required": ["page_id", "video_url", "description"],
     "additionalProperties": False,
 }
 
-PUBLISH_TO_INSTAGRAM_OUTPUT_SCHEMA = {
+PUBLISH_TO_FACEBOOK_OUTPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "post_id": {"type": "string"},
@@ -33,29 +33,28 @@ PUBLISH_TO_INSTAGRAM_OUTPUT_SCHEMA = {
     "additionalProperties": False,
 }
 
-INSTAGRAM_ACCOUNT_SCHEMA = {
+FACEBOOK_ACCOUNT_SCHEMA = {
     "type": "object",
     "properties": {
-        "user_id": {"type": "string"},
-        "account_title": {"type": "string"},
-        "username": {"type": "string"},
+        "page_id": {"type": "string"},
+        "page_name": {"type": "string"},
     },
-    "required": ["user_id", "account_title", "username"],
+    "required": ["page_id", "page_name"],
     "additionalProperties": False,
 }
 
-CHECK_INSTAGRAM_CONNECTION_OUTPUT_SCHEMA = {
+CHECK_FACEBOOK_CONNECTION_OUTPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "connected": {"type": "boolean", "const": True},
-        "user_id": {"type": "string"},
-        "username": {"type": "string"},
+        "page_id": {"type": "string"},
+        "page_name": {"type": "string"},
     },
-    "required": ["connected", "user_id", "username"],
+    "required": ["connected", "page_id", "page_name"],
     "additionalProperties": False,
 }
 
-PUBLISH_INSTAGRAM_POST_NOW_INPUT_SCHEMA = {
+PUBLISH_FACEBOOK_POST_NOW_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "post_id": {"type": "string", "minLength": 1},

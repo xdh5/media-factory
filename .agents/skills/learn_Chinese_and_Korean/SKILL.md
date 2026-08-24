@@ -41,9 +41,10 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 ```
 
 - YouTube 使用项目共用的 `YOUTUBE_OAUTH_CLIENT_ID`、`YOUTUBE_OAUTH_CLIENT_SECRET`，并使用 `.env` 里按频道隔离的 `LANGUAGE_LEARNING_YOUTUBE_*`（`youtube_account` 即账号前缀）
-- YouTube 定时发布时，给 `language_learning_start_publish` 传带时区的 ISO 8601 `publish_at`，例如北京时间 `2026-08-23T16:00:00+08:00`。视频会提前上传为私密并由 YouTube 到点公开；不传则保持立即公开。
+- 多平台发布时间不一致时，给 `language_learning_start_publish` 传 `publish_at_by_target`，键为 `youtube`、`tiktok`、`instagram`、`facebook`，值为带时区的 ISO 8601；值为 `null` 表示立即发布。例如 YouTube、TikTok 在北京时间 16:00 发布而 Meta 立即发布：`{"youtube":"2026-08-24T16:00:00+08:00","tiktok":"2026-08-24T16:00:00+08:00","instagram":null,"facebook":null}`。四个平台同一时间时可继续使用兼容参数 `publish_at`。
 - TikTok 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用共用的 `ZERNIO_API_KEY` 与 `LANGUAGE_LEARNING_TIKTOK_*`
-- Instagram 使用 Graph API 和 R2 公网成片；只发指定分段时，给 `language_learning_start_publish` 传 `targets=["instagram"]` 与 `video_parts=[1]` 或 `[2]`。
+- Instagram 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用 Meta 专用的 `zernio_api_key_meta`。Zernio 只有一个健康 Instagram 账号时自动选择；连接多个账号时必须在 `.env` 配置 `LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID`。只发指定分段时，传 `targets=["instagram"]` 与 `video_parts=[1]` 或 `[2]`。
+- Facebook 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用 Meta 专用的 `zernio_api_key_meta`。Zernio 只有一个健康 Facebook Page 时自动选择；连接多个 Page 时必须在 `.env` 配置 `LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID`。只发指定分段时，传 `targets=["facebook"]` 与 `video_parts=[1]` 或 `[2]`。
 - 展示给用户看的账号组名：`中文`；成员从 Cloudflare D1 的发布账号组读取，当前包含 YouTube `language_learning` 与 Meta `daily-chinese-learning` 交叉发布入口。
 
 **韩语 `en-ko`**
@@ -77,6 +78,8 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 1. **成片**：`language_learning_start_create_videos` 与 `language_learning_start_upload_r2` 轮询完成后展示成片路径、标题、标签、账号组与 R2 清单 URL；未确认不得调用发布 MCP。
 2. **清缓存**：发布结束后用户确认才调用 `language_learning_clear_run(run_id, confirmed=true)`。
 
+用户明确启用的每日自动 Workflow 属于持续发布授权：生产成功后可直接把中文成片通过 YouTube 官方 API和 Zernio 排期到当天北京时间 16:00，无需逐日再次确认；手动制作仍执行上述成片确认门禁。自动 Workflow 不清缓存。
+
 词表、主体图、卡片、出片中间步骤不逐项确认。
 
 ## 制作流程
@@ -87,11 +90,11 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
 5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问兜底生图）→ `language_learning_poll_task`。MCP 不调用千问文本或视觉模型。
 6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 亲自检查主题图是否恰好十个主体、上排五个、下排五个且无文字，并返回按上排从左到右、下排从左到右排序的十个保守边界框；调用 `language_learning_validate_subject_sheet` 后，Python 去背景并输出十张抠图。
-7. 宿主 Agent 必须打开十张抠图逐张检查，再调用 `language_learning_review_cutouts` 提交十条结论。第一次仅裁剪框有问题时调整完整十框并重新调用 `language_learning_validate_subject_sheet`；第二次仍抠坏，或源图本身残缺、重叠、被背景色吃掉时，调用 `language_learning_prepare_images` 重新生主题图。主题图最多生成 3 次，第三次仍失败必须报错停止。未通过逐张检查时禁止拼卡。
+7. 调用 `language_learning_get_cutout_validation_prompt`，宿主 Agent 必须打开十张透明抠图，按返回 Prompt 逐张检查主体完整性以及轮廓是否残留原背景色的彩边、描边、光晕、色块或毛边，再调用 `language_learning_review_cutouts` 提交十条结论。色边标记为 `failure_kind=background_edge`，MCP 必须直接要求换一种与上一张明显不同、且与全部主体反差更大的纯色背景重新生成主题图；不得只改裁剪框。第一次仅 `crop` 时调整完整十框并重新调用 `language_learning_validate_subject_sheet`；第二次仍抠坏，或出现 `source`、`background_edge` 时，调用 `language_learning_prepare_images` 重新生主题图。主题图最多生成 3 次，第三次仍失败必须报错停止。未通过逐张检查时禁止拼卡。GitHub Action 没有宿主 Agent 时，由 Runner 调用千问视觉执行同一个 MCP Prompt。
 8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
 9. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。
 10. `language_learning_start_upload_r2` 上传成片、主题图和本地发布清单 → poll 至 `done=true`，保留返回的 `manifest_url` 与 `subject_sheet_url`。
-11. 用户确认发布后：韩语条目交给发布服务器上的 MatrixMedia MCP；中文调用 `language_learning_start_publish` 发布 YouTube 和 TikTok。发布 MCP 幂等写入正式话题与本期 10 个单词。
+11. 用户确认发布后：韩语条目交给发布服务器上的 MatrixMedia MCP；中文调用 `language_learning_start_publish`，默认发布 YouTube 和 TikTok，也可用 `targets` 显式发布 Instagram 或 Facebook。发布 MCP 幂等写入正式话题与本期 10 个单词。
 9. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
@@ -114,6 +117,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 | `language_learning_submit_images` | 提交主体图（同步，勿用） |
 | `language_learning_start_submit_images` | 启动主体图提交（可选千问兜底生图） |
 | `language_learning_get_visual_validation_prompt` | 返回宿主 Agent 的主题图验收 Prompt |
+| `language_learning_get_cutout_validation_prompt` | 返回宿主 Agent 逐张检查抠图完整性和背景色残边的 Prompt |
 | `language_learning_validate_subject_sheet` | 接收宿主 Agent 的十个框并抠图 |
 | `language_learning_review_cutouts` | 接收宿主 Agent 对十张抠图的逐张检查 |
 | `language_learning_compose_cards` | 拼单词卡（同步，勿用） |
@@ -122,6 +126,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 | `language_learning_start_create_videos` | 启动出片后台任务 |
 | `language_learning_start_upload_r2` | 后台上传成片、主题图和发布清单到 R2 |
 | `language_learning_publish` | 兼容旧客户端的同步发布入口 |
-| `language_learning_start_publish` | 后台发布中文 YouTube 和 TikTok，并写入内容历史 |
+| `language_learning_start_publish` | 后台发布中文 YouTube、TikTok、Instagram 或 Facebook，并写入内容历史 |
+| `language_learning_start_publish_meta_now` | 把 Zernio 中已有的 Facebook、Instagram 定时帖子切换成立即发布 |
 | `language_learning_poll_task` | 轮询后台任务 |
 | `language_learning_clear_run` | 清本次目录 |

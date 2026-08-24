@@ -1,6 +1,9 @@
 name: 生成语言学习视频
 
 on:
+  schedule:
+    - cron: "0 0 * * *"
+      timezone: Asia/Shanghai
   workflow_dispatch:
     inputs:
       topic:
@@ -66,9 +69,18 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          YOUTUBE_OAUTH_CLIENT_ID: ${{ secrets.YOUTUBE_OAUTH_CLIENT_ID }}
+          YOUTUBE_OAUTH_CLIENT_SECRET: ${{ secrets.YOUTUBE_OAUTH_CLIENT_SECRET }}
+          LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID }}
+          LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN }}
+          ZERNIO_API_KEY: ${{ secrets.ZERNIO_API_KEY }}
+          zernio_api_key_meta: ${{ secrets.ZERNIO_API_KEY_META }}
+          LANGUAGE_LEARNING_TIKTOK_ACCOUNT_ID: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_ACCOUNT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         shell: bash
         run: |
-          for name in DASHSCOPE_API_KEY CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL; do
+          for name in DASHSCOPE_API_KEY CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL YOUTUBE_OAUTH_CLIENT_ID YOUTUBE_OAUTH_CLIENT_SECRET LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN ZERNIO_API_KEY zernio_api_key_meta LANGUAGE_LEARNING_TIKTOK_ACCOUNT_ID TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
             test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
           done
           echo "生产所需云端配置完整"
@@ -99,10 +111,10 @@ jobs:
           printf '{"status":"not_started"}\n' > "$DIAGNOSTICS_DIR/diagnostics.json"
 
       - name: 生成主题并校验双语词表
-        if: ${{ inputs.source_run_id == '' }}
+        if: ${{ !inputs.source_run_id }}
         env:
           INPUT_TOPIC: ${{ inputs.topic }}
-          INPUT_MODES: ${{ inputs.modes }}
+          INPUT_MODES: ${{ inputs.modes || 'both' }}
         shell: bash
         run: |
           case "$INPUT_MODES" in
@@ -114,11 +126,11 @@ jobs:
           python -m ops.github_actions language_learning_words --topic "$INPUT_TOPIC" --modes "$MODES" --state-path "$STATE_PATH"
 
       - name: 生成主题图并逐张检查十个抠图
-        if: ${{ inputs.source_run_id == '' }}
+        if: ${{ !inputs.source_run_id }}
         run: python -m ops.github_actions language_learning_cards --state-path "$STATE_PATH" --diagnostics-dir "$DIAGNOSTICS_DIR"
 
       - name: 复用旧主题图、词表和裁剪框重新拼卡
-        if: ${{ inputs.source_run_id != '' }}
+        if: ${{ inputs.source_run_id }}
         env:
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -151,6 +163,13 @@ jobs:
   upload:
     name: 第三步：上传 R2
     needs: generate
+    outputs:
+      manifest_url: ${{ steps.upload.outputs.manifest_url }}
+      run_id: ${{ steps.upload.outputs.run_id }}
+      topic: ${{ steps.upload.outputs.topic }}
+      subject_sheet_url: ${{ steps.upload.outputs.subject_sheet_url }}
+      chinese_video_url: ${{ steps.upload.outputs.chinese_video_url }}
+      korean_video_url: ${{ steps.upload.outputs.korean_video_url }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     container:
@@ -175,24 +194,80 @@ jobs:
           path: cache/github_actions/language-learning-handoff
 
       - name: 上传成片、主题图与元数据
+        id: upload
         run: python -m ops.github_actions language_learning_r2 --handoff-dir "$HANDOFF_DIR"
 
-      - name: 确认未执行平台发布
-        run: echo "本工作流到 R2 成片交付结束，不执行任何平台发布。"
+      - name: 确认 R2 交付完成
+        run: echo "成片、主题图与发布清单已上传 R2。"
+
+  publish:
+    name: 第四步：排期四个平台
+    needs: upload
+    if: ${{ needs.upload.outputs.chinese_video_url != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container:
+      image: ghcr.io/xdh5/media-factory-runner:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
+      CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      YOUTUBE_OAUTH_CLIENT_ID: ${{ secrets.YOUTUBE_OAUTH_CLIENT_ID }}
+      YOUTUBE_OAUTH_CLIENT_SECRET: ${{ secrets.YOUTUBE_OAUTH_CLIENT_SECRET }}
+      LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID }}
+      LANGUAGE_LEARNING_YOUTUBE_CHANNEL_TITLE: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CHANNEL_TITLE }}
+      LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN }}
+      ZERNIO_API_KEY: ${{ secrets.ZERNIO_API_KEY }}
+      zernio_api_key_meta: ${{ secrets.ZERNIO_API_KEY_META }}
+      LANGUAGE_LEARNING_TIKTOK_ACCOUNT_ID: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_ACCOUNT_ID }}
+      LANGUAGE_LEARNING_TIKTOK_ACCOUNT_TITLE: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_ACCOUNT_TITLE }}
+      LANGUAGE_LEARNING_TIKTOK_USERNAME: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_USERNAME }}
+      LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID: ${{ secrets.LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID }}
+      LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID: ${{ secrets.LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID }}
+    steps:
+      - name: 检出发布代码
+        uses: actions/checkout@v5
+
+      - name: 给 YouTube、TikTok、Facebook、Instagram 排期
+        env:
+          MANIFEST_URL: ${{ needs.upload.outputs.manifest_url }}
+          RUN_ID: ${{ needs.upload.outputs.run_id }}
+        run: python -m ops.github_actions language_learning_publish --manifest-url "$MANIFEST_URL" --run-id "$RUN_ID"
 
   deliver:
-    name: 第四步：提供产物下载
-    needs: [upload, upload_diagnostics]
-    if: ${{ always() && needs.upload.result == 'success' }}
+    name: 第五步：提供产物下载
+    needs: [upload, publish, upload_diagnostics]
+    if: ${{ always() && needs.upload.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: 显示下载入口
+        env:
+          TOPIC: ${{ needs.upload.outputs.topic }}
+          SUBJECT_SHEET_URL: ${{ needs.upload.outputs.subject_sheet_url }}
+          CHINESE_VIDEO_URL: ${{ needs.upload.outputs.chinese_video_url }}
+          KOREAN_VIDEO_URL: ${{ needs.upload.outputs.korean_video_url }}
         shell: bash
         run: |
-          echo "## 下载本次语言学习产物" >> "$GITHUB_STEP_SUMMARY"
+          echo "主题：$TOPIC" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "[⬇️ 下载 language-learning-${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$SUBJECT_SHEET_URL" ]; then
+            echo "<img src=\"$SUBJECT_SHEET_URL\" alt=\"原始主题图\" width=\"360\">" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$CHINESE_VIDEO_URL" ]; then
+            echo "[下载中文学习视频]($CHINESE_VIDEO_URL)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$KOREAN_VIDEO_URL" ]; then
+            echo "[下载韩语学习视频]($KOREAN_VIDEO_URL)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   upload_diagnostics:
     name: 失败主题图：上传 R2
@@ -223,3 +298,30 @@ jobs:
 
       - name: 上传失败主题图
         run: python -m ops.github_actions language_learning_diagnostics_r2 --diagnostics-dir "$DIAGNOSTICS_DIR"
+
+  notify:
+    name: 第六步：Telegram 通知
+    needs: [prepare, generate, upload, publish, deliver, upload_diagnostics]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      WORKFLOW_NEEDS_JSON: ${{ toJSON(needs) }}
+    steps:
+      - name: 检出通知代码
+        uses: actions/checkout@v5
+
+      - name: 发送成功产物或失败阶段
+        env:
+          TOPIC: ${{ needs.upload.outputs.topic }}
+          SUBJECT_SHEET_URL: ${{ needs.upload.outputs.subject_sheet_url }}
+          CHINESE_VIDEO_URL: ${{ needs.upload.outputs.chinese_video_url }}
+          KOREAN_VIDEO_URL: ${{ needs.upload.outputs.korean_video_url }}
+        run: >-
+          python -m ops.github_actions language_learning_notify
+          --topic-value "$TOPIC"
+          --subject-sheet-url "$SUBJECT_SHEET_URL"
+          --chinese-video-url "$CHINESE_VIDEO_URL"
+          --korean-video-url "$KOREAN_VIDEO_URL"

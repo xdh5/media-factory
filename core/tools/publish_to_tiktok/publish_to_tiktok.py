@@ -7,6 +7,7 @@ import re
 import time
 import uuid
 from copy import deepcopy
+from datetime import datetime, timezone
 
 import requests
 
@@ -45,6 +46,31 @@ def _api_key() -> str:
             {"environment": ZERNIO_API_KEY_ENV},
         )
     return value
+
+
+def _normalize_publish_at(publish_at: str | None) -> str | None:
+    value = str(publish_at or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise InvalidParameterError(
+            "publish_at 必须是带时区的 ISO 8601 时间，例如 2026-08-24T16:00:00+08:00",
+            {"parameter": "publish_at", "value": value},
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise InvalidParameterError(
+            "publish_at 必须明确包含时区，例如北京时间使用 +08:00",
+            {"parameter": "publish_at", "value": value},
+        )
+    normalized = parsed.astimezone(timezone.utc).replace(microsecond=0)
+    if normalized <= datetime.now(timezone.utc):
+        raise InvalidParameterError(
+            "publish_at 必须是未来时间",
+            {"parameter": "publish_at", "value": value},
+        )
+    return normalized.isoformat().replace("+00:00", "Z")
 
 
 def _normalize_account(account: str) -> str:
@@ -95,7 +121,7 @@ def _configured_account(account_id: str, account: str | None) -> dict:
 
 
 def _post_data(result: dict) -> dict:
-    post = result.get("post") or result.get("data") or result
+    post = result.get("post") or result.get("existingPost") or result.get("data") or result
     return post if isinstance(post, dict) else {}
 
 
@@ -196,11 +222,12 @@ def _create_post(payload: dict, request_id: str) -> tuple[str, bool]:
     if not response.ok:
         message = str(result.get("error") or result.get("message") or response.text[:500])
         raise PublishError(f"Zernio 拒绝发布 TikTok：HTTP {response.status_code}，{message}")
+    duplicate = isinstance(result.get("existingPost"), dict)
     post = _post_data(result)
     post_id = str(post.get("_id") or post.get("id") or result.get("postId") or "")
     if not post_id:
         raise PublishError("Zernio 未返回 post ID，无法确认 TikTok 发布任务")
-    return post_id, False
+    return post_id, duplicate
 
 
 def _is_direct_capacity_error(exc: PublishError) -> bool:
@@ -231,8 +258,9 @@ def publish_to_tiktok(
     content: str,
     *,
     account: str | None = None,
+    publish_at: str | None = None,
 ) -> dict:
-    """立即公开发布单个 TikTok 视频。"""
+    """立即或定时发布单个 TikTok 视频。"""
     configured = _configured_account(account_id, account)
     normalized_url = str(video_url or "").strip()
     if not normalized_url.startswith(("https://", "http://")):
@@ -240,7 +268,11 @@ def publish_to_tiktok(
     normalized_content = str(content or "").strip()
     if len(normalized_content) > 2200:
         raise InvalidParameterError("TikTok content 不能超过 2200 个字符", {"parameter": "content"})
-    request_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{configured['account_id']}|{normalized_url}|{normalized_content}"))
+    scheduled_for = _normalize_publish_at(publish_at)
+    request_id = str(uuid.uuid5(
+        uuid.NAMESPACE_URL,
+        f"{configured['account_id']}|{normalized_url}|{normalized_content}|{scheduled_for or 'now'}",
+    ))
     payload = {
         "content": normalized_content,
         "mediaItems": [{"type": "video", "url": normalized_url}],
@@ -255,9 +287,21 @@ def publish_to_tiktok(
             "video_made_with_ai": True,
             "commercialContentType": "none",
         },
-        "publishNow": True,
     }
+    if scheduled_for:
+        payload["scheduledFor"] = scheduled_for
+    else:
+        payload["publishNow"] = True
     post_id, duplicate = _create_post(payload, request_id)
+    if scheduled_for:
+        return {
+            "post_id": post_id,
+            "platform_url": "",
+            "account_id": account_id,
+            "status": "scheduled",
+            "delivery_mode": "direct",
+            "duplicate": duplicate,
+        }
     try:
         if duplicate:
             try:

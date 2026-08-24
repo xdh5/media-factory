@@ -27,5 +27,5 @@
 1. 语言学习 Prompt 放在 `core/mcp/language_learning/prompts/`；财经 MCP 的标题标签与分镜 Prompt 放在 `core/mcp/finance/prompts/`；财经正文范文与业务参数放在 `.agents/skills/finance`，TTS 与发布参数放在 `.agents/skills/learn_Chinese_and_Korean`，对应 MCP 只负责编排。耗时步骤必须通过 MCP 的 `*_start_*` + `*_poll_task` 后台任务轮询（实现见 `core/mcp/_task_runner.py`），禁止同步调用以免 Cursor MCP 客户端超时。
 2. 每个 MCP 必须使用共用话题去重 `get_topic` / `update` 做去重与占坑，禁止另起一套主题库。
 3. 发布与清缓存分开：发布成功后必须再向用户确认是否删除本次生产文件，确认后调用共用 `clear_run`（`core.tools.clear_cache`，MCP 封装为 `*_clear_run`）；不得把清缓存写进发布工具的返回或自动删除。
-4. GitHub Actions 只允许创建财经和语言学习视频、构建生产镜像以及把成片上传 R2；禁止在 Action 中调用矩媒、YouTube、TikTok、Meta 或其他平台发布能力。视频业务编排必须通过对应 MCP Tool，跨 Job 的 R2 成片交付可调用 `core.tools.r2_storage` 公开方法；禁止直接导入 MCP 内部实现。
+4. GitHub Actions 默认只创建财经和语言学习视频、构建生产镜像并上传 R2。用户明确启用的语言学习每日定时 Workflow 可以通过语言学习 MCP 调用 YouTube 官方 API及 Zernio 的 TikTok、Facebook、Instagram 发布能力，并发送 Telegram 任务通知；禁止在 Workflow 中复制或绕过对应工具实现。视频业务编排必须通过对应 MCP Tool，跨 Job 的 R2 成片交付可调用 `core.tools.r2_storage` 公开方法；禁止直接导入 MCP 内部实现。
 5. 交互式生产的文本生成、词表生成、分镜生成与图片视觉验收由宿主 Agent 完成；GitHub Action 没有宿主 Agent 时，允许生产 Runner 调用千问文本、千问视觉和千问兜底生图完成同等步骤，MCP 本身仍禁止直接调用千问文本或千问视觉模型。

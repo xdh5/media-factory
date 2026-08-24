@@ -35,6 +35,14 @@ def build_visual_validation_prompt() -> dict:
     }
 
 
+def build_cutout_validation_prompt() -> dict:
+    """返回宿主 Agent 逐张检查透明抠图与背景色残边所需的 Prompt。"""
+    return {
+        "system_prompt": _read_prompt("cutout-validation-system.md"),
+        "user_prompt": _read_prompt("cutout-validation-user.md"),
+    }
+
+
 def _format(modes: list[str]) -> tuple[str, list[str]]:
     if modes == ["en-zh"]:
         return "序号｜英语｜中文｜拼音", ["english", "chinese", "romanization"]

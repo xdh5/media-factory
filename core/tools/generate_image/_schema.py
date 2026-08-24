@@ -61,6 +61,12 @@ PREPARE_AGENT_IMAGE_TASKS_INPUT_SCHEMA = {
             "uniqueItems": True,
             "description": "可选；除画风参考图外，由业务工作流补充的人物、服饰或场景参考图",
         },
+        "reference_usage": {
+            "type": "string",
+            "enum": ["style_only", "style_and_context"],
+            "default": "style_and_context",
+            "description": "参考图用途；style_only 仅参考画风，style_and_context 兼容参考人物气质、服饰和场景",
+        },
         "context_path": {"type": "string", "minLength": 1},
         "force_image_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": True},
         "force_images": {"type": "boolean", "default": False},
