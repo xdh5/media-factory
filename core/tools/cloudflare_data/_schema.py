@@ -89,7 +89,7 @@ PUBLICATION_RECORD_SCHEMA = {
             ],
         },
         "connector": {"type": "string"},
-        "account_id": {"type": "string"},
+        "account_id": {"type": "string", "minLength": 1},
         "content_part": {"type": "integer", "minimum": 1},
         "title": {"type": "string"},
         "publish_mode": {"type": "string", "enum": ["immediate", "scheduled"]},

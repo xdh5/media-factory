@@ -24,9 +24,10 @@ function dashboardResponse(payload, status = 200) {
     status,
     headers: {
       "Cache-Control": "no-store",
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": "https://xdh5.github.io",
       "Access-Control-Allow-Headers": "Content-Type, X-Dashboard-Pin",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Vary": "Origin",
     },
   });
 }
@@ -34,7 +35,12 @@ function dashboardResponse(payload, status = 200) {
 function isDashboardAuthorized(request, env) {
   const configured = String(env.DASHBOARD_PIN || "").trim();
   const provided = String(request.headers.get("X-Dashboard-Pin") || "").trim();
-  return /^\d{6}$/.test(configured) && provided === configured;
+  if (!/^\d{6}$/.test(configured) || !/^\d{6}$/.test(provided)) return false;
+  let difference = 0;
+  for (let index = 0; index < configured.length; index += 1) {
+    difference |= configured.charCodeAt(index) ^ provided.charCodeAt(index);
+  }
+  return difference === 0;
 }
 
 function requiredText(value, name, maxLength = 500) {
@@ -551,9 +557,9 @@ async function dashboardRecords(request, env) {
     ? env.DB.prepare(
       `SELECT publication_id, run_id, business_line, platform, content_part, title,
               publish_mode, publish_at, status, external_url
-       FROM publication_records WHERE run_id = ?
+       FROM publication_records WHERE substr(publish_at, 1, 10) = ?
        ORDER BY business_line, title, content_part, platform`,
-    ).bind(`run-${selectedDate.replaceAll("-", "")}`)
+    ).bind(selectedDate)
     : env.DB.prepare(
       `SELECT publication_id, run_id, business_line, platform, content_part, title,
               publish_mode, publish_at, status, external_url
@@ -566,7 +572,7 @@ async function dashboardRecords(request, env) {
   const byKey = new Map();
   const itemKey = (item) => [
     item.business_line,
-    item.run_id,
+    item.publish_date || runDate(item.run_id, item.publish_at),
     item.title,
     Number(item.content_part || 1),
   ].join("|");
@@ -641,7 +647,7 @@ async function commitPublicationRecords(request, env) {
     const businessLine = requiredText(item.business_line, "business_line", 64);
     const platform = requiredText(item.platform, "platform", 64);
     const connector = requiredText(item.connector, "connector", 64);
-    const accountId = String(item.account_id || "").trim();
+    const accountId = requiredText(item.account_id, "account_id", 500);
     const contentPart = positiveInteger(item.content_part || 1, "content_part", 1000);
     const title = requiredText(item.title, "title", 1000);
     const publishMode = requiredText(item.publish_mode, "publish_mode", 32);
@@ -669,9 +675,10 @@ async function commitPublicationRecords(request, env) {
          publication_id, run_id, business_line, platform, connector, account_id,
          content_part, title, publish_mode, publish_at, status, external_id, external_url
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(publication_id, platform, account_id, content_part) DO UPDATE SET
+       ON CONFLICT(business_line, title, platform, account_id, content_part) DO UPDATE SET
+         publication_id = excluded.publication_id,
+         run_id = excluded.run_id,
          connector = excluded.connector,
-         title = excluded.title,
          publish_mode = excluded.publish_mode,
          publish_at = excluded.publish_at,
          status = excluded.status,

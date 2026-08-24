@@ -53,15 +53,25 @@ def normalize_publish_timing(publish_mode: str, publish_at: str) -> tuple[str, s
     return scheduled.replace(microsecond=0).isoformat(), scheduled.astimezone(ZoneInfo(BEIJING_TIMEZONE)).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _existing_keys(business_line: str, run_id: str) -> set[tuple]:
+def _content_key(title: str, platform: str, account_id: str, content_part: int) -> tuple:
+    """生成与 D1 唯一索引一致的发布内容键。"""
+    return (
+        str(title).strip(),
+        str(platform).strip(),
+        str(account_id).strip(),
+        int(content_part or 1),
+    )
+
+
+def _existing_keys(business_line: str, publish_date: str) -> set[tuple]:
     return {
-        (
-            str(item.get("publication_id") or ""),
+        _content_key(
+            str(item.get("title") or ""),
             str(item.get("platform") or ""),
             str(item.get("account_id") or ""),
             int(item.get("content_part") or 1),
         )
-        for item in list_publication_records(business_line=business_line, run_id=run_id)
+        for item in list_publication_records(business_line=business_line, publish_date=publish_date)
     }
 
 
@@ -77,12 +87,12 @@ def preview_publication(
     normalized_platforms = normalize_platforms(platforms)
     items = local_publish_items(business_line, normalized_date, content_kind=content_kind)
     routes = resolve_account_group(str(account_group).strip(), business_line, normalized_platforms)
-    existing = _existing_keys(business_line, str(items[0]["run_id"]))
+    existing = _existing_keys(business_line, normalized_date)
     tasks = []
     for item in items:
         for route in routes:
-            key = (
-                str(item["production_id"]),
+            key = _content_key(
+                str(item["title"]),
                 str(route["platform"]),
                 str(route["account_id"]),
                 int(item.get("content_part") or 1),
