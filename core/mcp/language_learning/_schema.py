@@ -226,9 +226,14 @@ SUBJECT_SHEET_VALIDATION_SCHEMA = {
         "top_count": {"type": "integer", "minimum": 0},
         "bottom_count": {"type": "integer", "minimum": 0},
         "has_text": {"type": "boolean"},
+        "background_removed": {"type": "boolean"},
+        "background_removed_sheet_path": {"type": "string"},
+        "cutout_paths": {"type": "array", "items": {"type": "string"}},
+        "inspection_required": {"type": "boolean"},
+        "next_tool": {"type": "string"},
         "vision": {"type": "object", "additionalProperties": True},
     },
-    "required": ["valid", "max_attempts", "issues", "cells", "detected_count", "top_count", "bottom_count", "has_text", "vision"],
+    "required": ["valid", "max_attempts", "issues", "cells", "detected_count", "top_count", "bottom_count", "has_text", "background_removed", "background_removed_sheet_path", "cutout_paths", "inspection_required", "next_tool", "vision"],
     "additionalProperties": False,
 }
 COMPOSE_CARDS_INPUT_SCHEMA = {

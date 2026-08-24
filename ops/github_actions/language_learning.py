@@ -274,12 +274,20 @@ async def generate_cards(
                 break
             if not generation_issues:
                 generation_issues = visual_feedback or ["视觉验收未通过"]
-            source = Path(str(submitted["subject_sheet_path"])).resolve()
+            background_removed_path = str(
+                (validation or {}).get("background_removed_sheet_path") or ""
+            ).strip()
+            if not background_removed_path:
+                raise RuntimeError("主体图验收失败，但没有生成可上传的去背景色主题图")
+            source = Path(background_removed_path).resolve()
+            if not source.is_file():
+                raise RuntimeError(f"去背景色主题图不存在，无法保存失败诊断：{source}")
             failed_image = diagnostic_root / f"subject-sheet-attempt-{generation_attempt}{source.suffix.lower() or '.png'}"
             shutil.copy2(source, failed_image)
             diagnostic_payload["attempts"].append({
                 "generation_attempt": generation_attempt,
                 "file": failed_image.name,
+                "source_stage": "background_removed",
                 "issues": generation_issues,
             })
             diagnostic_payload["status"] = "retrying"
@@ -421,7 +429,7 @@ async def recompose_cards_from_r2(
 
 
 def upload_failed_subject_sheets(diagnostics_dir: str | Path) -> dict:
-    """上传被视觉验收拒绝的主题图；没有失败图时跳过。"""
+    """上传被视觉验收拒绝的去背景色主题图；没有失败图时跳过。"""
     root = Path(diagnostics_dir).resolve()
     metadata_path = root / "diagnostics.json"
     if not metadata_path.is_file():
@@ -430,11 +438,11 @@ def upload_failed_subject_sheets(diagnostics_dir: str | Path) -> dict:
     paths = [root / str(item["file"]) for item in metadata.get("attempts") or []]
     paths = [path for path in paths if path.is_file()]
     if not paths:
-        return {"status": "skipped", "reason": "本次任务没有校验失败的主体图"}
+        return {"status": "skipped", "reason": "本次任务没有校验失败的去背景色主题图"}
     result = upload_diagnostic_files("language_learning", str(metadata["run_id"]), paths, metadata)
     write_summary(
-        "语言学习失败主题图已上传 R2",
-        [("主题", str(metadata["topic"])), ("失败图片数", str(len(paths))), ("保留时间", "1 天"), ("R2 诊断清单", str(result["manifest"]["url"]))],
+        "语言学习失败去背景色主题图已上传 R2",
+        [("主题", str(metadata["topic"])), ("失败图片数", str(len(paths))), ("图片阶段", "去背景色后"), ("保留时间", "1 天"), ("R2 诊断清单", str(result["manifest"]["url"]))],
     )
     return {"status": "uploaded", "r2": result}
 

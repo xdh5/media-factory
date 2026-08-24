@@ -107,6 +107,11 @@ def _inspection_paths(cache_dir: Path) -> tuple[Path, Path]:
     return cache_dir / "inspection.json", cache_dir / "review-history.json"
 
 
+def _background_removed_sheet_path(cache_dir: Path) -> Path:
+    """返回整张去背景色主题图的缓存路径，供失败诊断复用。"""
+    return cache_dir / "subject-sheet-background-removed.png"
+
+
 def _load_cached_cutouts(cache_dir: Path, signature: str) -> list[Image.Image] | None:
     marker, paths = _cutout_cache_paths(cache_dir)
     if not marker.is_file() or marker.read_text(encoding="utf-8").strip() != signature:
@@ -380,10 +385,17 @@ def validate_subject_sheet(
         )
         issues.extend(crop_issues)
     vision["crop_boxes"] = crop_boxes
-    vision["background_rgb"] = list(background_rgb) if background_rgb else []
     valid = not issues
-    if valid and cutout_cache_dir:
-        cache_dir = Path(cutout_cache_dir).resolve()
+    background_removed_sheet_path = None
+    cache_dir = Path(cutout_cache_dir).resolve() if cutout_cache_dir else None
+    if cache_dir:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        background_removed_sheet, saved_background_rgb = _remove_sheet_background(sheet)
+        background_rgb = background_rgb or saved_background_rgb
+        background_removed_sheet_path = _background_removed_sheet_path(cache_dir)
+        background_removed_sheet.save(background_removed_sheet_path, format="PNG")
+    vision["background_rgb"] = list(background_rgb) if background_rgb else []
+    if valid and cache_dir:
         _save_cached_cutouts(
             cache_dir,
             _sheet_signature(sheet_path),
@@ -402,6 +414,9 @@ def validate_subject_sheet(
         "bottom_count": vision["bottom_count"],
         "has_text": vision["has_text"],
         "background_removed": background_rgb is not None,
+        "background_removed_sheet_path": (
+            str(background_removed_sheet_path) if background_removed_sheet_path else ""
+        ),
         "cutout_paths": cutout_paths,
         "inspection_required": valid,
         "next_tool": "language_learning_review_cutouts" if valid else "language_learning_prepare_images",

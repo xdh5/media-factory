@@ -174,7 +174,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: 保存失败主题图记录
+      - name: 保存失败去背景色主题图记录
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
@@ -264,7 +264,7 @@ jobs:
           fi
 
   upload_diagnostics:
-    name: 失败主题图：上传 R2
+    name: 失败去背景色主题图：上传 R2
     needs: generate
     if: ${{ always() && (needs.generate.result == 'success' || needs.generate.result == 'failure') }}
     runs-on: ubuntu-24.04
@@ -284,13 +284,13 @@ jobs:
       - name: 检出上传代码
         uses: actions/checkout@v5
 
-      - name: 下载失败主题图记录
+      - name: 下载失败去背景色主题图记录
         uses: actions/download-artifact@v4
         with:
           name: language-learning-diagnostics-${{ github.run_id }}
           path: cache/github_actions/language-learning-diagnostics
 
-      - name: 上传失败主题图
+      - name: 上传失败去背景色主题图
         run: python -m ops.github_actions language_learning_diagnostics_r2 --diagnostics-dir "$DIAGNOSTICS_DIR"
 
   notify:
