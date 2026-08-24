@@ -5,7 +5,7 @@
 - `topic_history`
 - `language_learning_words`
 - `image_library`
-- `finance_generated_images`：财经千问生成图库，编号独立从 1 持续自增
+- `finance_generated_images`：财经千问生成图库，编号与 `data/image_library_finance/<id>.png` 一致并持续递增
 - `publish_account_groups`
 - `publish_accounts`
 - `publish_account_group_members`
@@ -22,7 +22,9 @@
 
 财经 MCP 通过 `POST /v1/douyin-research/scripts/reserve` 从“财经”分类选择未使用原稿并临时占用，保存改编稿后调用 `POST /v1/douyin-research/scripts/used` 标记为已使用。占用默认两小时后自动过期；全部稿件已使用时接口返回 `DOUYIN_SCRIPTS_EXHAUSTED`，禁止回退到重复稿件。
 
-财经 MCP 的参考图千问生图完成后，通过 `POST /v1/finance-generated-images/commit` 把图片描述和项目相对路径写入独立生成图库；可通过 `GET /v1/finance-generated-images` 按连续编号读取。
+财经 MCP 的参考图千问生图完成后，从 `data/image_library_finance/` 当前最大图片编号继续递增，
+并通过 `POST /v1/finance-generated-images/commit` 把相同编号、图片描述和项目相对路径写入独立生成图库；
+可通过 `GET /v1/finance-generated-images` 按连续编号读取。
 
 部署前需要：
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-QWEN_IMAGE_MODEL = "qwen-image-2.0-pro"
+QWEN_IMAGE_MODEL = "qwen-image-2.0-pro-2026-06-22"
 QWEN_IMAGE_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 AGENT_IMAGE_TASK_VERSION = 4
 AGENT_IMAGE_CONTEXT_NAME = "agent-image-context.json"
@@ -17,8 +17,11 @@ IMAGE_ASPECT_MAX_PIXEL_ERROR = 1
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 IMAGE_LIBRARY_PROJECT_ROOT = _PROJECT_ROOT
 IMAGE_LIBRARY_DATA_ROOT = _PROJECT_ROOT / "data" / "image_library"
+FINANCE_GENERATED_LIBRARY_LINE = "finance_generated"
+FINANCE_GENERATED_LIBRARY_ROOT = _PROJECT_ROOT / "data" / "image_library_finance"
 IMAGE_LIBRARY_CACHE_ROOT = _PROJECT_ROOT / "cache" / "assets"
 IMAGE_LIBRARY_ARCHIVE_KEY_TEMPLATE = "assets/{line}-images.tar"
+FINANCE_GENERATED_LIBRARY_ARCHIVE_KEY = "assets/image_library_finance.tar"
 IMAGE_LIBRARY_LINE_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
 
 SUPPORTED_STYLE_IDS = ["painterly", "realistic", "paper"]

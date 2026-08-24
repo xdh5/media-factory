@@ -20,7 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 def restore_finance_library() -> Path:
     """从 R2 恢复财经图库；压缩包可由 GitHub Cache 复用。"""
-    expected = PROJECT_ROOT / "data" / "image_library" / "finance"
+    expected = PROJECT_ROOT / "data" / "image_library_finance"
     if expected.is_dir() and any(expected.iterdir()):
         return expected
     required = ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"]
@@ -28,7 +28,7 @@ def restore_finance_library() -> Path:
     missing = [name for name, value in values.items() if not value]
     if missing:
         raise RuntimeError(f"恢复财经图库缺少 R2 配置：{', '.join(missing)}")
-    archive = PROJECT_ROOT / "cache" / "assets" / "finance-images.tar"
+    archive = PROJECT_ROOT / "cache" / "assets" / "image_library_finance.tar"
     archive.parent.mkdir(parents=True, exist_ok=True)
     if not archive.is_file() or archive.stat().st_size == 0:
         client = boto3.client(
@@ -38,7 +38,7 @@ def restore_finance_library() -> Path:
             aws_secret_access_key=values["R2_SECRET_ACCESS_KEY"],
             region_name="auto",
         )
-        client.download_file(values["R2_BUCKET"], "assets/finance-images.tar", str(archive))
+        client.download_file(values["R2_BUCKET"], "assets/image_library_finance.tar", str(archive))
     with tarfile.open(archive, "r:") as bundle:
         names = [member.name.replace("\\", "/").lstrip("./") for member in bundle.getmembers() if member.name]
         if not names:
@@ -46,10 +46,10 @@ def restore_finance_library() -> Path:
         first = names[0]
         if first.startswith("data/"):
             target = PROJECT_ROOT
-        elif first.startswith("image_library/"):
+        elif first.startswith("image_library_finance/"):
             target = PROJECT_ROOT / "data"
         else:
-            target = PROJECT_ROOT / "data" / "image_library"
+            target = PROJECT_ROOT / "data"
         target.mkdir(parents=True, exist_ok=True)
         bundle.extractall(target, filter="data")
     if not expected.is_dir() or not any(expected.iterdir()):

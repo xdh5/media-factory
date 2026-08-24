@@ -136,7 +136,11 @@ GENERATE_QWEN_IMAGE_INPUT_SCHEMA = {
 LIST_LOCAL_IMAGES_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "line": {"type": "string", "minLength": 1, "description": "业务线 id，如 finance"},
+        "line": {
+            "type": "string",
+            "minLength": 1,
+            "description": "业务线 id，如 finance；财经统一生成图库使用 finance_generated",
+        },
     },
     "required": ["line"],
     "additionalProperties": False,

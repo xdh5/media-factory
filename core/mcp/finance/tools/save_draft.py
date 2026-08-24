@@ -47,6 +47,24 @@ def _cover_lines(title: str, cover_lines: list[str] | None) -> list[str]:
     return lines
 
 
+def _cover_highlights(title: str, cover_highlights: list[str] | None) -> list[str]:
+    if not isinstance(cover_highlights, list) or not cover_highlights:
+        raise WorkflowStepError("cover_highlights 必须是 Agent 选出的非空封面重点词列表")
+    highlights: list[str] = []
+    for item in cover_highlights:
+        word = str(item).strip()
+        if not word:
+            raise WorkflowStepError("cover_highlights 里不能有空字符串")
+        if word not in title:
+            raise WorkflowStepError(
+                "cover_highlights 中的每个重点词都必须原样出现在长标题 title 中",
+                {"title": title, "highlight": word},
+            )
+        if word not in highlights:
+            highlights.append(word)
+    return highlights
+
+
 def save_draft(
     topic: str,
     article: str,
@@ -58,6 +76,7 @@ def save_draft(
     source_reservation_token: str,
     source_hook: str,
     draft_path: str | Path | None = None,
+    cover_highlights: list[str] | None = None,
 ) -> dict:
     normalized_topic = str(topic or "").strip()
     normalized_article = str(article or "").strip()
@@ -81,6 +100,7 @@ def save_draft(
     metadata_line = "|".join([str(title), str(short_title), *(str(item) for item in hashtags)])
     metadata = parse_metadata(metadata_line)
     normalized_cover_lines = _cover_lines(metadata["title"], cover_lines)
+    normalized_cover_highlights = _cover_highlights(metadata["title"], cover_highlights)
     if draft_path is not None:
         resolved_draft, existing = load_draft(draft_path, "待修改稿件")
         if normalized_topic != str(existing.get("topic") or "").strip():
@@ -116,6 +136,7 @@ def save_draft(
         "article": normalized_article,
         **metadata,
         "cover_lines": normalized_cover_lines,
+        "cover_highlights": normalized_cover_highlights,
         "cache_dir": str(cache_root),
         "output_dir": str(output_root),
         "draft_path": str(target_draft_path),

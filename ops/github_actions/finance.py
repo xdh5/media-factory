@@ -11,7 +11,7 @@ from ._shared import PROJECT_ROOT, json_text, qwen, restore_finance_library, upl
 
 
 TTS_CONFIG = {"voice": "zh-CN-YunjianNeural", "rate": "+20%", "trim_trailing_silence": True}
-IMAGE_CONFIG = {"source": "local_library", "library_line": "finance"}
+IMAGE_CONFIG = {"source": "local_library", "library_line": "finance_generated"}
 PRODUCTION_CONFIG = {
     "cover_frame_seconds": 0.03333333333333333,
     "intro": "slide_in_shutter",
@@ -85,8 +85,10 @@ def _metadata(metadata_prompt: str, article: str) -> dict:
         "你是财经短视频标题编辑，必须输出有效 JSON，不要输出 Markdown。",
         f"{metadata_prompt}\n\n正文：\n{article}\n\n"
         "输出 JSON：{\"metadata\":\"长标题|短标题|标签一|标签二|标签三|标签四\","
-        "\"cover_lines\":[\"封面第一行\",\"封面第二行\"]}。"
-        "cover_lines 必须按语义拆成1至3行，去掉空白拼接后与长标题完全相同。",
+        "\"cover_lines\":[\"封面第一行\",\"封面第二行\"],"
+        "\"cover_highlights\":[\"重点词一\",\"重点词二\"]}。"
+        "cover_lines 必须按语义拆成1至3行，去掉空白拼接后与长标题完全相同；"
+        "cover_highlights 必须选择1至3个原样出现在长标题中的重点词。",
         json_output=True,
         max_tokens=600,
     )
@@ -97,11 +99,15 @@ def _metadata(metadata_prompt: str, article: str) -> dict:
     cover_lines = payload.get("cover_lines")
     if not isinstance(cover_lines, list):
         raise ValueError("千问标题结果缺少 cover_lines 数组")
+    cover_highlights = payload.get("cover_highlights")
+    if not isinstance(cover_highlights, list) or not cover_highlights:
+        raise ValueError("千问标题结果缺少 cover_highlights 数组")
     return {
         "title": parts[0],
         "short_title": parts[1],
         "hashtags": parts[2:],
         "cover_lines": [str(item).strip() for item in cover_lines],
+        "cover_highlights": [str(item).strip() for item in cover_highlights],
     }
 
 

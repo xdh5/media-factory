@@ -35,6 +35,7 @@ from ._constants import MCP_ID, TOPIC_DEDUPLICATION_DAYS
 from ._errors import ConfirmationRequiredError, FinanceError, TaskNotFoundError, WorkflowStepError
 from .tools import (
     build_metadata_prompt,
+    commit_existing_qwen_shot_images,
     finish_finance_video,
     generate_qwen_shot_images,
     prepare_shot_images,
@@ -74,7 +75,7 @@ mcp = FastMCP(
         "第一步必须从抖音研究数据库选择未使用的财经稿件，禁止自行从零写正文；"
         "保存稿件成功后必须把数据库来源标记为已使用。"
         "本地交互制作使用用户参考图逐镜头调用千问生图，每张图都必须有独立任务；"
-        "旧本地图库选图路径继续保留给 GitHub Action。"
+        "GitHub Action 从统一财经生成图库按场景描述选图。"
         "稿件生成后直接制作视频；成品完成后展示成片并等待确认再发布。"
         "耗时步骤（TTS、成片合成）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
         "禁止绕过 MCP 运行本地脚本。"
@@ -130,6 +131,7 @@ def finance_save_draft(
     source_reservation_token: str,
     source_hook: str,
     draft_path: str | None = None,
+    cover_highlights: list[str] | None = None,
 ) -> dict:
     """保存数据库改编稿，随后把来源稿件标记为已使用。"""
     try:
@@ -153,6 +155,7 @@ def finance_save_draft(
             source_reservation_token,
             source_hook,
             draft_path,
+            cover_highlights,
         )
         usage = mark_douyin_research_script_used(
             aweme_id=str(draft["source_aweme_id"]),
@@ -261,6 +264,15 @@ def finance_start_generate_images(context_path: str) -> dict:
             fn=_work,
         )
         return {**started, "poll_tool": "finance_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_commit_existing_images(context_path: str) -> dict:
+    """仅校验现有镜头图片并写入 D1；绝不重新调用千问生图。"""
+    try:
+        return commit_existing_qwen_shot_images(context_path)
     except Exception as exc:
         raise _map_error(exc) from exc
 

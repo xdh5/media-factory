@@ -10,6 +10,9 @@ from pathlib import Path, PurePosixPath
 from core.tools.r2_storage import R2StorageError, download_public_file
 
 from ._constants import (
+    FINANCE_GENERATED_LIBRARY_ARCHIVE_KEY,
+    FINANCE_GENERATED_LIBRARY_LINE,
+    FINANCE_GENERATED_LIBRARY_ROOT,
     IMAGE_LIBRARY_ARCHIVE_KEY_TEMPLATE,
     IMAGE_LIBRARY_CACHE_ROOT,
     IMAGE_LIBRARY_DATA_ROOT,
@@ -41,14 +44,21 @@ def _validated_members(bundle: tarfile.TarFile) -> list[tarfile.TarInfo]:
 
 def restore_image_library(line: str) -> Path:
     """本地图库存在时直接返回；缺失时下载并安全解压 R2 缓存包。"""
-    expected = IMAGE_LIBRARY_DATA_ROOT / line
+    is_finance_generated = line == FINANCE_GENERATED_LIBRARY_LINE
+    expected = FINANCE_GENERATED_LIBRARY_ROOT if is_finance_generated else IMAGE_LIBRARY_DATA_ROOT / line
     if _has_files(expected):
         return expected
-    archive = IMAGE_LIBRARY_CACHE_ROOT / f"{line}-images.tar"
+    archive_name = "image_library_finance.tar" if is_finance_generated else f"{line}-images.tar"
+    archive_key = (
+        FINANCE_GENERATED_LIBRARY_ARCHIVE_KEY
+        if is_finance_generated
+        else IMAGE_LIBRARY_ARCHIVE_KEY_TEMPLATE.format(line=line)
+    )
+    archive = IMAGE_LIBRARY_CACHE_ROOT / archive_name
     if not archive.is_file() or archive.stat().st_size == 0:
         try:
             download_public_file(
-                IMAGE_LIBRARY_ARCHIVE_KEY_TEMPLATE.format(line=line),
+                archive_key,
                 archive,
             )
         except R2StorageError as exc:
@@ -65,13 +75,21 @@ def restore_image_library(line: str) -> Path:
         except (tarfile.TarError, OSError) as exc:
             raise ImageLibraryDataError(f"解压 R2 图库失败：{archive}。{exc}") from exc
         candidates = (
-            staging / "data" / "image_library" / line,
-            staging / "image_library" / line,
-            staging / line,
+            (
+                staging / "data" / "image_library_finance",
+                staging / "image_library_finance",
+            )
+            if is_finance_generated
+            else (
+                staging / "data" / "image_library" / line,
+                staging / "image_library" / line,
+                staging / line,
+            )
         )
         source = next((candidate for candidate in candidates if _has_files(candidate)), None)
         if source is None:
-            raise ImageLibraryDataError(f"R2 图库解压后找不到 {line} 图片目录")
+            expected_name = "image_library_finance" if is_finance_generated else line
+            raise ImageLibraryDataError(f"R2 图库解压后找不到 {expected_name} 图片目录")
         expected.parent.mkdir(parents=True, exist_ok=True)
         if expected.exists() and not _has_files(expected):
             shutil.rmtree(expected)

@@ -29,7 +29,7 @@ _PROJECT_ROOT = _project_root()
 PROJECT_DATA_ROOT = _PROJECT_ROOT / "data"
 PROJECT_CACHE_ROOT = _PROJECT_ROOT / "cache"
 PROJECT_OUTPUT_ROOT = _PROJECT_ROOT / "outputs"
-GENERATED_IMAGE_LIBRARY_ROOT = PROJECT_DATA_ROOT / "image_library" / "finance_generated"
+GENERATED_IMAGE_LIBRARY_ROOT = PROJECT_DATA_ROOT / "image_library_finance"
 
 
 def production_run_id(record_id: int | None = None) -> str:

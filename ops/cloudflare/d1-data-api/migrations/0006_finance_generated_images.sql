@@ -1,4 +1,4 @@
--- 财经千问生图独立图库；编号从 1 开始，后续运行持续自增。
+-- 财经千问生图独立图库；编号与 data/image_library_finance/<id>.png 保持一致。
 CREATE TABLE IF NOT EXISTS finance_generated_images (
     line TEXT NOT NULL DEFAULT 'finance_generated',
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -5,9 +5,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from core.tools.cloudflare_data import CloudflareDataError, list_images
+from core.tools.cloudflare_data import CloudflareDataError, list_finance_generated_images, list_images
 
-from ._constants import IMAGE_LIBRARY_LINE_PATTERN, IMAGE_LIBRARY_PROJECT_ROOT
+from ._constants import (
+    FINANCE_GENERATED_LIBRARY_LINE,
+    IMAGE_LIBRARY_LINE_PATTERN,
+    IMAGE_LIBRARY_PROJECT_ROOT,
+)
 from ._errors import ImageLibraryDataError, ImageLibraryEmptyError, InvalidParameterError
 from ._restore_library import restore_image_library
 
@@ -37,7 +41,11 @@ def list_local_images(line: str) -> list[dict]:
     workflow = _validate_line(line)
     restore_image_library(workflow)
     try:
-        rows = list_images(workflow)
+        rows = (
+            list_finance_generated_images()
+            if workflow == FINANCE_GENERATED_LIBRARY_LINE
+            else list_images(workflow)
+        )
     except CloudflareDataError as exc:
         raise ImageLibraryDataError(
             f"读取 Cloudflare D1 图库失败：{exc.message}",

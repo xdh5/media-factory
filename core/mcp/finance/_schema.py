@@ -74,6 +74,13 @@ FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
             "items": {"type": "string", "minLength": 1},
             "description": "封面用长标题的断行，由 Agent 按语义拆行，拼接后必须等于 title",
         },
+        "cover_highlights": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": True,
+            "items": {"type": "string", "minLength": 1},
+            "description": "长标题中需要标成金黄色的重点词；每项必须原样出现在 title 中",
+        },
         "source_aweme_id": {
             "type": "string",
             "pattern": r"^\d+$",
@@ -97,6 +104,7 @@ FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
         "short_title",
         "hashtags",
         "cover_lines",
+        "cover_highlights",
         "source_aweme_id",
         "source_reservation_token",
         "source_hook",

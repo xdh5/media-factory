@@ -40,6 +40,52 @@ def _load_context(context_path: str | Path) -> tuple[Path, dict, dict, list[dict
     return resolved_context, context, metadata, tasks, image_ids
 
 
+def _commit_generated_images(
+    resolved_context: Path,
+    metadata: dict,
+    tasks: list[dict],
+    image_ids: list[str],
+    *,
+    generated: list[dict],
+    recovered_existing_images: bool,
+) -> dict:
+    manifest = submit_agent_image_tasks(str(resolved_context), [])
+    captions = metadata.get("caption_by_image_id")
+    if not isinstance(captions, dict) or set(captions) != set(image_ids):
+        raise WorkflowStepError("图片描述没有完整覆盖全部生图任务")
+    library_ids = metadata.get("library_id_by_image_id")
+    if not isinstance(library_ids, dict) or set(library_ids) != set(image_ids):
+        raise WorkflowStepError("图库编号没有完整覆盖全部生图任务")
+    records = [
+        {
+            "caption": str(captions[image_id]),
+            "image_path": _project_relative(manifest["images"][image_id]),
+        }
+        for image_id in image_ids
+    ]
+    try:
+        database = commit_finance_generated_images(records)
+    except CloudflareDataError as exc:
+        raise WorkflowStepError(exc.message, exc.details) from exc
+    if len(database["records"]) != len(tasks):
+        raise WorkflowStepError("财经生成图库写入数量与生图任务数量不一致")
+    expected_ids = [int(library_ids[image_id]) for image_id in image_ids]
+    saved_ids = [int(record["id"]) for record in database["records"]]
+    if saved_ids != expected_ids:
+        raise WorkflowStepError(
+            "财经生成图库的 D1 编号与本地图片编号不一致",
+            {"expected_ids": expected_ids, "saved_ids": saved_ids},
+        )
+    return {
+        **manifest,
+        "generated": generated,
+        "database": database,
+        "generated_image_dir": str(metadata.get("generated_image_dir") or ""),
+        "generation_task_count": len(tasks),
+        "recovered_existing_images": recovered_existing_images,
+    }
+
+
 def generate_qwen_shot_images(context_path: str | Path, progress=None) -> dict:
     """生成上下文中的全部镜头图；全部成功后直接写入独立图库。"""
     resolved_context, _, metadata, tasks, image_ids = _load_context(context_path)
@@ -59,29 +105,36 @@ def generate_qwen_shot_images(context_path: str | Path, progress=None) -> dict:
                 cache_signature=str(task.get("cache_signature") or "") or None,
             )
             generated.append({"image_id": image_id, **result})
-        manifest = submit_agent_image_tasks(str(resolved_context), [])
     except ImageGenerationError as exc:
         raise WorkflowStepError(exc.message, exc.details) from exc
-    captions = metadata.get("caption_by_image_id")
-    if not isinstance(captions, dict) or set(captions) != set(image_ids):
-        raise WorkflowStepError("图片描述没有完整覆盖全部生图任务")
-    records = [
-        {
-            "caption": str(captions[image_id]),
-            "image_path": _project_relative(manifest["images"][image_id]),
-        }
-        for image_id in image_ids
+    return _commit_generated_images(
+        resolved_context,
+        metadata,
+        tasks,
+        image_ids,
+        generated=generated,
+        recovered_existing_images=False,
+    )
+
+
+def commit_existing_qwen_shot_images(context_path: str | Path) -> dict:
+    """校验上下文中的现有镜头图并直接写入 D1，绝不调用生图服务。"""
+    resolved_context, _, metadata, tasks, image_ids = _load_context(context_path)
+    missing_paths = [
+        str(Path(str(task.get("output_path") or "")).resolve())
+        for task in tasks
+        if not Path(str(task.get("output_path") or "")).resolve().is_file()
     ]
-    try:
-        database = commit_finance_generated_images(records)
-    except CloudflareDataError as exc:
-        raise WorkflowStepError(exc.message, exc.details) from exc
-    if len(database["records"]) != len(tasks):
-        raise WorkflowStepError("财经生成图库写入数量与生图任务数量不一致")
-    return {
-        **manifest,
-        "generated": generated,
-        "database": database,
-        "generated_image_dir": str(metadata.get("generated_image_dir") or ""),
-        "generation_task_count": total,
-    }
+    if missing_paths:
+        raise WorkflowStepError(
+            "现有镜头图不完整，禁止跳过生图直接入库",
+            {"missing_paths": missing_paths},
+        )
+    return _commit_generated_images(
+        resolved_context,
+        metadata,
+        tasks,
+        image_ids,
+        generated=[],
+        recovered_existing_images=True,
+    )

@@ -49,7 +49,12 @@ FINANCE_GENERATED_IMAGE_COMMIT_INPUT_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "caption": {"type": "string", "minLength": 1, "maxLength": 4000},
-                    "image_path": {"type": "string", "minLength": 1, "maxLength": 1000},
+                    "image_path": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000,
+                        "pattern": r"^data/image_library_finance/[1-9]\d*\.png$",
+                    },
                 },
                 "required": ["caption", "image_path"],
                 "additionalProperties": False,

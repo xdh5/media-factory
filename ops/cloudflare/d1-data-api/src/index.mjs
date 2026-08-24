@@ -385,15 +385,23 @@ async function commitFinanceGeneratedImages(request, env) {
     if (!item || typeof item !== "object") throw new Error("每条图片记录都必须是对象");
     const caption = requiredText(item.caption, "caption", 4000);
     const imagePath = requiredText(item.image_path, "image_path", 1000);
-    if (!/^data\/image_library\/finance_generated\/run-\d+\/[A-Za-z0-9_-]+\.png$/.test(imagePath)) {
+    const pathMatch = imagePath.match(/^data\/image_library_finance\/([1-9]\d*)\.png$/);
+    if (!pathMatch) {
       throw new Error(`image_path 格式不正确：${imagePath}`);
     }
+    const imageId = Number(pathMatch[1]);
+    const occupied = await env.DB.prepare(
+      "SELECT id, image_path FROM finance_generated_images WHERE id = ? OR image_path = ? LIMIT 1",
+    ).bind(imageId, imagePath).first();
+    if (occupied && (Number(occupied.id) !== imageId || String(occupied.image_path) !== imagePath)) {
+      throw new Error(`图片编号 ${imageId} 已被其它路径占用，不能写入 ${imagePath}`);
+    }
     const row = await env.DB.prepare(
-      `INSERT INTO finance_generated_images(line, caption, image_path, created_at, updated_at)
-       VALUES ('finance_generated', ?, ?, ?, ?)
+      `INSERT INTO finance_generated_images(id, line, caption, image_path, created_at, updated_at)
+       VALUES (?, 'finance_generated', ?, ?, ?, ?)
        ON CONFLICT(image_path) DO UPDATE SET caption = excluded.caption, updated_at = excluded.updated_at
        RETURNING id, caption, image_path`,
-    ).bind(caption, imagePath, now, now).first();
+    ).bind(imageId, caption, imagePath, now, now).first();
     saved.push(row);
   }
   return jsonResponse({ records: saved }, 201);

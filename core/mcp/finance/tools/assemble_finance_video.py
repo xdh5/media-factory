@@ -272,6 +272,7 @@ def finish_finance_video(
         "short_title": str(draft["short_title"]),
         "hashtags": list(draft["hashtags"]),
         "cover_lines": list(draft.get("cover_lines") or [str(draft["title"])]),
+        "cover_highlights": list(draft.get("cover_highlights") or [str(draft["title"])]),
     }
     cache_root = Path(draft["cache_dir"]).resolve()
     output_root = Path(draft["output_dir"]).resolve()
@@ -313,6 +314,7 @@ def finish_finance_video(
             cache_root / "cover.png",
             size=VIDEO_SIZE,
             lines=metadata["cover_lines"],
+            highlighted_words=metadata["cover_highlights"],
         )
     except CoverError as exc:
         raise WorkflowStepError(exc.message, exc.details) from exc

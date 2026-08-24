@@ -18,6 +18,7 @@ from ._constants import (
     MIN_FONT_SIZE,
     STROKE_WIDTH,
     TITLE_FILL_COLOR,
+    TITLE_HIGHLIGHT_COLOR,
     TITLE_INSET_BOTTOM,
     TITLE_INSET_TOP,
     TITLE_INSET_X,
@@ -81,6 +82,39 @@ def _normalize_lines(title: str, lines: list[str] | None) -> list[str]:
     return normalized
 
 
+def _normalize_highlighted_words(
+    title: str,
+    lines: list[str],
+    highlighted_words: list[str] | None,
+) -> list[str]:
+    if highlighted_words is None:
+        # 旧稿没有重点词字段时保持原先整行金黄色效果。
+        return list(lines)
+    if not isinstance(highlighted_words, list) or not highlighted_words:
+        raise InvalidParameterError("highlighted_words", "highlighted_words 必须是非空重点词列表")
+    normalized: list[str] = []
+    for item in highlighted_words:
+        word = str(item).strip()
+        if not word:
+            raise InvalidParameterError("highlighted_words", "highlighted_words 里不能有空字符串")
+        if word not in title:
+            raise InvalidParameterError(
+                "highlighted_words",
+                f"封面重点词不在长标题中：{word}",
+            )
+        if word not in normalized:
+            normalized.append(word)
+    return normalized
+
+
+def _line_spans(line: str, highlighted_words: list[str]) -> list[tuple[str, bool]]:
+    terms = sorted((re.escape(word) for word in highlighted_words), key=len, reverse=True)
+    if not terms:
+        return [(line, False)]
+    matcher = re.compile("(" + "|".join(terms) + ")")
+    return [(part, part in highlighted_words) for part in matcher.split(line) if part]
+
+
 def _load_font(font_path: Path, size: int) -> ImageFont.FreeTypeFont:
     try:
         return ImageFont.truetype(str(font_path), size=size)
@@ -132,6 +166,7 @@ def _draw_title(
     font: ImageFont.FreeTypeFont,
     spacing: int,
     box: tuple[int, int, int, int],
+    highlighted_words: list[str],
 ) -> None:
     overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
     shadow_draw = ImageDraw.Draw(overlay)
@@ -160,15 +195,17 @@ def _draw_title(
     cursor_y = start_y
     for line, line_height in zip(lines, heights):
         line_width = font.getlength(line)
-        x = left + max(0, int((box_width - line_width) / 2))
-        draw.text(
-            (x, cursor_y),
-            line,
-            font=font,
-            fill=TITLE_FILL_COLOR,
-            stroke_width=stroke_width,
-            stroke_fill=TITLE_STROKE_COLOR,
-        )
+        cursor_x = left + max(0, int((box_width - line_width) / 2))
+        for text, highlighted in _line_spans(line, highlighted_words):
+            draw.text(
+                (cursor_x, cursor_y),
+                text,
+                font=font,
+                fill=TITLE_HIGHLIGHT_COLOR if highlighted else TITLE_FILL_COLOR,
+                stroke_width=stroke_width,
+                stroke_fill=TITLE_STROKE_COLOR,
+            )
+            cursor_x += font.getlength(text)
         cursor_y += line_height + spacing
 
 
@@ -181,12 +218,18 @@ def generate_cover_image(
     font_path: str | Path | None = None,
     seed: int | None = None,
     lines: list[str] | None = None,
+    highlighted_words: list[str] | None = None,
 ) -> dict:
-    """随机抽一张底图，用典迹题幕刻金黄字、黑描边和右下浅阴影。断行由调用方传入 lines，工具只缩放字号不自动折行。"""
+    """随机抽一张底图，刻白字与金黄重点词、粗黑描边和右下浅阴影。"""
     normalized_title = str(title or "").strip()
     if not normalized_title:
         raise InvalidParameterError("title", "title 必须是非空字符串")
     drawn_lines = _normalize_lines(normalized_title, lines)
+    normalized_highlights = _normalize_highlighted_words(
+        normalized_title,
+        drawn_lines,
+        highlighted_words,
+    )
     candidates = _validate_images(images)
     width, height, normalized_size = _parse_size(size)
     resolved_font = Path(font_path or DEFAULT_COVER_FONT_PATH).resolve()
@@ -202,7 +245,7 @@ def generate_cover_image(
         raise CoverSourceImageError(f"无法读取封面底图：{source_path}。{exc}") from exc
     box = _title_box(width, height)
     font, spacing, font_size = _fit_layout(drawn_lines, resolved_font, box)
-    _draw_title(canvas, drawn_lines, font, spacing, box)
+    _draw_title(canvas, drawn_lines, font, spacing, box, normalized_highlights)
     destination = Path(output_path).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(f".{destination.stem}-{uuid4().hex}.tmp.png")
@@ -221,7 +264,9 @@ def generate_cover_image(
         "size": normalized_size,
         "font_path": str(resolved_font),
         "fill_color": list(TITLE_FILL_COLOR),
+        "highlight_color": list(TITLE_HIGHLIGHT_COLOR),
         "stroke_color": list(TITLE_STROKE_COLOR),
-        "theme_color": list(TITLE_FILL_COLOR),
+        "theme_color": list(TITLE_HIGHLIGHT_COLOR),
         "lines": drawn_lines,
+        "highlighted_words": normalized_highlights,
     }

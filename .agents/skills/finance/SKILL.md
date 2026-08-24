@@ -60,25 +60,26 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 ```
 
 - 每个分镜镜头必须建立一条独立生图任务，任务数量必须完整覆盖全部镜头。
-- 每张图必须以人像为明确主体，至少出现一名东亚人，且画面中的所有人物都必须是东亚人。
+- 每张图必须以人像为明确主体，画面中的所有人物都必须是欧美人，并具有自然真实的欧美面孔。
 - 画面固定为明亮、通透、温暖的轻油画风，使用高亮自然光、浅色背景、清爽配色和细腻可见的油画笔触；禁止阴暗、压抑、厚重或脏灰。
 - 人物必须姿态挺拔舒展、神态坚定从容，呈现有力量、正能量、自信、积极向上的气质；禁止软弱、颓丧、焦虑或消沉。
-- 所有任务必须携带同一张用户参考图，以统一画风、光影、色彩和质感；不得复制参考图中的具体人物、文字、书名、Logo、办公室构图或物体摆放，生成画面禁止文字和水印。
+- 所有任务必须携带同一张用户参考图，但参考图只能用于统一画风、笔触、光影、色彩和质感；禁止参考或复制图中的人物身份、面孔、发型、服装、办公室场景、构图、书桌、电脑及其他物体摆放。必须优先执行当前镜头的场景描述，不得默认生成蓝色西装、办公桌、笔记本电脑或窗边办公室；生成画面禁止文字和水印。
 - 调用 `finance_start_generate_images(context_path)` 后，用 `finance_poll_task` 轮询；任一镜头失败即停止，不得用旧图库图片补位。
-- 每次图片保存到 `data/image_library/finance_generated/<run_id>/` 独立目录。
-- 全部生图成功后，MCP 自动把图片描述和路径写入独立 `finance_generated_images` 图库；编号从 1 开始，后续运行继续递增。
+- 如果全部本地图片已经生成，仅最终 D1 入库因网络异常失败，重连 MCP 后必须调用 `finance_commit_existing_images(context_path)`；该恢复工具只校验现有图片并入库，禁止再次调用千问生图。
+- 图片统一保存到 `data/image_library_finance/`，文件名使用与 D1 相同的连续数字编号，例如 `1.png`、`2.png`。
+- 每次生图从文件夹中现有 `.png` 的最大数字编号继续递增；全部成功后，MCP 自动把相同编号、图片描述和路径写入 `finance_generated_images`。
 
 GitHub Action 暂时继续使用原本的本地图库选图模式，不得删除或改成千问生图：
 
 ```json
 {
   "source": "local_library",
-  "library_line": "finance"
+  "library_line": "finance_generated"
 }
 ```
 
-- 图库目录：`data/image_library/finance/`
-- 本地图库存在时直接使用；缺失时 MCP 自动从 R2 的 `assets/finance-images.tar` 下载并解压恢复
+- 图库目录：`data/image_library_finance/`
+- 本地图库存在时直接使用；缺失时 MCP 自动从 R2 的 `assets/image_library_finance.tar` 下载并解压恢复
 - 图库记录格式：`{id, caption, image_path}`
 - `finance_prepare_images` 返回 `library_catalog` 与 `selection_tasks`；Agent 对照每个镜头的 `match_query` 与各图 `caption`，选出语义最贴近的一张
 - 选好后调用 `finance_submit_images`，`images` 传入 `[{image_id, image_path}]`（`image_path` 用 catalog 中的路径）
@@ -138,7 +139,8 @@ SUB|L002|你以为涨薪就能存钱
 2. 按本 Skill 的 `prompts/finance.md` 把原稿改为 450～550 字；黄金钩子和原结构不得改变，宣传品牌统一替换为【财富研习岛】。
 3. 从改编正文提炼 `topic`；调用 `finance_get_metadata_prompt` 后写标题标签行。
 4. 用**长标题**按语义断成 1～3 行 `cover_lines`（拼接去空白后必须等于长标题 `title`）。封面不自动折行。
-5. `finance_save_draft`：除原参数外传入 `source_aweme_id`、`source_reservation_token`、`source_hook`。保存成功后 MCP 自动将数据库原稿标记为已使用，直接进入制作。
+5. 从长标题中选出 1～3 个真正承载点击理由的重点词，作为 `cover_highlights` 传入；每项必须原样出现在 `title` 中。封面重点词使用 `#F2A623` 金黄色，其他文字使用白色，统一加 6px 黑色描边。
+6. `finance_save_draft`：除原参数外传入 `source_aweme_id`、`source_reservation_token`、`source_hook` 和 `cover_highlights`。保存成功后 MCP 自动将数据库原稿标记为已使用，直接进入制作。
 
 ### 第二阶段：制作与发布
 
@@ -171,6 +173,7 @@ SUB|L002|你以为涨薪就能存钱
 | `finance_poll_task` | 轮询后台任务 |
 | `finance_prepare_images` | 按 image_config 准备镜头图 |
 | `finance_start_generate_images` | 按用户参考图逐镜头调用千问生图，并直接写入独立连续编号图库 |
+| `finance_commit_existing_images` | 生图已完成但 D1 入库失败时，仅校验现有图并重试入库，绝不重新生图 |
 | `finance_save_images` | 写入已生成图（通常不用） |
 | `finance_submit_images` | 提交选图清单 |
 | `finance_finish_video` | 合成成片（同步，易超时，勿用） |
