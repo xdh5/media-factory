@@ -100,11 +100,12 @@ def _prepare_local_library(
         "library_catalog": catalog,
         "selection_tasks": selection_tasks,
         "selection_instructions": (
+            f"本期已固定使用图库 line={library_line}，所有镜头必须且只能来自该图库。"
             "对照每个镜头的 match_query 与 library_catalog 中各图的 caption，"
             "为每个 image_id 选出语义最贴近的一张图；"
             "然后调用 finance_submit_images，"
             "images 传入 [{image_id, image_path}]，image_path 使用 catalog 中的路径。"
-            "同一期可重复使用同一张图，无需考虑历史选用均分。"
+            "同一期可重复使用同一张图，禁止混用另一个图库。"
         ),
     }
     context_path.write_text(json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8")

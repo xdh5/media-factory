@@ -16,10 +16,23 @@ IMAGE_ASPECT_MAX_PIXEL_ERROR = 1
 # 本地图库
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 IMAGE_LIBRARY_PROJECT_ROOT = _PROJECT_ROOT
+IMAGE_LIBRARY_CACHE_ROOT = _PROJECT_ROOT / "cache" / "assets"
+
+FINANCE_LEGACY_LIBRARY_LINE = "finance"
+FINANCE_LEGACY_LIBRARY_ROOT = _PROJECT_ROOT / "data" / "image_library" / "finance"
+FINANCE_LEGACY_LIBRARY_PACK_ROOT = _PROJECT_ROOT / "data" / "image_library"
+FINANCE_LEGACY_LIBRARY_ARCHIVE_NAME = "image_library.tar"
+FINANCE_LEGACY_LIBRARY_ARCHIVE_KEY = "assets/image_library.tar"
+
 FINANCE_GENERATED_LIBRARY_LINE = "finance_generated"
 FINANCE_GENERATED_LIBRARY_ROOT = _PROJECT_ROOT / "data" / "image_library_finance"
-IMAGE_LIBRARY_CACHE_ROOT = _PROJECT_ROOT / "cache" / "assets"
+FINANCE_GENERATED_LIBRARY_ARCHIVE_NAME = "image_library_finance.tar"
 FINANCE_GENERATED_LIBRARY_ARCHIVE_KEY = "assets/image_library_finance.tar"
+
+FINANCE_LOCAL_LIBRARY_LINES = (
+    FINANCE_LEGACY_LIBRARY_LINE,
+    FINANCE_GENERATED_LIBRARY_LINE,
+)
 
 SUPPORTED_STYLE_IDS = ["painterly", "realistic", "paper"]
 

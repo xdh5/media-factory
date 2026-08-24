@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
-import tarfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -93,43 +92,13 @@ def daily_production_preflight(
     }
 
 
-def restore_finance_library() -> Path:
-    """从 R2 恢复财经图库；压缩包可由 GitHub Cache 复用。"""
-    expected = PROJECT_ROOT / "data" / "image_library_finance"
-    if expected.is_dir() and any(expected.iterdir()):
-        return expected
-    required = ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"]
-    values = {name: os.getenv(name, "").strip() for name in required}
-    missing = [name for name, value in values.items() if not value]
-    if missing:
-        raise RuntimeError(f"恢复财经图库缺少 R2 配置：{', '.join(missing)}")
-    archive = PROJECT_ROOT / "cache" / "assets" / "image_library_finance.tar"
-    archive.parent.mkdir(parents=True, exist_ok=True)
-    if not archive.is_file() or archive.stat().st_size == 0:
-        client = boto3.client(
-            "s3",
-            endpoint_url=f"https://{values['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
-            aws_access_key_id=values["R2_ACCESS_KEY_ID"],
-            aws_secret_access_key=values["R2_SECRET_ACCESS_KEY"],
-            region_name="auto",
-        )
-        client.download_file(values["R2_BUCKET"], "assets/image_library_finance.tar", str(archive))
-    with tarfile.open(archive, "r:") as bundle:
-        names = [member.name.replace("\\", "/").lstrip("./") for member in bundle.getmembers() if member.name]
-        if not names:
-            raise RuntimeError("R2 财经图库压缩包为空")
-        first = names[0]
-        if first.startswith("data/"):
-            target = PROJECT_ROOT
-        elif first.startswith("image_library_finance/"):
-            target = PROJECT_ROOT / "data"
-        else:
-            target = PROJECT_ROOT / "data"
-        target.mkdir(parents=True, exist_ok=True)
-        bundle.extractall(target, filter="data")
-    if not expected.is_dir() or not any(expected.iterdir()):
-        raise RuntimeError(f"财经图库解压后目录不存在或为空：{expected}")
-    return expected
+def restore_finance_image_library(library_line: str) -> Path:
+    """恢复指定财经图库；本地已有文件时跳过 R2。"""
+    from core.tools.generate_image._restore_library import restore_image_library
+
+    library = restore_image_library(library_line)
+    print(f"财经图库已就绪：line={library_line} path={library}", flush=True)
+    return library
 
 
 def qwen(system_prompt: str, user_prompt: str, *, json_output: bool = False, max_tokens: int = 8192) -> dict:

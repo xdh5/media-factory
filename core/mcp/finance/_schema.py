@@ -14,7 +14,7 @@ IMAGE_CONFIG_SCHEMA = {
     "type": "object",
     "properties": {
         "source": {"type": "string", "enum": ["local_library", "qwen_reference"]},
-        "library_line": {"type": "string", "minLength": 1},
+        "library_line": {"type": "string", "enum": ["finance", "finance_generated"]},
         "reference_image_path": {"type": "string", "minLength": 1},
     },
     "required": ["source"],

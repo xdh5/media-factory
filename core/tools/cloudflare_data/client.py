@@ -196,6 +196,13 @@ def validate_and_record_words(
     return payload
 
 
+def list_image_library(*, line: str = "finance") -> list[dict]:
+    payload = _request("GET", "/v1/image-library", query={"line": line})
+    if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+        raise CloudflareDataRequestError("Cloudflare 存量图库接口缺少 records 数组")
+    return payload["records"]
+
+
 def list_finance_generated_images() -> list[dict]:
     payload = _request("GET", "/v1/finance-generated-images")
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):

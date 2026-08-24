@@ -7,6 +7,7 @@ import random
 import re
 from pathlib import Path
 
+from core.tools.generate_image import choose_finance_library_line
 from ._mcp import MCPCallError, ProjectMCP
 from core.tools.cloudflare_data import commit_production_outputs
 from ._shared import (
@@ -14,14 +15,12 @@ from ._shared import (
     json_text,
     qwen,
     resolve_publish_date,
-    restore_finance_library,
     upload_run_files,
     write_summary,
 )
 
 
 TTS_CONFIG = {"voice": "zh-CN-YunjianNeural", "rate": "+20%", "trim_trailing_silence": True}
-IMAGE_CONFIG = {"source": "local_library", "library_line": "finance_generated"}
 PRODUCTION_CONFIG = {
     "cover_frame_seconds": 0.03333333333333333,
     "intro": "slide_in_shutter",
@@ -148,7 +147,8 @@ def _select_images(prepared: dict) -> list[dict]:
 
 
 async def run(requested_topic: str = "", publish_date: str = "") -> dict:
-    restore_finance_library()
+    library_line = choose_finance_library_line()
+    image_config = {"source": "local_library", "library_line": library_line}
     publish_date = resolve_publish_date(publish_date)
     async with ProjectMCP("core.mcp.finance", PROJECT_ROOT) as mcp:
         selected = await mcp.call("finance_get_source_script")
@@ -194,7 +194,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
             try:
                 prepared = await mcp.call(
                     "finance_prepare_images",
-                    {"draft_path": draft["draft_path"], "storyboard_text": storyboard, "image_config": IMAGE_CONFIG},
+                    {"draft_path": draft["draft_path"], "storyboard_text": storyboard, "image_config": image_config},
                 )
                 break
             except MCPCallError as exc:
@@ -251,6 +251,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
         [
             ("话题", topic),
             ("标题", manifest["title"]),
+            ("图库", library_line),
             ("BGM", production_config["bgm_path"].rsplit("/", 1)[-1]),
             ("R2 清单", remote["manifest"]["url"]),
             ("平台发布", "未执行"),

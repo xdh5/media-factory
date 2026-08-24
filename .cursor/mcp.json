@@ -21,6 +21,17 @@
         "PYTHONPATH": "${workspaceFolder}",
         "PYTHONUTF8": "1"
       }
+    },
+    "media-factory-publishing": {
+      "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "args": [
+        "-m",
+        "core.mcp.publishing"
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "PYTHONUTF8": "1"
+      }
     }
   }
 }

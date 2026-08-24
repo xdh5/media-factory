@@ -139,8 +139,8 @@ LIST_LOCAL_IMAGES_INPUT_SCHEMA = {
         "line": {
             "type": "string",
             "minLength": 1,
-            "const": "finance_generated",
-            "description": "通用图库已停用，只支持财经统一生成图库 finance_generated",
+            "enum": ["finance", "finance_generated"],
+            "description": "财经本地图库 line；finance 读 image_library，finance_generated 读 finance_generated_images",
         },
     },
     "required": ["line"],

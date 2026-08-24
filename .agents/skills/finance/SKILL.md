@@ -71,21 +71,24 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 - 图片统一保存到 `data/image_library_finance/`，文件名使用与 D1 相同的连续数字编号，例如 `1.png`、`2.png`。
 - 每次生图从文件夹中现有 `.png` 的最大数字编号继续递增；全部成功后，MCP 自动把相同编号、图片描述和路径写入 `finance_generated_images`。
 
-GitHub Action 暂时继续使用原本的本地图库选图模式，不得删除或改成千问生图：
+GitHub Action 继续使用本地图库选图模式，不得删除或改成千问生图。每期开始必须先随机固定一个图库 line，整期所有镜头只能来自该图库，禁止混用：
+
+- `finance`：存量图库，D1 表 `image_library`，目录 `data/image_library/finance/`，R2 包 `assets/image_library.tar`
+- `finance_generated`：千问生成图库，D1 表 `finance_generated_images`，目录 `data/image_library_finance/`，R2 包 `assets/image_library_finance.tar`
+
+随机选定后，`finance_prepare_images` 传入：
 
 ```json
 {
   "source": "local_library",
-  "library_line": "finance_generated"
+  "library_line": "finance 或 finance_generated"
 }
 ```
 
-- 图库目录：`data/image_library_finance/`
-- 本地图库存在时直接使用；缺失时 MCP 自动从 R2 的 `assets/image_library_finance.tar` 下载并解压恢复
 - 图库记录格式：`{id, caption, image_path}`
 - `finance_prepare_images` 返回 `library_catalog` 与 `selection_tasks`；Agent 对照每个镜头的 `match_query` 与各图 `caption`，选出语义最贴近的一张
 - 选好后调用 `finance_submit_images`，`images` 传入 `[{image_id, image_path}]`（`image_path` 用 catalog 中的路径）
-- 同一期可重复使用同一张图，无需考虑历史选用均分
+- 同一期可重复使用同一张图；禁止跨图库混选
 - 禁止宿主生图
 
 ### 成片（`finance_finish_video` 的 `production_config`）

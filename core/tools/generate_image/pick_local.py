@@ -2,26 +2,38 @@
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
-from core.tools.cloudflare_data import CloudflareDataError, list_finance_generated_images
+from core.tools.cloudflare_data import (
+    CloudflareDataError,
+    list_finance_generated_images,
+    list_image_library,
+)
 
 from ._constants import (
     FINANCE_GENERATED_LIBRARY_LINE,
+    FINANCE_LEGACY_LIBRARY_LINE,
+    FINANCE_LOCAL_LIBRARY_LINES,
     IMAGE_LIBRARY_PROJECT_ROOT,
 )
 from ._errors import ImageLibraryDataError, ImageLibraryEmptyError, InvalidParameterError
 from ._restore_library import restore_image_library
 
-__all__ = ["list_local_images"]
+__all__ = ["choose_finance_library_line", "list_local_images"]
+
+
+def choose_finance_library_line() -> str:
+    """每期随机固定一个财经本地图库；整期所有镜头必须来自同一图库。"""
+    return random.choice(list(FINANCE_LOCAL_LIBRARY_LINES))
 
 
 def _validate_line(line: str) -> str:
     value = str(line or "").strip()
-    if value != FINANCE_GENERATED_LIBRARY_LINE:
+    if value not in FINANCE_LOCAL_LIBRARY_LINES:
         raise InvalidParameterError(
             "line",
-            f"通用 image_library 已停用，line 只能是 {FINANCE_GENERATED_LIBRARY_LINE}",
+            f"财经本地图库 line 只能是 {', '.join(FINANCE_LOCAL_LIBRARY_LINES)}",
         )
     return value
 
@@ -37,12 +49,20 @@ def _resolve_image(image_path: str | None) -> Path | None:
     return path if path.is_file() else None
 
 
+def _list_catalog_rows(line: str) -> list[dict]:
+    if line == FINANCE_GENERATED_LIBRARY_LINE:
+        return list_finance_generated_images()
+    if line == FINANCE_LEGACY_LIBRARY_LINE:
+        return list_image_library(line=FINANCE_LEGACY_LIBRARY_LINE)
+    raise InvalidParameterError("line", f"未实现的财经图库 line：{line}")
+
+
 def list_local_images(line: str) -> list[dict]:
-    """确保本地图片已从 R2 恢复，再结合 D1 元数据返回图库。"""
+    """确保本地图片已从 R2 恢复，再结合对应 D1 表返回图库。"""
     workflow = _validate_line(line)
     restore_image_library(workflow)
     try:
-        rows = list_finance_generated_images()
+        rows = _list_catalog_rows(workflow)
     except CloudflareDataError as exc:
         raise ImageLibraryDataError(
             f"读取 Cloudflare D1 图库失败：{exc.message}",

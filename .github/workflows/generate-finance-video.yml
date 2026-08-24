@@ -18,6 +18,7 @@ on:
 permissions:
   contents: read
   packages: read
+  actions: write
 
 concurrency:
   group: generate-finance-video
@@ -100,11 +101,50 @@ jobs:
     steps:
       - name: 检出生产代码
         uses: actions/checkout@v5
-      - name: 恢复财经图库缓存
-        uses: actions/cache@v4
+      - name: 恢复存量图库工作流缓存
+        id: cache-legacy-library
+        uses: actions/cache/restore@v4
         with:
-          path: cache/assets/image_library_finance.tar
-          key: image-library-finance-r2-v1
+          path: data/image_library
+          key: image-library-finance-legacy-v1
+      - name: 缓存未命中时从 R2 恢复存量图库
+        if: steps.cache-legacy-library.outputs.cache-hit != 'true'
+        run: python -m ops.github_actions finance_restore_library --library-line finance
+      - name: 保存存量图库到工作流缓存
+        if: steps.cache-legacy-library.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data/image_library
+          key: image-library-finance-legacy-v1
+      - name: 恢复千问图库工作流缓存
+        id: cache-generated-library
+        uses: actions/cache/restore@v4
+        with:
+          path: data/image_library_finance
+          key: image-library-finance-generated-v2
+      - name: 缓存未命中时从 R2 恢复千问图库
+        if: steps.cache-generated-library.outputs.cache-hit != 'true'
+        run: python -m ops.github_actions finance_restore_library --library-line finance_generated
+      - name: 保存千问图库到工作流缓存
+        if: steps.cache-generated-library.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data/image_library_finance
+          key: image-library-finance-generated-v2
+      - name: 说明图库缓存来源
+        shell: bash
+        run: |
+          if [ "${{ steps.cache-legacy-library.outputs.cache-hit }}" = "true" ]; then
+            echo "存量图库 data/image_library 命中 GitHub Actions 缓存。" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "存量图库 data/image_library 未命中缓存，已从 R2 恢复并写入缓存。" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "${{ steps.cache-generated-library.outputs.cache-hit }}" = "true" ]; then
+            echo "千问图库 data/image_library_finance 命中 GitHub Actions 缓存。" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "千问图库 data/image_library_finance 未命中缓存，已从 R2 恢复并写入缓存。" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "每期生产会随机固定使用 finance 或 finance_generated 其中一个图库。" >> "$GITHUB_STEP_SUMMARY"
       - name: 生成财经成片并交付 R2
         env:
           INPUT_TOPIC: ${{ inputs.topic }}

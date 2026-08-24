@@ -4,6 +4,7 @@
 
 - `topic_history`
 - `language_learning_words`
+- `image_library`：财经存量镜头图库（`line=finance`，id 1–120），路径为 `data/image_library/finance/<id>.png`
 - `finance_generated_images`：财经千问生成图库，编号与 `data/image_library_finance/<id>.png` 一致并持续递增
 - `publication_records`：记录财经和语言学习内容在各具体平台的标题、发布方式和精确发布时间
 - `publishing_account_groups` / `publishing_account_group_members`：统一发布账号组与非敏感路由引用；不保存密码、Cookie、Token 或手机号凭据
@@ -25,9 +26,14 @@
 
 可通过 `GET /v1/douyin-research/scripts/stats?collection_code=finance&workflow=finance&reservation_minutes=120` 只读查询稿件总数、可用数、有效占用数和已使用数；过期占用计入可用数，查询不会创建或更新占用记录。
 
+可通过 `GET /v1/image-library?line=finance` 读取存量镜头图库。
+
 财经 MCP 的参考图千问生图完成后，从 `data/image_library_finance/` 当前最大图片编号继续递增，
 并通过 `POST /v1/finance-generated-images/commit` 把相同编号、图片描述和项目相对路径写入独立生成图库；
 可通过 `GET /v1/finance-generated-images` 按连续编号读取。
+
+存量图库通过 `GET /v1/image-library?line=finance` 读取；本地缺失时从 R2 的 `assets/image_library.tar` 恢复。
+千问图库本地缺失时从 R2 的 `assets/image_library_finance.tar` 恢复。
 
 部署前需要：
 

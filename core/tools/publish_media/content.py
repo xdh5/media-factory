@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 
 from core.tools.cloudflare_data import list_production_outputs
 
 from ._constants import BUSINESS_LINES, PLATFORM_ALIASES, SUPPORTED_PLATFORMS
 from ._errors import InvalidPublishRequestError, PublishContentNotFoundError
+from .local_assets import ensure_local_publish_items, enrich_local_publish_item
 
 
 def normalize_publish_date(value: str) -> str:
@@ -44,6 +44,7 @@ def local_publish_items(
     if business_line not in BUSINESS_LINES:
         raise InvalidPublishRequestError(f"business_line 必须从 {BUSINESS_LINES} 中选择")
     normalized_date = normalize_publish_date(publish_date)
+    ensure_local_publish_items(business_line, normalized_date, content_kind=content_kind)
     rows = list_production_outputs(
         publish_date=normalized_date,
         business_line=business_line,
@@ -54,18 +55,9 @@ def local_publish_items(
         rows = [item for item in rows if str(item.get("content_kind") or "") == wanted_kind]
     items = []
     for row in rows:
-        local_path = Path(str(row.get("local_path") or "")).resolve()
-        if not local_path.is_file():
-            continue
-        output_dir = local_path.parent
-        short_title_path = output_dir / "short-title.txt"
-        copy_path = output_dir / "publish-copy.txt"
-        items.append({
-            **row,
-            "local_path": str(local_path),
-            "short_title": short_title_path.read_text(encoding="utf-8").strip() if short_title_path.is_file() else "",
-            "publish_copy": copy_path.read_text(encoding="utf-8").strip() if copy_path.is_file() else str(row.get("title") or ""),
-        })
+        enriched = enrich_local_publish_item(row)
+        if enriched:
+            items.append(enriched)
     if not items:
         suffix = f"、内容类型 {wanted_kind}" if wanted_kind else ""
         raise PublishContentNotFoundError(
