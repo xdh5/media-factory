@@ -32,7 +32,7 @@
 3. 语言学习 Prompt 放在 `core/mcp/language_learning/prompts/`；财经 MCP 的标题标签与分镜 Prompt 放在 `core/mcp/finance/prompts/`；财经正文范文与业务参数放在 `.agents/skills/finance`，TTS 与发布参数放在 `.agents/skills/learn_Chinese_and_Korean`，对应 MCP 只负责编排。耗时步骤必须通过 MCP 的 `*_start_*` + `*_poll_task` 后台任务轮询（实现见 `core/mcp/_task_runner.py`），禁止同步调用以免 Cursor MCP 客户端超时。
 4. 每个 MCP 必须使用共用话题去重 `get_topic` / `update` 做去重与占坑，禁止另起一套主题库。
 5. 发布与清缓存分开：发布成功后必须再向用户确认是否删除本次生产文件，确认后调用共用 `clear_run`（`core.tools.clear_cache`，MCP 封装为 `*_clear_run`）；不得把清缓存写进发布工具的返回或自动删除。
-6. 财经与语言学习生产 Workflow 每天北京时间 00:00 定时运行；手动触发时可填写计划发布日期，留空按北京时间当天处理。生产必须使用该日期创建 `run-YYYYMMDD` 并写入产物记录。开始生产前先查询同业务线同日期的 `production_outputs` 与发布记录，任一存在就不得重复生产。财经 Workflow 只生产并交付 R2，不发布。
+6. 财经与语言学习生产 Workflow 每天北京时间 20:00 定时运行并生产次日内容；定时触发默认使用北京时间次日作为计划发布日期。手动触发时可填写计划发布日期，留空按北京时间当天处理。生产必须使用该日期创建 `run-YYYYMMDD` 并写入产物记录。开始生产前先查询同业务线同日期的 `production_outputs` 与发布记录，任一存在就不得重复生产。财经 Workflow 只生产并交付 R2，不发布。
 7. 语言学习生产与发布必须使用两个独立 Workflow：生产成功后顺序调用发布 Workflow，同时发布 Workflow 允许按计划发布日期单独手动触发。发布只能复用 `source=github_workflow` 的 R2 成片，统一预约到计划发布日期北京时间 16:00；发布前按平台查询同日发布记录，只补发尚未记录的 YouTube、TikTok、Facebook、Instagram。禁止在 Workflow 中复制或绕过对应工具实现。视频业务编排必须通过对应 MCP Tool，跨 Job 的 R2 成片交付可调用 `core.tools.r2_storage` 公开方法；禁止直接导入 MCP 内部实现。
 8. 交互式生产的文本生成、词表生成、分镜生成与图片视觉验收由宿主 Agent 完成；GitHub Action 没有宿主 Agent 时，允许生产 Runner 调用千问文本、千问视觉和千问兜底生图完成同等步骤，MCP 本身仍禁止直接调用千问文本或千问视觉模型。
 9. 交互式生产财经或语言学习视频前，用户必须明确北京时间计划发布日期；未说明日期时 Agent 必须先询问，禁止默认当天、创建 run、开始生产或写入产物表。统一发布使用独立 `core.mcp.publishing`：必须明确业务线、产物日期、账号组、平台及立即/预约方式；发布前查 D1 去重，发布或预约成功后逐条写入 `publication_records`。

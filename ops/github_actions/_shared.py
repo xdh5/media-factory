@@ -6,7 +6,7 @@ import json
 import mimetypes
 import os
 import tarfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -22,12 +22,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LANGUAGE_PUBLISH_TARGETS = ("youtube", "tiktok", "instagram", "facebook")
 
 
-def resolve_publish_date(value: str = "") -> str:
-    """解析手动输入；留空时使用北京时间当天，禁止选择过去日期。"""
+def resolve_publish_date(value: str = "", default_days_ahead: int = 0) -> str:
+    """解析计划发布日期；留空时按北京时间当天加指定天数，禁止选择过去日期。"""
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
     text = str(value or "").strip()
     if not text:
-        return today.isoformat()
+        if default_days_ahead not in (0, 1):
+            raise ValueError("default_days_ahead 只能是 0 或 1")
+        return (today + timedelta(days=default_days_ahead)).isoformat()
     try:
         resolved = date.fromisoformat(text)
     except ValueError as exc:
@@ -37,9 +39,13 @@ def resolve_publish_date(value: str = "") -> str:
     return resolved.isoformat()
 
 
-def daily_production_preflight(business_line: str, publish_date: str = "") -> dict:
+def daily_production_preflight(
+    business_line: str,
+    publish_date: str = "",
+    default_days_ahead: int = 0,
+) -> dict:
     """按计划发布日期查询成片和发布记录，决定是否生产及需要补发的平台。"""
-    publish_date = resolve_publish_date(publish_date)
+    publish_date = resolve_publish_date(publish_date, default_days_ahead)
     outputs = list_production_outputs(
         publish_date=publish_date,
         business_line=business_line,

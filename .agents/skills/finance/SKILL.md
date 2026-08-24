@@ -114,7 +114,7 @@ GitHub Action 暂时继续使用原本的本地图库选图模式，不得删除
 1. **成片**：稿件生成后直接制作；`finance_start_finish_video` 完成后展示 `output/finance/run-YYYYMMDD/` 中的 `video_path`、标题、标签与发布文案；`YYYYMMDD` 必须是北京时间计划发布日期。未确认不得调用发布 MCP。本地 MCP 制作不得自动上传 R2；GitHub Workflow 产物才自动交付 R2。成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；查询某天是否有财经产物使用 `finance_get_production_outputs(publish_date)`。
 2. **清缓存**：发布结束后用户确认才调用 `finance_clear_run(run_id, confirmed=true)`。
 
-财经 GitHub Workflow 每天北京时间 00:00 自动生产，也可按计划发布日期手动触发；开始前若同日已有财经成片或发布记录则跳过。Workflow 只把成片交付 R2，不执行平台发布。
+财经 GitHub Workflow 每天北京时间 20:00 自动生产次日内容，也可按计划发布日期手动触发；开始前若计划发布日期已有财经成片或发布记录则跳过。Workflow 只把成片交付 R2，不执行平台发布。
 
 中间步骤不逐项确认。
 

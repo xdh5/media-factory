@@ -2,7 +2,7 @@ name: 生成语言学习视频
 
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 20 * * *"
       timezone: Asia/Shanghai
   workflow_dispatch:
     inputs:
@@ -66,7 +66,8 @@ jobs:
           CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
           CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
           INPUT_PUBLISH_DATE: ${{ inputs.publish_date }}
-        run: python -m ops.github_actions language_learning_preflight --publish-date "$INPUT_PUBLISH_DATE"
+          DEFAULT_DAYS_AHEAD: ${{ github.event_name == 'schedule' && '1' || '0' }}
+        run: python -m ops.github_actions language_learning_preflight --publish-date "$INPUT_PUBLISH_DATE" --default-days-ahead "$DEFAULT_DAYS_AHEAD"
 
       - name: 说明不重复生成的原因
         if: ${{ steps.preflight.outputs.should_generate != 'true' }}
@@ -201,6 +202,8 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     env:
+      CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
+      CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

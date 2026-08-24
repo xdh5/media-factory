@@ -42,6 +42,7 @@ def main() -> None:
     parser.add_argument("--korean-video-url", default="")
     parser.add_argument("--targets", default="")
     parser.add_argument("--publish-date", default="")
+    parser.add_argument("--default-days-ahead", type=int, choices=(0, 1), default=0)
     parser.add_argument("--workflow-name", default="")
     parser.add_argument("--run-url", default="")
     arguments = parser.parse_args()
@@ -49,7 +50,11 @@ def main() -> None:
         from ._shared import daily_production_preflight
 
         business_line = "finance" if arguments.workflow == "finance_preflight" else "language_learning"
-        payload = daily_production_preflight(business_line, arguments.publish_date)
+        payload = daily_production_preflight(
+            business_line,
+            arguments.publish_date,
+            arguments.default_days_ahead,
+        )
         output_path = os.getenv("GITHUB_OUTPUT", "").strip()
         if output_path:
             with Path(output_path).open("a", encoding="utf-8") as stream:
