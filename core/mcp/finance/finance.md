@@ -7,6 +7,10 @@
 ## 工具编排
 
 ```
+finance_get_source_stats
+└─ cloudflare_data.get_douyin_research_script_stats
+   └─ 只读统计财经原稿总数、可用数、有效占用数和已使用数
+
 finance_get_source_script
 └─ cloudflare_data.reserve_douyin_research_script
    └─ 从财经分类选择未使用原稿并临时占用
@@ -101,5 +105,6 @@ finance_clear_run
 - 千问生成图库：`data/image_library_finance/{连续编号}.png`
 - 话题库：通过 `CLOUDFLARE_DATA_API_URL` 指向的鉴权 Worker 访问 Cloudflare D1
 - 来源稿件：抖音研究数据库“财经”分类；占用两小时后自动过期，保存稿件成功后永久标记已使用
+- 来源稿件统计：`finance_get_source_stats` 只读查询余量，过期占用按可用计算，不会占用新稿件
 - 稿件：保存后直接制作，不设置稿件确认门禁
 - 图片记录：独立 D1 表 `finance_generated_images`，D1 编号、本地文件名和路径编号完全一致

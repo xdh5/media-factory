@@ -24,7 +24,13 @@ from core.tools.generate_shot import (
     intro_bgm_start_seconds,
 )
 
-from .._constants import MCP_ID, STORYBOARD_TEXT_FILE_NAME, TOPIC_DEDUPLICATION_DAYS, VIDEO_SIZE
+from .._constants import (
+    MATRIXMEDIA_AI_CREATIVE_STATEMENT,
+    MCP_ID,
+    STORYBOARD_TEXT_FILE_NAME,
+    TOPIC_DEDUPLICATION_DAYS,
+    VIDEO_SIZE,
+)
 from .._errors import WorkflowStepError
 from .narration import display_subtitle_cue, display_subtitle_text
 from .save_draft import load_draft
@@ -404,6 +410,7 @@ def finish_finance_video(
         "publish_copy": publish_copy,
         "publish_copy_path": str(publish_copy_path),
         "matrixmedia_account_group": settings["matrixmedia_account_group"],
+        "creativeStatement": MATRIXMEDIA_AI_CREATIVE_STATEMENT,
         "created_at": created_at,
         "topic_record_id": record["id"],
         "database_commit": {

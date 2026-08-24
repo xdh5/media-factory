@@ -1,4 +1,11 @@
 const ACTIVE_STATUSES = ["reserved", "completed", "published", "used"];
+const PUBLICATION_BUSINESS_LINES = ["finance", "language_learning"];
+const PUBLICATION_PLATFORMS = [
+  "youtube", "facebook", "instagram", "tiktok", "kuaishou",
+  "douyin", "baijiahao", "xiaohongshu", "toutiao", "wechat_channels",
+];
+const PUBLICATION_MODES = ["immediate", "scheduled"];
+const PUBLICATION_STATUSES = ["published", "scheduled"];
 
 function jsonResponse(payload, status = 200) {
   return Response.json(payload, {
@@ -26,6 +33,22 @@ function positiveInteger(value, name, maximum = 3650) {
   const result = Number(value);
   if (!Number.isInteger(result) || result < 1 || result > maximum) {
     throw new Error(`${name} 必须是 1 到 ${maximum} 的整数`);
+  }
+  return result;
+}
+
+function optionalText(value, name, maxLength = 2000) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") throw new Error(`${name} 必须是字符串或 null`);
+  const result = value.trim();
+  if (result.length > maxLength) throw new Error(`${name} 不能超过 ${maxLength} 个字符`);
+  return result || null;
+}
+
+function publicationTimestamp(value) {
+  const result = requiredText(value, "publish_at", 64);
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/.test(result) || Number.isNaN(Date.parse(result))) {
+    throw new Error("publish_at 必须是带时区的 ISO 8601 日期时间");
   }
   return result;
 }
@@ -354,18 +377,6 @@ async function validateAndRecordWords(request, env) {
   }, 201);
 }
 
-async function listImages(request, env) {
-  const url = new URL(request.url);
-  const line = requiredText(url.searchParams.get("line"), "line", 64);
-  if (!/^[a-z][a-z0-9_]{0,63}$/.test(line)) {
-    throw new Error("line 格式不正确");
-  }
-  const result = await env.DB.prepare(
-    "SELECT id, caption, image_path FROM image_library WHERE line = ? ORDER BY id",
-  ).bind(line).all();
-  return jsonResponse({ records: result.results || [] });
-}
-
 async function listFinanceGeneratedImages(request, env) {
   const result = await env.DB.prepare(
     "SELECT id, caption, image_path FROM finance_generated_images ORDER BY id",
@@ -407,76 +418,98 @@ async function commitFinanceGeneratedImages(request, env) {
   return jsonResponse({ records: saved }, 201);
 }
 
-async function listPublishAccountGroups(request, env) {
+async function listPublicationRecords(request, env) {
   const url = new URL(request.url);
-  const group = String(url.searchParams.get("group") || "").trim();
-  if (group.length > 100) {
-    throw new Error("group 不能超过 100 个字符");
+  const businessLine = String(url.searchParams.get("business_line") || "").trim();
+  const platform = String(url.searchParams.get("platform") || "").trim();
+  if (businessLine && !PUBLICATION_BUSINESS_LINES.includes(businessLine)) {
+    throw new Error(`business_line 必须从 ${PUBLICATION_BUSINESS_LINES.join(", ")} 中选择`);
   }
-  const where = group ? "WHERE groups.code = ? OR groups.name = ?" : "";
+  if (platform && !PUBLICATION_PLATFORMS.includes(platform)) {
+    throw new Error(`platform 必须从 ${PUBLICATION_PLATFORMS.join(", ")} 中选择`);
+  }
+  const clauses = [];
+  const values = [];
+  if (businessLine) {
+    clauses.push("business_line = ?");
+    values.push(businessLine);
+  }
+  if (platform) {
+    clauses.push("platform = ?");
+    values.push(platform);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const statement = env.DB.prepare(
-    `SELECT
-       groups.code AS group_code,
-       groups.name AS group_name,
-       groups.workflow AS group_workflow,
-       groups.enabled AS group_enabled,
-       accounts.code AS account_code,
-       accounts.platform,
-       accounts.display_name,
-       accounts.connector,
-       accounts.config_key,
-       accounts.config_json,
-       members.position,
-       members.enabled AS member_enabled,
-       accounts.enabled AS account_enabled
-     FROM publish_account_groups AS groups
-     LEFT JOIN publish_account_group_members AS members
-       ON members.group_code = groups.code
-     LEFT JOIN publish_accounts AS accounts
-       ON accounts.code = members.account_code
-     ${where}
-     ORDER BY groups.code, members.position, accounts.code`,
+    `SELECT id, publication_id, run_id, business_line, platform, connector, account_id,
+            content_part, title, publish_mode, publish_at, status, external_id, external_url,
+            created_at, updated_at
+     FROM publication_records ${where}
+     ORDER BY publish_at DESC, id DESC LIMIT 500`,
   );
-  const result = group
-    ? await statement.bind(group, group).all()
-    : await statement.all();
-  const records = [];
-  const byCode = new Map();
-  for (const row of result.results || []) {
-    let record = byCode.get(row.group_code);
-    if (!record) {
-      record = {
-        code: row.group_code,
-        name: row.group_name,
-        workflow: row.group_workflow,
-        enabled: Boolean(row.group_enabled),
-        members: [],
-      };
-      byCode.set(row.group_code, record);
-      records.push(record);
-    }
-    if (!row.account_code) continue;
-    let config;
-    try {
-      config = JSON.parse(row.config_json || "{}");
-    } catch {
-      throw new Error(`账号 ${row.account_code} 的 config_json 格式不正确`);
-    }
-    record.members.push({
-      code: row.account_code,
-      platform: row.platform,
-      display_name: row.display_name,
-      connector: row.connector,
-      config_key: row.config_key,
-      config,
-      position: Number(row.position || 0),
-      enabled: Boolean(row.group_enabled && row.member_enabled && row.account_enabled),
-    });
+  const result = values.length ? await statement.bind(...values).all() : await statement.all();
+  return jsonResponse({ records: result.results || [] });
+}
+
+async function commitPublicationRecords(request, env) {
+  const body = await request.json();
+  const records = body.records;
+  if (!Array.isArray(records) || records.length < 1 || records.length > 100) {
+    throw new Error("records 必须是包含 1 到 100 条发布记录的数组");
   }
-  if (group && !records.length) {
-    return errorResponse("ACCOUNT_GROUP_NOT_FOUND", `发布账号组不存在：${group}`, 404, { group });
-  }
-  return jsonResponse({ records });
+  const statements = records.map((item) => {
+    if (!item || typeof item !== "object") throw new Error("每条发布记录都必须是对象");
+    const publicationId = requiredText(item.publication_id, "publication_id", 200);
+    const runId = requiredText(item.run_id, "run_id", 200);
+    const businessLine = requiredText(item.business_line, "business_line", 64);
+    const platform = requiredText(item.platform, "platform", 64);
+    const connector = requiredText(item.connector, "connector", 64);
+    const accountId = String(item.account_id || "").trim();
+    const contentPart = positiveInteger(item.content_part || 1, "content_part", 1000);
+    const title = requiredText(item.title, "title", 1000);
+    const publishMode = requiredText(item.publish_mode, "publish_mode", 32);
+    const publishAt = publicationTimestamp(item.publish_at);
+    const status = requiredText(item.status, "status", 32);
+    const externalId = optionalText(item.external_id, "external_id", 500);
+    const externalUrl = optionalText(item.external_url, "external_url", 2000);
+    if (!PUBLICATION_BUSINESS_LINES.includes(businessLine)) {
+      throw new Error(`business_line 必须从 ${PUBLICATION_BUSINESS_LINES.join(", ")} 中选择`);
+    }
+    if (!PUBLICATION_PLATFORMS.includes(platform)) {
+      throw new Error(`platform 必须从 ${PUBLICATION_PLATFORMS.join(", ")} 中选择`);
+    }
+    if (!PUBLICATION_MODES.includes(publishMode)) {
+      throw new Error(`publish_mode 必须从 ${PUBLICATION_MODES.join(", ")} 中选择`);
+    }
+    if (!PUBLICATION_STATUSES.includes(status)) {
+      throw new Error(`status 必须从 ${PUBLICATION_STATUSES.join(", ")} 中选择`);
+    }
+    if ((publishMode === "immediate") !== (status === "published")) {
+      throw new Error("immediate 必须对应 published，scheduled 必须对应 scheduled");
+    }
+    return env.DB.prepare(
+      `INSERT INTO publication_records(
+         publication_id, run_id, business_line, platform, connector, account_id,
+         content_part, title, publish_mode, publish_at, status, external_id, external_url
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(publication_id, platform, account_id, content_part) DO UPDATE SET
+         connector = excluded.connector,
+         title = excluded.title,
+         publish_mode = excluded.publish_mode,
+         publish_at = excluded.publish_at,
+         status = excluded.status,
+         external_id = excluded.external_id,
+         external_url = excluded.external_url,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING id, publication_id, run_id, business_line, platform, connector, account_id,
+                 content_part, title, publish_mode, publish_at, status, external_id, external_url,
+                 created_at, updated_at`,
+    ).bind(
+      publicationId, runId, businessLine, platform, connector, accountId,
+      contentPart, title, publishMode, publishAt, status, externalId, externalUrl,
+    );
+  });
+  const results = await env.DB.batch(statements);
+  return jsonResponse({ records: results.map((result) => result.results?.[0]).filter(Boolean) }, 201);
 }
 
 async function listDouyinResearchIds(env) {
@@ -485,6 +518,45 @@ async function listDouyinResearchIds(env) {
   ).all();
   return jsonResponse({
     aweme_ids: (result.results || []).map((row) => String(row.aweme_id)),
+  });
+}
+
+async function getDouyinResearchScriptStats(request, env) {
+  const url = new URL(request.url);
+  const collectionCode = requiredText(url.searchParams.get("collection_code"), "collection_code", 64);
+  const workflow = requiredText(url.searchParams.get("workflow"), "workflow", 64);
+  const reservationMinutes = positiveInteger(
+    url.searchParams.get("reservation_minutes") || 120,
+    "reservation_minutes",
+    1440,
+  );
+  const checkedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const expiredBefore = new Date(Date.now() - reservationMinutes * 60000)
+    .toISOString()
+    .replace(/\.\d{3}Z$/, "Z");
+  const stats = await env.DB.prepare(
+    `SELECT
+       COUNT(DISTINCT c.aweme_id) AS total_count,
+       COUNT(DISTINCT CASE WHEN u.status = 'used' THEN c.aweme_id END) AS used_count,
+       COUNT(DISTINCT CASE
+         WHEN u.status = 'reserved' AND u.reserved_at >= ? THEN c.aweme_id
+       END) AS reserved_count
+     FROM douyin_research_contents c
+     JOIN douyin_research_discoveries d ON d.aweme_id = c.aweme_id AND d.collection_code = ?
+     LEFT JOIN douyin_research_script_usage u ON u.aweme_id = c.aweme_id AND u.workflow = ?`,
+  ).bind(expiredBefore, collectionCode, workflow).first();
+  const totalCount = Number(stats?.total_count || 0);
+  const usedCount = Number(stats?.used_count || 0);
+  const reservedCount = Number(stats?.reserved_count || 0);
+  return jsonResponse({
+    collection_code: collectionCode,
+    workflow,
+    reservation_minutes: reservationMinutes,
+    total_count: totalCount,
+    available_count: Math.max(0, totalCount - usedCount - reservedCount),
+    reserved_count: reservedCount,
+    used_count: usedCount,
+    checked_at: checkedAt,
   });
 }
 
@@ -715,12 +787,15 @@ export default {
       if (request.method === "POST" && url.pathname === "/v1/publications/commit") return await commitPublication(request, env);
       if (request.method === "GET" && url.pathname === "/v1/words/recent") return await listRecentWords(request, env);
       if (request.method === "POST" && url.pathname === "/v1/words/validate-and-record") return await validateAndRecordWords(request, env);
-      if (request.method === "GET" && url.pathname === "/v1/images") return await listImages(request, env);
       if (request.method === "GET" && url.pathname === "/v1/finance-generated-images") return await listFinanceGeneratedImages(request, env);
       if (request.method === "POST" && url.pathname === "/v1/finance-generated-images/commit") return await commitFinanceGeneratedImages(request, env);
-      if (request.method === "GET" && url.pathname === "/v1/publish-account-groups") return await listPublishAccountGroups(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/publication-records") return await listPublicationRecords(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/publication-records/commit") return await commitPublicationRecords(request, env);
       if (request.method === "GET" && url.pathname === "/v1/douyin-research/ids") return await listDouyinResearchIds(env);
       if (request.method === "POST" && url.pathname === "/v1/douyin-research/commit") return await commitDouyinResearch(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/douyin-research/scripts/stats") {
+        return await getDouyinResearchScriptStats(request, env);
+      }
       if (request.method === "POST" && url.pathname === "/v1/douyin-research/scripts/reserve") return await reserveDouyinResearchScript(request, env);
       if (request.method === "POST" && url.pathname === "/v1/douyin-research/scripts/used") return await markDouyinResearchScriptUsed(request, env);
       return errorResponse("NOT_FOUND", "接口不存在", 404);

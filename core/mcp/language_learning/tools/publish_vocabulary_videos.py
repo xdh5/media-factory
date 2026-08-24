@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from core.tools.r2_storage import download_public_file, upload_public_file
+from core.tools.cloudflare_data import commit_publication_records
 from core.tools.topic_dedup import commit as commit_topic
 
 from .._constants import (
     CHINESE_YOUTUBE_CHANNEL_ID,
+    MATRIXMEDIA_AI_CREATIVE_STATEMENT,
     MINIMUM_NEW_WORDS,
     PUBLISH_MANIFEST_FILE_NAME,
     TOPIC_DEDUPLICATION_DAYS,
@@ -125,6 +128,7 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
                 "learning_mode": "en-ko",
                 "account_group": str(ko_config.get("account_group") or ""),
                 "channel": "matrixmedia",
+                "creativeStatement": MATRIXMEDIA_AI_CREATIVE_STATEMENT,
                 "title": title,
                 "tags": list(ko_config.get("tags") or []),
                 "short_title": str(ko_config.get("short_title") or "韩语单词怎么说"),
@@ -405,6 +409,54 @@ def _commit_manifest_database(manifest: dict) -> dict:
     )
 
 
+def _commit_platform_publications(manifest: dict, published: list[dict]) -> dict:
+    """把各平台成功或已预约的结果幂等写入统一发布记录。"""
+    database = manifest.get("database_commit") or {}
+    publication_id = str(database.get("publication_id") or "").strip()
+    run_id = str(database.get("run_id") or manifest.get("run_id") or "").strip()
+    records = []
+    for batch in published:
+        platform = str(batch.get("channel") or "").strip()
+        for row in batch.get("results") or []:
+            if not row.get("success"):
+                continue
+            result = row.get("result") if isinstance(row.get("result"), dict) else {}
+            if str(result.get("status") or "") == "draft_delivered":
+                continue
+            requested_at = str(row.get("publish_at") or result.get("publish_at") or "").strip()
+            scheduled = bool(requested_at) or bool(result.get("scheduled")) or result.get("status") == "scheduled"
+            publish_at = requested_at or datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+            account = row.get("account") if isinstance(row.get("account"), dict) else {}
+            video = row.get("video") if isinstance(row.get("video"), dict) else {}
+            account_id = str(
+                result.get("account_id")
+                or result.get("channel_id")
+                or account.get("account_id")
+                or account.get("page_id")
+                or account.get("user_id")
+                or account.get("channel_id")
+                or ""
+            ).strip()
+            records.append({
+                "publication_id": publication_id,
+                "run_id": run_id,
+                "business_line": "language_learning",
+                "platform": platform,
+                "connector": "youtube" if platform == "youtube" else "zernio",
+                "account_id": account_id,
+                "content_part": int(row.get("part") or 1),
+                "title": str(video.get("title") or batch.get("title") or manifest.get("topic") or "").strip(),
+                "publish_mode": "scheduled" if scheduled else "immediate",
+                "publish_at": publish_at,
+                "status": "scheduled" if scheduled else "published",
+                "external_id": str(result.get("video_id") or result.get("post_id") or "").strip() or None,
+                "external_url": str(result.get("video_url") or result.get("platform_url") or "").strip() or None,
+            })
+    if not records:
+        return {"records": []}
+    return commit_publication_records(records)
+
+
 def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
     youtube_account = str(item.get("youtube_account") or WORKFLOW_ID)
     channels = _youtube_channels(item["account_group"], youtube_account)
@@ -413,7 +465,7 @@ def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
     results = []
     from core.tools.publish_to_youtube import YouTubeToolError, publish_to_youtube
 
-    for video in item["videos"]:
+    for part, video in enumerate(item["videos"], 1):
         title = str(video.get("title") or item["title"])
         description = _description(title, item["tags"])
         for account in channels:
@@ -430,7 +482,7 @@ def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
                     account=youtube_account,
                     publish_at=publish_at,
                 )
-                results.append({"channel": "youtube", "account": account, "video": video, "success": True, "result": upload})
+                results.append({"channel": "youtube", "part": part, "account": account, "video": video, "publish_at": publish_at, "success": True, "result": upload})
             except YouTubeToolError as error:
                 results.append({
                     "channel": "youtube",
@@ -457,7 +509,7 @@ def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
     tiktok_account = str(item.get("tiktok_account") or item.get("youtube_account") or WORKFLOW_ID)
     accounts = _tiktok_accounts(item["account_group"], tiktok_account)
     results = []
-    for video in item["videos"]:
+    for part, video in enumerate(item["videos"], 1):
         title = str(video.get("title") or item["title"])
         content = _description(title, item["tags"])
         video_url = str(video.get("video_url") or "").strip()
@@ -470,7 +522,7 @@ def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
                     account=tiktok_account,
                     publish_at=publish_at,
                 )
-                results.append({"channel": "tiktok", "account": account, "video": video, "success": True, "result": upload})
+                results.append({"channel": "tiktok", "part": part, "account": account, "video": video, "publish_at": publish_at, "success": True, "result": upload})
             except TikTokToolError as error:
                 results.append({
                     "channel": "tiktok",
@@ -541,6 +593,7 @@ def _publish_chinese_instagram(
                     "part": part,
                     "account": account,
                     "video": video,
+                    "publish_at": publish_at,
                     "success": True,
                     "result": upload,
                 })
@@ -601,6 +654,7 @@ def _publish_chinese_facebook(
                     "part": part,
                     "account": account,
                     "video": video,
+                    "publish_at": publish_at,
                     "success": True,
                     "result": upload,
                 })
@@ -726,6 +780,7 @@ def publish_vocabulary_videos(
             for part in (item.get("facebook_published_parts") or [])
         }
         manifest["facebook_published_parts"] = sorted(previous_parts | completed_parts)
+    publication_records = _commit_platform_publications(manifest, published)
     manifest["status"] = "published" if chinese_success and not matrixmedia_items else (
         "awaiting_matrixmedia" if chinese_success else "publish_failed"
     )
@@ -736,38 +791,7 @@ def publish_vocabulary_videos(
         "topic": manifest.get("topic"),
         "run_id": manifest.get("run_id"),
         "database": database,
+        "publication_records": publication_records,
         "published": published,
         "matrixmedia_items": matrixmedia_items,
     }
-
-
-def publish_meta_posts_now(
-    facebook_posts: list[dict],
-    instagram_posts: list[dict],
-    publish_confirmed: bool,
-) -> dict:
-    """把 Zernio 中已有的 Meta 定时帖子切换成立即发布。"""
-    if publish_confirmed is not True:
-        raise ConfirmationRequiredError("必须获得用户明确确认后才能立即发布 Meta 帖子")
-    from core.tools.publish_to_facebook import publish_facebook_post_now
-    from core.tools.publish_to_instagram import publish_instagram_post_now
-
-    results = []
-    for platform, rows, publisher in (
-        ("facebook", facebook_posts, publish_facebook_post_now),
-        ("instagram", instagram_posts, publish_instagram_post_now),
-    ):
-        for row in rows:
-            post_id = str(row.get("post_id") or "").strip()
-            account_id = str(row.get("account_id") or "").strip()
-            result = publisher(post_id, account_id)
-            results.append({
-                "platform": platform,
-                "post_id": post_id,
-                "account_id": account_id,
-                "success": True,
-                "result": result,
-            })
-    if not results:
-        raise PublishError("没有需要立即发布的 Meta 帖子")
-    return {"success": True, "results": results}

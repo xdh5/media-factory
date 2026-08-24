@@ -100,10 +100,12 @@ GitHub Action 暂时继续使用原本的本地图库选图模式，不得删除
 
 - 每期 BGM 必须从 `core/tools/generate_bgm/static/nothing_to_fare.mp3` 和 `core/tools/generate_bgm/static/aware.mp3` 中随机选择一首；同一期只选择一次并沿用到成片，Agent 不得使用其他曲目或修改混音参数
 - 生产完成后调用 `finance_start_upload_r2` 上传 R2
-- 发布路由账号组为 `心灵鸡汤`；从 Cloudflare D1 解析到发布服务器 MatrixMedia 同名账号组 `心灵鸡汤`。
+- 发布服务器 MatrixMedia 使用账号组 `心灵鸡汤`，账号配置由发布环境提供，不再从 D1 读取发布账号组。
+- MatrixMedia 发布所有平台时必须传 `creativeStatement="ai_generated"`，给成片添加各平台对应的 AI 生成内容标记；不得省略或改为无标注。
 - 跳过掘金、番茄、小红书
 - **视频号必填 `bt2`**：用成片返回的 `short_title`（稿件短标题，已是 6～16 字）。禁止省略，禁止把长标题 `title` 填进短标题框。其它平台也一律带上 `bt2`，避免漏传。
 - `tags` 用空格分隔且带 `#`，例如 `"#存钱 #理财常识 #生活方式 #查理芒格"`（最多 4 个）
+- MatrixMedia 返回成功或预约成功结果后，必须调用 `finance_record_publications`。心灵鸡汤账号组只记录 `ks→kuaishou`、`dy→douyin`、`bjh→baijiahao`、`tt→toutiao`、`sph→wechat_channels`，不得写入小红书；立即发布的 `publish_at` 写实际成功时间，预约发布写预约时间，均使用带时区的 ISO 8601。
 
 ## 确认门禁
 
@@ -150,7 +152,7 @@ SUB|L002|你以为涨薪就能存钱
 4. 调用 `finance_start_generate_images(context_path)` → `finance_poll_task` 直至 `done=true`；全部生成后直接写入图库，结果包含生图清单、当次图片目录和数据库连续编号，不设置人物、画风或情绪检查门禁。
 5. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`；配音直接用 `prepare_storyboard` 的 `tts_path`。
 6. 调用 `finance_start_upload_r2(manifest_path, run_id)` → `finance_poll_task` 直至完成，展示成片和 `manifest_url`。
-7. 用户确认后，把 R2 清单 URL 交给发布服务器上的独立 MatrixMedia MCP；发布 MCP 先把正式话题幂等写入 D1，再用账号组 `心灵鸡汤` 发布。
+7. 用户确认后，把 R2 清单 URL 交给发布服务器上的独立 MatrixMedia MCP；发布 MCP 先把正式话题幂等写入 D1，再用账号组 `心灵鸡汤` 发布，并对每个平台传入清单中的 `creativeStatement="ai_generated"`。
 8. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
@@ -164,6 +166,7 @@ SUB|L002|你以为涨薪就能存钱
 
 | 工具 | 作用 |
 | --- | --- |
+| `finance_get_source_stats` | 只读统计财经原稿总数、可用数、有效占用数和已使用数；不会占用稿件 |
 | `finance_get_source_script` | 选择并临时占用未使用的财经数据库原稿；全部用完时报错 |
 | `finance_get_topics` | 兼容保留的已占用话题查询；新流程不作为第一步 |
 | `finance_get_metadata_prompt` | 返回标题标签 Prompt |

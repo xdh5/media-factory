@@ -45,7 +45,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 - TikTok 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用共用的 `ZERNIO_API_KEY` 与 `LANGUAGE_LEARNING_TIKTOK_*`
 - Instagram 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用 Meta 专用的 `zernio_api_key_meta`。Zernio 只有一个健康 Instagram 账号时自动选择；连接多个账号时必须在 `.env` 配置 `LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID`。只发指定分段时，传 `targets=["instagram"]` 与 `video_parts=[1]` 或 `[2]`。
 - Facebook 通过 Zernio 发布生产阶段已经上传 R2 的中文成片，使用 Meta 专用的 `zernio_api_key_meta`。Zernio 只有一个健康 Facebook Page 时自动选择；连接多个 Page 时必须在 `.env` 配置 `LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID`。只发指定分段时，传 `targets=["facebook"]` 与 `video_parts=[1]` 或 `[2]`。
-- 展示给用户看的账号组名：`中文`；成员从 Cloudflare D1 的发布账号组读取，当前包含 YouTube `language_learning` 与 Meta `daily-chinese-learning` 交叉发布入口。
+- 展示给用户看的账号组名为 `中文`；账号配置由 YouTube 与 Zernio 的环境变量提供，不再从 D1 读取发布账号组。官方平台发布成功或预约成功后由语言学习 MCP 自动写入发布记录。
 
 **韩语 `en-ko`**
 
@@ -54,13 +54,15 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
   "account_group": "韩语",
   "tags": ["#学韩语", "#韩语单词", "#韩语入门", "#每日韩语"],
   "short_title": "韩语单词怎么说",
-  "platforms": ["dy", "ks", "blbl", "bjh", "tt", "sph"]
+  "platforms": ["dy", "ks", "bjh", "xhs", "tt", "sph"]
 }
 ```
 
 - 生产完成后调用 `language_learning_start_upload_r2` 上传 R2
-- 发布路由账号组为 `韩语`；从 Cloudflare D1 解析到发布服务器 MatrixMedia 同名账号组 `韩语`。
-- 跳过掘金、番茄、小红书
+- 发布服务器 MatrixMedia 使用账号组 `韩语`，账号配置由发布环境提供，不再从 D1 读取发布账号组。
+- MatrixMedia 发布所有平台时必须传 `creativeStatement="ai_generated"`，给成片添加各平台对应的 AI 生成内容标记；不得省略或改为无标注。
+- 跳过掘金、番茄
+- MatrixMedia 返回成功或预约成功结果后，必须调用 `language_learning_record_publications`。最终平台按 `ks→kuaishou`、`dy→douyin`、`bjh→baijiahao`、`xhs→xiaohongshu`、`tt→toutiao`、`sph→wechat_channels` 映射；立即发布的 `publish_at` 写实际成功时间，预约发布写预约时间，均使用带时区的 ISO 8601。
 
 ## Prompt
 
@@ -94,7 +96,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
 9. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。
 10. `language_learning_start_upload_r2` 上传成片、主题图和本地发布清单 → poll 至 `done=true`，保留返回的 `manifest_url` 与 `subject_sheet_url`。
-11. 用户确认发布后：韩语条目交给发布服务器上的 MatrixMedia MCP；中文调用 `language_learning_start_publish`，默认发布 YouTube 和 TikTok，也可用 `targets` 显式发布 Instagram 或 Facebook。发布 MCP 幂等写入正式话题与本期 10 个单词。
+11. 用户确认发布后：韩语条目交给发布服务器上的 MatrixMedia MCP，并对每个平台传入条目中的 `creativeStatement="ai_generated"`；中文调用 `language_learning_start_publish`，默认发布 YouTube 和 TikTok，也可用 `targets` 显式发布 Instagram 或 Facebook。发布 MCP 幂等写入正式话题与本期 10 个单词。
 9. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
@@ -125,8 +127,6 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 | `language_learning_create_videos` | 出片（同步，勿用） |
 | `language_learning_start_create_videos` | 启动出片后台任务 |
 | `language_learning_start_upload_r2` | 后台上传成片、主题图和发布清单到 R2 |
-| `language_learning_publish` | 兼容旧客户端的同步发布入口 |
 | `language_learning_start_publish` | 后台发布中文 YouTube、TikTok、Instagram 或 Facebook，并写入内容历史 |
-| `language_learning_start_publish_meta_now` | 把 Zernio 中已有的 Facebook、Instagram 定时帖子切换成立即发布 |
 | `language_learning_poll_task` | 轮询后台任务 |
 | `language_learning_clear_run` | 清本次目录 |

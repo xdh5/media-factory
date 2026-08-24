@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-from core.tools.cloudflare_data import CloudflareDataError, list_finance_generated_images, list_images
+from core.tools.cloudflare_data import CloudflareDataError, list_finance_generated_images
 
 from ._constants import (
     FINANCE_GENERATED_LIBRARY_LINE,
-    IMAGE_LIBRARY_LINE_PATTERN,
     IMAGE_LIBRARY_PROJECT_ROOT,
 )
 from ._errors import ImageLibraryDataError, ImageLibraryEmptyError, InvalidParameterError
@@ -20,8 +18,11 @@ __all__ = ["list_local_images"]
 
 def _validate_line(line: str) -> str:
     value = str(line or "").strip()
-    if not re.fullmatch(IMAGE_LIBRARY_LINE_PATTERN, value):
-        raise InvalidParameterError("line", f"line 不合法：{line!r}")
+    if value != FINANCE_GENERATED_LIBRARY_LINE:
+        raise InvalidParameterError(
+            "line",
+            f"通用 image_library 已停用，line 只能是 {FINANCE_GENERATED_LIBRARY_LINE}",
+        )
     return value
 
 
@@ -41,11 +42,7 @@ def list_local_images(line: str) -> list[dict]:
     workflow = _validate_line(line)
     restore_image_library(workflow)
     try:
-        rows = (
-            list_finance_generated_images()
-            if workflow == FINANCE_GENERATED_LIBRARY_LINE
-            else list_images(workflow)
-        )
+        rows = list_finance_generated_images()
     except CloudflareDataError as exc:
         raise ImageLibraryDataError(
             f"读取 Cloudflare D1 图库失败：{exc.message}",

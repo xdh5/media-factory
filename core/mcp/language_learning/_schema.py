@@ -314,15 +314,14 @@ PUBLISH_VIDEOS_INPUT_SCHEMA = {
     "required": ["manifest_path", "publish_confirmed"],
     "additionalProperties": False,
 }
-PUBLISH_META_NOW_INPUT_SCHEMA = {
+PUBLICATION_RECORDS_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
-        "publish_confirmed": {"type": "boolean", "const": True},
-        "facebook_posts": {"type": "array", "items": {"type": "object"}, "minItems": 1},
-        "instagram_posts": {"type": "array", "items": {"type": "object"}, "minItems": 1},
+        "publication_id": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "minLength": 1},
+        "records": {"type": "array", "minItems": 1, "items": {"type": "object"}},
     },
-    "required": ["run_id", "publish_confirmed", "facebook_posts", "instagram_posts"],
+    "required": ["publication_id", "run_id", "records"],
     "additionalProperties": False,
 }
 CLEAR_RUN_INPUT_SCHEMA = {

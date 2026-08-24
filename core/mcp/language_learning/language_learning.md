@@ -76,9 +76,6 @@ language_learning_start_upload_r2
 └─ tools.publish_vocabulary_videos.upload_publish_assets_to_r2
    └─ 上传成片、主题图与发布清单
 
-language_learning_publish
-└─ 兼容旧客户端的同步发布入口
-
 language_learning_start_publish
 └─ 后台发布中文 YouTube、TikTok、Instagram 或 Facebook，并幂等写入正式话题和十个单词
 

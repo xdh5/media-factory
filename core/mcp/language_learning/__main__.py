@@ -16,6 +16,7 @@ from mcp.server.fastmcp import FastMCP
 
 from core.tools.clear_cache import ConfirmationRequiredError as ClearCacheConfirmationRequiredError
 from core.tools.clear_cache import clear_run
+from core.tools.cloudflare_data import CloudflareDataError, commit_publication_records
 from core.tools.generate_image import (
     ImageGenerationError,
     generate_qwen_image,
@@ -55,7 +56,6 @@ from .tools import (
     list_recent_words,
     parse_vocabulary_response,
     prepare_r2_publish_manifest,
-    publish_meta_posts_now,
     publish_vocabulary_videos,
     review_subject_cutouts,
     upload_publish_assets_to_r2,
@@ -87,7 +87,32 @@ def _map_error(exc: Exception) -> LanguageLearningError:
         return LanguageLearningError(exc.message, exc.details)
     if isinstance(exc, ClearCacheConfirmationRequiredError):
         return ConfirmationRequiredError(str(exc))
+    if isinstance(exc, CloudflareDataError):
+        return LanguageLearningError(exc.message, exc.details)
     raise exc
+
+
+@mcp.tool()
+def language_learning_record_publications(
+    publication_id: str,
+    run_id: str,
+    records: list[dict],
+) -> dict:
+    """MatrixMedia 发布成功或预约成功后，按最终平台写入语言学习发布记录。"""
+    try:
+        normalized = [
+            {
+                **record,
+                "publication_id": publication_id,
+                "run_id": run_id,
+                "business_line": "language_learning",
+                "connector": "matrixmedia",
+            }
+            for record in records
+        ]
+        return commit_publication_records(normalized)
+    except Exception as exc:
+        raise _map_error(exc) from exc
 
 
 def _run_qwen_fallback(context_path: str, failures: list, images: list) -> None:
@@ -545,29 +570,6 @@ def language_learning_start_upload_r2(
 
 
 @mcp.tool()
-def language_learning_publish(
-    manifest_path: str,
-    publish_confirmed: bool,
-    targets: list[str] | None = None,
-    publish_at: str | None = None,
-    publish_at_by_target: dict[str, str | None] | None = None,
-    video_parts: list[int] | None = None,
-) -> dict:
-    """通过 MCP 发布中文视频到 YouTube、TikTok、Instagram 或 Facebook；同步接口仅用于兼容旧客户端。"""
-    try:
-        return publish_vocabulary_videos(
-            manifest_path,
-            publish_confirmed,
-            targets=targets,
-            publish_at=publish_at,
-            publish_at_by_target=publish_at_by_target,
-            video_parts=video_parts,
-        )
-    except Exception as exc:
-        raise _map_error(exc) from exc
-
-
-@mcp.tool()
 def language_learning_start_publish(
     manifest_path: str,
     publish_confirmed: bool,
@@ -607,37 +609,6 @@ def language_learning_start_publish(
         return {**started, "poll_tool": "language_learning_poll_task"}
     except Exception as exc:
         raise _map_error(exc) from exc
-
-
-@mcp.tool()
-def language_learning_start_publish_meta_now(
-    run_id: str,
-    facebook_posts: list[dict],
-    instagram_posts: list[dict],
-    publish_confirmed: bool,
-) -> dict:
-    """把 Zernio 中已有的 Facebook、Instagram 定时帖子切换成立即发布。"""
-    try:
-        cache_root, _ = production_dirs(run_id)
-
-        def _work() -> dict:
-            return publish_meta_posts_now(
-                facebook_posts,
-                instagram_posts,
-                publish_confirmed,
-            )
-
-        started = runner_submit_task(
-            cache_dir=cache_root,
-            run_id=run_id,
-            step="publish_meta_now",
-            fn=_work,
-        )
-        return {**started, "poll_tool": "language_learning_poll_task"}
-    except Exception as exc:
-        raise _map_error(exc) from exc
-
-
 @mcp.tool()
 def language_learning_poll_task(task_path: str) -> dict:
     """轮询后台任务。status=succeeded 时读 result；failed 时读 error 并停止制作。"""

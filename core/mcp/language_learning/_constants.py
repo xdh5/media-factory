@@ -31,6 +31,7 @@ CHINESE_YOUTUBE_CHANNEL_ID = "UC2WPS9jGyQF38pzj_j2EA5g"
 YOUTUBE_LANGUAGE_LEARNING_CATEGORY_ID = "27"
 YOUTUBE_LANGUAGE_BY_MODE = {"en-zh": "zh", "en-ko": "ko"}
 PUBLISH_MANIFEST_FILE_NAME = "publish-manifest.json"
+MATRIXMEDIA_AI_CREATIVE_STATEMENT = "ai_generated"
 TASKS_DIR_NAME = "tasks"
 
 _ROOT = Path(__file__).resolve().parent

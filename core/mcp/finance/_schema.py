@@ -52,6 +52,16 @@ UPLOAD_R2_INPUT_SCHEMA = {
     "required": ["manifest_path", "run_id"],
     "additionalProperties": False,
 }
+PUBLICATION_RECORDS_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "publication_id": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "minLength": 1},
+        "records": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    },
+    "required": ["publication_id", "run_id", "records"],
+    "additionalProperties": False,
+}
 FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -120,6 +130,30 @@ FINANCE_SOURCE_SCRIPT_OUTPUT_SCHEMA = {
         "reservation_minutes": {"type": "integer", "minimum": 1},
     },
     "required": ["source", "reservation", "reservation_minutes"],
+    "additionalProperties": False,
+}
+FINANCE_SOURCE_STATS_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "collection_code": {"type": "string", "const": "finance"},
+        "workflow": {"type": "string", "const": "finance"},
+        "reservation_minutes": {"type": "integer", "minimum": 1},
+        "total_count": {"type": "integer", "minimum": 0},
+        "available_count": {"type": "integer", "minimum": 0},
+        "reserved_count": {"type": "integer", "minimum": 0},
+        "used_count": {"type": "integer", "minimum": 0},
+        "checked_at": {"type": "string"},
+    },
+    "required": [
+        "collection_code",
+        "workflow",
+        "reservation_minutes",
+        "total_count",
+        "available_count",
+        "reserved_count",
+        "used_count",
+        "checked_at",
+    ],
     "additionalProperties": False,
 }
 TASK_SUBMIT_OUTPUT_SCHEMA = {

@@ -5,7 +5,6 @@ from .create_vocabulary_videos import create_vocabulary_videos
 from .publish_vocabulary_videos import (
     attach_publish_manifest,
     prepare_r2_publish_manifest,
-    publish_meta_posts_now,
     publish_vocabulary_videos,
     upload_publish_assets_to_r2,
 )
@@ -30,7 +29,6 @@ __all__ = [
     "list_recent_words",
     "parse_vocabulary_response",
     "prepare_r2_publish_manifest",
-    "publish_meta_posts_now",
     "publish_vocabulary_videos",
     "review_subject_cutouts",
     "upload_publish_assets_to_r2",

@@ -4,6 +4,8 @@ import time
 from pathlib import Path
 
 MCP_ID = "finance"
+SOURCE_COLLECTION_CODE = "finance"
+SOURCE_RESERVATION_MINUTES = 120
 DRAFT_FILE_NAME = "draft.json"
 STORYBOARD_CONTEXT_FILE_NAME = "storyboard-context.json"
 STORYBOARD_TEXT_FILE_NAME = "storyboard.txt"
@@ -12,6 +14,7 @@ TASKS_DIR_NAME = "tasks"
 TOPIC_DEDUPLICATION_DAYS = 30
 VIDEO_SIZE = "1920x1080"
 VIDEO_RADIO = "16:9"
+MATRIXMEDIA_AI_CREATIVE_STATEMENT = "ai_generated"
 
 _ROOT = Path(__file__).resolve().parent
 METADATA_PROMPT_PATH = _ROOT / "prompts" / "metadata.md"

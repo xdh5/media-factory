@@ -196,13 +196,6 @@ def validate_and_record_words(
     return payload
 
 
-def list_images(line: str) -> list[dict]:
-    payload = _request("GET", "/v1/images", query={"line": line})
-    if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 图库接口缺少 records 数组")
-    return payload["records"]
-
-
 def list_finance_generated_images() -> list[dict]:
     payload = _request("GET", "/v1/finance-generated-images")
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
@@ -221,26 +214,27 @@ def commit_finance_generated_images(records: list[dict]) -> dict:
     return payload
 
 
-def list_publish_account_groups() -> list[dict]:
-    payload = _request("GET", "/v1/publish-account-groups")
+def list_publication_records(
+    *,
+    business_line: str | None = None,
+    platform: str | None = None,
+) -> list[dict]:
+    query = {}
+    if business_line:
+        query["business_line"] = business_line
+    if platform:
+        query["platform"] = platform
+    payload = _request("GET", "/v1/publication-records", query=query)
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 发布账号组接口缺少 records 数组")
+        raise CloudflareDataRequestError("Cloudflare 发布记录接口缺少 records 数组")
     return payload["records"]
 
 
-def get_publish_account_group(group: str) -> dict:
-    group_name = str(group or "").strip()
-    if not group_name:
-        raise CloudflareDataRequestError("发布账号组编码或名称不能为空")
-    payload = _request("GET", "/v1/publish-account-groups", query={"group": group_name})
+def commit_publication_records(records: list[dict]) -> dict:
+    payload = _request("POST", "/v1/publication-records/commit", body={"records": records})
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 发布账号组接口缺少 records 数组")
-    if len(payload["records"]) != 1 or not isinstance(payload["records"][0], dict):
-        raise CloudflareDataRequestError(
-            f"Cloudflare 发布账号组接口没有返回唯一账号组：{group_name}",
-            {"group": group_name, "record_count": len(payload["records"])},
-        )
-    return payload["records"][0]
+        raise CloudflareDataRequestError("Cloudflare 发布记录写入接口缺少 records 数组")
+    return payload
 
 
 def list_douyin_research_ids() -> list[str]:
@@ -258,6 +252,41 @@ def commit_douyin_research(records: list[dict]) -> dict:
     )
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
         raise CloudflareDataRequestError("Cloudflare 抖音研究写入接口缺少 records 数组")
+    return payload
+
+
+def get_douyin_research_script_stats(
+    *,
+    collection_code: str,
+    workflow: str,
+    reservation_minutes: int = 120,
+) -> dict:
+    payload = _request(
+        "GET",
+        "/v1/douyin-research/scripts/stats",
+        query={
+            "collection_code": collection_code,
+            "workflow": workflow,
+            "reservation_minutes": reservation_minutes,
+        },
+    )
+    required_counts = ("total_count", "available_count", "reserved_count", "used_count")
+    if not isinstance(payload, dict) or any(
+        type(payload.get(name)) is not int or payload[name] < 0 for name in required_counts
+    ):
+        raise CloudflareDataRequestError("Cloudflare 稿件统计接口缺少有效的数量字段")
+    if (
+        not isinstance(payload.get("collection_code"), str)
+        or not isinstance(payload.get("workflow"), str)
+        or type(payload.get("reservation_minutes")) is not int
+        or not isinstance(payload.get("checked_at"), str)
+    ):
+        raise CloudflareDataRequestError("Cloudflare 稿件统计接口缺少有效的查询信息")
+    classified_count = sum(
+        payload[name] for name in ("available_count", "reserved_count", "used_count")
+    )
+    if classified_count != payload["total_count"]:
+        raise CloudflareDataRequestError("Cloudflare 稿件统计接口返回的分类数量与总数不一致")
     return payload
 
 

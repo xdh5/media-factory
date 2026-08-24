@@ -25,7 +25,6 @@ from ._errors import CredentialError, InvalidParameterError, PublishError
 __all__ = [
     "check_facebook_connection",
     "list_facebook_accounts",
-    "publish_facebook_post_now",
     "publish_to_facebook",
 ]
 
@@ -293,18 +292,3 @@ def publish_to_facebook(
         }
     terminal = _wait_for_terminal(post_id, account_id)
     return {**terminal, "duplicate": duplicate}
-
-
-def publish_facebook_post_now(post_id: str, account_id: str) -> dict:
-    """把 Zernio 中已有的 Facebook 定时帖子改成立即发布。"""
-    normalized_post_id = str(post_id or "").strip()
-    normalized_account_id = str(account_id or "").strip()
-    if not normalized_post_id:
-        raise InvalidParameterError("post_id 不能为空", {"parameter": "post_id"})
-    if normalized_account_id not in {item["page_id"] for item in list_facebook_accounts()}:
-        raise CredentialError(
-            "请求的 Facebook 账号不在 Zernio 已选账号中",
-            {"account_id": normalized_account_id},
-        )
-    _request("PUT", f"/posts/{normalized_post_id}", json={"publishNow": True})
-    return _wait_for_terminal(normalized_post_id, normalized_account_id)

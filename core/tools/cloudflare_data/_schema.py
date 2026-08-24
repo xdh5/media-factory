@@ -74,41 +74,57 @@ FINANCE_GENERATED_IMAGE_OUTPUT_SCHEMA = {
     "additionalProperties": False,
 }
 
-PUBLISH_ACCOUNT_SCHEMA = {
+PUBLICATION_RECORD_SCHEMA = {
     "type": "object",
     "properties": {
-        "code": {"type": "string"},
-        "platform": {"type": "string"},
-        "display_name": {"type": "string"},
+        "id": {"type": "integer"},
+        "publication_id": {"type": "string"},
+        "run_id": {"type": "string"},
+        "business_line": {"type": "string", "enum": ["finance", "language_learning"]},
+        "platform": {
+            "type": "string",
+            "enum": [
+                "youtube", "facebook", "instagram", "tiktok", "kuaishou",
+                "douyin", "baijiahao", "xiaohongshu", "toutiao", "wechat_channels",
+            ],
+        },
         "connector": {"type": "string"},
-        "config_key": {"type": "string"},
-        "config": {"type": "object"},
-        "position": {"type": "integer", "minimum": 0},
-        "enabled": {"type": "boolean"},
+        "account_id": {"type": "string"},
+        "content_part": {"type": "integer", "minimum": 1},
+        "title": {"type": "string"},
+        "publish_mode": {"type": "string", "enum": ["immediate", "scheduled"]},
+        "publish_at": {"type": "string", "format": "date-time"},
+        "status": {"type": "string", "enum": ["published", "scheduled"]},
+        "external_id": {"type": ["string", "null"]},
+        "external_url": {"type": ["string", "null"]},
+        "created_at": {"type": "string"},
+        "updated_at": {"type": "string"},
     },
     "required": [
-        "code",
-        "platform",
-        "display_name",
-        "connector",
-        "config_key",
-        "config",
-        "position",
-        "enabled",
+        "publication_id", "run_id", "business_line", "platform", "connector",
+        "account_id", "content_part", "title", "publish_mode", "publish_at", "status",
     ],
     "additionalProperties": False,
 }
 
-PUBLISH_ACCOUNT_GROUP_SCHEMA = {
+PUBLICATION_RECORDS_COMMIT_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "code": {"type": "string"},
-        "name": {"type": "string"},
-        "workflow": {"type": "string"},
-        "enabled": {"type": "boolean"},
-        "members": {"type": "array", "items": PUBLISH_ACCOUNT_SCHEMA},
+        "records": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": PUBLICATION_RECORD_SCHEMA,
+        },
     },
-    "required": ["code", "name", "workflow", "enabled", "members"],
+    "required": ["records"],
+    "additionalProperties": False,
+}
+
+PUBLICATION_RECORDS_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {"records": {"type": "array", "items": PUBLICATION_RECORD_SCHEMA}},
+    "required": ["records"],
     "additionalProperties": False,
 }
 
@@ -182,6 +198,42 @@ DOUYIN_RESEARCH_SCRIPT_RESERVATION_SCHEMA = {
         "run_id": {"type": ["string", "null"]},
     },
     "required": ["aweme_id", "workflow", "status", "reservation_token", "reserved_at"],
+    "additionalProperties": False,
+}
+
+DOUYIN_RESEARCH_SCRIPT_STATS_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "collection_code": {"type": "string", "minLength": 1, "maxLength": 64},
+        "workflow": {"type": "string", "minLength": 1, "maxLength": 64},
+        "reservation_minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
+    },
+    "required": ["collection_code", "workflow"],
+    "additionalProperties": False,
+}
+
+DOUYIN_RESEARCH_SCRIPT_STATS_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "collection_code": {"type": "string"},
+        "workflow": {"type": "string"},
+        "reservation_minutes": {"type": "integer", "minimum": 1},
+        "total_count": {"type": "integer", "minimum": 0},
+        "available_count": {"type": "integer", "minimum": 0},
+        "reserved_count": {"type": "integer", "minimum": 0},
+        "used_count": {"type": "integer", "minimum": 0},
+        "checked_at": {"type": "string"},
+    },
+    "required": [
+        "collection_code",
+        "workflow",
+        "reservation_minutes",
+        "total_count",
+        "available_count",
+        "reserved_count",
+        "used_count",
+        "checked_at",
+    ],
     "additionalProperties": False,
 }
 

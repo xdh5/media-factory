@@ -4,14 +4,12 @@ from ._errors import InstagramToolError
 from .publish_to_instagram import (
     check_instagram_connection,
     list_instagram_accounts,
-    publish_instagram_post_now,
     publish_to_instagram,
 )
 
 __all__ = [
     "check_instagram_connection",
     "list_instagram_accounts",
-    "publish_instagram_post_now",
     "publish_to_instagram",
     "InstagramToolError",
 ]

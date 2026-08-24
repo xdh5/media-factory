@@ -16,6 +16,8 @@ from core.tools.clear_cache import ConfirmationRequiredError as ClearCacheConfir
 from core.tools.clear_cache import clear_run
 from core.tools.cloudflare_data import (
     CloudflareDataError,
+    commit_publication_records,
+    get_douyin_research_script_stats,
     mark_douyin_research_script_used,
     reserve_douyin_research_script,
 )
@@ -31,7 +33,12 @@ from core.mcp._task_runner import TaskNotFoundError as RunnerTaskNotFoundError
 from core.mcp._task_runner import poll_task as runner_poll_task
 from core.mcp._task_runner import submit_task as runner_submit_task
 
-from ._constants import MCP_ID, TOPIC_DEDUPLICATION_DAYS
+from ._constants import (
+    MCP_ID,
+    SOURCE_COLLECTION_CODE,
+    SOURCE_RESERVATION_MINUTES,
+    TOPIC_DEDUPLICATION_DAYS,
+)
 from ._errors import ConfirmationRequiredError, FinanceError, TaskNotFoundError, WorkflowStepError
 from .tools import (
     build_metadata_prompt,
@@ -74,6 +81,7 @@ mcp = FastMCP(
         "Agent 必须按 Skill 传参。"
         "第一步必须从抖音研究数据库选择未使用的财经稿件，禁止自行从零写正文；"
         "保存稿件成功后必须把数据库来源标记为已使用。"
+        "查询稿件余量必须使用只读的 finance_get_source_stats，不得用选稿工具代替统计。"
         "本地交互制作使用用户参考图逐镜头调用千问生图，每张图都必须有独立任务；"
         "GitHub Action 从统一财经生成图库按场景描述选图。"
         "稿件生成后直接制作视频；成品完成后展示成片并等待确认再发布。"
@@ -84,13 +92,49 @@ mcp = FastMCP(
 
 
 @mcp.tool()
+def finance_get_source_stats() -> dict:
+    """只读统计财经数据库原稿总数、可用数、占用数和已使用数，不占用稿件。"""
+    try:
+        return get_douyin_research_script_stats(
+            collection_code=SOURCE_COLLECTION_CODE,
+            workflow=MCP_ID,
+            reservation_minutes=SOURCE_RESERVATION_MINUTES,
+        )
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_record_publications(
+    publication_id: str,
+    run_id: str,
+    records: list[dict],
+) -> dict:
+    """MatrixMedia 发布成功或预约成功后，按最终平台写入财经发布记录。"""
+    try:
+        normalized = [
+            {
+                **record,
+                "publication_id": publication_id,
+                "run_id": run_id,
+                "business_line": "finance",
+                "connector": "matrixmedia",
+            }
+            for record in records
+        ]
+        return commit_publication_records(normalized)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
 def finance_get_source_script() -> dict:
     """从抖音研究数据库选择并临时占用一条未使用的财经稿件。"""
     try:
         return reserve_douyin_research_script(
-            collection_code="finance",
+            collection_code=SOURCE_COLLECTION_CODE,
             workflow=MCP_ID,
-            reservation_minutes=120,
+            reservation_minutes=SOURCE_RESERVATION_MINUTES,
         )
     except Exception as exc:
         raise _map_error(exc) from exc

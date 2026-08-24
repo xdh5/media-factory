@@ -139,7 +139,8 @@ LIST_LOCAL_IMAGES_INPUT_SCHEMA = {
         "line": {
             "type": "string",
             "minLength": 1,
-            "description": "业务线 id，如 finance；财经统一生成图库使用 finance_generated",
+            "const": "finance_generated",
+            "description": "通用图库已停用，只支持财经统一生成图库 finance_generated",
         },
     },
     "required": ["line"],

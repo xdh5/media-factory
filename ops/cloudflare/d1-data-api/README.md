@@ -4,23 +4,22 @@
 
 - `topic_history`
 - `language_learning_words`
-- `image_library`
 - `finance_generated_images`：财经千问生成图库，编号与 `data/image_library_finance/<id>.png` 一致并持续递增
-- `publish_account_groups`
-- `publish_accounts`
-- `publish_account_group_members`
+- `publication_records`：记录财经和语言学习内容在各具体平台的标题、发布方式和精确发布时间
 - `douyin_research_contents`
 - `douyin_research_collections`
 - `douyin_research_discoveries`
 - `douyin_research_script_usage`
 
-发布账号表只保存平台、连接器和配置别名，不保存密码、Cookie、Token、手机号，也不导入 MatrixMedia 的账号明细。图片和视频文件继续存 R2，`image_library.image_path` 只保存项目相对路径。
+发布记录把 MatrixMedia 视为连接器，最终平台细分为 YouTube、Facebook、Instagram、TikTok、快手、抖音、百家号、小红书、头条号和视频号。`publish_at` 保存带时区的完整 ISO 8601 日期时间：立即发布写实际发送成功时间，预约发布写预约时间。
 
-发布账号组通过 `GET /v1/publish-account-groups` 查询；传入 `group` 可按编码或中文名读取单组，例如 `GET /v1/publish-account-groups?group=中文`。
+通过 `POST /v1/publication-records/commit` 幂等写入发布记录；通过 `GET /v1/publication-records` 查询，可选按 `business_line` 和 `platform` 过滤。
 
 抖音研究 MCP 接收用户提供的抖音链接和分类，完成下载、转写后调用 `POST /v1/douyin-research/commit`。作品内容只存一份，内容分类和来源标识记录在 `douyin_research_discoveries`；链接直投的来源标识固定为 `direct_link`。
 
 财经 MCP 通过 `POST /v1/douyin-research/scripts/reserve` 从“财经”分类选择未使用原稿并临时占用，保存改编稿后调用 `POST /v1/douyin-research/scripts/used` 标记为已使用。占用默认两小时后自动过期；全部稿件已使用时接口返回 `DOUYIN_SCRIPTS_EXHAUSTED`，禁止回退到重复稿件。
+
+可通过 `GET /v1/douyin-research/scripts/stats?collection_code=finance&workflow=finance&reservation_minutes=120` 只读查询稿件总数、可用数、有效占用数和已使用数；过期占用计入可用数，查询不会创建或更新占用记录。
 
 财经 MCP 的参考图千问生图完成后，从 `data/image_library_finance/` 当前最大图片编号继续递增，
 并通过 `POST /v1/finance-generated-images/commit` 把相同编号、图片描述和项目相对路径写入独立生成图库；
