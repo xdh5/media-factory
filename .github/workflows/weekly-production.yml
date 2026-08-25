@@ -1,13 +1,13 @@
-name: 每周批量生产
+name: 每日生产次日内容
 
 on:
   schedule:
-    - cron: "0 12 * * 5"
+    - cron: "0 8 * * *"
       timezone: Asia/Shanghai
   workflow_dispatch:
     inputs:
-      week_start:
-        description: 可选；下周起始周一 YYYY-MM-DD，留空自动计算
+      publish_date:
+        description: 可选；计划发布日期 YYYY-MM-DD，留空使用北京时间明天
         required: false
         type: string
 
@@ -16,7 +16,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: weekly-production
+  group: daily-production
   cancel-in-progress: false
 
 env:
@@ -25,29 +25,24 @@ env:
 
 jobs:
   plan:
-    name: 计算下周计划发布日期
+    name: 计算次日计划发布日期
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      dates_json: ${{ steps.plan.outputs.dates_json }}
+      publish_date: ${{ steps.plan.outputs.publish_date }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v5
 
-      - name: 生成周一至周日日期列表
+      - name: 生成次日日期
         id: plan
         env:
-          INPUT_WEEK_START: ${{ inputs.week_start }}
-        run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START"
+          INPUT_PUBLISH_DATE: ${{ inputs.publish_date }}
+        run: python -m ops.github_actions daily_plan --publish-date "$INPUT_PUBLISH_DATE"
 
   produce-day:
-    name: 串行生产 ${{ matrix.publish_date }}
+    name: 生产并发布 ${{ needs.plan.outputs.publish_date }}
     needs: plan
-    strategy:
-      matrix:
-        publish_date: ${{ fromJSON(needs.plan.outputs.dates_json) }}
-      max-parallel: 1
-      fail-fast: false
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     container:
@@ -97,5 +92,5 @@ jobs:
 
       - name: 串行生产财经、语言并发布语言
         env:
-          PUBLISH_DATE: ${{ matrix.publish_date }}
-        run: python -m ops.github_actions weekly_day --publish-date "$PUBLISH_DATE"
+          PUBLISH_DATE: ${{ needs.plan.outputs.publish_date }}
+        run: python -m ops.github_actions daily_day --publish-date "$PUBLISH_DATE"

@@ -1,4 +1,4 @@
-"""每周五批量生产：串行处理下周七个计划发布日。"""
+"""按计划发布日期串行生产财经、语言并发布语言。"""
 
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ def _manifest_url(run_id: str) -> str:
 
 
 async def run_day(publish_date: str, run_url: str = "") -> dict:
-    work_dir = PROJECT_ROOT / "cache" / "github_actions" / "weekly" / publish_date
+    work_dir = PROJECT_ROOT / "cache" / "github_actions" / "daily" / publish_date
     work_dir.mkdir(parents=True, exist_ok=True)
     results: dict = {"publish_date": publish_date, "finance": {}, "language": {}}
 
