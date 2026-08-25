@@ -40,18 +40,25 @@ def _article_prompt(source_text: str, source_hook: str) -> str:
 
 
 def _extract_source_hook(source_text: str) -> str:
+    feedback = ""
     for _ in range(3):
-        result = qwen(
-            "你是中文短视频审稿编辑，必须输出有效 JSON，不要输出 Markdown。",
+        user_prompt = (
             "识别下面原稿开头完整的黄金钩子。黄金钩子必须从原稿第一个字开始连续复制，"
             "不得改字、改标点、补字或省略中间内容。只输出 {\"source_hook\":\"原文开头钩子\"}。\n\n"
-            f"原稿：\n{source_text}",
+            f"原稿：\n{source_text}"
+        )
+        if feedback:
+            user_prompt += f"\n\n上一次输出校验失败，必须修正：{feedback}"
+        result = qwen(
+            "你是中文短视频审稿编辑，必须输出有效 JSON，不要输出 Markdown。",
+            user_prompt,
             json_output=True,
             max_tokens=500,
         )
         hook = str(json_text(result).get("source_hook") or "")
         if hook and source_text.startswith(hook):
             return hook
+        feedback = "source_hook 必须从原稿第一个字开始连续复制，且与原稿开头完全一致"
     raise ValueError("千问连续三次识别的黄金钩子都不是数据库原稿的精确开头")
 
 
@@ -75,29 +82,44 @@ def _adapt_article(source_text: str, source_hook: str) -> str:
 def _choose_topic(article: str, recent_topics: list[str], requested_topic: str) -> str:
     requested_hint = requested_topic.strip()
     recent_folded = {item.strip().casefold() for item in recent_topics}
+    feedback = ""
     for _ in range(3):
-        result = qwen(
-            "你是财经短视频选题编辑。只返回一个中文话题，不加序号、引号或说明。",
+        user_prompt = (
             "从下面已经改编好的正文提炼一个准确、简短的财经话题，不得改变正文主题。"
             f"用户提供的可选侧重点：{requested_hint or '无'}。"
-            f"不得与最近30天话题重复：{json.dumps(recent_topics, ensure_ascii=False)}。\n\n正文：\n{article}",
+            f"不得与最近30天话题重复：{json.dumps(recent_topics, ensure_ascii=False)}。\n\n正文：\n{article}"
+        )
+        if feedback:
+            user_prompt += f"\n\n上一次输出校验失败，必须修正：{feedback}"
+        result = qwen(
+            "你是财经短视频选题编辑。只返回一个中文话题，不加序号、引号或说明。",
+            user_prompt,
             max_tokens=100,
         )
         topic = str(result["text"]).strip().strip("“”\"'")
         if topic and topic.casefold() not in recent_folded:
             return topic
+        if not topic:
+            feedback = "话题不能为空"
+        else:
+            feedback = f"话题“{topic}”与最近30天话题重复，必须换一个"
     raise ValueError("千问连续三次生成的话题都为空或与最近30天话题重复")
 
 
-def _metadata(metadata_prompt: str, article: str) -> dict:
-    result = qwen(
-        "你是财经短视频标题编辑，必须输出有效 JSON，不要输出 Markdown。",
+def _metadata(metadata_prompt: str, article: str, *, feedback: str = "") -> dict:
+    user_prompt = (
         f"{metadata_prompt}\n\n正文：\n{article}\n\n"
         "输出 JSON：{\"metadata\":\"长标题|短标题|标签一|标签二|标签三|标签四\","
         "\"cover_lines\":[\"封面第一行\",\"封面第二行\"],"
         "\"cover_highlights\":[\"重点词一\",\"重点词二\"]}。"
         "cover_lines 必须按语义拆成1至3行，去掉空白拼接后与长标题完全相同；"
-        "cover_highlights 必须选择1至3个原样出现在长标题中的重点词。",
+        "cover_highlights 必须选择1至3个原样出现在长标题中的重点词。"
+    )
+    if feedback:
+        user_prompt += f"\n\n上一次输出校验失败，必须修正：{feedback}"
+    result = qwen(
+        "你是财经短视频标题编辑，必须输出有效 JSON，不要输出 Markdown。",
+        user_prompt,
         json_output=True,
         max_tokens=600,
     )
@@ -163,7 +185,11 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
         last_error = None
         for _ in range(3):
             try:
-                metadata = _metadata(metadata_prompt, article)
+                metadata = _metadata(
+                    metadata_prompt,
+                    article,
+                    feedback=str(last_error) if last_error else "",
+                )
                 draft = await mcp.call(
                     "finance_save_draft",
                     {
