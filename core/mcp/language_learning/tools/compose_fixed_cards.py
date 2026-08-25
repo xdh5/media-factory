@@ -157,55 +157,64 @@ def _save_cached_cutouts(cache_dir: Path, signature: str, subjects: list[Image.I
         )
 
 
-def review_subject_cutouts(
+SHEET_FAILURE_KINDS = frozenset({
+    "background_edge",
+    "text",
+    "watermark",
+    "style",
+    "count",
+    "completeness",
+})
+
+
+def review_subject_sheet(
     subject_sheet_path: str | Path,
     cutout_cache_dir: str | Path,
-    reviews: list[dict],
+    review: dict,
 ) -> dict:
-    """记录十张抠图的背景残色检查，发现残色时要求更换背景重新生成。"""
+    """记录整张去背景主题图的视觉验收结论，未通过时禁止拼卡。"""
     sheet_path = Path(subject_sheet_path).resolve()
     cache_dir = Path(cutout_cache_dir).resolve()
     signature = _sheet_signature(sheet_path)
     marker, cutout_paths = _cutout_cache_paths(cache_dir)
     if not marker.is_file() or marker.read_text(encoding="utf-8").strip() != signature:
         raise CardCompositionError("当前主体图没有可检查的抠图缓存，请先调用主体图验收")
-    if len(reviews) != WORDS_PER_TASK:
-        raise CardCompositionError(f"必须逐张检查 {WORDS_PER_TASK} 张抠图，现在提交了 {len(reviews)} 条")
-    normalized: list[dict] = []
-    seen: set[int] = set()
-    for raw in reviews:
-        try:
-            index = int(raw.get("index"))
-        except (AttributeError, TypeError, ValueError) as exc:
-            raise CardCompositionError("抠图检查的 index 必须是 1 到 10 的整数") from exc
-        if index < 1 or index > WORDS_PER_TASK or index in seen:
-            raise CardCompositionError(f"抠图检查包含无效或重复编号：{index}")
-        seen.add(index)
-        valid = raw.get("valid")
-        if not isinstance(valid, bool):
-            raise CardCompositionError(f"第 {index} 张抠图的 valid 必须是布尔值")
-        failure_kind = str(raw.get("failure_kind") or "").strip().casefold()
-        issue = str(raw.get("issue") or "").strip()
-        if valid:
-            failure_kind = ""
-        elif failure_kind != "background_edge":
-            raise CardCompositionError(
-                f"第 {index} 张发现背景残色时必须标记 failure_kind=background_edge"
-            )
-        normalized.append({"index": index, "valid": valid, "failure_kind": failure_kind, "issue": issue})
-    normalized.sort(key=lambda item: item["index"])
+    background_removed_path = _background_removed_sheet_path(cache_dir)
+    if not background_removed_path.is_file():
+        raise CardCompositionError("去背景后的完整主题图不存在，请先调用主体图验收")
+    if not isinstance(review, dict):
+        raise CardCompositionError("整图验收结果必须是对象")
+    valid = review.get("valid")
+    if not isinstance(valid, bool):
+        raise CardCompositionError("review.valid 必须是布尔值")
+    failure_kind = str(review.get("failure_kind") or "").strip().casefold()
+    issue = str(review.get("issue") or "").strip()
+    if valid:
+        failure_kind = ""
+    elif failure_kind not in SHEET_FAILURE_KINDS:
+        raise CardCompositionError(
+            f"验收失败时 failure_kind 必须是 {sorted(SHEET_FAILURE_KINDS)} 之一"
+        )
+    elif not issue:
+        raise CardCompositionError("验收失败时 issue 必须说明具体问题")
+    normalized = {
+        "valid": valid,
+        "failure_kind": failure_kind,
+        "issue": issue,
+        "subject_count": review.get("subject_count"),
+    }
     if any(not path.is_file() for path in cutout_paths):
         raise CardCompositionError("十张抠图缓存不完整，请重新执行主体图验收")
     inspection_path, history_path = _inspection_paths(cache_dir)
-    invalid = [item for item in normalized if not item["valid"]]
-    if not invalid:
+    if valid:
         inspection_path.write_text(
-            json.dumps({"signature": signature, "approved": True, "reviews": normalized}, ensure_ascii=False, indent=2),
+            json.dumps({"signature": signature, "approved": True, "review": normalized}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         return {
             "approved": True,
-            "inspection_count": len(normalized),
+            "review": normalized,
+            "background_removed_sheet_path": str(background_removed_path),
             "cutout_paths": [str(path) for path in cutout_paths],
             "next_tool": "language_learning_start_compose_cards",
         }
@@ -218,21 +227,20 @@ def review_subject_cutouts(
         json.dumps({"signature": signature, "failed_rounds": failed_rounds}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    action = "regenerate"
-    validation_issues = [
-        f"第 {item['index']} 个主体 [{item['failure_kind']}]：{item['issue'] or item['failure_kind']}"
-        for item in invalid
-    ]
+    validation_issues = [f"[{failure_kind}] {issue}" if failure_kind else issue]
+    regeneration_instruction = (
+        "换一种与上一张明显不同、且与全部主体颜色反差更大的均匀纯色背景重新生成"
+        if failure_kind == "background_edge"
+        else "按验收问题重新生成主题图"
+    )
     return {
         "approved": False,
-        "inspection_count": len(normalized),
-        "bad_indices": [item["index"] for item in invalid],
+        "review": normalized,
         "failed_rounds": failed_rounds,
-        "action": action,
+        "action": "regenerate",
         "validation_issues": validation_issues,
-        "regeneration_instruction": "换一种与上一张明显不同、且与全部主体颜色反差更大的均匀纯色背景重新生成",
+        "regeneration_instruction": regeneration_instruction,
         "next_tool": "language_learning_prepare_images",
-        "reviews": normalized,
     }
 
 
@@ -419,7 +427,7 @@ def validate_subject_sheet(
         ),
         "cutout_paths": cutout_paths,
         "inspection_required": valid,
-        "next_tool": "language_learning_review_cutouts" if valid else "language_learning_prepare_images",
+        "next_tool": "language_learning_review_subject_sheet" if valid else "language_learning_prepare_images",
         "vision": vision,
     }
 
@@ -431,7 +439,7 @@ def _extract_subjects(sheet: Image.Image, sheet_path: Path, cache_dir: Path | No
         cached = _load_cached_cutouts(cache_dir, signature)
         if cached is not None:
             return cached
-    raise CardCompositionError("主体抠图尚未通过宿主 Agent 的逐张检查，不能制作卡片")
+    raise CardCompositionError("主体抠图尚未通过整图视觉验收，不能制作卡片")
 
 
 def _paste_subject(card: Image.Image, subject: Image.Image, box: tuple[int, int, int, int]) -> None:

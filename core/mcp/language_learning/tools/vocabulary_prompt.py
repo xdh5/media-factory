@@ -35,11 +35,13 @@ def build_visual_validation_prompt() -> dict:
     }
 
 
-def build_cutout_validation_prompt() -> dict:
-    """返回宿主 Agent 逐张检查透明抠图背景残色所需的 Prompt。"""
+def build_sheet_validation_prompt() -> dict:
+    """返回宿主 Agent 检查整张去背景主题图所需的 Prompt。"""
     return {
-        "system_prompt": _read_prompt("cutout-validation-system.md"),
-        "user_prompt": _read_prompt("cutout-validation-user.md"),
+        "system_prompt": _read_prompt("sheet-validation-system.md"),
+        "user_prompt": _read_prompt("sheet-validation-user.md"),
+        "response_format": "json",
+        "next_tool": "language_learning_review_subject_sheet",
     }
 
 

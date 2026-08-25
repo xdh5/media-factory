@@ -1,6 +1,6 @@
 """语言学习 MCP 内部编排模块。"""
 
-from .compose_fixed_cards import compose_fixed_cards, review_subject_cutouts, validate_subject_sheet
+from .compose_fixed_cards import compose_fixed_cards, review_subject_sheet, validate_subject_sheet
 from .create_vocabulary_videos import create_vocabulary_videos
 from .publish_vocabulary_videos import (
     attach_publish_manifest,
@@ -9,7 +9,7 @@ from .publish_vocabulary_videos import (
     upload_publish_assets_to_r2,
 )
 from .vocabulary_prompt import (
-    build_cutout_validation_prompt,
+    build_sheet_validation_prompt,
     build_subject_sheet_prompt,
     build_visual_validation_prompt,
     build_vocabulary_prompt,
@@ -19,7 +19,7 @@ from .vocabulary_history import build_database_word_entries, list_recent_words, 
 
 __all__ = [
     "attach_publish_manifest",
-    "build_cutout_validation_prompt",
+    "build_sheet_validation_prompt",
     "build_subject_sheet_prompt",
     "build_visual_validation_prompt",
     "build_vocabulary_prompt",
@@ -30,7 +30,7 @@ __all__ = [
     "parse_vocabulary_response",
     "prepare_r2_publish_manifest",
     "publish_vocabulary_videos",
-    "review_subject_cutouts",
+    "review_subject_sheet",
     "upload_publish_assets_to_r2",
     "validate_words",
     "validate_subject_sheet",

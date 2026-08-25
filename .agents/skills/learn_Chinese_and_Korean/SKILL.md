@@ -93,8 +93,8 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 3. `language_learning_build_vocabulary_prompt(topic, learning_modes)` 获取包含最近 100 天词库的 Prompt，按原样生成纯文本词表；再调用 `language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)`，由 MCP 强制校验至少 5 个新词，但暂不写库。
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
 5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问兜底生图）→ `language_learning_poll_task`。MCP 不调用千问文本或视觉模型。
-6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 只提取按上排从左到右、下排从左到右排序的十个保守边界框，不检查文字、水印、画风、内容或主体完整性；调用 `language_learning_validate_subject_sheet` 后，Python 去背景并输出十张抠图。
-7. 调用 `language_learning_get_cutout_validation_prompt`，宿主 Agent 必须打开十张透明抠图，按返回 Prompt 只检查轮廓或透明区域附近是否残留原背景色的彩边、描边、光晕、色块或毛边，不检查其他项目，再调用 `language_learning_review_cutouts` 提交十条结论。发现残色时标记 `failure_kind=background_edge`，MCP 必须要求换一种与上一张明显不同、且与全部主体反差更大的纯色背景重新生成主题图。主题图最多生成 3 次，第三次仍有背景残色必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 调用千问视觉执行同一个 MCP Prompt。
+6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 只提取按上排从左到右、下排从左到右排序的十个保守边界框，不检查文字、水印、画风、内容或主体完整性；调用 `language_learning_validate_subject_sheet` 后，Python 整图去背景、输出十张抠图，并保存 `subject-sheet-background-removed.png`。
+7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**整张去背景后的完整主题图**（不是十张单独抠图），按返回 Prompt 一次性检查：主体数量是否为 10、完整性、文字、水印、画风、背景残色；再调用 `language_learning_review_subject_sheet` 提交一条结论。失败时 `failure_kind` 取 `background_edge` / `text` / `watermark` / `style` / `count` / `completeness` 之一。背景残色时必须要求换一种与上一张明显不同、且与全部主体反差更大的纯色背景重新生成主题图。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对整图调用千问视觉执行同一个 MCP Prompt。
 8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
 9. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。
 10. 用户确认发布后：韩语条目直接使用本地产物交给 MatrixMedia MCP，并对每个平台传入条目中的 `creativeStatement="ai_generated"`；中文调用 `language_learning_start_publish`，默认发布 YouTube 和 TikTok，也可用 `targets` 显式发布 Instagram 或 Facebook。目标平台需要公网视频地址时，才调用 `language_learning_start_upload_r2` 上传发布资产。发布 MCP 幂等写入正式话题与本期 10 个单词。
@@ -120,10 +120,10 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 | `language_learning_save_images` | 写入已生成图 |
 | `language_learning_submit_images` | 提交主体图（同步，勿用） |
 | `language_learning_start_submit_images` | 启动主体图提交（可选千问兜底生图） |
-| `language_learning_get_visual_validation_prompt` | 返回宿主 Agent 的主题图验收 Prompt |
-| `language_learning_get_cutout_validation_prompt` | 返回宿主 Agent 逐张检查抠图完整性和背景色残边的 Prompt |
-| `language_learning_validate_subject_sheet` | 接收宿主 Agent 的十个框并抠图 |
-| `language_learning_review_cutouts` | 接收宿主 Agent 对十张抠图的逐张检查 |
+| `language_learning_get_visual_validation_prompt` | 返回宿主 Agent 定位十个主体框的 Prompt |
+| `language_learning_get_sheet_validation_prompt` | 返回宿主 Agent 检查整张去背景主题图的 Prompt |
+| `language_learning_validate_subject_sheet` | 接收十个框、整图去背景并裁出十张抠图 |
+| `language_learning_review_subject_sheet` | 接收宿主 Agent 对整张去背景主题图的一条验收结论 |
 | `language_learning_compose_cards` | 拼单词卡（同步，勿用） |
 | `language_learning_start_compose_cards` | 启动拼卡后台任务 |
 | `language_learning_create_videos` | 出片（同步，勿用） |

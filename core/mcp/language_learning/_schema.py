@@ -170,32 +170,35 @@ VALIDATE_SUBJECT_SHEET_INPUT_SCHEMA = {
     "required": ["subject_sheet_path", "visual_layout", "run_id"],
     "additionalProperties": False,
 }
-REVIEW_CUTOUTS_INPUT_SCHEMA = {
+REVIEW_SUBJECT_SHEET_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "subject_sheet_path": {"type": "string", "minLength": 1},
-        "reviews": {
-            "type": "array",
-            "minItems": 10,
-            "maxItems": 10,
-            "items": {
-                "type": "object",
-                "properties": {
-                    "index": {"type": "integer", "minimum": 1, "maximum": 10},
-                    "valid": {"type": "boolean"},
-                    "failure_kind": {
-                        "type": "string",
-                        "enum": ["", "background_edge"],
-                    },
-                    "issue": {"type": "string"},
+        "review": {
+            "type": "object",
+            "properties": {
+                "valid": {"type": "boolean"},
+                "failure_kind": {
+                    "type": "string",
+                    "enum": [
+                        "",
+                        "background_edge",
+                        "text",
+                        "watermark",
+                        "style",
+                        "count",
+                        "completeness",
+                    ],
                 },
-                "required": ["index", "valid"],
-                "additionalProperties": False,
+                "issue": {"type": "string"},
+                "subject_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 20},
             },
+            "required": ["valid"],
+            "additionalProperties": True,
         },
         "run_id": {"type": "string", "pattern": r"^run-\d{6,}$"},
     },
-    "required": ["subject_sheet_path", "reviews", "run_id"],
+    "required": ["subject_sheet_path", "review", "run_id"],
     "additionalProperties": False,
 }
 SUBJECT_SHEET_VALIDATION_SCHEMA = {

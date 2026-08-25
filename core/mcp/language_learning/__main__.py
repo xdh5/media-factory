@@ -51,7 +51,7 @@ from ._constants import (
 from ._errors import ConfirmationRequiredError, LanguageLearningError, TaskNotFoundError
 from .tools import (
     attach_publish_manifest,
-    build_cutout_validation_prompt,
+    build_sheet_validation_prompt,
     build_subject_sheet_prompt,
     build_visual_validation_prompt,
     build_vocabulary_prompt,
@@ -61,7 +61,7 @@ from .tools import (
     parse_vocabulary_response,
     prepare_r2_publish_manifest,
     publish_vocabulary_videos,
-    review_subject_cutouts,
+    review_subject_sheet,
     upload_publish_assets_to_r2,
     validate_subject_sheet,
     validate_words,
@@ -243,10 +243,10 @@ def language_learning_get_visual_validation_prompt() -> dict:
 
 
 @mcp.tool()
-def language_learning_get_cutout_validation_prompt() -> dict:
-    """返回宿主 Agent 逐张检查透明抠图背景残色所需的 Prompt。"""
+def language_learning_get_sheet_validation_prompt() -> dict:
+    """返回宿主 Agent 检查整张去背景主题图所需的 Prompt。"""
     try:
-        return build_cutout_validation_prompt()
+        return build_sheet_validation_prompt()
     except Exception as exc:
         raise _map_error(exc) from exc
 
@@ -296,7 +296,7 @@ def language_learning_prepare_images(
         )
     previous_issues = [str(item).strip() for item in validation_issues or [] if str(item).strip()]
     if previous_issues:
-        background_edge_failed = any(
+        has_background_edge = any(
             keyword in issue.casefold()
             for issue in previous_issues
             for keyword in ("background_edge", "背景色", "色边", "描边", "光晕", "毛边")
@@ -304,8 +304,8 @@ def language_learning_prepare_images(
         retry_instruction = (
             "上一张图抠图后残留背景色边。必须改用一种与上一张明显不同、且与全部主体颜色反差更大的均匀纯色背景，"
             "并禁止主体轮廓出现该背景色描边、光晕或反射污染"
-            if background_edge_failed
-            else "上一张图未通过视觉或抠图检查，必须修正"
+            if has_background_edge
+            else "上一张图未通过整图视觉验收，必须修正"
         )
         prompt += (
             f"\n\n这是第 {generation_attempt} 次生成。{retry_instruction}：\n- "
@@ -436,18 +436,18 @@ def language_learning_validate_subject_sheet(
 
 
 @mcp.tool()
-def language_learning_review_cutouts(
+def language_learning_review_subject_sheet(
     subject_sheet_path: str,
-    reviews: list[dict],
+    review: dict,
     run_id: str,
 ) -> dict:
-    """接收宿主 Agent 对十张抠图的逐张检查；未通过时禁止拼卡。"""
+    """接收宿主 Agent 对整张去背景主题图的验收结论；未通过时禁止拼卡。"""
     try:
         cache_root, _ = production_dirs(run_id)
-        return review_subject_cutouts(
+        return review_subject_sheet(
             subject_sheet_path,
             cache_root / SUBJECT_CUTOUT_CACHE_DIR_NAME,
-            reviews,
+            review,
         )
     except Exception as exc:
         raise _map_error(exc) from exc

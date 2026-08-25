@@ -47,14 +47,14 @@ language_learning_get_visual_validation_prompt
 
 language_learning_validate_subject_sheet
 └─ tools.compose_fixed_cards.validate_subject_sheet
-   └─ Python 去背景并输出十张抠图
+   └─ Python 整图去背景、保存完整去背景图并输出十张抠图
 
-[宿主 Agent 打开十张抠图逐张检查]
-  └─ 先调用 language_learning_get_cutout_validation_prompt，只检查背景色彩边、描边、光晕和毛边
+[宿主 Agent 打开整张去背景后的完整主题图做一次性验收]
+  └─ 先调用 language_learning_get_sheet_validation_prompt，检查数量、完整性、文字、水印、画风和背景残色
 
-language_learning_review_cutouts
+language_learning_review_subject_sheet
 └─ 发现背景残色时要求更换反差更大的纯色背景重新生图
-└─ 背景残色未全部通过时禁止拼卡
+└─ 未全部通过时禁止拼卡
 
 language_learning_compose_cards
 └─ tools.compose_fixed_cards.compose_fixed_cards  （同步）
@@ -91,7 +91,7 @@ language_learning_clear_run
 | --- | --- |
 | `tools/vocabulary_prompt.py` | 词表 / 主体图 Prompt 生成与词表解析 |
 | `tools/vocabulary_history.py` | 最近 100 天词库、新词比例校验与历史记录 |
-| `tools/compose_fixed_cards.py` | 接收宿主 Agent 主体框、抠图、逐张检查门禁并贴到固定模板单词卡 |
+| `tools/compose_fixed_cards.py` | 接收宿主 Agent 主体框、整图去背景验收门禁并贴到固定模板单词卡 |
 | `tools/create_vocabulary_videos.py` | 卡片 + 双语 TTS → 竖版成片 |
 | `tools/publish_vocabulary_videos.py` | 写发布清单、上传 R2，并通过 MCP 发布 YouTube、TikTok、Instagram 或 Facebook |
 

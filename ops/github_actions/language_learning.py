@@ -147,7 +147,7 @@ def _write_diagnostics(diagnostics_dir: Path, payload: dict) -> None:
 
 
 async def _visual_layout(mcp: ProjectMCP, subject_sheet_path: str, feedback: list[str]) -> dict:
-    """只让千问视觉提取抠图所需的十个坐标，不承担质量验收。"""
+    """只让千问视觉提取抠图所需的十个坐标，不承担内容质检。"""
     prompt = await mcp.call("language_learning_get_visual_validation_prompt")
     user_prompt = str(prompt["user_prompt"])
     if feedback:
@@ -155,23 +155,22 @@ async def _visual_layout(mcp: ProjectMCP, subject_sheet_path: str, feedback: lis
     return qwen_vision(subject_sheet_path, str(prompt["system_prompt"]), user_prompt)
 
 
-def _inspect_cutout(path: str, index: int, prompt: dict) -> dict:
-    result = qwen_vision(
-        path,
-        str(prompt["system_prompt"]),
-        str(prompt["user_prompt"]),
-    )
+def _inspect_background_removed_sheet(path: str, prompt: dict, feedback: list[str]) -> dict:
+    user_prompt = str(prompt["user_prompt"])
+    if feedback:
+        user_prompt += "\n\n上一次整图验收失败，必须修正：\n- " + "\n- ".join(feedback)
+    result = qwen_vision(path, str(prompt["system_prompt"]), user_prompt)
     valid = result.get("valid")
     if not isinstance(valid, bool):
-        raise RuntimeError(f"千问没有正确判断第 {index} 张抠图")
+        raise RuntimeError("千问没有正确判断整图验收结果")
     failure_kind = str(result.get("failure_kind") or "").strip().casefold()
-    if not valid:
-        failure_kind = "background_edge"
+    if not valid and not failure_kind:
+        failure_kind = "completeness"
     return {
-        "index": index,
         "valid": valid,
         "failure_kind": "" if valid else failure_kind,
         "issue": str(result.get("issue") or "").strip(),
+        "subject_count": result.get("subject_count"),
     }
 
 
@@ -179,7 +178,7 @@ async def generate_cards(
     state_path: str | Path,
     diagnostics_dir: str | Path = "cache/github_actions/language-learning-diagnostics",
 ) -> dict:
-    """第二段：生成主体图、定位抠图，并仅检查十张抠图的背景残色。"""
+    """第二段：生成主体图、定位抠图，并对整张去背景主题图做一次性视觉验收。"""
     state = _read_state(state_path)
     topic = str(state["topic"])
     learning_modes = list(state["learning_modes"])
@@ -198,7 +197,7 @@ async def generate_cards(
     submitted = None
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
         primary_words = words.get("en-zh") or words.get("en-ko")
-        cutout_prompt = await mcp.call("language_learning_get_cutout_validation_prompt")
+        sheet_prompt = await mcp.call("language_learning_get_sheet_validation_prompt")
         generation_issues: list[str] = []
         for generation_attempt in range(1, SUBJECT_GENERATION_MAX_ATTEMPTS + 1):
             prepared = await mcp.call(
@@ -243,30 +242,27 @@ async def generate_cards(
                 if validation.get("valid") is not True:
                     visual_feedback = [str(item) for item in validation.get("issues") or []]
                     continue
-                cutout_paths = [str(item) for item in validation.get("cutout_paths") or []]
-                if len(cutout_paths) != 10:
-                    visual_feedback = [f"Python 只输出了 {len(cutout_paths)} 张抠图，必须重新定位完整十个主体"]
+                background_removed_path = str(validation.get("background_removed_sheet_path") or "").strip()
+                if not background_removed_path:
+                    visual_feedback = ["Python 未生成去背景后的完整主题图"]
                     continue
-                reviews = [
-                    _inspect_cutout(path, index, cutout_prompt)
-                    for index, path in enumerate(cutout_paths, 1)
-                ]
+                sheet_review = _inspect_background_removed_sheet(
+                    background_removed_path,
+                    sheet_prompt,
+                    visual_feedback,
+                )
                 review = await mcp.call(
-                    "language_learning_review_cutouts",
+                    "language_learning_review_subject_sheet",
                     {
                         "subject_sheet_path": submitted["subject_sheet_path"],
-                        "reviews": reviews,
+                        "review": sheet_review,
                         "run_id": run_id,
                     },
                 )
                 if review.get("approved") is True:
-                    approved_validation = {**validation, "reviews": reviews, "visual_round": visual_round}
+                    approved_validation = {**validation, "review": sheet_review, "visual_round": visual_round}
                     break
-                visual_feedback = [
-                    f"第 {item['index']} 个主体 [{item['failure_kind']}]：{item['issue'] or item['failure_kind']}"
-                    for item in reviews
-                    if not item["valid"]
-                ]
+                visual_feedback = list(review.get("validation_issues") or [])
                 if review.get("action") == "regenerate":
                     generation_issues = visual_feedback
                     break
@@ -361,10 +357,15 @@ async def recompose_cards_from_r2(
     modes = [mode for mode in ("en-zh", "en-ko") if mode in words]
     source_validation = dict(source_manifest.get("subject_sheet_validation") or {})
     visual_layout = dict(source_validation.get("vision") or {})
+    source_review = dict(source_validation.get("review") or {})
     source_reviews = list(source_validation.get("reviews") or [])
     publish_date = resolve_publish_date(publish_date)
-    if not visual_layout or len(source_reviews) != 10:
-        raise RuntimeError("旧 R2 清单缺少视觉框或十张抠图检查结果，不能安全原样重组")
+    has_legacy_review = (
+        len(source_reviews) == 10
+        and all(item.get("valid") is True for item in source_reviews)
+    )
+    if not visual_layout or (source_review.get("valid") is not True and not has_legacy_review):
+        raise RuntimeError("旧 R2 清单缺少视觉框或整图验收结果，不能安全原样重组")
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
         occupied = await mcp.call(
             "language_learning_occupy_topic",
@@ -381,20 +382,21 @@ async def recompose_cards_from_r2(
         )
         if validation.get("valid") is not True:
             raise RuntimeError(f"旧主题图重新抠图失败：{'；'.join(validation.get('issues') or [])}")
-        approved_reviews = [
-            {"index": index, "valid": True, "failure_kind": "", "issue": "复用旧成片已通过的抠图"}
-            for index in range(1, 11)
-        ]
+        approved_review = source_review if source_review.get("valid") is True else {
+            "valid": True,
+            "failure_kind": "",
+            "issue": "复用旧成片已通过的整图验收",
+        }
         review = await mcp.call(
-            "language_learning_review_cutouts",
+            "language_learning_review_subject_sheet",
             {
                 "subject_sheet_path": str(source_sheet_path),
-                "reviews": approved_reviews,
+                "review": approved_review,
                 "run_id": run_id,
             },
         )
         if review.get("approved") is not True:
-            raise RuntimeError("旧主题图的十张抠图未能重新批准")
+            raise RuntimeError("旧主题图的整图验收未能重新批准")
         card_dirs = {}
         for mode in modes:
             started = await mcp.call(
@@ -418,7 +420,7 @@ async def recompose_cards_from_r2(
         "subject_sheet_path": str(source_sheet_path),
         "subject_sheet_validation": {
             **validation,
-            "reviews": approved_reviews,
+            "review": approved_review,
             "source_run_id": source_id,
             "recomposed": True,
         },
