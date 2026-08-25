@@ -129,16 +129,19 @@ def _public_video_url(item: dict) -> str:
 
 def _publish_matrixmedia(item: dict, route: dict, scheduled_cli: str | None) -> dict:
     platform = str(route["platform"])
+    publish_copy = str(item.get("publish_copy") or item["title"]).strip()
     arguments = [
         "publish", "-p", MATRIXMEDIA_PLATFORM_CODES[platform],
         "-f", str(item["local_path"]), "--title", str(item["title"]),
+        "--description", publish_copy,
         "--name", str(item["title"]), "--phone", str(route["account_id"]),
         "--creative-statement", "ai_generated",
     ]
     short_title = str(item.get("short_title") or "").strip()
-    if platform == "wechat_channels":
-        if not short_title:
-            raise InvalidPublishRequestError("视频号发布需要本地产物目录中的 short-title.txt")
+    hashtags = str(item.get("hashtags") or "").strip()
+    if hashtags:
+        arguments.extend(["--tags", hashtags])
+    if short_title:
         arguments.extend(["--bt2", short_title])
     if scheduled_cli:
         arguments.extend(["--publish-at", scheduled_cli])

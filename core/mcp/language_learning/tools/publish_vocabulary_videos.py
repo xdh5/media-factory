@@ -69,9 +69,9 @@ def _hashtags(tags: list[str]) -> str:
     return " ".join(f"#{name}" for name in _normalized_tags(tags))
 
 
-def _description(title: str, tags: list[str]) -> str:
+def _description(short_title: str, tags: list[str]) -> str:
     hashtags = _hashtags(tags)
-    return f"{title}\n\n{hashtags}" if hashtags else title
+    return "\n\n".join(part for part in (str(short_title or "").strip(), hashtags) if part)
 
 
 def _video_parts(video: dict, fallback_title: str, *, empty_error: str) -> list[dict]:
@@ -132,6 +132,10 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
                 "title": title,
                 "tags": list(ko_config.get("tags") or []),
                 "short_title": str(ko_config.get("short_title") or "韩语单词怎么说"),
+                "description": _description(
+                    str(ko_config.get("short_title") or "韩语单词怎么说"),
+                    list(ko_config.get("tags") or []),
+                ),
                 "platforms": list(ko_config.get("platforms") or []),
                 "videos": _video_parts(video, title, empty_error="en-ko 没有可发布的视频文件"),
             })
@@ -487,7 +491,7 @@ def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
 
     for part, video in enumerate(item["videos"], 1):
         title = str(video.get("title") or item["title"])
-        description = _description(title, item["tags"])
+        description = _description(item.get("short_title", ""), item["tags"])
         for account in channels:
             try:
                 upload = publish_to_youtube(
@@ -531,7 +535,7 @@ def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
     results = []
     for part, video in enumerate(item["videos"], 1):
         title = str(video.get("title") or item["title"])
-        content = _description(title, item["tags"])
+        content = _description(item.get("short_title", ""), item["tags"])
         video_url = str(video.get("video_url") or "").strip()
         for account in accounts:
             try:
@@ -597,7 +601,7 @@ def _publish_chinese_instagram(
         if part not in video_parts:
             continue
         title = str(video.get("title") or item["title"])
-        caption = _description(title, item["tags"])
+        caption = _description(item.get("short_title", ""), item["tags"])
         video_url = str(video.get("video_url") or "").strip()
         for account in accounts:
             try:
@@ -658,7 +662,7 @@ def _publish_chinese_facebook(
         if part not in video_parts:
             continue
         title = str(video.get("title") or item["title"])
-        description = _description(title, item["tags"])
+        description = _description(item.get("short_title", ""), item["tags"])
         video_url = str(video.get("video_url") or "").strip()
         for account in accounts:
             try:

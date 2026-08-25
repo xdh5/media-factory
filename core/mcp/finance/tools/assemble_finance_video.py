@@ -403,9 +403,9 @@ def finish_finance_video(
             "r2_expires_at": None,
         }])
 
-    publish_copy = "【" + metadata["short_title"] + " " + " ".join(
+    publish_copy = metadata["short_title"] + " " + " ".join(
         f"#{tag.lstrip('#')}" for tag in metadata["hashtags"]
-    ) + "】"
+    )
     title_path = output_root / "title.txt"
     short_title_path = output_root / "short-title.txt"
     publish_copy_path = output_root / "publish-copy.txt"

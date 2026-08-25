@@ -109,7 +109,7 @@ GitHub Action 继续使用本地图库选图模式，不得删除或改成千问
 - 发布服务器 MatrixMedia 使用账号组 `心灵鸡汤`，账号配置由发布环境提供，不再从 D1 读取发布账号组。
 - MatrixMedia 发布所有平台时必须传 `creativeStatement="ai_generated"`，给成片添加各平台对应的 AI 生成内容标记；不得省略或改为无标注。
 - 跳过掘金、番茄、小红书
-- **视频号必填 `bt2`**：用成片返回的 `short_title`（稿件短标题，已是 6～16 字）。禁止省略，禁止把长标题 `title` 填进短标题框。其它平台也一律带上 `bt2`，避免漏传。
+- **短标题映射**：用成片返回的 `short_title` 作为可选 `bt2`，不得用长标题 `title` 回填；视频号未传时保持短标题框为空。其它平台有该字段时同样传入。
 - `tags` 用空格分隔且带 `#`，例如 `"#存钱 #理财常识 #生活方式 #查理芒格"`（最多 4 个）
 - MatrixMedia 返回成功或平台官方预约成功结果后，必须调用 `finance_record_publications`。预约发布只接受 `officialScheduled=true` 的平台官方确认结果，禁止把应用内定时任务入库。心灵鸡汤账号组只记录 `ks→kuaishou`、`dy→douyin`、`bjh→baijiahao`、`tt→toutiao`、`sph→wechat_channels`，不得写入小红书；立即发布的 `publish_at` 写实际成功时间，预约发布写预约时间，均使用带时区的 ISO 8601。
 
