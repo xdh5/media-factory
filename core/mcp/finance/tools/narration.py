@@ -1,23 +1,16 @@
-"""财经旁白切句与字幕显示：TTS 按标点切段，屏上默认去标点、顿号保留。"""
+"""财经旁白切句与字幕显示：TTS 按换行和标点切段，屏上默认去标点、顿号保留。"""
 
 from __future__ import annotations
 
 import re
 
-SUBTITLE_MAX_CONTENT_CHARS = 20
-# 屏上重点样式（与财经 Skill 一致）：相对默认 100 的 130%，金色
 SUBTITLE_EMPHASIS_STYLE = {"font_size": 130, "primary_color": "#FFD54A"}
-_CONTENT_CHAR = re.compile(r"[\u4e00-\u9fffA-Za-z0-9]")
 _ENUMERATION = re.compile(
     r"[\u4e00-\u9fffA-Za-z0-9]{1,8}(?:、[\u4e00-\u9fffA-Za-z0-9]{1,8})+"
 )
 _STRONG_BREAK = set("。！？；!?")
 _COMMA_BREAK = set("，,")
 _STRIP_FOR_DISPLAY = "。，；！？,.!?;:：…—～~\"'“”‘’（）()《》[] "
-
-
-def content_char_count(text: str) -> int:
-    return len(_CONTENT_CHAR.findall(text or ""))
 
 
 def display_subtitle_text(text: str) -> str:
@@ -115,46 +108,12 @@ def _split_by_breaks(text: str) -> list[str]:
     return pieces or ([text.strip()] if text.strip() else [])
 
 
-def _best_semantic_cut(text: str) -> int | None:
-    length = len(text)
-    if length < 4:
-        return None
-    ranges = _enumeration_ranges(text)
-    lo = max(1, length // 3)
-    hi = min(length - 1, (length * 2) // 3)
-    mid = length // 2
-    candidates = list(range(mid, hi + 1)) + list(range(mid - 1, lo - 1, -1))
-    for index in candidates:
-        if _inside_enumeration(index, ranges):
-            continue
-        if text[index - 1] in _STRONG_BREAK | _COMMA_BREAK | set("、"):
-            continue
-        return index
-    for index in candidates:
-        if not _inside_enumeration(index, ranges):
-            return index
-    return None
-
-
-def _split_long(text: str) -> list[str]:
-    if content_char_count(text) <= SUBTITLE_MAX_CONTENT_CHARS:
-        return [text]
-    cut = _best_semantic_cut(text)
-    if cut is None:
-        return [text]
-    left, right = text[:cut].strip(), text[cut:].strip()
-    if not left or not right:
-        return [text]
-    return _split_long(left) + _split_long(right)
-
-
 def split_narration_lines(article: str) -> list[str]:
-    """把正文切成 TTS 一句一条：先按行，再按标点，超长再拆。"""
+    """把正文切成 TTS 一句一条：先按行，再按句读标点。"""
     lines: list[str] = []
     for raw in str(article or "").splitlines():
         block = raw.strip()
         if not block:
             continue
-        for piece in _split_by_breaks(block):
-            lines.extend(_split_long(piece))
+        lines.extend(_split_by_breaks(block))
     return lines
