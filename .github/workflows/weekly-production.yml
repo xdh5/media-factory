@@ -1,0 +1,101 @@
+name: 每周批量生产
+
+on:
+  schedule:
+    - cron: "0 12 * * 5"
+      timezone: Asia/Shanghai
+  workflow_dispatch:
+    inputs:
+      week_start:
+        description: 可选；下周起始周一 YYYY-MM-DD，留空自动计算
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: weekly-production
+  cancel-in-progress: false
+
+env:
+  PYTHONUTF8: "1"
+  GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  plan:
+    name: 计算下周计划发布日期
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      dates_json: ${{ steps.plan.outputs.dates_json }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v5
+
+      - name: 生成周一至周日日期列表
+        id: plan
+        env:
+          INPUT_WEEK_START: ${{ inputs.week_start }}
+        run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START"
+
+  produce-day:
+    name: 串行生产 ${{ matrix.publish_date }}
+    needs: plan
+    strategy:
+      matrix:
+        publish_date: ${{ fromJSON(needs.plan.outputs.dates_json) }}
+      max-parallel: 1
+      fail-fast: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    container:
+      image: ghcr.io/xdh5/media-factory-runner:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      DASHSCOPE_API_KEY_FINANCE: ${{ secrets.DASHSCOPE_API_KEY_FINANCE }}
+      DASHSCOPE_API_KEY_LANGUAGE: ${{ secrets.DASHSCOPE_API_KEY_LANGUAGE }}
+      CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
+      CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      DASHSCOPE_IMAGE_MODEL: ${{ vars.DASHSCOPE_IMAGE_MODEL }}
+      YOUTUBE_OAUTH_CLIENT_ID: ${{ secrets.YOUTUBE_OAUTH_CLIENT_ID }}
+      YOUTUBE_OAUTH_CLIENT_SECRET: ${{ secrets.YOUTUBE_OAUTH_CLIENT_SECRET }}
+      LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID }}
+      LANGUAGE_LEARNING_YOUTUBE_CHANNEL_TITLE: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CHANNEL_TITLE }}
+      LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN }}
+      ZERNIO_API_KEY: ${{ secrets.ZERNIO_API_KEY }}
+      zernio_api_key_meta: ${{ secrets.ZERNIO_API_KEY_META }}
+      LANGUAGE_LEARNING_TIKTOK_ACCOUNT_ID: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_ACCOUNT_ID }}
+      LANGUAGE_LEARNING_TIKTOK_ACCOUNT_TITLE: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_ACCOUNT_TITLE }}
+      LANGUAGE_LEARNING_TIKTOK_USERNAME: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_USERNAME }}
+      LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID: ${{ secrets.LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID }}
+      LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID: ${{ secrets.LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - name: 检出生产代码
+        uses: actions/checkout@v5
+
+      - name: 检查生产所需配置
+        shell: bash
+        run: |
+          for name in \
+            DASHSCOPE_API_KEY_FINANCE DASHSCOPE_API_KEY_LANGUAGE \
+            CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN \
+            R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL \
+            TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
+            test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
+          done
+
+      - name: 串行生产财经、语言并发布语言
+        env:
+          PUBLISH_DATE: ${{ matrix.publish_date }}
+        run: python -m ops.github_actions weekly_day --publish-date "$PUBLISH_DATE"

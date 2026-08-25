@@ -64,6 +64,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           WORKFLOW_NEEDS_JSON: ${{ toJSON(needs) }}
         run: >-
-          python -m ops.github_actions workflow_notify
-          --workflow-name "${{ github.workflow }}"
+          python -m ops.github_actions publish_notify
+          --notify-label "构建生产环境"
           --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          --skipped "false"

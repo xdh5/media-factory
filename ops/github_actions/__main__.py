@@ -26,8 +26,9 @@ def main() -> None:
             "language_learning_r2",
             "language_learning_diagnostics_r2",
             "language_learning_publish",
-            "language_learning_notify",
-            "workflow_notify",
+            "weekly_plan",
+            "weekly_day",
+            "publish_notify",
         ],
     )
     parser.add_argument("--topic", default="")
@@ -46,7 +47,9 @@ def main() -> None:
     parser.add_argument("--publish-date", default="")
     parser.add_argument("--default-days-ahead", type=int, choices=(0, 1), default=0)
     parser.add_argument("--library-line", default="finance_generated")
-    parser.add_argument("--workflow-name", default="")
+    parser.add_argument("--week-start", default="")
+    parser.add_argument("--notify-label", default="语言发布")
+    parser.add_argument("--skipped", default="false")
     parser.add_argument("--run-url", default="")
     arguments = parser.parse_args()
     if arguments.workflow.startswith("finance"):
@@ -123,7 +126,7 @@ def main() -> None:
         if output_path:
             with Path(output_path).open("a", encoding="utf-8") as stream:
                 stream.write(f"manifest_url={result['r2']['manifest']['url']}\n")
-                stream.write(f"run_id={result['manifest']['run_id']}\n")
+                stream.write(f"run_id={result['run_id']}\n")
                 stream.write(f"topic={result['topic']}\n")
                 stream.write(f"subject_sheet_url={result['subject_sheet_url']}\n")
                 stream.write(f"chinese_video_url={result['download_urls'].get('en-zh', '')}\n")
@@ -139,23 +142,28 @@ def main() -> None:
         payload = asyncio.run(
             schedule_publication(arguments.manifest_url, arguments.run_id, targets=targets or None)
         )
-    elif arguments.workflow == "language_learning_notify":
-        from .telegram import notify_workflow
+    elif arguments.workflow == "weekly_plan":
+        from .weekly import compute_next_week_dates
 
-        payload = notify_workflow(
-            os.getenv("WORKFLOW_NEEDS_JSON", "{}"),
-            arguments.topic_value,
-            arguments.subject_sheet_url,
-            arguments.chinese_video_url,
-            arguments.korean_video_url,
-        )
-    else:
-        from .telegram import notify_generic_workflow
+        dates = compute_next_week_dates(arguments.week_start)
+        payload = {"dates": dates}
+        output_path = os.getenv("GITHUB_OUTPUT", "").strip()
+        if output_path:
+            with Path(output_path).open("a", encoding="utf-8") as stream:
+                stream.write(f"dates_json={json.dumps(dates, ensure_ascii=False)}\n")
+    elif arguments.workflow == "weekly_day":
+        from .weekly import run_day
 
-        payload = notify_generic_workflow(
+        run_url = os.getenv("GITHUB_RUN_URL", "").strip()
+        payload = asyncio.run(run_day(arguments.publish_date, run_url))
+    elif arguments.workflow == "publish_notify":
+        from .telegram import notify_manual_publish
+
+        payload = notify_manual_publish(
             os.getenv("WORKFLOW_NEEDS_JSON", "{}"),
-            arguments.workflow_name,
+            arguments.notify_label,
             arguments.run_url,
+            str(arguments.skipped).strip().casefold() in {"1", "true", "yes"},
         )
     print(json.dumps(payload, ensure_ascii=False))
 

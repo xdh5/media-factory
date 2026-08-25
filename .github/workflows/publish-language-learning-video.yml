@@ -1,12 +1,6 @@
 name: 发布语言学习视频
 
 on:
-  workflow_call:
-    inputs:
-      publish_date:
-        description: 计划发布日期（YYYY-MM-DD）
-        required: true
-        type: string
   workflow_dispatch:
     inputs:
       publish_date:
@@ -21,6 +15,9 @@ permissions:
 concurrency:
   group: publish-language-learning-video
   cancel-in-progress: false
+
+env:
+  GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
   preflight:
@@ -91,17 +88,30 @@ jobs:
       - name: 检出发布代码
         uses: actions/checkout@v5
 
-      - name: 使用 R2 清单预约缺少的平台
+      - name: 使用 R2 清单预约缺少的平台（最多重试 3 次）
         env:
           RUN_ID: ${{ needs.preflight.outputs.run_id }}
           TARGETS: ${{ needs.preflight.outputs.pending_targets }}
         shell: bash
         run: |
           MANIFEST_URL="${R2_PUBLIC_BASE_URL%/}/runs/language_learning/${RUN_ID}/r2-manifest.json"
-          python -m ops.github_actions language_learning_publish --manifest-url "$MANIFEST_URL" --run-id "$RUN_ID" --targets "$TARGETS"
+          for attempt in 1 2 3; do
+            if python -m ops.github_actions language_learning_publish \
+              --manifest-url "$MANIFEST_URL" \
+              --run-id "$RUN_ID" \
+              --targets "$TARGETS"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "第 ${attempt} 次发布失败，30 秒后重试..."
+              sleep $((30 * attempt))
+            fi
+          done
+          echo "语言学习发布连续 3 次失败" >&2
+          exit 1
 
   notify:
-    name: 第三步：Telegram 收尾通知
+    name: 第三步：Telegram 通知
     needs: [preflight, publish]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
@@ -109,13 +119,15 @@ jobs:
     steps:
       - name: 检出通知代码
         uses: actions/checkout@v5
-      - name: 成功静默、失败有声通知
+
+      - name: 发送发布结果通知
         continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           WORKFLOW_NEEDS_JSON: ${{ toJSON(needs) }}
         run: >-
-          python -m ops.github_actions workflow_notify
-          --workflow-name "${{ github.workflow }}"
-          --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          python -m ops.github_actions publish_notify
+          --notify-label "语言发布"
+          --run-url "$GITHUB_RUN_URL"
+          --skipped "${{ needs.preflight.result == 'success' && needs.preflight.outputs.should_publish != 'true' }}"

@@ -576,6 +576,7 @@ def upload_handoff(handoff_dir: str | Path) -> dict:
         if urls:
             download_urls[mode] = urls[0]
     return {
+        "run_id": str(handoff["run_id"]),
         "manifest": manifest,
         "r2": remote,
         "production_outputs": production_outputs,
