@@ -10,8 +10,10 @@ from urllib.request import Request, urlopen
 from dotenv import load_dotenv
 
 from ._constants import (
+    DASHSCOPE_API_KEY_BY_LINE,
     DASHSCOPE_API_KEY_ENV,
     DASHSCOPE_BASE_URL_ENV,
+    DASHSCOPE_BUSINESS_LINE_ENV,
     DASHSCOPE_ENABLE_THINKING_ENV,
     DASHSCOPE_MODEL_ENV,
     DASHSCOPE_VISION_MODEL_ENV,
@@ -23,7 +25,7 @@ from ._constants import (
 )
 from ._errors import QwenConfigurationError, QwenRequestError, QwenResponseError
 
-__all__ = ["generate_text", "get_qwen_configuration"]
+__all__ = ["generate_text", "get_qwen_configuration", "resolve_dashscope_api_key"]
 
 load_dotenv()
 
@@ -39,13 +41,25 @@ def _boolean(value: object, *, name: str) -> bool:
     raise QwenConfigurationError(f"{name} 必须是 true 或 false")
 
 
-def get_qwen_configuration() -> dict:
-    """返回包含运行密钥但不负责输出日志的有效配置。"""
-    api_key = os.getenv(DASHSCOPE_API_KEY_ENV, "").strip()
+def resolve_dashscope_api_key() -> str:
+    """按业务线读取千问密钥：财经用 FINANCE，语言学习用 LANGUAGE。"""
+    line = os.getenv(DASHSCOPE_BUSINESS_LINE_ENV, "").strip()
+    if line and line not in DASHSCOPE_API_KEY_BY_LINE:
+        raise QwenConfigurationError(
+            f"{DASHSCOPE_BUSINESS_LINE_ENV} 只能是 finance 或 language_learning"
+        )
+    env_name = DASHSCOPE_API_KEY_BY_LINE.get(line, DASHSCOPE_API_KEY_ENV)
+    api_key = os.getenv(env_name, "").strip()
     if not api_key:
         raise QwenConfigurationError(
-            f"缺少 {DASHSCOPE_API_KEY_ENV}，请在本地 .env 或 GitHub Secrets 中配置"
+            f"缺少 {env_name}，请在本地 .env 或 GitHub Secrets 中配置"
         )
+    return api_key
+
+
+def get_qwen_configuration() -> dict:
+    """返回包含运行密钥但不负责输出日志的有效配置。"""
+    api_key = resolve_dashscope_api_key()
     base_url = os.getenv(DASHSCOPE_BASE_URL_ENV, "").strip() or DEFAULT_BASE_URL
     model = os.getenv(DASHSCOPE_MODEL_ENV, "").strip() or DEFAULT_MODEL
     vision_model = os.getenv(DASHSCOPE_VISION_MODEL_ENV, "").strip() or model

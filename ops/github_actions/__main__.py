@@ -49,6 +49,10 @@ def main() -> None:
     parser.add_argument("--workflow-name", default="")
     parser.add_argument("--run-url", default="")
     arguments = parser.parse_args()
+    if arguments.workflow.startswith("finance"):
+        os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"
+    elif arguments.workflow.startswith("language_learning"):
+        os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
     if arguments.workflow in {"finance_preflight", "language_learning_preflight"}:
         from ._shared import daily_production_preflight
 

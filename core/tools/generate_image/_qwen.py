@@ -12,6 +12,8 @@ import requests
 from dotenv import load_dotenv
 from PIL import Image
 
+from core.tools.qwen_text import QwenConfigurationError, resolve_dashscope_api_key
+
 from ._constants import QWEN_IMAGE_ENDPOINT, QWEN_IMAGE_MODEL
 from ._errors import AIConfigurationError, AIGenerationError, ReferenceImageError
 from ._image import _fit_image, _parse_size, _write_png
@@ -74,9 +76,10 @@ def _qwen_image_bytes(payload: dict) -> bytes:
 
 
 def _generate_with_ai(prompt: str, reference_paths: list[Path], size: str) -> bytes:
-    api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
-    if not api_key:
-        raise AIConfigurationError("缺少环境变量 DASHSCOPE_API_KEY，无法使用千问生图")
+    try:
+        api_key = resolve_dashscope_api_key()
+    except QwenConfigurationError as exc:
+        raise AIConfigurationError(f"{exc}，无法使用千问生图") from exc
     endpoint = os.getenv("DASHSCOPE_IMAGE_URL", QWEN_IMAGE_ENDPOINT).strip() or QWEN_IMAGE_ENDPOINT
     content = [{"image": _reference_data_url(path)} for path in reference_paths]
     content.append({"text": prompt})

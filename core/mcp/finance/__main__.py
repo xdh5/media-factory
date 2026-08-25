@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import warnings
 from pathlib import Path
+
+os.environ.setdefault("DASHSCOPE_BUSINESS_LINE", "finance")
 
 warnings.filterwarnings(
     "ignore",
