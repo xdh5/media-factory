@@ -37,6 +37,18 @@
         "PYTHONUTF8": "1"
       },
       "enabled": true
+    },
+    "media-factory-douyin-research": {
+      "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "args": [
+        "-m",
+        "core.mcp.douyin_research"
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "PYTHONUTF8": "1"
+      },
+      "enabled": true
     }
   }
 }
