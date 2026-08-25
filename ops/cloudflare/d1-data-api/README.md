@@ -40,7 +40,7 @@
 1. 创建名为 `media-factory` 的 D1 数据库，把数据库 ID 写入 `wrangler.jsonc`。
 2. 执行 `wrangler d1 migrations apply media-factory --remote`。
 3. 为 Worker 设置秘密 `DATA_API_TOKEN`。
-4. 为 GitHub Pages 发布看板设置六位数字秘密 `DASHBOARD_PIN`。看板只读接口为 `GET /v1/dashboard/records`，Worker 必须先验证 `X-Dashboard-Pin` 才查询 D1；无 PIN 或错误 PIN 返回 401。跨域读取仅允许 `https://xdh5.github.io`，响应不会返回本地路径、账号凭据或数据 API Token。
+4. 为 GitHub Pages 发布看板设置六位数字秘密 `DASHBOARD_PIN`。看板只读接口为 `GET /v1/dashboard/records`，下载接口为 `GET /v1/dashboard/download?url=`；Worker 必须先验证 `X-Dashboard-Pin` 才查询 D1 或回源产物。无 PIN 或错误 PIN 返回 401。下载只允许数据库里已有的 `r2_url`，并以 `Content-Disposition: attachment` 强制保存文件。跨域读取仅允许 `https://xdh5.github.io`，响应不会返回本地路径、账号凭据或数据 API Token。
 5. 部署 Worker，并把地址与相同令牌填入 MCP 宿主环境变量：
    - `CLOUDFLARE_DATA_API_URL`
    - `CLOUDFLARE_DATA_API_TOKEN`

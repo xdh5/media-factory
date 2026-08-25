@@ -19,17 +19,38 @@ function errorResponse(code, message, status = 400, details = {}) {
   return jsonResponse({ error: { code, message, details } }, status);
 }
 
+const DASHBOARD_ORIGIN = "https://xdh5.github.io";
+
+function dashboardCorsHeaders(extra = {}) {
+  return {
+    "Cache-Control": "no-store",
+    "Access-Control-Allow-Origin": DASHBOARD_ORIGIN,
+    "Access-Control-Allow-Headers": "Content-Type, X-Dashboard-Pin",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Vary": "Origin",
+    ...extra,
+  };
+}
+
 function dashboardResponse(payload, status = 200) {
   return Response.json(payload, {
     status,
-    headers: {
-      "Cache-Control": "no-store",
-      "Access-Control-Allow-Origin": "https://xdh5.github.io",
-      "Access-Control-Allow-Headers": "Content-Type, X-Dashboard-Pin",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Vary": "Origin",
-    },
+    headers: dashboardCorsHeaders(),
   });
+}
+
+function downloadFilename(fileUrl, fallback = "video.mp4") {
+  try {
+    const name = decodeURIComponent(new URL(fileUrl).pathname.split("/").pop() || "");
+    return name || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function contentDisposition(filename) {
+  const ascii = String(filename || "video.mp4").replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_") || "video.mp4";
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 function isDashboardAuthorized(request, env) {
@@ -660,6 +681,42 @@ async function dashboardRecords(request, env) {
   });
 }
 
+async function dashboardDownload(request, env) {
+  if (!isDashboardAuthorized(request, env)) {
+    return dashboardResponse({ error: { code: "INVALID_PIN", message: "PIN 不正确" } }, 401);
+  }
+  const page = new URL(request.url);
+  const fileUrl = String(page.searchParams.get("url") || "").trim();
+  if (!fileUrl) {
+    return dashboardResponse({ error: { code: "INVALID_PARAMETER", message: "url 不能为空" } }, 400);
+  }
+  const row = await env.DB.prepare(
+    `SELECT r2_url, r2_expires_at, title
+     FROM production_outputs
+     WHERE r2_url = ?
+     LIMIT 1`,
+  ).bind(fileUrl).first();
+  if (!row?.r2_url) {
+    return dashboardResponse({ error: { code: "NOT_FOUND", message: "找不到对应产物" } }, 404);
+  }
+  if (row.r2_expires_at && Date.parse(row.r2_expires_at) <= Date.now()) {
+    return dashboardResponse({ error: { code: "GONE", message: "产物已过期" } }, 410);
+  }
+  const upstream = await fetch(row.r2_url);
+  if (!upstream.ok || !upstream.body) {
+    return dashboardResponse({ error: { code: "UPSTREAM_ERROR", message: "拉取产物失败" } }, 502);
+  }
+  const filename = downloadFilename(row.r2_url, `${row.title || "video"}.mp4`);
+  const headers = dashboardCorsHeaders({
+    "Content-Type": upstream.headers.get("Content-Type") || "video/mp4",
+    "Content-Disposition": contentDisposition(filename),
+    "Access-Control-Expose-Headers": "Content-Disposition",
+  });
+  const length = upstream.headers.get("Content-Length");
+  if (length) headers["Content-Length"] = length;
+  return new Response(upstream.body, { status: 200, headers });
+}
+
 async function commitPublicationRecords(request, env) {
   const body = await request.json();
   const records = body.records;
@@ -1087,14 +1144,10 @@ export default {
         headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
       });
     }
-    if (request.method === "OPTIONS" && url.pathname === "/v1/dashboard/records") {
+    if (request.method === "OPTIONS" && url.pathname.startsWith("/v1/dashboard/")) {
       return new Response(null, {
         status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Headers": "Content-Type, X-Dashboard-Pin",
-          "Access-Control-Allow-Methods": "GET, OPTIONS",
-        },
+        headers: dashboardCorsHeaders(),
       });
     }
     if (request.method === "GET" && url.pathname === "/v1/dashboard/records") {
@@ -1106,6 +1159,17 @@ export default {
         }
         console.error(error);
         return dashboardResponse({ error: { code: "D1_ERROR", message: "读取发布看板失败" } }, 500);
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/dashboard/download") {
+      try {
+        return await dashboardDownload(request, env);
+      } catch (error) {
+        if (error instanceof Error && /必须|不能|格式/.test(error.message)) {
+          return dashboardResponse({ error: { code: "INVALID_PARAMETER", message: error.message } }, 400);
+        }
+        console.error(error);
+        return dashboardResponse({ error: { code: "D1_ERROR", message: "下载产物失败" } }, 500);
       }
     }
     if (!isAuthorized(request, env)) {

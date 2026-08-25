@@ -74,6 +74,41 @@ function downloadState(outputs) {
   return { enabled: false, url: "", label: "仅本地产物" };
 }
 
+function fileNameFromUrl(url) {
+  try {
+    const name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "");
+    return name || "video.mp4";
+  } catch {
+    return "video.mp4";
+  }
+}
+
+async function downloadOutput(url) {
+  const pin = localStorage.getItem(PIN_STORAGE_KEY) || "";
+  const response = await fetch(
+    `${API_BASE_URL}/v1/dashboard/download?url=${encodeURIComponent(url)}`,
+    { headers: { "X-Dashboard-Pin": pin }, cache: "no-store" },
+  );
+  if (response.status === 401) {
+    localStorage.removeItem(PIN_STORAGE_KEY);
+    showLogin("PIN 不正确，请重新输入。");
+    throw new Error("PIN 不正确");
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error?.message || "下载失败");
+  }
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = fileNameFromUrl(url);
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
 function render(data) {
   results.replaceChildren();
   const dates = Array.isArray(data.dates) ? data.dates : [];
@@ -130,19 +165,27 @@ function render(data) {
       });
       actions.append(copyButton);
       const download = downloadState(content.outputs);
+      const downloadButton = element("button", "card-button download-button", download.label);
+      downloadButton.type = "button";
       if (download.enabled) {
-        const link = element("a", "card-button download-button", download.label);
-        link.href = download.url;
-        link.download = "";
-        link.target = "_blank";
-        link.rel = "noreferrer";
-        actions.append(link);
+        downloadButton.addEventListener("click", async () => {
+          downloadButton.disabled = true;
+          downloadButton.textContent = "正在下载…";
+          try {
+            await downloadOutput(download.url);
+            downloadButton.textContent = "已开始下载";
+            window.setTimeout(() => { downloadButton.textContent = download.label; }, 1200);
+          } catch (error) {
+            status.textContent = `下载失败：${error.message}`;
+            downloadButton.textContent = download.label;
+          } finally {
+            downloadButton.disabled = false;
+          }
+        });
       } else {
-        const button = element("button", "card-button download-button", download.label);
-        button.type = "button";
-        button.disabled = true;
-        actions.append(button);
+        downloadButton.disabled = true;
       }
+      actions.append(downloadButton);
       card.append(actions);
       grid.append(card);
     }
