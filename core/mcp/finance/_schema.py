@@ -90,7 +90,7 @@ FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
             "minItems": 1,
             "maxItems": 3,
             "items": {"type": "string", "minLength": 1},
-            "description": "封面用长标题的断行，由 Agent 按语义拆行，拼接后必须等于 title",
+            "description": "封面标题行，由 Agent 按语义拆成 1 至 3 行；工具不自动折行",
         },
         "cover_highlights": {
             "type": "array",

@@ -112,7 +112,7 @@ def _metadata(metadata_prompt: str, article: str, *, feedback: str = "") -> dict
         "输出 JSON：{\"metadata\":\"长标题|短标题|标签一|标签二|标签三|标签四\","
         "\"cover_lines\":[\"封面第一行\",\"封面第二行\"],"
         "\"cover_highlights\":[\"重点词一\",\"重点词二\"]}。"
-        "cover_lines 必须按语义拆成1至3行，去掉空白拼接后与长标题完全相同；"
+        "cover_lines 必须按语义拆成1至3行；"
         "cover_highlights 必须选择1至3个原样出现在长标题中的重点词。"
     )
     if feedback:

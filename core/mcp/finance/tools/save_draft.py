@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 from .._constants import (
@@ -29,7 +28,7 @@ def load_draft(path: str | Path, label: str) -> tuple[Path, dict]:
     return resolved, payload
 
 
-def _cover_lines(title: str, cover_lines: list[str] | None) -> list[str]:
+def _cover_lines(cover_lines: list[str] | None) -> list[str]:
     if not isinstance(cover_lines, list) or not cover_lines:
         raise WorkflowStepError("cover_lines 必须是 Agent 按语义断好的非空行列表")
     if len(cover_lines) > 3:
@@ -37,13 +36,6 @@ def _cover_lines(title: str, cover_lines: list[str] | None) -> list[str]:
     lines = [str(item).strip() for item in cover_lines]
     if any(not item for item in lines):
         raise WorkflowStepError("cover_lines 里不能有空行")
-    compact_title = re.sub(r"\s+", "", str(title or ""))
-    compact_lines = re.sub(r"\s+", "", "".join(lines))
-    if compact_lines != compact_title:
-        raise WorkflowStepError(
-            "cover_lines 去掉空白后必须拼回长标题 title，不要增删字",
-            {"title": title, "cover_lines": lines},
-        )
     return lines
 
 
@@ -100,7 +92,7 @@ def save_draft(
         raise WorkflowStepError("hashtags 必须是包含四个标签的列表")
     metadata_line = "|".join([str(title), str(short_title), *(str(item) for item in hashtags)])
     metadata = parse_metadata(metadata_line)
-    normalized_cover_lines = _cover_lines(metadata["title"], cover_lines)
+    normalized_cover_lines = _cover_lines(cover_lines)
     normalized_cover_highlights = _cover_highlights(metadata["title"], cover_highlights)
     if draft_path is not None:
         resolved_draft, existing = load_draft(draft_path, "待修改稿件")

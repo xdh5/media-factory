@@ -22,7 +22,7 @@ GENERATE_COVER_IMAGE_INPUT_SCHEMA = {
             "type": "array",
             "minItems": 1,
             "items": {"type": "string", "minLength": 1},
-            "description": "Agent 为长标题按语义断好的行；拼接后必须等于 title。工具不自动折行，只按行缩放字号",
+            "description": "封面标题行，由 Agent 按语义拆行。工具不自动折行，只按行缩放字号",
         },
         "highlighted_words": {
             "type": "array",

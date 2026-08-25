@@ -72,13 +72,6 @@ def _normalize_lines(title: str, lines: list[str] | None) -> list[str]:
     normalized = [str(item).strip() for item in lines]
     if any(not item for item in normalized):
         raise InvalidParameterError("lines", "lines 里不能有空行")
-    compact_title = re.sub(r"\s+", "", str(title or ""))
-    compact_lines = re.sub(r"\s+", "", "".join(normalized))
-    if compact_title and compact_lines != compact_title:
-        raise InvalidParameterError(
-            "lines",
-            "lines 去掉空白后必须拼回 title/长标题原文，不要增删字",
-        )
     return normalized
 
 

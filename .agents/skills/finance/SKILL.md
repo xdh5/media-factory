@@ -147,7 +147,7 @@ SUB|L002|你以为涨薪就能存钱
 1. `finance_get_source_script`：选择并临时占用一条未使用的财经数据库原稿。
 2. 按本 Skill 的 `prompts/finance.md` 把原稿改为 450～550 字；黄金钩子和原结构不得改变，宣传品牌统一替换为【财富研习岛】。
 3. 从改编正文提炼 `topic`；调用 `finance_get_metadata_prompt` 后写标题标签行。
-4. 用**长标题**按语义断成 1～3 行 `cover_lines`（拼接去空白后必须等于长标题 `title`）。封面不自动折行。
+4. 用**长标题**按语义断成 1～3 行 `cover_lines`。封面不自动折行。
 5. 从长标题中选出 1～3 个真正承载点击理由的重点词，作为 `cover_highlights` 传入；每项必须原样出现在 `title` 中。封面重点词使用 `#F2A623` 金黄色，其他文字使用白色，统一加 6px 黑色描边。
 6. 先确定北京时间计划发布日期 `publish_date`（`YYYY-MM-DD`，不得早于当天）；`finance_save_draft` 除原参数外传入 `publish_date`、`source_aweme_id`、`source_reservation_token`、`source_hook` 和 `cover_highlights`。MCP 创建 `output/finance/run-YYYYMMDD/`；日期只表示计划发布日，不包含具体时间。保存成功后 MCP 自动将数据库原稿标记为已使用，直接进入制作。
 
