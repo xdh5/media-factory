@@ -47,24 +47,3 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/media-factory-runner:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  notify:
-    name: Telegram 收尾通知
-    needs: build
-    if: ${{ always() }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: 检出通知代码
-        uses: actions/checkout@v5
-      - name: 成功静默、失败有声通知
-        continue-on-error: true
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          WORKFLOW_NEEDS_JSON: ${{ toJSON(needs) }}
-        run: >-
-          python -m ops.github_actions publish_notify
-          --notify-label "构建生产环境"
-          --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          --skipped "false"
