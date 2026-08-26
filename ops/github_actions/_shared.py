@@ -5,12 +5,11 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
-from datetime import date, datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import boto3
 
+from ._dates import resolve_publish_date
 from core.tools.qwen_text import generate_text
 from core.tools.qwen_vision import analyze_image
 from core.tools.r2_storage import upload_public_file
@@ -19,23 +18,6 @@ from core.tools.cloudflare_data import list_production_outputs, list_publication
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LANGUAGE_PUBLISH_TARGETS = ("youtube", "tiktok", "instagram", "facebook")
-
-
-def resolve_publish_date(value: str = "", default_days_ahead: int = 0) -> str:
-    """解析计划发布日期；留空时按北京时间当天加指定天数，禁止选择过去日期。"""
-    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
-    text = str(value or "").strip()
-    if not text:
-        if default_days_ahead not in (0, 1):
-            raise ValueError("default_days_ahead 只能是 0 或 1")
-        return (today + timedelta(days=default_days_ahead)).isoformat()
-    try:
-        resolved = date.fromisoformat(text)
-    except ValueError as exc:
-        raise ValueError("publish_date 必须是 YYYY-MM-DD，例如 2026-08-25") from exc
-    if resolved < today:
-        raise ValueError(f"publish_date 不能早于北京时间当天 {today.isoformat()}")
-    return resolved.isoformat()
 
 
 def daily_production_preflight(

@@ -145,7 +145,7 @@ def main() -> None:
             schedule_publication(arguments.manifest_url, arguments.run_id, targets=targets or None)
         )
     elif arguments.workflow == "daily_plan":
-        from ._shared import resolve_publish_date
+        from ._dates import resolve_publish_date
 
         publish_date = resolve_publish_date(arguments.publish_date, default_days_ahead=1)
         payload = {"publish_date": publish_date}
