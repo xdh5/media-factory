@@ -127,6 +127,7 @@ def generate_text(
         "stream": False,
         "temperature": request_temperature,
         "enable_thinking": settings["enable_thinking"],
+        "preserve_thinking": False,
     }
     if max_tokens is not None:
         if isinstance(max_tokens, bool) or int(max_tokens) < 1:
