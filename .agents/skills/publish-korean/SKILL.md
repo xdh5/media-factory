@@ -22,3 +22,7 @@ description: 使用统一发布 MCP 把指定计划发布日期的本地韩语�
 2. 没有本地成片、缺少账号路由或所有目标已有数据库记录时停止，不得重复发布。
 3. 按上面的北京时间 16:00 规则调用 `publishing_start_publish`，并传 `publish_confirmed=true`。
 4. 用 `publishing_poll_task` 轮询至完成。MCP 会在每个平台成功发布或成功预约后写入 `publication_records`，不得再次手工记录。
+5. MatrixMedia 会在上传前对抖音、快手、百家号、头条号和视频号读取真实发布页；不能只依据 Cookie 或 `connected` 判断登录成功。
+6. 真实发布页检测失败时立即停止本次发布：
+   - 抖音或视频号：调用 MatrixMedia `login`，抖音必须传 `force=true`；二维码不得只放在工具输出或执行记录中。最终回复必须使用返回的 `qr_path` 写入 Markdown 图片 `![登录二维码](绝对路径)`，并附同一路径的可点击文件链接，然后立即结束当前对话。只有用户明确回复“好了”后才调用 `login_status`，登录成功后重新预检并重试发布。
+   - 快手、百家号或头条号：明确报告登录失败，请用户在 MatrixMedia GUI 重新登录；禁止继续等待上传超时或自动重试。

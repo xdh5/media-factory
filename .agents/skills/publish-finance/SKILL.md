@@ -26,3 +26,4 @@ description: 使用统一发布 MCP 把指定计划发布日期的本地财经�
 4. 用户要求立即发布时调用 `publishing_start_publish`，传 `publish_mode="immediate"`、`publish_at="now"`、`publish_confirmed=true`。
 5. 用户未指定发布时间时，使用产物计划发布日期当天北京时间 18:00；用户指定其他时间时遵从用户时间。未来时间传 `publish_mode="scheduled"` 和带时区的 ISO 8601 `publish_at`，例如 `2026-08-26T18:00:00+08:00`。若默认时间已经过去，必须先询问用户是立即发布还是改约未来时间。抖音、快手、百家号、头条号和视频号必须立即上传并使用平台官方预约；禁止创建或接受应用内定时队列结果。
 6. 用 `publishing_poll_task` 轮询至 `done=true`。逐平台成功或预约成功后 MCP 会立即写入 `publication_records`；不得再手工重复入库。
+7. MatrixMedia 会在上传前对抖音、快手、百家号、头条号和视频号读取真实发布页；不能只依据 Cookie 或 `connected` 判断登录成功。真实检测失败时立即停止：抖音或视频号调用 MatrixMedia `login`（抖音传 `force=true`），二维码不得只放在工具输出或执行记录中；最终回复必须使用返回的 `qr_path` 写入 Markdown 图片并附可点击文件链接，然后立即结束当前对话，只有用户回复“好了”后才轮询登录并重试。快手、百家号或头条号则报告失败并要求用户在 MatrixMedia GUI 重新登录。
