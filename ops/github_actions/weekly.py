@@ -99,6 +99,7 @@ async def run_day(publish_date: str, run_url: str = "") -> dict:
     finance_preflight = daily_production_preflight("finance", publish_date)
     try:
         if finance_preflight["should_generate"]:
+            os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"
             await run_finance(publish_date=publish_date)
             notify_business_result("财经生产", True, run_url)
             results["finance"] = {"status": "produced"}
@@ -118,6 +119,7 @@ async def run_day(publish_date: str, run_url: str = "") -> dict:
 
     if lang_preflight["should_generate"]:
         try:
+            os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
             upload_result = await _run_language_produce(publish_date, work_dir)
             run_id = str(upload_result["run_id"])
             publish_targets = list(LANGUAGE_PUBLISH_TARGETS)
