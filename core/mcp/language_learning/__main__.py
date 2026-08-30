@@ -79,6 +79,9 @@ mcp = FastMCP(
         "每期 10 个英语单词中至少 5 个必须未在最近 100 天使用；只有用户触发发布后才记录话题与全部单词。"
         "文本生成和图片视觉验收由宿主 Agent 完成；千问只用于宿主生图失败后的兜底。"
         "耗时步骤（千问兜底生图、拼卡、出片、发布）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
+        "默认同时生成原版分段和倒计时问答版，倒计时音轨默认使用仓库 static/countdown.mp3。"
+        "中文标题与文件名为 10 Essential {Topic} Words in Chinese，问答版加 ｜guess；"
+        "韩语标题与文件名为 韩语｜{中文词}的韩语怎么说？，问答版加 ｜看图猜词；韩语描述只发 hashtag。"
         "禁止绕过 MCP 自行读写内部文件。"
     ),
 )
@@ -520,6 +523,10 @@ def language_learning_create_videos(
     language_pause: float = 0.3,
     word_pause: float = 0.3,
     production_source: str = "local_mcp",
+    video_formats: list[str] | None = None,
+    countdown_audio_path: str | None = None,
+    record_production_outputs: bool = True,
+    question_voices: dict[str, str] | None = None,
 ) -> dict:
     """TTS + 出片（同步，易超时）。优先使用 language_learning_start_create_videos + poll_task。"""
     try:
@@ -531,7 +538,11 @@ def language_learning_create_videos(
             language_pause,
             word_pause,
             production_source,
+            video_formats,
+            countdown_audio_path,
+            record_production_outputs,
             voices=voices,
+            question_voices=question_voices,
             hashtags_by_mode={
                 mode: list(config.get("tags") or [])
                 for mode, config in publish_config.items()
@@ -554,6 +565,10 @@ def language_learning_start_create_videos(
     language_pause: float = 0.3,
     word_pause: float = 0.3,
     production_source: str = "local_mcp",
+    video_formats: list[str] | None = None,
+    countdown_audio_path: str | None = None,
+    record_production_outputs: bool = True,
+    question_voices: dict[str, str] | None = None,
 ) -> dict:
     """启动 TTS + 出片；立即返回 task_path，用 language_learning_poll_task 轮询至 done=true。"""
     try:
@@ -568,7 +583,11 @@ def language_learning_start_create_videos(
                 language_pause,
                 word_pause,
                 production_source,
+                video_formats,
+                countdown_audio_path,
+                record_production_outputs,
                 voices=voices,
+                question_voices=question_voices,
                 hashtags_by_mode={
                     mode: list(config.get("tags") or [])
                     for mode, config in publish_config.items()

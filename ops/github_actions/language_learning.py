@@ -470,6 +470,7 @@ async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> di
                 "language_pause": 0.3,
                 "word_pause": 0.3,
                 "production_source": "github_workflow",
+                "video_formats": ["standard", "quiz"],
             },
         )
         manifest = await mcp.poll("language_learning_poll_task", started["task_path"])
@@ -543,6 +544,8 @@ def upload_handoff(handoff_dir: str | Path) -> dict:
     }
     for video in manifest.get("videos") or []:
         mode = str(video.get("learning_mode") or "").strip()
+        video_format = str(video.get("video_format") or "standard").strip() or "standard"
+        content_kind = mode if video_format == "standard" else f"{mode}-{video_format}"
         for fallback_part, part in enumerate(video.get("video_parts") or [], 1):
             part_number = int(part.get("part") or fallback_part)
             source_name = Path(str(part.get("output_path") or "")).name
@@ -550,11 +553,11 @@ def upload_handoff(handoff_dir: str | Path) -> dict:
             if not r2_url:
                 raise RuntimeError(f"R2 上传结果缺少成片地址：{source_name}")
             output_records.append({
-                "production_id": f"github_workflow:language_learning:{handoff['run_id']}:{mode}:{part_number}",
+                "production_id": f"github_workflow:language_learning:{handoff['run_id']}:{content_kind}:{part_number}",
                 "run_id": str(handoff["run_id"]),
                 "publish_date": publish_date,
                 "business_line": "language_learning",
-                "content_kind": mode,
+                "content_kind": content_kind,
                 "content_part": part_number,
                 "title": str(part.get("title") or "").strip(),
                 "hashtags": hashtags_by_mode.get(mode, ""),
@@ -629,10 +632,16 @@ async def schedule_publication(
     if result.get("success") is not True:
         raise RuntimeError(f"四平台排期存在失败：{json.dumps(result, ensure_ascii=False)}")
     completed_channels = {
-        str(item.get("channel") or "").strip().casefold()
-        for item in result.get("published") or []
-        if item.get("success") is True
+        str(item).strip().casefold()
+        for item in result.get("completed_targets") or []
+        if str(item).strip()
     }
+    if not completed_channels:
+        completed_channels = {
+            str(item.get("channel") or "").strip().casefold()
+            for item in result.get("published") or []
+            if item.get("success") is True
+        }
     missing_channels = set(selected_targets) - completed_channels
     if missing_channels:
         raise RuntimeError(f"四平台排期返回不完整，缺少：{', '.join(sorted(missing_channels))}")

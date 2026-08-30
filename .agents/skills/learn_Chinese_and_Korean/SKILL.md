@@ -29,6 +29,25 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 - `language_pause`：`0.3`（英语与目标语之间）
 - `word_pause`：`0.3`（每个词之间）
 
+### 标题、文件名与描述
+
+成片本地文件名必须与发布标题一致（经 `safe_filename` 后保存为 `.mp4`）。
+
+**中文 `en-zh`**
+
+- 标题与文件名：`10 Essential {Topic} Words in Chinese`
+- 示例：主题 `Dishes` → `10 Essential Dishes Words in Chinese`
+- 问答版在末尾加 `｜guess`，例如 `10 Essential Dishes Words in Chinese｜guess`
+- 分段超过 1 段时在末尾加 ` 1/2`、` 2/2`
+
+**韩语 `en-ko`**
+
+- 标题与文件名：`韩语｜{该段第一个中文词}的韩语怎么说？`
+- 示例：`韩语｜饺子的韩语怎么说？`
+- 问答版在末尾加 `｜看图猜词`
+- 分段超过 1 段时在末尾加 ` 1/2`、` 2/2`
+- **作品描述只发 hashtag，不得加入短标题、完整标题或其它正文**，例如 `#学韩语 #韩语单词 #韩语入门 #每日韩语`
+
 ### 发布配置（`language_learning_start_create_videos` 的 `publish_config`）
 
 **中文 `en-zh`**
@@ -63,7 +82,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 - 本地生产完成后保留本地产物，不自动上传 R2；只有 GitHub Workflow 或已确认发布的平台需要公网视频地址时才调用 `language_learning_start_upload_r2`
 - 发布服务器 MatrixMedia 使用账号组 `韩语`，账号配置由发布环境提供，不再从 D1 读取发布账号组。
 - MatrixMedia 发布所有平台时必须传 `creativeStatement="ai_generated"`，给成片添加各平台对应的 AI 生成内容标记；不得省略或改为无标注。
-- MatrixMedia 发布时完整标题传 `title`，作品描述传 `short_title` 与标签拼成的文案；不得把完整标题重复放进描述。
+- MatrixMedia 发布时完整标题传 `title`（`韩语｜饺子的韩语怎么说？` 这种格式），作品描述只传标签 hashtag；不得把短标题、完整标题或其它文字放进描述。
 - 跳过掘金、番茄
 - MatrixMedia 返回成功或预约成功结果后，必须调用 `language_learning_record_publications`。最终平台按 `ks→kuaishou`、`dy→douyin`、`bjh→baijiahao`、`xhs→xiaohongshu`、`tt→toutiao`、`sph→wechat_channels` 映射；立即发布的 `publish_at` 写实际成功时间，预约发布写预约时间，均使用带时区的 ISO 8601。
 
@@ -97,9 +116,9 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 只提取按上排从左到右、下排从左到右排序的十个保守边界框，不检查文字、水印、画风、内容或主体完整性；调用 `language_learning_validate_subject_sheet` 后，Python 整图去背景、输出十张抠图，并保存 `subject-sheet-background-removed.png`。
 7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**整张去背景后的完整主题图**（不是十张单独抠图），按返回 Prompt 一次性检查：主体数量是否为 10、完整性、文字、水印、画风、背景残色；再调用 `language_learning_review_subject_sheet` 提交一条结论。失败时 `failure_kind` 取 `background_edge` / `text` / `watermark` / `style` / `count` / `completeness` 之一。背景残色时必须要求换一种与上一张明显不同、且与全部主体反差更大的纯色背景重新生成主题图。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对整图调用千问视觉执行同一个 MCP Prompt。
 8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
-9. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause` → poll 至 `done=true`。
-10. 用户确认发布后：韩语条目直接使用本地产物交给 MatrixMedia MCP，并对每个平台传入条目中的 `creativeStatement="ai_generated"`；中文调用 `language_learning_start_publish`，默认发布 YouTube 和 TikTok，也可用 `targets` 显式发布 Instagram 或 Facebook。目标平台需要公网视频地址时，才调用 `language_learning_start_upload_r2` 上传发布资产。发布 MCP 幂等写入正式话题与本期 10 个单词。
-9. 展示发布结果后，确认清缓存。
+9. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause`；默认同时生成原版分段和倒计时问答版，倒计时音轨用仓库 `core/mcp/language_learning/static/countdown.mp3`，不必再传 `countdown_audio_path`。只出原版时才传 `video_formats=["standard"]` → poll 至 `done=true`。
+10. 用户确认发布后：韩语原版与问答版一起交给 MatrixMedia；中文调用 `language_learning_start_publish`，原版两段和问答版一条一起发到 YouTube、TikTok、Instagram、Facebook。中文问答版标题为 `10 Essential {Topic} Words in Chinese｜guess`。目标平台需要公网视频地址时，才调用 `language_learning_start_upload_r2` 上传发布资产。发布 MCP 幂等写入正式话题与本期 10 个单词。
+11. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
 

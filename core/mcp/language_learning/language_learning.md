@@ -62,21 +62,18 @@ language_learning_compose_cards
 language_learning_start_compose_cards
 └─ core.mcp._task_runner.submit_task
 
-language_learning_create_videos
-└─ tools.create_vocabulary_videos.create_vocabulary_videos  （同步，易超时）
-
-language_learning_start_create_videos
-└─ core.mcp._task_runner.submit_task
-   └─ generate_tts
-   └─ generate_final_video
-   └─ tools.publish_vocabulary_videos.attach_publish_manifest
+language_learning_create_videos / language_learning_start_create_videos
+└─ 默认同时生成 standard 原版分段和 quiz 倒计时问答版
+└─ 问答版倒计时音轨默认 static/countdown.mp3
+└─ tools.create_vocabulary_videos.create_vocabulary_videos
+└─ tools.publish_vocabulary_videos.attach_publish_manifest
 
 language_learning_start_upload_r2
 └─ tools.publish_vocabulary_videos.upload_publish_assets_to_r2
    └─ 上传成片、主题图与发布清单
 
 language_learning_start_publish
-└─ 后台发布中文 YouTube、TikTok、Instagram 或 Facebook，并幂等写入正式话题和十个单词
+└─ 中文原版与问答版一起发布到 YouTube、TikTok、Instagram 或 Facebook，并幂等写入正式话题和十个单词
 
 language_learning_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task

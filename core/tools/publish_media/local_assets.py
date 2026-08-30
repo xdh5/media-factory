@@ -13,6 +13,16 @@ from ._constants import PROJECT_ROOT
 from ._errors import InvalidPublishRequestError
 
 
+def matching_content_kinds(content_kind: str | None) -> set[str] | None:
+    """en-zh / en-ko 同时包含对应问答版；显式 *-quiz 只匹配问答版。"""
+    wanted = str(content_kind or "").strip()
+    if not wanted:
+        return None
+    if wanted in {"en-zh", "en-ko"}:
+        return {wanted, f"{wanted}-quiz"}
+    return {wanted}
+
+
 def stored_video_filename(record: dict) -> str:
     """本地/R2 成片文件名：优先使用 r2_url 里的对象名，避免与标题字段二次转换不一致。"""
     r2_url = str(record.get("r2_url") or "").strip()
@@ -98,14 +108,14 @@ def ensure_local_publish_items(
     content_kind: str | None = None,
 ) -> None:
     """若 local_mcp 缺失或本地文件不存在，则从 R2 拉回 github_workflow 成片。"""
-    wanted_kind = str(content_kind or "").strip()
+    wanted_kinds = matching_content_kinds(content_kind)
     local_rows = list_production_outputs(
         publish_date=publish_date,
         business_line=business_line,
         source="local_mcp",
     )
-    if wanted_kind:
-        local_rows = [item for item in local_rows if str(item.get("content_kind") or "") == wanted_kind]
+    if wanted_kinds is not None:
+        local_rows = [item for item in local_rows if str(item.get("content_kind") or "") in wanted_kinds]
 
     def _is_valid(row: dict) -> bool:
         expected = local_video_path(row)
@@ -113,18 +123,30 @@ def ensure_local_publish_items(
         return current.is_file() and current == expected
 
     valid_local_rows = [row for row in local_rows if _is_valid(row)]
-    if valid_local_rows:
-        for row in valid_local_rows:
-            _materialize_finance_publish_metadata(row, local_video_path(row).parent)
-        return
+    valid_kinds = {str(row.get("content_kind") or "") for row in valid_local_rows}
+    if wanted_kinds is None:
+        if valid_local_rows:
+            for row in valid_local_rows:
+                _materialize_finance_publish_metadata(row, local_video_path(row).parent)
+            return
+        missing_kinds = None
+    else:
+        missing_kinds = wanted_kinds - valid_kinds
+        if valid_local_rows:
+            for row in valid_local_rows:
+                _materialize_finance_publish_metadata(row, local_video_path(row).parent)
+            if not missing_kinds:
+                return
 
     github_rows = list_production_outputs(
         publish_date=publish_date,
         business_line=business_line,
         source="github_workflow",
     )
-    if wanted_kind:
-        github_rows = [item for item in github_rows if str(item.get("content_kind") or "") == wanted_kind]
+    if missing_kinds is not None:
+        github_rows = [item for item in github_rows if str(item.get("content_kind") or "") in missing_kinds]
+    elif wanted_kinds is not None:
+        github_rows = [item for item in github_rows if str(item.get("content_kind") or "") in wanted_kinds]
     for row in github_rows:
         materialize_github_workflow_output(row)
 
@@ -154,10 +176,19 @@ def enrich_local_publish_item(row: dict) -> dict | None:
     title_path = output_dir / "title.txt"
     short_title_path = output_dir / "short-title.txt"
     copy_path = output_dir / "publish-copy.txt"
+    content_kind = str(row.get("content_kind") or "").strip()
+    hashtags = str(row.get("hashtags") or "").strip()
+    if content_kind.startswith("en-ko"):
+        publish_copy = hashtags
+    elif copy_path.is_file():
+        publish_copy = copy_path.read_text(encoding="utf-8").strip()
+    else:
+        publish_copy = title
     return {
         **row,
         "local_path": str(local_path),
         "title": title_path.read_text(encoding="utf-8").strip() if title_path.is_file() else title,
         "short_title": short_title_path.read_text(encoding="utf-8").strip() if short_title_path.is_file() else "",
-        "publish_copy": copy_path.read_text(encoding="utf-8").strip() if copy_path.is_file() else title,
+        "publish_copy": publish_copy,
+        "hashtags": hashtags,
     }

@@ -129,7 +129,11 @@ def _public_video_url(item: dict) -> str:
 
 def _publish_matrixmedia(item: dict, route: dict, scheduled_cli: str | None) -> dict:
     platform = str(route["platform"])
-    publish_copy = str(item.get("publish_copy") or item["title"]).strip()
+    content_kind = str(item.get("content_kind") or "").strip()
+    if content_kind.startswith("en-ko"):
+        publish_copy = str(item.get("publish_copy") or item.get("hashtags") or "").strip()
+    else:
+        publish_copy = str(item.get("publish_copy") or item["title"]).strip()
     arguments = [
         "publish", "-p", MATRIXMEDIA_PLATFORM_CODES[platform],
         "-f", str(item["local_path"]), "--title", str(item["title"]),

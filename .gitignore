@@ -33,6 +33,11 @@ Thumbs.db
 
 # 本地 OAuth 凭据，不进入版本库
 data/youtube/tokens/
+ops/youtube/client_secret.json
+ops/youtube/*_token.json
+ops/youtube/oauth_state.json
+ops/youtube/callback.url
+ops/youtube/auth_url.txt
 
 # 运维工具的本地开发状态与依赖
 ops/cloudflare/**/.wrangler/

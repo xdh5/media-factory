@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -16,8 +21,48 @@ YOUTUBE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.readonly",
 ]
 
+STATE_NAME = "oauth_state.json"
+CALLBACK_NAME = "callback.url"
+
+
+def _dir_of(path: Path) -> Path:
+    return path.parent
+
+
+def _open_system_browser(url: str) -> str:
+    candidates = [
+        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Google/Chrome/Application/chrome.exe",
+        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Microsoft/Edge/Application/msedge.exe",
+        Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")) / "Microsoft/Edge/Application/msedge.exe",
+    ]
+    for exe in candidates:
+        if exe.is_file():
+            subprocess.Popen([str(exe), url], close_fds=True)
+            return str(exe)
+    subprocess.Popen(["cmd", "/c", "start", "", url])
+    return "default"
+
+
+def _save_credentials(flow: InstalledAppFlow, output: Path) -> None:
+    credentials = flow.credentials
+    output.write_text(credentials.to_json(), encoding="utf-8")
+    if not credentials.refresh_token:
+        raise SystemExit("这次授权没有返回 refresh_token，请撤掉应用权限后再授权一次")
+    print(f"授权凭据已保存到：{output}", flush=True)
+
+
+def _complete_with_callback(client_secret: Path, state_path: Path, callback: str, output: Path) -> None:
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    flow = InstalledAppFlow.from_client_secrets_file(str(client_secret), scopes=YOUTUBE_SCOPES)
+    flow.redirect_uri = state["redirect_uri"]
+    flow.code_verifier = state["code_verifier"]
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+    flow.fetch_token(authorization_response=callback.strip())
+    _save_credentials(flow, output)
+
 
 def main() -> None:
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
     parser = argparse.ArgumentParser(description="生成单个 YouTube 频道的 OAuth 凭据")
     parser.add_argument("--client-secret", type=Path)
     parser.add_argument("--output", type=Path)
@@ -27,7 +72,8 @@ def main() -> None:
     parser.add_argument("--account", default="language_learning")
     parser.add_argument("--channel-id", default="")
     parser.add_argument("--channel-title", default="")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--port", type=int, default=18765)
+    parser.add_argument("--callback", default="", help="把 404 页地址栏完整 URL 粘贴过来即可换票")
     args = parser.parse_args()
 
     if args.configure_env:
@@ -83,20 +129,78 @@ def main() -> None:
     if not args.client_secret or not args.output:
         parser.error("生成授权时必须同时提供 --client-secret 和 --output")
 
-    flow = InstalledAppFlow.from_client_secrets_file(
-        str(args.client_secret),
-        scopes=YOUTUBE_SCOPES,
+    state_path = _dir_of(args.output) / STATE_NAME
+    callback_path = _dir_of(args.output) / CALLBACK_NAME
+
+    if args.callback:
+        if not state_path.is_file():
+            parser.error(f"找不到 {state_path}，需要先重新生成授权链接")
+        _complete_with_callback(args.client_secret, state_path, args.callback, args.output)
+        return
+
+    redirect_uri = f"http://127.0.0.1:{args.port}/"
+    flow = InstalledAppFlow.from_client_secrets_file(str(args.client_secret), scopes=YOUTUBE_SCOPES)
+    flow.redirect_uri = redirect_uri
+    auth_url, _ = flow.authorization_url(
+        access_type="offline",
+        prompt="consent",
+        include_granted_scopes="true",
     )
-    credentials = flow.run_local_server(
-        host="localhost",
-        bind_addr="0.0.0.0",
-        port=args.port,
-        open_browser=False,
-        authorization_prompt_message="请在浏览器打开此地址完成 YouTube 授权：\n{url}\n",
-        success_message="YouTube 授权成功，可以关闭此页面。",
+    state_path.write_text(
+        json.dumps(
+            {
+                "redirect_uri": redirect_uri,
+                "code_verifier": flow.code_verifier,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
     )
-    args.output.write_text(credentials.to_json(), encoding="utf-8")
-    print(f"授权凭据已保存到：{args.output}")
+    if callback_path.exists():
+        callback_path.unlink()
+
+    class Handler(BaseHTTPRequestHandler):
+        last_url = ""
+
+        def do_GET(self) -> None:
+            Handler.last_url = f"{redirect_uri.rstrip('/')}{self.path}"
+            body = "<!doctype html><meta charset=utf-8><p>YouTube 授权成功，可以关闭此页面。</p>".encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *log_args) -> None:
+            print(format % log_args, flush=True)
+
+    server = HTTPServer(("127.0.0.1", args.port), Handler)
+    server.timeout = 1
+    browser = _open_system_browser(auth_url)
+    print(f"已用系统浏览器打开：{browser}", flush=True)
+    print("请用 Chrome 或 Edge 登录 Daily Chinese Learning 并点允许。", flush=True)
+    print("如果又是 404，把地址栏完整 URL 发给我，或写入：", callback_path, flush=True)
+    print(auth_url, flush=True)
+
+    deadline = time.time() + 600
+    callback = ""
+    while time.time() < deadline and not callback:
+        server.handle_request()
+        if Handler.last_url and "code=" in Handler.last_url:
+            callback = Handler.last_url
+            break
+        if callback_path.is_file():
+            text = callback_path.read_text(encoding="utf-8").strip()
+            if "code=" in text:
+                callback = text
+                break
+    server.server_close()
+    if not callback:
+        raise SystemExit("10 分钟内没有收到回调。404 时把地址栏完整链接发给我即可。")
+
+    flow.fetch_token(authorization_response=callback)
+    _save_credentials(flow, args.output)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ import unicodedata
 from pathlib import Path
 from statistics import median
 
-from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from core.tools.generate_final_video import safe_filename
 from .._constants import (
@@ -260,7 +260,7 @@ def _estimate_background_rgb(sheet: Image.Image) -> tuple[int, int, int]:
 
 
 def _remove_sheet_background(sheet: Image.Image) -> tuple[Image.Image, tuple[int, int, int]]:
-    """在整张图全局删除与背景同色或近似色的像素，不保护主体内部同色区域。"""
+    """删除纯色背景，并收紧一像素边缘以消除背景色污染。"""
     rgb = sheet.convert("RGB")
     background_rgb = _estimate_background_rgb(rgb)
     background = Image.new("RGB", rgb.size, background_rgb)
@@ -274,8 +274,21 @@ def _remove_sheet_background(sheet: Image.Image) -> tuple[Image.Image, tuple[int
         if value >= SUBJECT_CHROMA_HIGH_DISTANCE
         else round((value - SUBJECT_CHROMA_LOW_DISTANCE) * 255 / spread)
     )
-    transparent = rgb.convert("RGBA")
-    transparent.putalpha(alpha)
+    rgb_bytes = rgb.tobytes()
+    alpha_bytes = alpha.tobytes()
+    clean_rgb = bytearray(rgb_bytes)
+    for pixel_index, alpha_value in enumerate(alpha_bytes):
+        if alpha_value <= 0 or alpha_value >= 255:
+            continue
+        base = pixel_index * 3
+        inverse_alpha = 255 - alpha_value
+        for channel_index, background_value in enumerate(background_rgb):
+            observed = rgb_bytes[base + channel_index]
+            foreground = (observed * 255 - background_value * inverse_alpha) / alpha_value
+            clean_rgb[base + channel_index] = max(0, min(255, round(foreground)))
+
+    transparent = Image.frombytes("RGB", rgb.size, bytes(clean_rgb)).convert("RGBA")
+    transparent.putalpha(alpha.filter(ImageFilter.MinFilter(5)))
     return transparent, background_rgb
 
 

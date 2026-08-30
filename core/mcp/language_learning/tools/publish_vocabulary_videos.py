@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from core.tools.r2_storage import download_public_file, upload_public_file
-from core.tools.cloudflare_data import commit_production_outputs, commit_publication_records
+from core.tools.cloudflare_data import commit_production_outputs, commit_publication_records, list_publication_records
 from core.tools.topic_dedup import commit as commit_topic
 
 from .._constants import (
@@ -22,6 +22,10 @@ from .._constants import (
     WORKFLOW_ID,
     YOUTUBE_LANGUAGE_BY_MODE,
     YOUTUBE_LANGUAGE_LEARNING_CATEGORY_ID,
+    QUIZ_TITLE_SUFFIX_EN,
+    QUIZ_TITLE_SUFFIX_ZH,
+    video_content_kind,
+    video_production_id,
 )
 from .._errors import ConfirmationRequiredError, PublishError
 from .vocabulary_history import build_database_word_entries
@@ -41,7 +45,7 @@ def build_video_title(
         if not re.fullmatch(r"[A-Za-z][A-Za-z '&-]*", english_topic):
             english_topic = "Vocabulary"
         title = f"10 Essential {english_topic.title()} Words in Chinese"
-        if part is not None and part_count is not None:
+        if part is not None and part_count is not None and part_count > 1:
             return f"{title} {part}/{part_count}"
         return title
     rows = list(words or [])
@@ -74,6 +78,11 @@ def _description(short_title: str, tags: list[str]) -> str:
     return "\n\n".join(part for part in (str(short_title or "").strip(), hashtags) if part)
 
 
+def _korean_description(tags: list[str]) -> str:
+    """韩语作品描述只发 hashtag，不含短标题或其它正文。"""
+    return _hashtags(tags)
+
+
 def _video_parts(video: dict, fallback_title: str, *, empty_error: str) -> list[dict]:
     parts = []
     for part in video.get("video_parts") or []:
@@ -99,6 +108,27 @@ def _mode_config(publish_config: dict[str, dict], mode: str) -> dict:
     return config
 
 
+def _video_format(payload: dict) -> str:
+    return str(payload.get("video_format") or "standard").strip() or "standard"
+
+
+def _item_key(item: dict) -> str:
+    return f"{item.get('learning_mode') or ''}:{_video_format(item)}"
+
+
+def _titled(base: str, video_format: str, mode: str = "en-zh") -> str:
+    text = str(base or "").strip()
+    if video_format != "quiz":
+        return text
+    suffix = QUIZ_TITLE_SUFFIX_EN if mode == "en-zh" else QUIZ_TITLE_SUFFIX_ZH
+    if text.endswith(suffix):
+        return text
+    for marker in (QUIZ_TITLE_SUFFIX_EN, QUIZ_TITLE_SUFFIX_ZH):
+        if text.endswith(marker):
+            text = text[: -len(marker)].strip()
+    return f"{text}{suffix}"
+
+
 def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_config: dict[str, dict]) -> dict:
     """给成片补上发布清单。发布目标由 SKILL 传入的 publish_config 决定。"""
     topic = str(video_result.get("topic") or "").strip()
@@ -107,35 +137,48 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
     matrixmedia_items = []
     for video in video_result.get("videos") or []:
         mode = str(video.get("learning_mode") or "")
+        video_format = _video_format(video)
         if mode == "en-zh":
             zh_config = _mode_config(publish_config, "en-zh")
-            title = build_video_title("en-zh", topic_english)
+            title = _titled(build_video_title("en-zh", topic_english), video_format, "en-zh")
             youtube_items.append({
                 "learning_mode": "en-zh",
+                "video_format": video_format,
                 "account_group": str(zh_config.get("account_group") or ""),
                 "youtube_account": str(zh_config.get("youtube_account") or WORKFLOW_ID),
                 "channel": "youtube",
                 "title": title,
                 "tags": list(zh_config.get("tags") or []),
-                "short_title": str(zh_config.get("short_title") or f"中文{topic or '单词'}怎么说"),
+                "short_title": _titled(
+                    str(zh_config.get("short_title") or f"中文{topic or '单词'}怎么说"),
+                    video_format,
+                    "en-zh",
+                ),
                 "videos": _video_parts(video, title, empty_error="en-zh 没有可发布的视频文件"),
             })
             continue
         if mode == "en-ko":
             ko_config = _mode_config(publish_config, "en-ko")
-            title = build_video_title("en-ko", topic, words_by_mode.get("en-ko") or [])
+            title = _titled(
+                build_video_title("en-ko", topic, words_by_mode.get("en-ko") or []),
+                video_format,
+                "en-ko",
+            )
+            short_title = _titled(
+                str(ko_config.get("short_title") or "韩语单词怎么说"),
+                video_format,
+                "en-ko",
+            )
             matrixmedia_items.append({
                 "learning_mode": "en-ko",
+                "video_format": video_format,
                 "account_group": str(ko_config.get("account_group") or ""),
                 "channel": "matrixmedia",
                 "creativeStatement": MATRIXMEDIA_AI_CREATIVE_STATEMENT,
                 "title": title,
                 "tags": list(ko_config.get("tags") or []),
-                "short_title": str(ko_config.get("short_title") or "韩语单词怎么说"),
-                "description": _description(
-                    str(ko_config.get("short_title") or "韩语单词怎么说"),
-                    list(ko_config.get("tags") or []),
-                ),
+                "short_title": short_title,
+                "description": _korean_description(list(ko_config.get("tags") or [])),
                 "platforms": list(ko_config.get("platforms") or []),
                 "videos": _video_parts(video, title, empty_error="en-ko 没有可发布的视频文件"),
             })
@@ -145,8 +188,8 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
     manifest_path = output_dir / PUBLISH_MANIFEST_FILE_NAME
     kept_youtube = []
     kept_matrixmedia = []
-    new_modes = {
-        str(video.get("learning_mode") or "")
+    new_keys = {
+        f"{video.get('learning_mode') or ''}:{_video_format(video)}"
         for video in (video_result.get("videos") or [])
     }
     if manifest_path.is_file():
@@ -155,9 +198,9 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
         except (OSError, json.JSONDecodeError):
             previous = {}
         for item in previous.get("items") or []:
-            mode = str(item.get("learning_mode") or "")
-            if mode in new_modes:
+            if _item_key(item) in new_keys:
                 continue
+            mode = str(item.get("learning_mode") or "")
             if mode == "en-zh":
                 kept_youtube.append(item)
             elif mode == "en-ko":
@@ -298,23 +341,25 @@ def upload_publish_assets_to_r2(
     output_records = []
     for item in manifest.get("items") or []:
         mode = str(item.get("learning_mode") or "unknown").strip() or "unknown"
+        video_format = _video_format(item)
+        content_kind = video_content_kind(mode, video_format)
         for index, video in enumerate(item.get("videos") or [], 1):
             video_path = Path(str(video.get("output_path") or "")).resolve()
             stored = upload_public_file(
                 video_path,
-                f"runs/{WORKFLOW_ID}/{run_id}/{mode}/{index:02d}-{video_path.name}",
+                f"runs/{WORKFLOW_ID}/{run_id}/{content_kind}/{index:02d}-{video_path.name}",
                 content_type="video/mp4",
             )
             video["video_url"] = stored["url"]
             video["r2_key"] = stored["key"]
-            uploaded.append({"kind": "video", "learning_mode": mode, **stored})
+            uploaded.append({"kind": "video", "learning_mode": mode, "video_format": video_format, **stored})
             if manifest.get("production_source") == "local_mcp":
                 output_records.append({
-                    "production_id": f"local_mcp:{WORKFLOW_ID}:{run_id}:{mode}:{index}",
+                    "production_id": video_production_id("local_mcp", run_id, mode, video_format, index),
                     "run_id": run_id,
                     "publish_date": str(manifest.get("publish_date") or "").strip(),
                     "business_line": WORKFLOW_ID,
-                    "content_kind": mode,
+                    "content_kind": content_kind,
                     "content_part": index,
                     "title": str(video.get("title") or item.get("title") or "").strip(),
                     "hashtags": _hashtags(list(item.get("tags") or [])),
@@ -389,31 +434,101 @@ def _tiktok_accounts(group_name: str, tiktok_account: str) -> list[dict]:
     )
 
 
-def _should_publish_youtube(manifest: dict) -> bool:
-    """YouTube 已成功时不重复上传。"""
-    if manifest.get("youtube_published") is True:
+def _item_video_rows(item: dict) -> list[tuple[str, int]]:
+    return [
+        (str(video.get("title") or item.get("title") or "").strip(), index)
+        for index, video in enumerate(item.get("videos") or [], 1)
+    ]
+
+
+def _publication_keys(manifest: dict) -> set[tuple[str, str, int]]:
+    publish_date = str(manifest.get("publish_date") or "").strip()
+    if not publish_date:
+        return set()
+    return {
+        (
+            str(item.get("title") or "").strip(),
+            str(item.get("platform") or "").strip(),
+            int(item.get("content_part") or 1),
+        )
+        for item in list_publication_records(business_line="language_learning", publish_date=publish_date)
+    }
+
+
+def _recorded_parts(item: dict, platform: str, recorded: set[tuple[str, str, int]]) -> set[int]:
+    return {part for title, part in _item_video_rows(item) if title and (title, platform, part) in recorded}
+
+
+def _item_status(manifest: dict, item: dict) -> dict:
+    status = manifest.get("platform_status")
+    if not isinstance(status, dict):
+        return {}
+    current = status.get(_item_key(item))
+    return dict(current) if isinstance(current, dict) else {}
+
+
+def _set_item_status(manifest: dict, item: dict, **updates) -> None:
+    status = dict(manifest.get("platform_status") or {})
+    key = _item_key(item)
+    current = dict(status.get(key) or {})
+    current.update(updates)
+    status[key] = current
+    manifest["platform_status"] = status
+
+
+def _is_standard_item(item: dict) -> bool:
+    return _video_format(item) == "standard"
+
+
+def _should_publish_youtube(
+    manifest: dict,
+    item: dict,
+    recorded: set[tuple[str, str, int]],
+) -> bool:
+    """YouTube 已成功时不重复上传；按原版/问答版分别判断。"""
+    if _recorded_parts(item, "youtube", recorded) >= {part for _, part in _item_video_rows(item)}:
         return False
-    return str(manifest.get("status") or "") not in {"awaiting_matrixmedia", "published"}
+    if _item_status(manifest, item).get("youtube") is True:
+        return False
+    if _is_standard_item(item) and manifest.get("youtube_published") is True:
+        return False
+    return True
 
 
-def _should_publish_tiktok(manifest: dict) -> bool:
-    """TikTok 已成功时不重复提交。"""
-    return not (
+def _should_publish_tiktok(
+    manifest: dict,
+    item: dict,
+    recorded: set[tuple[str, str, int]],
+) -> bool:
+    """TikTok 已成功时不重复提交；按原版/问答版分别判断。"""
+    if _recorded_parts(item, "tiktok", recorded) >= {part for _, part in _item_video_rows(item)}:
+        return False
+    status = _item_status(manifest, item)
+    if status.get("tiktok") is True or status.get("tiktok_scheduled") is True or status.get("tiktok_draft") is True:
+        return False
+    if _is_standard_item(item) and (
         manifest.get("tiktok_published") is True
         or manifest.get("tiktok_scheduled") is True
         or manifest.get("tiktok_draft_delivered") is True
-    )
+    ):
+        return False
+    return True
 
 
-def _pending_instagram_parts(manifest: dict, video_parts: list[int] | None) -> set[int]:
-    requested = {int(part) for part in (video_parts or [1, 2])}
-    published = {int(part) for part in (manifest.get("instagram_published_parts") or [])}
-    return requested - published
-
-
-def _pending_facebook_parts(manifest: dict, video_parts: list[int] | None) -> set[int]:
-    requested = {int(part) for part in (video_parts or [1, 2])}
-    published = {int(part) for part in (manifest.get("facebook_published_parts") or [])}
+def _pending_item_parts(
+    manifest: dict,
+    item: dict,
+    platform: str,
+    video_parts: list[int] | None,
+    recorded: set[tuple[str, str, int]],
+) -> set[int]:
+    total = {index for index, _ in enumerate(item.get("videos") or [], 1)}
+    requested = {int(part) for part in video_parts} if video_parts else set(total)
+    requested &= total
+    published = {int(part) for part in (_item_status(manifest, item).get(f"{platform}_parts") or [])}
+    if _is_standard_item(item):
+        published |= {int(part) for part in (manifest.get(f"{platform}_published_parts") or [])}
+    published |= _recorded_parts(item, platform, recorded)
     return requested - published
 
 
@@ -517,6 +632,7 @@ def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
                 })
     return {
         "learning_mode": item["learning_mode"],
+        "video_format": _video_format(item),
         "account_group": item["account_group"],
         "channel": "youtube",
         "youtube_published": all(
@@ -570,6 +686,7 @@ def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
     )
     return {
         "learning_mode": item["learning_mode"],
+        "video_format": _video_format(item),
         "account_group": item["account_group"],
         "channel": "tiktok",
         "tiktok_published": direct_published,
@@ -633,6 +750,7 @@ def _publish_chinese_instagram(
     succeeded_parts = sorted({row["part"] for row in results if row["success"]})
     return {
         "learning_mode": item["learning_mode"],
+        "video_format": _video_format(item),
         "account_group": item["account_group"],
         "channel": "instagram",
         "instagram_published_parts": succeeded_parts,
@@ -694,6 +812,7 @@ def _publish_chinese_facebook(
     succeeded_parts = sorted({row["part"] for row in results if row["success"]})
     return {
         "learning_mode": item["learning_mode"],
+        "video_format": _video_format(item),
         "account_group": item["account_group"],
         "channel": "facebook",
         "facebook_published_parts": succeeded_parts,
@@ -726,27 +845,28 @@ def publish_vocabulary_videos(
             return publish_at_by_target[target]
         return publish_at
 
-    include_youtube = "youtube" in selected_targets and _should_publish_youtube(manifest)
-    include_tiktok = "tiktok" in selected_targets and _should_publish_tiktok(manifest)
-    instagram_parts = _pending_instagram_parts(manifest, video_parts)
-    include_instagram = "instagram" in selected_targets and bool(instagram_parts)
-    facebook_parts = _pending_facebook_parts(manifest, video_parts)
-    include_facebook = "facebook" in selected_targets and bool(facebook_parts)
+    include_youtube = "youtube" in selected_targets
+    include_tiktok = "tiktok" in selected_targets
+    include_instagram = "instagram" in selected_targets
+    include_facebook = "facebook" in selected_targets
+    recorded = _publication_keys(manifest)
     published = []
     matrixmedia_items = []
     for item in manifest["items"]:
         channel = str(item.get("channel") or "")
         mode = str(item.get("learning_mode") or "")
         if mode == "en-zh" and channel == "youtube":
-            if include_youtube:
+            instagram_parts = _pending_item_parts(manifest, item, "instagram", video_parts, recorded)
+            facebook_parts = _pending_item_parts(manifest, item, "facebook", video_parts, recorded)
+            if include_youtube and _should_publish_youtube(manifest, item, recorded):
                 published.append(_publish_chinese_youtube(item, publish_at=_publish_time("youtube")))
-            if include_tiktok:
+            if include_tiktok and _should_publish_tiktok(manifest, item, recorded):
                 published.append(_publish_chinese_tiktok(item, _publish_time("tiktok")))
-            if include_instagram:
+            if include_instagram and instagram_parts:
                 published.append(
                     _publish_chinese_instagram(item, instagram_parts, _publish_time("instagram"))
                 )
-            if include_facebook:
+            if include_facebook and facebook_parts:
                 published.append(
                     _publish_chinese_facebook(item, facebook_parts, _publish_time("facebook"))
                 )
@@ -755,62 +875,98 @@ def publish_vocabulary_videos(
             matrixmedia_items.append(item)
             continue
         raise PublishError(f"不支持的发布目标：{mode} / {channel}")
+    zh_items = [
+        item
+        for item in manifest["items"]
+        if str(item.get("learning_mode") or "") == "en-zh"
+        and str(item.get("channel") or "") == "youtube"
+    ]
     if not published:
-        raise PublishError("发布清单里没有待发的中文视频。仅有韩语时不要调用本工具，确认后直接用矩媒 MCP 发布")
+        if not zh_items:
+            raise PublishError("发布清单里没有待发的中文视频。仅有韩语时不要调用本工具，确认后直接用矩媒 MCP 发布")
+        chinese_success = True
+        publication_records = {"records": []}
+        completed_targets = sorted(selected_targets)
+        manifest["status"] = "published" if not matrixmedia_items else "awaiting_matrixmedia"
+        Path(manifest_path).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {
+            "success": True,
+            "skipped": True,
+            "completed_targets": completed_targets,
+            "manifest_path": str(Path(manifest_path).resolve()),
+            "topic": manifest.get("topic"),
+            "run_id": manifest.get("run_id"),
+            "database": database,
+            "publication_records": publication_records,
+            "published": [],
+            "matrixmedia_items": matrixmedia_items,
+        }
     chinese_success = all(item["success"] for item in published)
-    youtube_ok = include_youtube and all(
-        item.get("youtube_published") for item in published if item.get("channel") == "youtube"
-    )
-    if "youtube" in selected_targets and youtube_ok:
-        manifest["youtube_published"] = True
-    tiktok_ok = include_tiktok and all(
-        item.get("tiktok_published") for item in published if item.get("channel") == "tiktok"
-    )
-    if "tiktok" in selected_targets and tiktok_ok:
-        manifest["tiktok_published"] = True
-    tiktok_scheduled_ok = include_tiktok and all(
-        item.get("tiktok_scheduled") for item in published if item.get("channel") == "tiktok"
-    )
-    if "tiktok" in selected_targets and tiktok_scheduled_ok:
-        manifest["tiktok_scheduled"] = True
-    tiktok_draft_ok = include_tiktok and all(
-        item.get("tiktok_published") or item.get("tiktok_draft_delivered")
-        for item in published
-        if item.get("channel") == "tiktok"
-    )
-    if "tiktok" in selected_targets and tiktok_draft_ok and not tiktok_ok:
-        manifest["tiktok_draft_delivered"] = True
-    instagram_ok = include_instagram and all(
-        item.get("success") for item in published if item.get("channel") == "instagram"
-    )
-    if "instagram" in selected_targets and instagram_ok:
-        previous_parts = {int(part) for part in (manifest.get("instagram_published_parts") or [])}
-        completed_parts = {
-            int(part)
-            for item in published
-            if item.get("channel") == "instagram"
-            for part in (item.get("instagram_published_parts") or [])
-        }
-        manifest["instagram_published_parts"] = sorted(previous_parts | completed_parts)
-    facebook_ok = include_facebook and all(
-        item.get("success") for item in published if item.get("channel") == "facebook"
-    )
-    if "facebook" in selected_targets and facebook_ok:
-        previous_parts = {int(part) for part in (manifest.get("facebook_published_parts") or [])}
-        completed_parts = {
-            int(part)
-            for item in published
-            if item.get("channel") == "facebook"
-            for part in (item.get("facebook_published_parts") or [])
-        }
-        manifest["facebook_published_parts"] = sorted(previous_parts | completed_parts)
+    for batch in published:
+        item = next(
+            (
+                candidate
+                for candidate in manifest["items"]
+                if str(candidate.get("learning_mode") or "") == str(batch.get("learning_mode") or "")
+                and _video_format(candidate) == _video_format(batch)
+                and str(candidate.get("channel") or "") == "youtube"
+            ),
+            None,
+        )
+        if item is None:
+            continue
+        channel = str(batch.get("channel") or "")
+        if channel == "youtube" and batch.get("youtube_published"):
+            _set_item_status(manifest, item, youtube=True)
+            if _is_standard_item(item):
+                manifest["youtube_published"] = True
+        if channel == "tiktok" and batch.get("success"):
+            if batch.get("tiktok_published"):
+                _set_item_status(manifest, item, tiktok=True)
+                if _is_standard_item(item):
+                    manifest["tiktok_published"] = True
+            elif batch.get("tiktok_scheduled"):
+                _set_item_status(manifest, item, tiktok_scheduled=True)
+                if _is_standard_item(item):
+                    manifest["tiktok_scheduled"] = True
+            elif batch.get("tiktok_draft_delivered"):
+                _set_item_status(manifest, item, tiktok_draft=True)
+                if _is_standard_item(item):
+                    manifest["tiktok_draft_delivered"] = True
+        if channel == "instagram" and batch.get("success"):
+            previous = {int(part) for part in (_item_status(manifest, item).get("instagram_parts") or [])}
+            completed = {int(part) for part in (batch.get("instagram_published_parts") or [])}
+            parts = sorted(previous | completed)
+            _set_item_status(manifest, item, instagram_parts=parts)
+            if _is_standard_item(item):
+                manifest["instagram_published_parts"] = parts
+        if channel == "facebook" and batch.get("success"):
+            previous = {int(part) for part in (_item_status(manifest, item).get("facebook_parts") or [])}
+            completed = {int(part) for part in (batch.get("facebook_published_parts") or [])}
+            parts = sorted(previous | completed)
+            _set_item_status(manifest, item, facebook_parts=parts)
+            if _is_standard_item(item):
+                manifest["facebook_published_parts"] = parts
     publication_records = _commit_platform_publications(manifest, published)
     manifest["status"] = "published" if chinese_success and not matrixmedia_items else (
         "awaiting_matrixmedia" if chinese_success else "publish_failed"
     )
     Path(manifest_path).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    completed_targets = []
+    for target in selected_targets:
+        batches = [item for item in published if str(item.get("channel") or "") == target]
+        if batches:
+            if all(item.get("success") for item in batches):
+                completed_targets.append(target)
+            continue
+        if zh_items and all(
+            _recorded_parts(item, target, recorded) >= {part for _, part in _item_video_rows(item)}
+            for item in zh_items
+        ):
+            completed_targets.append(target)
     return {
         "success": chinese_success,
+        "completed_targets": completed_targets,
         "manifest_path": str(Path(manifest_path).resolve()),
         "topic": manifest.get("topic"),
         "run_id": manifest.get("run_id"),

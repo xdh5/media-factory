@@ -95,6 +95,7 @@ def publishing_start_publish(
         if not date_text:
             raise PublishingRequestError("publish_date 不能为空；必须先向用户确认要发布哪一天的产物")
         run_id = f"run-{date_text.replace('-', '')}"
+        task_run_id = f"{run_id}-{business_line}"
 
         def _work(progress=None) -> dict:
             return publish_local_outputs(
@@ -109,12 +110,12 @@ def publishing_start_publish(
             )
 
         started = runner_submit_task(
-            cache_dir=CACHE_ROOT / run_id,
-            run_id=run_id,
+            cache_dir=CACHE_ROOT / run_id / business_line,
+            run_id=task_run_id,
             step="publish",
             fn=_work,
         )
-        return {**started, "poll_tool": "publishing_poll_task"}
+        return {**started, "run_id": run_id, "poll_tool": "publishing_poll_task"}
     except Exception as exc:
         raise _map_error(exc) from exc
 

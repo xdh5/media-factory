@@ -35,20 +35,36 @@ def daily_production_preflight(
         business_line=business_line,
         publish_date=publish_date,
     )
-    published_platforms = {
-        str(item.get("platform") or "").strip()
-        for item in publications
-        if str(item.get("platform") or "").strip()
-    }
-    pending_targets = [
-        target for target in LANGUAGE_PUBLISH_TARGETS
-        if target not in published_platforms
-    ] if business_line == "language_learning" else []
     github_outputs = [
         item for item in outputs
         if item.get("source") == "github_workflow" and item.get("r2_url")
     ]
     existing_run_id = str(github_outputs[0].get("run_id") or "") if github_outputs else ""
+    published_keys = {
+        (
+            str(item.get("title") or "").strip(),
+            str(item.get("platform") or "").strip(),
+            int(item.get("content_part") or 1),
+        )
+        for item in publications
+    }
+    pending_targets = []
+    if business_line == "language_learning":
+        publishable = github_outputs or [
+            item for item in outputs if str(item.get("title") or "").strip()
+        ]
+        for target in LANGUAGE_PUBLISH_TARGETS:
+            for output in publishable:
+                title = str(output.get("title") or "").strip()
+                part = int(output.get("content_part") or 1)
+                if title and (title, target, part) not in published_keys:
+                    pending_targets.append(target)
+                    break
+    published_platforms = {
+        str(item.get("platform") or "").strip()
+        for item in publications
+        if str(item.get("platform") or "").strip()
+    }
     should_generate = not outputs and not publications
     should_resume_publish = (
         business_line == "language_learning"

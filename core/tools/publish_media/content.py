@@ -8,7 +8,11 @@ from core.tools.cloudflare_data import list_production_outputs
 
 from ._constants import BUSINESS_LINES, PLATFORM_ALIASES, SUPPORTED_PLATFORMS
 from ._errors import InvalidPublishRequestError, PublishContentNotFoundError
-from .local_assets import ensure_local_publish_items, enrich_local_publish_item
+from .local_assets import (
+    ensure_local_publish_items,
+    enrich_local_publish_item,
+    matching_content_kinds,
+)
 
 
 def normalize_publish_date(value: str) -> str:
@@ -50,18 +54,18 @@ def local_publish_items(
         business_line=business_line,
         source="local_mcp",
     )
-    wanted_kind = str(content_kind or "").strip()
-    if wanted_kind:
-        rows = [item for item in rows if str(item.get("content_kind") or "") == wanted_kind]
+    wanted_kinds = matching_content_kinds(content_kind)
+    if wanted_kinds is not None:
+        rows = [item for item in rows if str(item.get("content_kind") or "") in wanted_kinds]
     items = []
     for row in rows:
         enriched = enrich_local_publish_item(row)
         if enriched:
             items.append(enriched)
     if not items:
-        suffix = f"、内容类型 {wanted_kind}" if wanted_kind else ""
+        suffix = f"、内容类型 {', '.join(sorted(wanted_kinds))}" if wanted_kinds else ""
         raise PublishContentNotFoundError(
             f"找不到 {normalized_date} 的 {business_line} 本地产物{suffix}；只允许发布已经写入 production_outputs 且文件仍存在的 local_mcp 成片",
-            {"business_line": business_line, "publish_date": normalized_date, "content_kind": wanted_kind},
+            {"business_line": business_line, "publish_date": normalized_date, "content_kind": content_kind},
         )
     return sorted(items, key=lambda item: (str(item.get("content_kind")), int(item.get("content_part") or 1)))

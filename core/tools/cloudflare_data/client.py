@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -13,6 +15,9 @@ from dotenv import load_dotenv
 from ._constants import (
     CLOUDFLARE_DATA_API_TOKEN_ENV,
     CLOUDFLARE_DATA_API_URL_ENV,
+    CURL_MAX_ATTEMPTS,
+    CURL_RETRY_DELAY_SECONDS,
+    DEFAULT_CURL_MAX_TIME_SECONDS,
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     MAX_RESPONSE_BYTES,
 )
@@ -77,12 +82,78 @@ def _remote_error(payload: object, *, status: int) -> tuple[str, str, dict]:
     return code, message, {**details, "status": status}
 
 
+def _request_with_curl(method: str, url: str, token: str, data: bytes | None) -> tuple[int, bytes]:
+    """优先使用系统 curl，规避本机 Python TLS 兼容性问题。"""
+    command = [
+        "curl.exe" if os.name == "nt" else "curl",
+        "--silent",
+        "--show-error",
+        "--http1.1",
+        "--tlsv1.2",
+        "--connect-timeout",
+        "10",
+        "--retry",
+        "2",
+        "--retry-all-errors",
+        "--retry-delay",
+        str(CURL_RETRY_DELAY_SECONDS),
+        "--request",
+        method,
+        "--header",
+        f"Authorization: Bearer {token}",
+        "--header",
+        "Accept: application/json",
+        "--header",
+        "Content-Type: application/json; charset=utf-8",
+        "--header",
+        "User-Agent: media-factory/1.0",
+        "--max-time",
+        str(DEFAULT_CURL_MAX_TIME_SECONDS),
+        "--output",
+        "-",
+        "--write-out",
+        "\n%{http_code}",
+    ]
+    if data is not None:
+        command.extend(["--data-binary", data.decode("utf-8")])
+    command.append(url)
+    last_detail = ""
+    for attempt in range(CURL_MAX_ATTEMPTS):
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            check=False,
+            timeout=DEFAULT_CURL_MAX_TIME_SECONDS + 5,
+        )
+        raw, separator, status_text = completed.stdout.rpartition(b"\n")
+        if separator and status_text.isdigit() and status_text != b"000":
+            return int(status_text), raw
+        last_detail = completed.stderr.decode("utf-8", errors="replace").strip() or str(completed.returncode)
+        if attempt < CURL_MAX_ATTEMPTS - 1:
+            time.sleep(CURL_RETRY_DELAY_SECONDS * (attempt + 1))
+    raise OSError(f"系统 curl 重试 {CURL_MAX_ATTEMPTS} 次后仍未取得 HTTP 响应：{last_detail}")
+
+
 def _request(method: str, path: str, *, query: dict | None = None, body: dict | None = None) -> dict | list:
     base_url, token = _configuration()
     url = f"{base_url}{path}"
     if query:
         url = f"{url}?{urlencode(query)}"
     data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
+    try:
+        status, raw = _request_with_curl(method, url, token, data)
+        payload = _decode_response(raw, status=status)
+        if 200 <= status < 300:
+            return payload
+        code, message, details = _remote_error(payload, status=status)
+        if status == 409:
+            raise CloudflareDataConflictError(message, details, remote_code=code)
+        raise CloudflareDataRequestError(message, {**details, "remote_code": code})
+    except (CloudflareDataConflictError, CloudflareDataRequestError):
+        raise
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        pass
+
     request = Request(
         url,
         data=data,

@@ -15,7 +15,10 @@ PUBLISH_PREVIEW_INPUT_SCHEMA = {
         "publish_date": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
         "account_group": {"type": "string", "minLength": 1},
         "platforms": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-        "content_kind": {"type": ["string", "null"]},
+        "content_kind": {
+            "type": ["string", "null"],
+            "description": "language_learning 传 en-ko 会同时发布原版与问答版 en-ko-quiz",
+        },
     },
     "required": ["business_line", "publish_date", "account_group", "platforms"],
     "additionalProperties": False,

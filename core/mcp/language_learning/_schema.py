@@ -266,11 +266,37 @@ CREATE_VIDEOS_INPUT_SCHEMA = {
         "language_pause": {"type": "number", "minimum": 0},
         "word_pause": {"type": "number", "minimum": 0},
         "voices": VOICES_SCHEMA,
+        "question_voices": {
+            "type": ["object", "null"],
+            "properties": {
+                "zh": {"type": "string", "minLength": 1},
+                "ko": {"type": "string", "minLength": 1},
+            },
+            "additionalProperties": False,
+            "description": "问答版提问句专用音色；不传时沿用 voices，答案始终使用 voices",
+        },
         "publish_config": PUBLISH_CONFIG_SCHEMA,
         "production_source": {
             "type": "string",
             "enum": ["local_mcp", "github_workflow"],
             "default": "local_mcp",
+        },
+        "video_formats": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["standard", "quiz"]},
+            "minItems": 1,
+            "uniqueItems": True,
+            "default": ["standard", "quiz"],
+            "description": "默认同时生成原版分段和问答版；中文标题为 10 Essential {Topic} Words in Chinese，问答版加 ｜guess；韩语标题为 韩语｜{中文词}的韩语怎么说？，问答版加 ｜看图猜词",
+        },
+        "countdown_audio_path": {
+            "type": ["string", "null"],
+            "description": "问答版倒计时音轨；不传则使用仓库 static/countdown.mp3",
+        },
+        "record_production_outputs": {
+            "type": "boolean",
+            "default": True,
+            "description": "预览时设为 false，成片不写入 production_outputs",
         },
     },
     "required": ["card_dirs", "words_by_mode", "run_id", "voices", "publish_config"],

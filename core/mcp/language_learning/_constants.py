@@ -6,6 +6,10 @@ from zoneinfo import ZoneInfo
 
 WORKFLOW_ID = "language_learning"
 SUPPORTED_LEARNING_MODES = ("en-zh", "en-ko")
+SUPPORTED_VIDEO_FORMATS = ("standard", "quiz")
+DEFAULT_VIDEO_FORMATS = ("standard", "quiz")
+QUIZ_TITLE_SUFFIX_EN = "｜guess"
+QUIZ_TITLE_SUFFIX_ZH = "｜看图猜词"
 WORDS_PER_VIDEO = 5
 WORDS_PER_TASK = 10
 WORD_HISTORY_DAYS = 100
@@ -13,6 +17,7 @@ MINIMUM_NEW_WORDS = (WORDS_PER_TASK + 1) // 2
 CARD_CANVAS_SIZE = (1080, 1920)
 CARD_GRID_COLUMNS = 5
 CARD_GRID_ROWS = 2
+QUIZ_POST_QUESTION_TRIM_SECONDS = 0.3
 SUBJECT_SHEET_WIDTH = 1920
 SUBJECT_SHEET_HEIGHT = 1080
 SUBJECT_SHEET_SIZE = (SUBJECT_SHEET_WIDTH, SUBJECT_SHEET_HEIGHT)
@@ -23,7 +28,7 @@ SUBJECT_ALPHA_THRESHOLD = 16
 SUBJECT_CHROMA_LOW_DISTANCE = 18
 SUBJECT_CHROMA_HIGH_DISTANCE = 64
 SUBJECT_CUTOUT_CACHE_DIR_NAME = "subject-cutouts"
-SUBJECT_CUTOUT_STRATEGY_VERSION = "host-agent-conservative-boxes-v13"
+SUBJECT_CUTOUT_STRATEGY_VERSION = "host-agent-conservative-boxes-v15"
 SUBJECT_GENERATION_MAX_ATTEMPTS = 3
 TOPIC_DEDUPLICATION_DAYS = 30
 MAX_SUBJECT_SHEET_BYTES = 30 * 1024 * 1024
@@ -91,7 +96,31 @@ def production_dirs(run_id: str) -> tuple[Path, Path]:
 
 
 STATIC_ROOT = _ROOT / "static"
+COUNTDOWN_AUDIO_PATH = STATIC_ROOT / "countdown.mp3"
 TEMPLATE_FILENAMES = {
     "en-ko": "korean-fixed-vocabulary-template.jpg",
     "en-zh": "chinese-fixed-vocabulary-template.jpg",
 }
+
+
+def video_content_kind(learning_mode: str, video_format: str = "standard") -> str:
+    """production_outputs.content_kind：原版为 en-zh / en-ko，问答版为 *-quiz。"""
+    mode = str(learning_mode or "").strip()
+    fmt = str(video_format or "standard").strip() or "standard"
+    if fmt == "standard":
+        return mode
+    return f"{mode}-{fmt}"
+
+
+def video_production_id(
+    source: str,
+    run_id: str,
+    learning_mode: str,
+    video_format: str,
+    part: int,
+) -> str:
+    """幂等 production_id，问答版不得与原版第一段撞号。"""
+    return (
+        f"{source}:{WORKFLOW_ID}:{run_id}:"
+        f"{video_content_kind(learning_mode, video_format)}:{int(part)}"
+    )

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ._constants import STICKER_REC, SUPPORTED_STICKERS
+from ._constants import STICKER_COUNTDOWN, STICKER_REC, SUPPORTED_STICKERS
+from ._countdown import write_countdown_sticker
 from ._errors import InvalidParameterError
 from ._rec import write_rec_sticker
 
@@ -45,6 +46,7 @@ def generate_sticker(
     output_path: str | Path,
     width: int,
     height: int,
+    duration: float | None = None,
 ) -> dict:
     """生成一张可贴到成片上的素材。sticker 必填；rec 为可选标识之一。"""
     name = _normalize_sticker(sticker)
@@ -54,6 +56,26 @@ def generate_sticker(
         if destination.suffix.lower() != ".mov":
             raise InvalidParameterError("output_path", "rec 贴图必须使用 .mov 扩展名（透明循环素材）")
         extra = write_rec_sticker(destination, int(height))
+        return {
+            "output_path": str(destination),
+            "sticker": name,
+            **extra,
+        }
+    if name == STICKER_COUNTDOWN:
+        if destination.suffix.lower() != ".mov":
+            raise InvalidParameterError("output_path", "countdown 贴图必须使用 .mov 扩展名（透明单次素材）")
+        try:
+            countdown_duration = float(duration or 0)
+        except (TypeError, ValueError) as exc:
+            raise InvalidParameterError("duration", "countdown 贴图必须提供正数时长") from exc
+        if countdown_duration <= 0:
+            raise InvalidParameterError("duration", "countdown 贴图必须提供大于 0 的时长")
+        extra = write_countdown_sticker(
+            destination,
+            int(width),
+            int(height),
+            countdown_duration,
+        )
         return {
             "output_path": str(destination),
             "sticker": name,

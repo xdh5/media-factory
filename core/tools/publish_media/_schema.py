@@ -20,7 +20,10 @@ PUBLISH_PREVIEW_INPUT_SCHEMA = {
             "uniqueItems": True,
             "items": {"type": "string"},
         },
-        "content_kind": {"type": ["string", "null"]},
+        "content_kind": {
+            "type": ["string", "null"],
+            "description": "language_learning 传 en-ko 会同时发布原版与问答版 en-ko-quiz",
+        },
     },
     "required": ["business_line", "publish_date", "account_group", "platforms"],
     "additionalProperties": False,
