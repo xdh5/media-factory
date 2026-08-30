@@ -113,7 +113,10 @@ def _metadata(metadata_prompt: str, article: str, *, feedback: str = "") -> dict
         "\"cover_lines\":[\"封面第一行\",\"封面第二行\"],"
         "\"cover_highlights\":[\"重点词一\",\"重点词二\"]}。"
         "cover_lines 必须按语义拆成1至3行；"
-        "cover_highlights 必须选择1至3个原样出现在长标题中的重点词。"
+        "cover_highlights 必须选择1至3个原样出现在长标题中的重点词。\n\n"
+        "这是硬性校验，必须在输出前自行逐字符计数：metadata 的第一个字段（长标题）"
+        "必须是 12～26 个字符，包含中文、数字、英文和标点在内总数均按 1 个字符计算。"
+        "不满足这个范围的 JSON 会被程序拒绝；不要解释，直接改写长标题后再输出。"
     )
     if feedback:
         user_prompt += f"\n\n上一次输出校验失败，必须修正：{feedback}"
@@ -127,6 +130,18 @@ def _metadata(metadata_prompt: str, article: str, *, feedback: str = "") -> dict
     parts = [part.strip() for part in str(payload.get("metadata") or "").split("|")]
     if len(parts) != 6:
         raise ValueError("千问标题标签必须包含 6 个竖线字段")
+    title_length = len(parts[0])
+    if not 12 <= title_length <= 26:
+        raise ValueError(
+            f"长标题当前为 {title_length} 个字符，必须改为 12～26 个字符；"
+            "只缩短或扩写长标题后重新输出完整 JSON"
+        )
+    short_title_length = len(parts[1])
+    if not 6 <= short_title_length <= 16:
+        raise ValueError(
+            f"短标题当前为 {short_title_length} 个字符，必须改为 6～16 个字符；"
+            "只缩短或扩写短标题后重新输出完整 JSON"
+        )
     cover_lines = payload.get("cover_lines")
     if not isinstance(cover_lines, list):
         raise ValueError("千问标题结果缺少 cover_lines 数组")
