@@ -67,15 +67,34 @@ def _article_length(article: str) -> int:
 
 
 def _adapt_article(source_text: str, source_hook: str) -> str:
-    prompt = _article_prompt(source_text, source_hook)
+    prompt = (
+        _article_prompt(source_text, source_hook)
+        + "\n\n硬性校验：最终正文去除所有空白后必须为 450～550 个字符。"
+        "输出前必须自行计数，只输出正文，不要解释字数。"
+    )
     last_error = None
     for _ in range(3):
-        article = str(qwen("你是严谨的中文财经短视频改编编辑，只输出正文。", prompt, max_tokens=5000)["text"]).strip()
+        article = str(qwen(
+            "你是严谨的中文财经短视频改编编辑，只输出正文。正文去除空白后必须为 450～550 个字符。",
+            prompt,
+            max_tokens=5000,
+        )["text"]).strip()
         length = _article_length(article)
         if article.startswith(source_hook) and 450 <= length <= 550:
             return article
-        last_error = f"黄金钩子或字数不合格：当前 {length} 字"
-        prompt += f"\n\n上一次结果不合格：{last_error}。请保持原结构重新调整。"
+        hook_valid = article.startswith(source_hook)
+        if length < 450:
+            length_feedback = f"当前 {length} 个字符，还需增加至少 {450 - length} 个字符"
+        elif length > 550:
+            length_feedback = f"当前 {length} 个字符，必须删减至少 {length - 550} 个字符"
+        else:
+            length_feedback = f"当前 {length} 个字符，字数合格"
+        hook_feedback = "黄金钩子正确" if hook_valid else "黄金钩子没有原样保留在正文开头"
+        last_error = f"{hook_feedback}；{length_feedback}"
+        prompt += (
+            f"\n\n上一次结果未通过程序校验：{last_error}。"
+            "必须保持原结构，按上述差值补充或删减正文；输出前重新逐字符计数。"
+        )
     raise RuntimeError(f"财经原稿连续三次改编不合格：{last_error}")
 
 
