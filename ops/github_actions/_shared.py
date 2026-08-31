@@ -50,8 +50,11 @@ def daily_production_preflight(
     }
     pending_targets = []
     if business_line == "language_learning":
-        publishable = github_outputs or [
-            item for item in outputs if str(item.get("title") or "").strip()
+        publishable = [
+            item
+            for item in (github_outputs or outputs)
+            if str(item.get("content_kind") or "").strip() == "en-zh"
+            and str(item.get("title") or "").strip()
         ]
         for target in LANGUAGE_PUBLISH_TARGETS:
             for output in publishable:

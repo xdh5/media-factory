@@ -29,10 +29,9 @@ def inspect_day_health(publish_date: str) -> dict:
     """从 D1 检查某个计划发布日期的两条业务线是否完整。"""
     finance = daily_production_preflight("finance", publish_date)
     language = daily_production_preflight("language_learning", publish_date)
-    finance_healthy = finance["github_output_count"] > 0
+    finance_healthy = finance["output_count"] > 0 or finance["publication_count"] > 0
     language_healthy = (
-        bool(language["existing_run_id"])
-        and language["github_output_count"] > 0
+        (language["output_count"] > 0 or language["publication_count"] > 0)
         and not language["pending_targets"]
     )
     return {
