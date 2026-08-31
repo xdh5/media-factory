@@ -74,39 +74,31 @@ function downloadState(outputs) {
   return { enabled: false, url: "", label: "仅本地产物" };
 }
 
-function fileNameFromUrl(url) {
-  try {
-    const name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "");
-    return name || "video.mp4";
-  } catch {
-    return "video.mp4";
-  }
-}
-
-async function downloadOutput(url) {
+function downloadOutput(url) {
   const pin = localStorage.getItem(PIN_STORAGE_KEY) || "";
-  const response = await fetch(
-    `${API_BASE_URL}/v1/dashboard/download?url=${encodeURIComponent(url)}`,
-    { headers: { "X-Dashboard-Pin": pin }, cache: "no-store" },
-  );
-  if (response.status === 401) {
-    localStorage.removeItem(PIN_STORAGE_KEY);
-    showLogin("PIN 不正确，请重新输入。");
-    throw new Error("PIN 不正确");
+  const frameName = "cloudflare-download-frame";
+  let frame = document.querySelector(`iframe[name="${frameName}"]`);
+  if (!frame) {
+    frame = document.createElement("iframe");
+    frame.name = frameName;
+    frame.hidden = true;
+    document.body.append(frame);
   }
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.error?.message || "下载失败");
+  const form = document.createElement("form");
+  form.method = "post";
+  form.action = `${API_BASE_URL}/v1/dashboard/download`;
+  form.target = frameName;
+  form.hidden = true;
+  for (const [name, value] of [["url", url], ["pin", pin]]) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.append(input);
   }
-  const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = objectUrl;
-  link.download = fileNameFromUrl(url);
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  document.body.append(form);
+  form.submit();
+  form.remove();
 }
 
 function render(data) {
@@ -168,19 +160,14 @@ function render(data) {
       const downloadButton = element("button", "card-button download-button", download.label);
       downloadButton.type = "button";
       if (download.enabled) {
-        downloadButton.addEventListener("click", async () => {
+        downloadButton.addEventListener("click", () => {
           downloadButton.disabled = true;
-          downloadButton.textContent = "正在下载…";
-          try {
-            await downloadOutput(download.url);
-            downloadButton.textContent = "已开始下载";
-            window.setTimeout(() => { downloadButton.textContent = download.label; }, 1200);
-          } catch (error) {
-            status.textContent = `下载失败：${error.message}`;
+          downloadOutput(download.url);
+          downloadButton.textContent = "已交给浏览器";
+          window.setTimeout(() => {
             downloadButton.textContent = download.label;
-          } finally {
             downloadButton.disabled = false;
-          }
+          }, 1200);
         });
       } else {
         downloadButton.disabled = true;
