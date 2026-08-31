@@ -611,7 +611,6 @@ def _commit_manifest_database(manifest: dict) -> dict:
 def _commit_platform_publications(manifest: dict, published: list[dict]) -> dict:
     """把各平台成功或已预约的结果幂等写入统一发布记录。"""
     database = manifest.get("database_commit") or {}
-    publication_id = str(database.get("publication_id") or "").strip()
     run_id = str(database.get("run_id") or manifest.get("run_id") or "").strip()
     records = []
     for batch in published:
@@ -636,8 +635,18 @@ def _commit_platform_publications(manifest: dict, published: list[dict]) -> dict
                 or account.get("channel_id")
                 or ""
             ).strip()
+            if not account_id:
+                print(
+                    f"[语言发布] 跳过 D1：{platform} 缺少 account_id title={video.get('title')}",
+                    flush=True,
+                )
+                continue
+            kind = video_content_kind(
+                str(batch.get("learning_mode") or video.get("learning_mode") or ""),
+                _video_format(batch) if batch.get("video_format") else _video_format(video),
+            )
             records.append({
-                "publication_id": publication_id,
+                "publication_id": f"{WORKFLOW_ID}:{run_id}:{kind}",
                 "run_id": run_id,
                 "business_line": "language_learning",
                 "platform": platform,
@@ -653,6 +662,11 @@ def _commit_platform_publications(manifest: dict, published: list[dict]) -> dict
             })
     if not records:
         return {"records": []}
+    print(
+        f"[语言发布] 准备写入 D1 {len(records)} 条："
+        f"{json.dumps([{k: item[k] for k in ('publication_id', 'platform', 'content_part', 'title')} for item in records], ensure_ascii=False)}",
+        flush=True,
+    )
     return commit_publication_records(records)
 
 
