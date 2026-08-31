@@ -648,7 +648,9 @@ def _commit_platform_publications(manifest: dict, published: list[dict]) -> dict
                 "connector": "youtube" if platform == "youtube" else "zernio",
                 "account_id": account_id,
                 "content_part": int(row.get("part") or 1),
-                "title": str(video.get("title") or batch.get("title") or manifest.get("topic") or "").strip(),
+                "title": strip_quiz_title_suffix(
+                    str(video.get("title") or batch.get("title") or manifest.get("topic") or "").strip()
+                ),
                 "publish_mode": "scheduled" if scheduled else "immediate",
                 "publish_at": publish_at,
                 "status": "scheduled" if scheduled else "published",
@@ -674,7 +676,7 @@ def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
     from core.tools.publish_to_youtube import YouTubeToolError, publish_to_youtube
 
     for part, video in enumerate(item["videos"], 1):
-        title = str(video.get("title") or item["title"])
+        title = strip_quiz_title_suffix(str(video.get("title") or item["title"]))
         description = _description(item["tags"])
         print(
             f"[语言发布] YouTube 开始 format={_video_format(item)} part={part} title={title}",
@@ -738,7 +740,7 @@ def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
     )
     results = []
     for part, video in enumerate(item["videos"], 1):
-        title = str(video.get("title") or item["title"])
+        title = strip_quiz_title_suffix(str(video.get("title") or item["title"]))
         content = _description(item["tags"])
         video_url = str(video.get("video_url") or "").strip()
         print(
@@ -819,7 +821,7 @@ def _publish_chinese_instagram(
     for part, video in enumerate(item["videos"], 1):
         if part not in video_parts:
             continue
-        title = str(video.get("title") or item["title"])
+        title = strip_quiz_title_suffix(str(video.get("title") or item["title"]))
         caption = _description(item["tags"])
         video_url = str(video.get("video_url") or "").strip()
         print(
@@ -894,7 +896,7 @@ def _publish_chinese_facebook(
     for part, video in enumerate(item["videos"], 1):
         if part not in video_parts:
             continue
-        title = str(video.get("title") or item["title"])
+        title = strip_quiz_title_suffix(str(video.get("title") or item["title"]))
         description = _description(item["tags"])
         video_url = str(video.get("video_url") or "").strip()
         print(

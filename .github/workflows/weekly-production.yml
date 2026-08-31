@@ -42,7 +42,7 @@ jobs:
         run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START"
 
   produce-day:
-    name: 生产、发布并健康检查 ${{ matrix.publish_date }}
+    name: 生产并发布 ${{ matrix.publish_date }}
     needs: plan
     strategy:
       matrix:
@@ -105,4 +105,3 @@ jobs:
         run: >-
           python -m ops.github_actions weekly_day
           --publish-date "$PUBLISH_DATE"
-          --health-delay-seconds 0
