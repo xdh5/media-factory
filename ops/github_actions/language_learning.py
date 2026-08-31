@@ -28,6 +28,55 @@ VOICES = {"en": "en-US-AriaNeural", "zh": "zh-CN-XiaoxiaoNeural", "ko": "ko-KR-S
 SUBJECT_GENERATION_MAX_ATTEMPTS = 3
 
 
+def _compact_publish_row(row: dict) -> dict:
+    video = row.get("video") if isinstance(row.get("video"), dict) else {}
+    result = row.get("result") if isinstance(row.get("result"), dict) else {}
+    return {
+        "channel": row.get("channel"),
+        "part": row.get("part"),
+        "success": row.get("success"),
+        "title": video.get("title") or row.get("title"),
+        "video_url": video.get("video_url"),
+        "error": row.get("error"),
+        "status": result.get("status"),
+        "post_id": result.get("post_id"),
+        "video_id": result.get("video_id"),
+    }
+
+
+def _log_publish_batches(batches: list) -> None:
+    for batch in batches:
+        if not isinstance(batch, dict):
+            continue
+        rows = [_compact_publish_row(row) for row in (batch.get("results") or []) if isinstance(row, dict)]
+        print(
+            f"[语言发布结果] channel={batch.get('channel')} format={batch.get('video_format')} "
+            f"success={batch.get('success')} rows={json.dumps(rows, ensure_ascii=False)}",
+            flush=True,
+        )
+
+
+def _publish_failure_payload(result: dict) -> dict:
+    return {
+        "success": result.get("success"),
+        "completed_targets": result.get("completed_targets"),
+        "published": [
+            {
+                "channel": batch.get("channel"),
+                "video_format": batch.get("video_format"),
+                "success": batch.get("success"),
+                "results": [
+                    _compact_publish_row(row)
+                    for row in (batch.get("results") or [])
+                    if isinstance(row, dict)
+                ],
+            }
+            for batch in (result.get("published") or [])
+            if isinstance(batch, dict)
+        ],
+    }
+
+
 def _choose_topic(recent_topics: list[str], requested_topic: str) -> str:
     recent = {str(item).strip().casefold() for item in recent_topics if str(item).strip()}
     if requested_topic.strip():
@@ -629,8 +678,9 @@ async def schedule_publication(
             },
         )
         result = await mcp.poll("language_learning_poll_task", started["task_path"])
+    _log_publish_batches(result.get("published") or [])
     if result.get("success") is not True:
-        raise RuntimeError(f"四平台排期存在失败：{json.dumps(result, ensure_ascii=False)}")
+        raise RuntimeError(f"四平台排期存在失败：{json.dumps(_publish_failure_payload(result), ensure_ascii=False)}")
     completed_channels = {
         str(item).strip().casefold()
         for item in result.get("completed_targets") or []

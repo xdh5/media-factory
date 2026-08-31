@@ -87,8 +87,14 @@ async def _publish_language_with_retry(
             return await schedule_publication(manifest_url, run_id, targets=targets)
         except Exception as exc:
             last_error = exc
+            print(
+                f"[语言发布] 第 {attempt}/{max_attempts} 次失败：{type(exc).__name__}: {exc}",
+                flush=True,
+            )
             if attempt < max_attempts:
-                time.sleep(30 * attempt)
+                wait_seconds = 30 * attempt
+                print(f"[语言发布] {wait_seconds}s 后重试", flush=True)
+                time.sleep(wait_seconds)
     assert last_error is not None
     raise last_error
 

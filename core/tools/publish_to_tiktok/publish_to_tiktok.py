@@ -239,6 +239,10 @@ def _create_post(payload: dict, request_id: str) -> tuple[str, bool]:
         result = response.json()
     except ValueError:
         result = {}
+    print(
+        f"[TikTok] Zernio HTTP {response.status_code} body={(response.text or '')[:800]}",
+        flush=True,
+    )
     if response.status_code == 409:
         details = result.get("details") if isinstance(result, dict) else {}
         post_id = str((details or {}).get("existingPostId") or "")

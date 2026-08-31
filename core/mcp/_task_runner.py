@@ -112,7 +112,12 @@ def _find_running_task(cache_dir: Path, run_id: str, step: str) -> dict | None:
 
 def _write_task(path: Path, data: dict) -> None:
     data["updated_at"] = _utc_now()
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        text = json.dumps(data, ensure_ascii=False, indent=2)
+    except TypeError as exc:
+        print(f"[后台任务] JSON 序列化失败，改用 str 兜底：{exc}", flush=True)
+        text = json.dumps(data, ensure_ascii=False, indent=2, default=str)
+    path.write_text(text, encoding="utf-8")
 
 
 def submit_task(
@@ -183,12 +188,17 @@ def submit_task(
             data["progress"] = None
             _write_task(path, data)
         except Exception as extra:
+            trace = traceback.format_exc()
+            print(
+                f"[后台任务失败] {task_id} step={step} {type(extra).__name__}: {extra}\n{trace}",
+                flush=True,
+            )
             data = json.loads(path.read_text(encoding="utf-8"))
             data["status"] = STATUS_FAILED
             data["error"] = {
                 "message": str(extra),
                 "type": type(extra).__name__,
-                "traceback": traceback.format_exc(),
+                "traceback": trace,
             }
             _write_task(path, data)
         finally:

@@ -98,6 +98,10 @@ def _request(
         payload = response.json()
     except ValueError:
         payload = {}
+    print(
+        f"[Instagram] Zernio {method} {path} HTTP {response.status_code} body={(response.text or '')[:800]}",
+        flush=True,
+    )
     if not response.ok:
         message = str(payload.get("error") or payload.get("message") or response.text[:500])
         raise PublishError(

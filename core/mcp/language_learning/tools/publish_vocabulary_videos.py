@@ -72,6 +72,12 @@ def _hashtags(tags: list[str]) -> str:
     return " ".join(f"#{name}" for name in _normalized_tags(tags))
 
 
+def _emit(progress, message: str) -> None:
+    print(f"[语言发布] {message}", flush=True)
+    if progress is not None:
+        progress(message)
+
+
 def _description(short_title: str, tags: list[str]) -> str:
     hashtags = _hashtags(tags)
     return "\n\n".join(part for part in (str(short_title or "").strip(), hashtags) if part)
@@ -611,6 +617,10 @@ def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
     for part, video in enumerate(item["videos"], 1):
         title = str(video.get("title") or item["title"])
         description = _description(item.get("short_title", ""), item["tags"])
+        print(
+            f"[语言发布] YouTube 开始 format={_video_format(item)} part={part} title={title}",
+            flush=True,
+        )
         for account in channels:
             try:
                 upload = publish_to_youtube(
@@ -626,13 +636,20 @@ def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
                     publish_at=publish_at,
                 )
                 results.append({"channel": "youtube", "part": part, "account": account, "video": video, "publish_at": publish_at, "success": True, "result": upload})
+                print(
+                    f"[语言发布] YouTube 成功 part={part} video_id={upload.get('video_id')} privacy={upload.get('privacy_status')}",
+                    flush=True,
+                )
             except YouTubeToolError as error:
+                payload = error.to_dict()["error"]
+                print(f"[语言发布] YouTube 失败 part={part} {payload}", flush=True)
                 results.append({
                     "channel": "youtube",
+                    "part": part,
                     "account": account,
                     "video": video,
                     "success": False,
-                    "error": error.to_dict()["error"],
+                    "error": payload,
                 })
     return {
         "learning_mode": item["learning_mode"],
@@ -651,12 +668,24 @@ def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
     from core.tools.publish_to_tiktok import TikTokToolError, publish_to_tiktok
 
     tiktok_account = str(item.get("tiktok_account") or item.get("youtube_account") or WORKFLOW_ID)
+    print(
+        f"[语言发布] TikTok 拉账号 account={tiktok_account} format={_video_format(item)}",
+        flush=True,
+    )
     accounts = _tiktok_accounts(item["account_group"], tiktok_account)
+    print(
+        f"[语言发布] TikTok 账号数={len(accounts)} ids={[row.get('account_id') for row in accounts]}",
+        flush=True,
+    )
     results = []
     for part, video in enumerate(item["videos"], 1):
         title = str(video.get("title") or item["title"])
         content = _description(item.get("short_title", ""), item["tags"])
         video_url = str(video.get("video_url") or "").strip()
+        print(
+            f"[语言发布] TikTok 开始 format={_video_format(item)} part={part} title={title} url={video_url}",
+            flush=True,
+        )
         for account in accounts:
             try:
                 upload = publish_to_tiktok(
@@ -667,13 +696,20 @@ def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
                     publish_at=publish_at,
                 )
                 results.append({"channel": "tiktok", "part": part, "account": account, "video": video, "publish_at": publish_at, "success": True, "result": upload})
+                print(
+                    f"[语言发布] TikTok 成功 part={part} post_id={upload.get('post_id')} status={upload.get('status')}",
+                    flush=True,
+                )
             except TikTokToolError as error:
+                payload = error.to_dict()["error"]
+                print(f"[语言发布] TikTok 失败 part={part} {payload}", flush=True)
                 results.append({
                     "channel": "tiktok",
+                    "part": part,
                     "account": account,
                     "video": video,
                     "success": False,
-                    "error": error.to_dict()["error"],
+                    "error": payload,
                 })
     all_succeeded = all(row["success"] for row in results) if results else False
     direct_published = all_succeeded and all(
@@ -714,6 +750,7 @@ def _publish_chinese_instagram(
 
     accounts = list_instagram_accounts()
     if not accounts:
+        print("[语言发布] Instagram 账号列表为空", flush=True)
         raise PublishError(
             "Zernio 尚未连接 Instagram 专业账号。请先在 Zernio 完成 Instagram OAuth 连接"
         )
@@ -724,6 +761,10 @@ def _publish_chinese_instagram(
         title = str(video.get("title") or item["title"])
         caption = _description(item.get("short_title", ""), item["tags"])
         video_url = str(video.get("video_url") or "").strip()
+        print(
+            f"[语言发布] Instagram 开始 format={_video_format(item)} part={part} title={title} url={video_url}",
+            flush=True,
+        )
         for account in accounts:
             try:
                 upload = publish_to_instagram(
@@ -742,14 +783,20 @@ def _publish_chinese_instagram(
                     "success": True,
                     "result": upload,
                 })
+                print(
+                    f"[语言发布] Instagram 成功 part={part} post_id={upload.get('post_id')} status={upload.get('status')}",
+                    flush=True,
+                )
             except InstagramToolError as error:
+                payload = error.to_dict()["error"]
+                print(f"[语言发布] Instagram 失败 part={part} {payload}", flush=True)
                 results.append({
                     "channel": "instagram",
                     "part": part,
                     "account": account,
                     "video": video,
                     "success": False,
-                    "error": error.to_dict()["error"],
+                    "error": payload,
                 })
     succeeded_parts = sorted({row["part"] for row in results if row["success"]})
     return {
@@ -776,6 +823,7 @@ def _publish_chinese_facebook(
 
     accounts = list_facebook_accounts()
     if not accounts:
+        print("[语言发布] Facebook 账号列表为空", flush=True)
         raise PublishError(
             "Zernio 尚未连接 Facebook Page。请先在 Zernio 完成 Facebook OAuth 连接"
         )
@@ -786,6 +834,10 @@ def _publish_chinese_facebook(
         title = str(video.get("title") or item["title"])
         description = _description(item.get("short_title", ""), item["tags"])
         video_url = str(video.get("video_url") or "").strip()
+        print(
+            f"[语言发布] Facebook 开始 format={_video_format(item)} part={part} title={title} url={video_url}",
+            flush=True,
+        )
         for account in accounts:
             try:
                 upload = publish_to_facebook(
@@ -804,14 +856,20 @@ def _publish_chinese_facebook(
                     "success": True,
                     "result": upload,
                 })
+                print(
+                    f"[语言发布] Facebook 成功 part={part} post_id={upload.get('post_id')} status={upload.get('status')}",
+                    flush=True,
+                )
             except FacebookToolError as error:
+                payload = error.to_dict()["error"]
+                print(f"[语言发布] Facebook 失败 part={part} {payload}", flush=True)
                 results.append({
                     "channel": "facebook",
                     "part": part,
                     "account": account,
                     "video": video,
                     "success": False,
-                    "error": error.to_dict()["error"],
+                    "error": payload,
                 })
     succeeded_parts = sorted({row["part"] for row in results if row["success"]})
     return {
@@ -864,18 +922,18 @@ def publish_vocabulary_videos(
             instagram_parts = _pending_item_parts(manifest, item, "instagram", video_parts, recorded)
             facebook_parts = _pending_item_parts(manifest, item, "facebook", video_parts, recorded)
             if include_youtube and _should_publish_youtube(manifest, item, recorded):
-                if progress is not None:
-                    progress(f"正在发布 YouTube：{item.get('title') or ''}")
+                _emit(progress, f"正在发布 YouTube：{item.get('title') or ''} format={_video_format(item)}")
                 published.append(_publish_chinese_youtube(item, publish_at=_publish_time("youtube")))
             if include_tiktok and _should_publish_tiktok(manifest, item, recorded):
-                if progress is not None:
-                    progress(f"正在发布 TikTok：{item.get('title') or ''}")
+                _emit(progress, f"正在发布 TikTok：{item.get('title') or ''} format={_video_format(item)}")
                 published.append(_publish_chinese_tiktok(item, _publish_time("tiktok")))
             if include_instagram and instagram_parts:
+                _emit(progress, f"正在发布 Instagram：{item.get('title') or ''} format={_video_format(item)}")
                 published.append(
                     _publish_chinese_instagram(item, instagram_parts, _publish_time("instagram"))
                 )
             if include_facebook and facebook_parts:
+                _emit(progress, f"正在发布 Facebook：{item.get('title') or ''} format={_video_format(item)}")
                 published.append(
                     _publish_chinese_facebook(item, facebook_parts, _publish_time("facebook"))
                 )

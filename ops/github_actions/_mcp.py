@@ -85,8 +85,14 @@ class ProjectMCP:
             )
             if result.get("done") is True:
                 if result.get("status") != "succeeded":
+                    error = result.get("error")
+                    print(
+                        f"[轮询失败] {tool_name} task={task_id} step={step} "
+                        f"{json.dumps(error, ensure_ascii=False, default=str)}",
+                        flush=True,
+                    )
                     raise MCPCallError(
-                        f"后台任务失败：{json.dumps(result.get('error'), ensure_ascii=False)}"
+                        f"后台任务失败：{json.dumps(error, ensure_ascii=False, default=str)}"
                     )
                 payload = result.get("result")
                 if not isinstance(payload, dict):
