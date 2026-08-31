@@ -287,7 +287,7 @@ CREATE_VIDEOS_INPUT_SCHEMA = {
             "minItems": 1,
             "uniqueItems": True,
             "default": ["standard", "quiz"],
-            "description": "默认同时生成原版分段和问答版；中文标题为 10 Essential {Topic} Words in Chinese，问答版加 ｜guess；韩语标题为 韩语｜{中文词}的韩语怎么说？，问答版加 ｜看图猜词",
+            "description": "默认同时生成原版分段和问答版；中文标题为 10 Essential {Topic} Words in Chinese，韩语标题为 韩语｜{中文词}的韩语怎么说？；问答版不得加 guess 或看图猜词",
         },
         "countdown_audio_path": {
             "type": ["string", "null"],

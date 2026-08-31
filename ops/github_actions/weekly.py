@@ -42,6 +42,33 @@ def compute_next_week_dates(week_start: str = "") -> list[str]:
     return [(monday + timedelta(days=offset)).isoformat() for offset in range(7)]
 
 
+def inspect_day_health(publish_date: str) -> dict:
+    """从 D1 检查某个计划发布日期的两条业务线是否完整。"""
+    finance = daily_production_preflight("finance", publish_date)
+    language = daily_production_preflight("language_learning", publish_date)
+    finance_healthy = finance["github_output_count"] > 0
+    language_healthy = (
+        bool(language["existing_run_id"])
+        and language["github_output_count"] > 0
+        and not language["pending_targets"]
+    )
+    return {
+        "publish_date": publish_date,
+        "healthy": finance_healthy and language_healthy,
+        "finance": {
+            "healthy": finance_healthy,
+            "output_count": finance["output_count"],
+            "github_output_count": finance["github_output_count"],
+        },
+        "language": {
+            "healthy": language_healthy,
+            "output_count": language["output_count"],
+            "github_output_count": language["github_output_count"],
+            "pending_targets": language["pending_targets"],
+        },
+    }
+
+
 def restore_finance_libraries() -> None:
     restore_finance_image_library("finance")
     restore_finance_image_library("finance_generated")
@@ -91,8 +118,8 @@ def _manifest_url(run_id: str) -> str:
     return f"{base}/runs/language_learning/{run_id}/r2-manifest.json"
 
 
-async def run_day(publish_date: str, run_url: str = "") -> dict:
-    work_dir = PROJECT_ROOT / "cache" / "github_actions" / "daily" / publish_date
+async def run_day(publish_date: str, run_url: str = "", *, cache_scope: str = "daily") -> dict:
+    work_dir = PROJECT_ROOT / "cache" / "github_actions" / cache_scope / publish_date
     work_dir.mkdir(parents=True, exist_ok=True)
     results: dict = {"publish_date": publish_date, "finance": {}, "language": {}}
 
@@ -146,10 +173,62 @@ async def run_day(publish_date: str, run_url: str = "") -> dict:
     return results
 
 
+async def run_day_with_health_retry(
+    publish_date: str,
+    run_url: str = "",
+    *,
+    max_retries: int = 3,
+    health_delay_seconds: int = 180,
+) -> dict:
+    """运行单日任务；每轮结束后延迟检查 D1，仅补偿缺失产品，最多重试三次。"""
+    if max_retries < 0:
+        raise ValueError("max_retries 不能小于 0")
+    if health_delay_seconds < 0:
+        raise ValueError("health_delay_seconds 不能小于 0")
+
+    initial_health = inspect_day_health(publish_date)
+    if initial_health["healthy"]:
+        return {
+            "publish_date": publish_date,
+            "finance": {"status": "skipped", "reason": "D1 健康检查已完整"},
+            "language": {"status": "skipped", "reason": "D1 健康检查已完整"},
+            "health": initial_health,
+            "attempts": [],
+        }
+
+    attempts = []
+    for attempt in range(max_retries + 1):
+        try:
+            result = await run_day(publish_date, run_url, cache_scope="weekly")
+        except Exception as exc:
+            result = {
+                "publish_date": publish_date,
+                "finance": {"status": "unknown"},
+                "language": {"status": "failed", "error": str(exc)},
+            }
+        if health_delay_seconds:
+            await asyncio.sleep(health_delay_seconds)
+        health = inspect_day_health(publish_date)
+        attempts.append({"attempt": attempt + 1, "result": result, "health": health})
+        if health["healthy"]:
+            return {**result, "health": health, "attempts": attempts}
+        if attempt < max_retries:
+            print(
+                f"{publish_date} 健康检查未通过，准备第 {attempt + 1} 次补偿：{health}",
+                flush=True,
+            )
+
+    return {
+        **attempts[-1]["result"],
+        "health": attempts[-1]["health"],
+        "attempts": attempts,
+    }
+
+
 async def run_week(week_start: str = "", run_url: str = "") -> dict:
     dates = compute_next_week_dates(week_start)
     restore_finance_libraries()
     day_results = []
     for publish_date in dates:
-        day_results.append(await run_day(publish_date, run_url))
+        day_results.append(await run_day_with_health_retry(publish_date, run_url))
     return {"dates": dates, "days": day_results}

@@ -1,13 +1,13 @@
-name: 每日生产次日内容
+name: 每周六生产下周内容
 
 on:
   schedule:
-    - cron: "0 8 * * *"
+    - cron: "0 12 * * 6"
       timezone: Asia/Shanghai
   workflow_dispatch:
     inputs:
-      publish_date:
-        description: 可选；计划发布日期 YYYY-MM-DD，留空使用北京时间明天
+      week_start:
+        description: 可选；目标周起始周一 YYYY-MM-DD，留空检查并补齐下周缺失内容
         required: false
         type: string
 
@@ -16,7 +16,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: daily-production
+  group: weekly-production
   cancel-in-progress: false
 
 env:
@@ -25,26 +25,31 @@ env:
 
 jobs:
   plan:
-    name: 计算次日计划发布日期
+    name: 计算下周计划发布日期
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      publish_date: ${{ steps.plan.outputs.publish_date }}
+      dates_json: ${{ steps.plan.outputs.dates_json }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v5
 
-      - name: 生成次日日期
+      - name: 生成周一至周日日期列表
         id: plan
         env:
-          INPUT_PUBLISH_DATE: ${{ inputs.publish_date }}
-        run: python -m ops.github_actions daily_plan --publish-date "$INPUT_PUBLISH_DATE"
+          INPUT_WEEK_START: ${{ inputs.week_start }}
+        run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START"
 
   produce-day:
-    name: 生产并发布 ${{ needs.plan.outputs.publish_date }}
+    name: 生产、发布并健康检查 ${{ matrix.publish_date }}
     needs: plan
+    strategy:
+      matrix:
+        publish_date: ${{ fromJSON(needs.plan.outputs.dates_json) }}
+      max-parallel: 1
+      fail-fast: false
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 360
     container:
       image: ghcr.io/xdh5/media-factory-runner:latest
       credentials:
@@ -95,5 +100,8 @@ jobs:
 
       - name: 串行生产财经、语言并发布语言
         env:
-          PUBLISH_DATE: ${{ needs.plan.outputs.publish_date }}
-        run: python -m ops.github_actions daily_day --publish-date "$PUBLISH_DATE"
+          PUBLISH_DATE: ${{ matrix.publish_date }}
+        run: >-
+          python -m ops.github_actions weekly_day
+          --publish-date "$PUBLISH_DATE"
+          --health-delay-seconds 180

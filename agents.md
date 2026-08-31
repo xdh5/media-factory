@@ -32,7 +32,7 @@
 3. 语言学习 Prompt 放在 `core/mcp/language_learning/prompts/`；财经 MCP 的标题标签与分镜 Prompt 放在 `core/mcp/finance/prompts/`；财经正文范文与业务参数放在 `.agents/skills/finance`，TTS 与发布参数放在 `.agents/skills/learn_Chinese_and_Korean`，对应 MCP 只负责编排。耗时步骤必须通过 MCP 的 `*_start_*` + `*_poll_task` 后台任务轮询（实现见 `core/mcp/_task_runner.py`），禁止同步调用以免 Cursor MCP 客户端超时。
 4. 每个 MCP 必须使用共用话题去重 `get_topic` / `update` 做去重与占坑，禁止另起一套主题库。
 5. 发布与清缓存分开：发布成功后必须再向用户确认是否删除本次生产文件，确认后调用共用 `clear_run`（`core.tools.clear_cache`，MCP 封装为 `*_clear_run`）；不得把清缓存写进发布工具的返回或自动删除。
-6. 财经与语言学习合并为每日生产 Workflow：每天北京时间 08:00 串行生产次日的财经与语言内容；发布前先查 D1 去重，已有成片或发布记录则跳过。财经只生产并交付 R2；语言生产完成后自动四平台预约发布，失败时同日内重试最多 3 次。手动触发时可填写计划发布日期 `YYYY-MM-DD`，留空使用北京时间明天。发布 Workflow 仅允许手动触发，用于补发或重试。
+6. 财经与语言学习合并为每周生产 Workflow：每周六北京时间 12:00 串行生产下周周一至周日的财经与语言内容；单日或单个产品失败不得阻断后续日期。每轮生产结束 3 分钟后按 D1 的 `production_outputs` 与 `publication_records` 健康检查，仅重新生成缺失产品或补发缺失平台，最多重试 3 次。财经只生产并交付 R2；语言生产完成后自动在 YouTube、TikTok、Facebook、Instagram 预约发布。周六计划执行后手动触发且未指定目标周时，检查下周七天并只补齐数据库缺口。原每日生产命令保留但不再配置定时调度；发布 Workflow 仅允许手动触发，用于指定日期补发或重试。
 7. 语言学习手动发布 Workflow 只复用 `source=github_workflow` 的 R2 成片，统一预约到计划发布日期北京时间 16:00；发布前按平台查询同日发布记录，只补发尚未记录的 YouTube、TikTok、Facebook、Instagram，失败时重试最多 3 次。禁止在 Workflow 中复制或绕过对应工具实现。视频业务编排必须通过对应 MCP Tool，跨 Job 的 R2 成片交付可调用 `core.tools.r2_storage` 公开方法；禁止直接导入 MCP 内部实现。
 8. 交互式生产的文本生成、词表生成、分镜生成与图片视觉验收由宿主 Agent 完成；GitHub Action 没有宿主 Agent 时，允许生产 Runner 调用千问文本、千问视觉和千问兜底生图完成同等步骤，MCP 本身仍禁止直接调用千问文本或千问视觉模型。
 9. 交互式生产财经或语言学习视频前，用户必须明确北京时间计划发布日期；未说明日期时 Agent 必须先询问，禁止默认当天、创建 run、开始生产或写入产物表。统一发布使用独立 `core.mcp.publishing`：必须明确业务线、产物日期、账号组、平台及立即/预约方式；发布前查 D1 去重，发布或预约成功后逐条写入 `publication_records`。

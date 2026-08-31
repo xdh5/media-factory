@@ -74,7 +74,11 @@ FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "topic": {"type": "string", "minLength": 1},
-        "article": {"type": "string", "minLength": 1},
+        "article": {
+            "type": "string",
+            "minLength": 450,
+            "description": "财经正文；去除所有空白后必须为 450～550 个字符",
+        },
         "title": {"type": "string", "minLength": 12, "maxLength": 26},
         "short_title": {"type": "string", "minLength": 6, "maxLength": 16},
         "hashtags": {

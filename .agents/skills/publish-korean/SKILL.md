@@ -22,7 +22,7 @@ description: 使用统一发布 MCP 把指定计划发布日期的本地韩语�
 
 ## 执行
 
-1. 调用 `publishing_preview`，传 `business_line="language_learning"`、`content_kind="en-ko"`、用户指定的 `publish_date`、账号组和平台。预检应同时列出原版和看图猜词问答版。
+1. 调用 `publishing_preview`，传 `business_line="language_learning"`、`content_kind="en-ko"`、用户指定的 `publish_date`、账号组和平台。预检应同时列出原版和问答版。
 2. 没有本地成片、缺少账号路由或所有目标已有数据库记录时停止，不得重复发布。
 3. 按上面的北京时间 16:00 规则调用 `publishing_start_publish`，并传 `publish_confirmed=true`。
 4. 用 `publishing_poll_task` 轮询至完成。MCP 会在每个平台成功发布或成功预约后写入 `publication_records`，不得再次手工记录。

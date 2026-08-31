@@ -80,6 +80,7 @@ def daily_production_preflight(
         "existing_run_id": existing_run_id,
         "pending_targets": pending_targets,
         "output_count": len(outputs),
+        "github_output_count": len(github_outputs),
         "publication_count": len(publications),
         "published_platforms": sorted(published_platforms),
         "skip_reason": (

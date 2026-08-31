@@ -22,8 +22,7 @@ from .._constants import (
     WORKFLOW_ID,
     YOUTUBE_LANGUAGE_BY_MODE,
     YOUTUBE_LANGUAGE_LEARNING_CATEGORY_ID,
-    QUIZ_TITLE_SUFFIX_EN,
-    QUIZ_TITLE_SUFFIX_ZH,
+    QUIZ_TITLE_SUFFIXES,
     video_content_kind,
     video_production_id,
 )
@@ -116,17 +115,22 @@ def _item_key(item: dict) -> str:
     return f"{item.get('learning_mode') or ''}:{_video_format(item)}"
 
 
+def strip_quiz_title_suffix(title: str) -> str:
+    """问答版与原版使用同一套标题，去掉历史上加过的 guess / 看图猜词后缀。"""
+    text = str(title or "").strip()
+    changed = True
+    while changed:
+        changed = False
+        for marker in QUIZ_TITLE_SUFFIXES:
+            if text.endswith(marker):
+                text = text[: -len(marker)].rstrip()
+                changed = True
+    return text
+
+
 def _titled(base: str, video_format: str, mode: str = "en-zh") -> str:
-    text = str(base or "").strip()
-    if video_format != "quiz":
-        return text
-    suffix = QUIZ_TITLE_SUFFIX_EN if mode == "en-zh" else QUIZ_TITLE_SUFFIX_ZH
-    if text.endswith(suffix):
-        return text
-    for marker in (QUIZ_TITLE_SUFFIX_EN, QUIZ_TITLE_SUFFIX_ZH):
-        if text.endswith(marker):
-            text = text[: -len(marker)].strip()
-    return f"{text}{suffix}"
+    del video_format, mode
+    return strip_quiz_title_suffix(base)
 
 
 def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_config: dict[str, dict]) -> dict:

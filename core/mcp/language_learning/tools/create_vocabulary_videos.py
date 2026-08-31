@@ -18,8 +18,6 @@ from .._constants import (
     COUNTDOWN_AUDIO_PATH,
     DEFAULT_VIDEO_FORMATS,
     QUIZ_POST_QUESTION_TRIM_SECONDS,
-    QUIZ_TITLE_SUFFIX_EN,
-    QUIZ_TITLE_SUFFIX_ZH,
     SUPPORTED_VIDEO_FORMATS,
     WORDS_PER_TASK,
     WORDS_PER_VIDEO,
@@ -29,7 +27,7 @@ from .._constants import (
     video_production_id,
 )
 from .._errors import VocabularyVideoError
-from .publish_vocabulary_videos import build_video_title
+from .publish_vocabulary_videos import build_video_title, strip_quiz_title_suffix
 
 VIDEO_SIZE = f"{CARD_CANVAS_SIZE[0]}x{CARD_CANVAS_SIZE[1]}"
 QUIZ_VIDEO_FPS = 30
@@ -394,8 +392,7 @@ def _one_quiz_mode(
         })
         cursor += word_duration
 
-    base_title = build_video_title(mode, topic, rows)
-    title = f"{base_title}{QUIZ_TITLE_SUFFIX_EN if mode == 'en-zh' else QUIZ_TITLE_SUFFIX_ZH}"
+    title = strip_quiz_title_suffix(build_video_title(mode, topic, rows))
     try:
         video = generate_final_video(
             shots,

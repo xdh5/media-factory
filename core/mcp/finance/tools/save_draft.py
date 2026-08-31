@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 
 from .._constants import (
+    ARTICLE_MAX_LENGTH,
+    ARTICLE_MIN_LENGTH,
     DRAFT_FILE_NAME,
     MCP_ID,
     production_dirs,
@@ -77,6 +79,17 @@ def save_draft(
         raise WorkflowStepError("topic 不能为空")
     if not normalized_article:
         raise WorkflowStepError("article 不能为空")
+    article_length = len("".join(normalized_article.split()))
+    if not ARTICLE_MIN_LENGTH <= article_length <= ARTICLE_MAX_LENGTH:
+        raise WorkflowStepError(
+            f"article 去除所有空白后必须为 {ARTICLE_MIN_LENGTH}～{ARTICLE_MAX_LENGTH} 个字符，"
+            f"当前为 {article_length} 个字符",
+            {
+                "article_length": article_length,
+                "minimum": ARTICLE_MIN_LENGTH,
+                "maximum": ARTICLE_MAX_LENGTH,
+            },
+        )
     normalized_source_aweme_id = str(source_aweme_id or "").strip()
     normalized_source_token = str(source_reservation_token or "").strip()
     normalized_source_hook = str(source_hook or "").strip()

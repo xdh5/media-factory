@@ -31,6 +31,10 @@ BGM_PATHS = (
     "core/tools/generate_bgm/static/nothing_to_fare.mp3",
     "core/tools/generate_bgm/static/aware.mp3",
 )
+ARTICLE_MIN_LENGTH = 450
+ARTICLE_MAX_LENGTH = 550
+ARTICLE_TARGET_LENGTH = 500
+ARTICLE_GENERATION_ATTEMPTS = 5
 
 
 def _article_prompt(source_text: str, source_hook: str) -> str:
@@ -66,36 +70,63 @@ def _article_length(article: str) -> int:
     return len(re.sub(r"\s+", "", article))
 
 
+def _article_validation_error(article: str, source_hook: str) -> str | None:
+    length = _article_length(article)
+    problems = []
+    if not article.startswith(source_hook):
+        problems.append("黄金钩子没有原样保留在正文开头")
+    if length < ARTICLE_MIN_LENGTH:
+        problems.append(
+            f"当前 {length} 个字符，还需增加至少 {ARTICLE_MIN_LENGTH - length} 个字符"
+        )
+    elif length > ARTICLE_MAX_LENGTH:
+        problems.append(
+            f"当前 {length} 个字符，必须删减至少 {length - ARTICLE_MAX_LENGTH} 个字符"
+        )
+    return "；".join(problems) or None
+
+
 def _adapt_article(source_text: str, source_hook: str) -> str:
-    prompt = (
+    initial_prompt = (
         _article_prompt(source_text, source_hook)
-        + "\n\n硬性校验：最终正文去除所有空白后必须为 450～550 个字符。"
-        "输出前必须自行计数，只输出正文，不要解释字数。"
+        + f"\n\n硬性校验：最终正文去除所有空白后必须为 {ARTICLE_MIN_LENGTH}～"
+        f"{ARTICLE_MAX_LENGTH} 个字符，并尽量写到 {ARTICLE_TARGET_LENGTH} 个字符。"
+        "字符数由程序复核。只输出正文，不要解释字数。"
     )
     last_error = None
-    for _ in range(3):
+    previous_article = ""
+    for attempt in range(ARTICLE_GENERATION_ATTEMPTS):
+        if attempt == 0:
+            prompt = initial_prompt
+        else:
+            previous_length = _article_length(previous_article)
+            prompt = (
+                "请直接修订下面的上一版正文，不要从零另写。\n\n"
+                f"程序校验结果：{last_error}。\n"
+                f"上一版去除空白后为 {previous_length} 个字符；目标为 "
+                f"{ARTICLE_TARGET_LENGTH} 个字符，合格范围为 {ARTICLE_MIN_LENGTH}～"
+                f"{ARTICLE_MAX_LENGTH} 个字符。\n"
+                f"必须原样保留在开头的黄金钩子：{source_hook}\n\n"
+                "修订规则：只在原有段落位置补充解释或删减冗余，保持论述顺序、事实、"
+                "案例位置和结尾结构；不得新增分支观点。输出前按去除所有空白后的口径计数。"
+                "只输出修订后的完整正文，不要输出说明或字数。\n\n"
+                f"数据库原稿（只用于核对事实与结构）：\n{source_text}\n\n"
+                f"上一版正文（必须在此基础上定向修订）：\n{previous_article}"
+            )
         article = str(qwen(
-            "你是严谨的中文财经短视频改编编辑，只输出正文。正文去除空白后必须为 450～550 个字符。",
+            "你是严谨的中文财经短视频改编编辑，只输出正文。"
+            f"正文去除空白后必须为 {ARTICLE_MIN_LENGTH}～{ARTICLE_MAX_LENGTH} 个字符。",
             prompt,
             max_tokens=5000,
         )["text"]).strip()
-        length = _article_length(article)
-        if article.startswith(source_hook) and 450 <= length <= 550:
+        last_error = _article_validation_error(article, source_hook)
+        if last_error is None:
             return article
-        hook_valid = article.startswith(source_hook)
-        if length < 450:
-            length_feedback = f"当前 {length} 个字符，还需增加至少 {450 - length} 个字符"
-        elif length > 550:
-            length_feedback = f"当前 {length} 个字符，必须删减至少 {length - 550} 个字符"
-        else:
-            length_feedback = f"当前 {length} 个字符，字数合格"
-        hook_feedback = "黄金钩子正确" if hook_valid else "黄金钩子没有原样保留在正文开头"
-        last_error = f"{hook_feedback}；{length_feedback}"
-        prompt += (
-            f"\n\n上一次结果未通过程序校验：{last_error}。"
-            "必须保持原结构，按上述差值补充或删减正文；输出前重新逐字符计数。"
-        )
-    raise RuntimeError(f"财经原稿连续三次改编不合格：{last_error}")
+        previous_article = article
+    raise RuntimeError(
+        f"财经原稿连续 {ARTICLE_GENERATION_ATTEMPTS} 次改编不合格，程序已阻止不合格正文进入后续步骤："
+        f"{last_error}"
+    )
 
 
 def _choose_topic(article: str, recent_topics: list[str], requested_topic: str) -> str:

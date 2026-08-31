@@ -53,6 +53,7 @@ def main() -> None:
     parser.add_argument("--notify-label", default="语言发布")
     parser.add_argument("--skipped", default="false")
     parser.add_argument("--run-url", default="")
+    parser.add_argument("--health-delay-seconds", type=int, default=180)
     arguments = parser.parse_args()
     if arguments.workflow.startswith("finance"):
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"
@@ -163,10 +164,19 @@ def main() -> None:
             with Path(output_path).open("a", encoding="utf-8") as stream:
                 stream.write(f"dates_json={json.dumps(dates, ensure_ascii=False)}\n")
     elif arguments.workflow in {"daily_day", "weekly_day"}:
-        from .weekly import run_day
+        from .weekly import run_day, run_day_with_health_retry
 
         run_url = os.getenv("GITHUB_RUN_URL", "").strip()
-        payload = asyncio.run(run_day(arguments.publish_date, run_url))
+        if arguments.workflow == "weekly_day":
+            payload = asyncio.run(
+                run_day_with_health_retry(
+                    arguments.publish_date,
+                    run_url,
+                    health_delay_seconds=arguments.health_delay_seconds,
+                )
+            )
+        else:
+            payload = asyncio.run(run_day(arguments.publish_date, run_url))
     elif arguments.workflow == "publish_notify":
         from .telegram import notify_manual_publish
 
@@ -177,7 +187,9 @@ def main() -> None:
             str(arguments.skipped).strip().casefold() in {"1", "true", "yes"},
         )
     print(json.dumps(payload, ensure_ascii=False))
-    if arguments.workflow in {"daily_day", "weekly_day"}:
+    if arguments.workflow == "weekly_day" and not payload.get("health", {}).get("healthy"):
+        raise SystemExit("三次补偿后仍有产品或发布平台缺失，请查看健康检查结果")
+    if arguments.workflow == "daily_day":
         failed = any(
             str(payload.get(name, {}).get("status", "")).endswith("failed")
             for name in ("finance", "language")

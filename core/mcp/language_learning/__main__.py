@@ -80,8 +80,8 @@ mcp = FastMCP(
         "文本生成和图片视觉验收由宿主 Agent 完成；千问只用于宿主生图失败后的兜底。"
         "耗时步骤（千问兜底生图、拼卡、出片、发布）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
         "默认同时生成原版分段和倒计时问答版，倒计时音轨默认使用仓库 static/countdown.mp3。"
-        "中文标题与文件名为 10 Essential {Topic} Words in Chinese，问答版加 ｜guess；"
-        "韩语标题与文件名为 韩语｜{中文词}的韩语怎么说？，问答版加 ｜看图猜词；韩语描述只发 hashtag。"
+        "中文标题与文件名为 10 Essential {Topic} Words in Chinese；"
+        "韩语标题与文件名为 韩语｜{中文词}的韩语怎么说？；问答版不得加 guess 或看图猜词；韩语描述只发 hashtag。"
         "禁止绕过 MCP 自行读写内部文件。"
     ),
 )
