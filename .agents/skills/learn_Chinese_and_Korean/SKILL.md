@@ -39,6 +39,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 - 示例：主题 `Dishes` → `10 Essential Dishes Words in Chinese`
 - 问答版也用同一标题，不得加 `guess` 或其它后缀
 - 仅原版分段超过 1 段时在末尾加 ` 1/2`、` 2/2`
+- **作品描述只发 hashtag，不得加入短标题、完整标题或其它正文**，例如 `#learnchinese #chinesevocabulary #mandarinchinese #dailychinese`
 
 **韩语 `en-ko`**
 
@@ -66,6 +67,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 - TikTok 通过 Zernio 发布中文成片，使用共用的 `ZERNIO_API_KEY` 与 `LANGUAGE_LEARNING_TIKTOK_*`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址
 - Instagram 通过 Zernio 发布中文成片，使用 Meta 专用的 `zernio_api_key_meta`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址。Zernio 只有一个健康 Instagram 账号时自动选择；连接多个账号时必须在 `.env` 配置 `LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID`。只发指定分段时，传 `targets=["instagram"]` 与 `video_parts=[1]` 或 `[2]`。
 - Facebook 通过 Zernio 发布中文成片，使用 Meta 专用的 `zernio_api_key_meta`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址。Zernio 只有一个健康 Facebook Page 时自动选择；连接多个 Page 时必须在 `.env` 配置 `LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID`。只发指定分段时，传 `targets=["facebook"]` 与 `video_parts=[1]` 或 `[2]`。
+- YouTube、TikTok、Instagram、Facebook 的作品描述都只传标签 hashtag；不得把 `short_title`、完整标题或其它文字放进描述。
 - 展示给用户看的账号组名为 `中文`；账号配置由 YouTube 与 Zernio 的环境变量提供，不再从 D1 读取发布账号组。官方平台发布成功或预约成功后由语言学习 MCP 自动写入发布记录。
 
 **韩语 `en-ko`**

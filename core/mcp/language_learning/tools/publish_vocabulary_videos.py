@@ -128,13 +128,8 @@ def _run_and_commit(manifest: dict, item: dict, channel: str, fn) -> dict:
     return batch
 
 
-def _description(short_title: str, tags: list[str]) -> str:
-    hashtags = _hashtags(tags)
-    return "\n\n".join(part for part in (str(short_title or "").strip(), hashtags) if part)
-
-
-def _korean_description(tags: list[str]) -> str:
-    """韩语作品描述只发 hashtag，不含短标题或其它正文。"""
+def _description(tags: list[str]) -> str:
+    """语言学习作品描述只发 hashtag，不含短标题或其它正文。"""
     return _hashtags(tags)
 
 
@@ -238,7 +233,7 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
                 "title": title,
                 "tags": list(ko_config.get("tags") or []),
                 "short_title": short_title,
-                "description": _korean_description(list(ko_config.get("tags") or [])),
+                "description": _description(list(ko_config.get("tags") or [])),
                 "platforms": list(ko_config.get("platforms") or []),
                 "videos": _video_parts(video, title, empty_error="en-ko 没有可发布的视频文件"),
             })
@@ -680,7 +675,7 @@ def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
 
     for part, video in enumerate(item["videos"], 1):
         title = str(video.get("title") or item["title"])
-        description = _description(item.get("short_title", ""), item["tags"])
+        description = _description(item["tags"])
         print(
             f"[语言发布] YouTube 开始 format={_video_format(item)} part={part} title={title}",
             flush=True,
@@ -744,7 +739,7 @@ def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
     results = []
     for part, video in enumerate(item["videos"], 1):
         title = str(video.get("title") or item["title"])
-        content = _description(item.get("short_title", ""), item["tags"])
+        content = _description(item["tags"])
         video_url = str(video.get("video_url") or "").strip()
         print(
             f"[语言发布] TikTok 开始 format={_video_format(item)} part={part} title={title} url={video_url}",
@@ -825,7 +820,7 @@ def _publish_chinese_instagram(
         if part not in video_parts:
             continue
         title = str(video.get("title") or item["title"])
-        caption = _description(item.get("short_title", ""), item["tags"])
+        caption = _description(item["tags"])
         video_url = str(video.get("video_url") or "").strip()
         print(
             f"[语言发布] Instagram 开始 format={_video_format(item)} part={part} title={title} url={video_url}",
@@ -900,7 +895,7 @@ def _publish_chinese_facebook(
         if part not in video_parts:
             continue
         title = str(video.get("title") or item["title"])
-        description = _description(item.get("short_title", ""), item["tags"])
+        description = _description(item["tags"])
         video_url = str(video.get("video_url") or "").strip()
         print(
             f"[语言发布] Facebook 开始 format={_video_format(item)} part={part} title={title} url={video_url}",

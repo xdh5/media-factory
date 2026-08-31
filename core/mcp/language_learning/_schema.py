@@ -19,7 +19,11 @@ PUBLISH_MODE_SCHEMA = {
     "properties": {
         "account_group": {"type": "string", "minLength": 1},
         "tags": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-        "short_title": {"type": "string", "minLength": 1},
+        "short_title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "平台短标题字段；不写入作品描述，作品描述只包含 hashtag",
+        },
         "youtube_account": {"type": "string", "minLength": 1},
         "platforms": {"type": "array", "items": {"type": "string", "minLength": 1}},
     },
