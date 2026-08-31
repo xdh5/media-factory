@@ -174,6 +174,56 @@ def _normalize_publish_at(publish_at: str | None) -> str | None:
     return normalized.isoformat().replace("+00:00", "Z")
 
 
+def _find_existing_video(youtube, channel_id: str, title: str) -> dict | None:
+    """按精确标题查找频道里已有视频（含未公开/定时），避免重试时重复上传。"""
+    wanted = str(title or "").strip()
+    if not wanted:
+        return None
+    channel = youtube.channels().list(part="contentDetails", id=channel_id).execute()
+    items = channel.get("items") or []
+    if not items:
+        return None
+    uploads = str(
+        ((items[0].get("contentDetails") or {}).get("relatedPlaylists") or {}).get("uploads") or ""
+    ).strip()
+    if not uploads:
+        return None
+    matches: list[dict] = []
+    page_token = None
+    scanned = 0
+    while scanned < 250:
+        response = youtube.playlistItems().list(
+            part="snippet,contentDetails",
+            playlistId=uploads,
+            maxResults=50,
+            pageToken=page_token,
+        ).execute()
+        for item in response.get("items") or []:
+            scanned += 1
+            snippet = item.get("snippet") or {}
+            if str(snippet.get("title") or "").strip() != wanted:
+                continue
+            video_id = str(
+                (snippet.get("resourceId") or {}).get("videoId")
+                or (item.get("contentDetails") or {}).get("videoId")
+                or ""
+            ).strip()
+            if video_id:
+                matches.append({
+                    "video_id": video_id,
+                    "published_at": str(snippet.get("publishedAt") or ""),
+                })
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+    if not matches:
+        return None
+    matches.sort(key=lambda item: item.get("published_at") or "")
+    oldest = matches[0]
+    oldest["duplicate_count"] = len(matches)
+    return oldest
+
+
 def publish_to_youtube(
     channel_id: str,
     video_path: str | Path,
@@ -210,6 +260,23 @@ def publish_to_youtube(
     credentials = _load_credentials(channel_id, account)
     try:
         with build("youtube", "v3", credentials=credentials) as youtube:
+            existing = _find_existing_video(youtube, channel_id, normalized_title[:100])
+            if existing:
+                print(
+                    f"[YouTube] 标题已存在 {existing.get('duplicate_count') or 1} 条，跳过上传 "
+                    f"title={normalized_title[:100]!r} video_id={existing['video_id']}",
+                    flush=True,
+                )
+                return {
+                    "video_id": existing["video_id"],
+                    "video_url": f"https://www.youtube.com/watch?v={existing['video_id']}",
+                    "channel_id": channel_id,
+                    "privacy_status": effective_privacy_status,
+                    "publish_at": normalized_publish_at,
+                    "scheduled": normalized_publish_at is not None,
+                    "reused": True,
+                    "duplicate_count": int(existing.get("duplicate_count") or 1),
+                }
             video_status = {
                 "privacyStatus": effective_privacy_status,
                 "selfDeclaredMadeForKids": False,

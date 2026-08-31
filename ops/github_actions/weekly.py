@@ -77,12 +77,18 @@ async def _run_language_produce(publish_date: str, work_dir: Path) -> dict:
 async def _publish_language_with_retry(
     manifest_url: str,
     run_id: str,
-    targets: list[str],
+    publish_date: str,
     *,
     max_attempts: int = 3,
 ) -> dict:
     last_error: Exception | None = None
     for attempt in range(1, max_attempts + 1):
+        preflight = daily_production_preflight("language_learning", publish_date)
+        targets = list(preflight["pending_targets"])
+        if not targets:
+            print(f"[{publish_date}] 语言发布已齐，跳过重试", flush=True)
+            return {"success": True, "skipped": True, "reason": "D1 已覆盖全部待发平台"}
+        print(f"[{publish_date}] 语言发布第 {attempt}/{max_attempts} 次，待发平台：{targets}", flush=True)
         try:
             return await schedule_publication(manifest_url, run_id, targets=targets)
         except Exception as exc:
@@ -163,7 +169,7 @@ async def run_day(
         await _publish_language_with_retry(
             _manifest_url(run_id),
             run_id,
-            publish_targets,
+            publish_date,
         )
         notify_business_result("语言发布", True, run_url)
         results["language"] = {"status": "published", "run_id": run_id}
