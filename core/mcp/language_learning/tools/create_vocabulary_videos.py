@@ -445,6 +445,7 @@ def create_vocabulary_videos(
     voices: dict[str, str],
     question_voices: dict[str, str] | None = None,
     hashtags_by_mode: dict[str, list[str]] | None = None,
+    progress=None,
 ) -> dict:
     try:
         language_pause, word_pause = max(0.0, float(language_pause)), max(0.0, float(word_pause))
@@ -471,6 +472,11 @@ def create_vocabulary_videos(
     output_root.mkdir(parents=True, exist_ok=True)
     results_by_key: dict[tuple[str, str], dict] = {}
     configured_question_voices = question_voices or voices
+    total_jobs = sum(1 for mode in modes if "standard" in formats) + sum(
+        1 for mode in modes if "quiz" in formats and resolved_countdown_audio is not None
+    )
+    if progress is not None:
+        progress(f"开始出片：{modes} × {formats}，共 {total_jobs} 条")
     with ThreadPoolExecutor(max_workers=len(modes) * len(formats)) as executor:
         futures = {
             executor.submit(
@@ -506,7 +512,12 @@ def create_vocabulary_videos(
             if "quiz" in formats and resolved_countdown_audio is not None
         })
         for future in as_completed(futures):
-            results_by_key[futures[future]] = future.result()
+            mode, video_format = futures[future]
+            results_by_key[(mode, video_format)] = future.result()
+            if progress is not None:
+                progress(
+                    f"已完成出片 {mode}/{video_format}（{len(results_by_key)}/{len(futures)}）"
+                )
     results = [
         results_by_key[(mode, video_format)]
         for mode in modes

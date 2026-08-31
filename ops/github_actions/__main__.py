@@ -53,7 +53,7 @@ def main() -> None:
     parser.add_argument("--notify-label", default="语言发布")
     parser.add_argument("--skipped", default="false")
     parser.add_argument("--run-url", default="")
-    parser.add_argument("--health-delay-seconds", type=int, default=180)
+    parser.add_argument("--health-delay-seconds", type=int, default=0)
     arguments = parser.parse_args()
     if arguments.workflow.startswith("finance"):
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"

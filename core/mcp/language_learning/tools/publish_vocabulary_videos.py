@@ -833,6 +833,7 @@ def publish_vocabulary_videos(
     publish_at: str | None = None,
     publish_at_by_target: dict[str, str | None] | None = None,
     video_parts: list[int] | None = None,
+    progress=None,
 ) -> dict:
     """通过语言学习 MCP 把中文视频发布到 YouTube、TikTok、Instagram 或 Facebook。"""
     if publish_confirmed is not True:
@@ -863,8 +864,12 @@ def publish_vocabulary_videos(
             instagram_parts = _pending_item_parts(manifest, item, "instagram", video_parts, recorded)
             facebook_parts = _pending_item_parts(manifest, item, "facebook", video_parts, recorded)
             if include_youtube and _should_publish_youtube(manifest, item, recorded):
+                if progress is not None:
+                    progress(f"正在发布 YouTube：{item.get('title') or ''}")
                 published.append(_publish_chinese_youtube(item, publish_at=_publish_time("youtube")))
             if include_tiktok and _should_publish_tiktok(manifest, item, recorded):
+                if progress is not None:
+                    progress(f"正在发布 TikTok：{item.get('title') or ''}")
                 published.append(_publish_chinese_tiktok(item, _publish_time("tiktok")))
             if include_instagram and instagram_parts:
                 published.append(

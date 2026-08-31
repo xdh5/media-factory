@@ -405,7 +405,9 @@ def language_learning_start_submit_images(
                 f"generation_attempt 必须是 1 到 {SUBJECT_GENERATION_MAX_ATTEMPTS}"
             )
 
-        def _work() -> dict:
+        def _work(progress=None) -> dict:
+            if progress is not None:
+                progress("开始千问兜底生图")
             return _submit_images_worker(
                 context_path,
                 images,
@@ -491,7 +493,9 @@ def language_learning_start_compose_cards(
     try:
         cache_root, _ = production_dirs(run_id)
 
-        def _work() -> dict:
+        def _work(progress=None) -> dict:
+            if progress is not None:
+                progress(f"开始拼卡 {learning_mode}")
             return compose_fixed_cards(
                 subject_sheet_path,
                 words,
@@ -574,7 +578,9 @@ def language_learning_start_create_videos(
     try:
         cache_root, _ = production_dirs(run_id)
 
-        def _work() -> dict:
+        def _work(progress=None) -> dict:
+            if progress is not None:
+                progress("开始 TTS 与出片")
             result = create_vocabulary_videos(
                 card_dirs,
                 words_by_mode,
@@ -593,6 +599,7 @@ def language_learning_start_create_videos(
                     for mode, config in publish_config.items()
                     if isinstance(config, dict)
                 },
+                progress=progress,
             )
             return attach_publish_manifest(result, words_by_mode, publish_config)
 
@@ -645,7 +652,9 @@ def language_learning_start_publish(
     try:
         cache_root, _ = production_dirs(run_id)
 
-        def _work() -> dict:
+        def _work(progress=None) -> dict:
+            if progress is not None:
+                progress("开始下载发布清单并发布中文平台")
             resolved_manifest_path = manifest_path
             if str(manifest_path).strip().startswith(("http://", "https://")):
                 resolved_manifest_path = prepare_r2_publish_manifest(
@@ -653,6 +662,8 @@ def language_learning_start_publish(
                     run_id,
                     cache_root,
                 )
+                if progress is not None:
+                    progress("发布清单已就绪，开始上传平台")
             return publish_vocabulary_videos(
                 resolved_manifest_path,
                 publish_confirmed,
@@ -660,6 +671,7 @@ def language_learning_start_publish(
                 publish_at=publish_at,
                 publish_at_by_target=publish_at_by_target,
                 video_parts=video_parts,
+                progress=progress,
             )
 
         started = runner_submit_task(

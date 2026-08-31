@@ -21,6 +21,7 @@ concurrency:
 
 env:
   PYTHONUTF8: "1"
+  PYTHONUNBUFFERED: "1"
   GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
@@ -104,4 +105,4 @@ jobs:
         run: >-
           python -m ops.github_actions weekly_day
           --publish-date "$PUBLISH_DATE"
-          --health-delay-seconds 180
+          --health-delay-seconds 0

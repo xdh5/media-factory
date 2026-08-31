@@ -100,19 +100,30 @@ def _manifest_url(run_id: str) -> str:
     return f"{base}/runs/language_learning/{run_id}/r2-manifest.json"
 
 
-async def run_day(publish_date: str, run_url: str = "", *, cache_scope: str = "daily") -> dict:
+async def run_day(
+    publish_date: str,
+    run_url: str = "",
+    *,
+    cache_scope: str = "daily",
+    skip_finance: bool = False,
+) -> dict:
     work_dir = PROJECT_ROOT / "cache" / "github_actions" / cache_scope / publish_date
     work_dir.mkdir(parents=True, exist_ok=True)
     results: dict = {"publish_date": publish_date, "finance": {}, "language": {}}
 
     finance_preflight = daily_production_preflight("finance", publish_date)
     try:
-        if finance_preflight["should_generate"]:
+        if skip_finance:
+            print(f"[{publish_date}] 跳过财经生产：本轮只补偿语言", flush=True)
+            results["finance"] = {"status": "skipped", "reason": "本轮只补偿语言"}
+        elif finance_preflight["should_generate"]:
+            print(f"[{publish_date}] 开始财经生产", flush=True)
             os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"
             await run_finance(publish_date=publish_date)
             notify_business_result("财经生产", True, run_url)
             results["finance"] = {"status": "produced"}
         else:
+            print(f"[{publish_date}] 跳过财经生产：{finance_preflight['skip_reason']}", flush=True)
             results["finance"] = {"status": "skipped", "reason": finance_preflight["skip_reason"]}
     except Exception as exc:
         notify_business_result("财经生产", False, run_url, str(exc))
@@ -128,6 +139,7 @@ async def run_day(publish_date: str, run_url: str = "", *, cache_scope: str = "d
 
     if lang_preflight["should_generate"]:
         try:
+            print(f"[{publish_date}] 开始语言生产", flush=True)
             os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
             upload_result = await _run_language_produce(publish_date, work_dir)
             run_id = str(upload_result["run_id"])
@@ -141,6 +153,7 @@ async def run_day(publish_date: str, run_url: str = "", *, cache_scope: str = "d
         raise RuntimeError(f"{publish_date} 缺少可发布的 language_learning run_id")
 
     try:
+        print(f"[{publish_date}] 开始语言发布：{publish_targets}", flush=True)
         await _publish_language_with_retry(
             _manifest_url(run_id),
             run_id,
@@ -160,9 +173,9 @@ async def run_day_with_health_retry(
     run_url: str = "",
     *,
     max_retries: int = 3,
-    health_delay_seconds: int = 180,
+    health_delay_seconds: int = 0,
 ) -> dict:
-    """运行单日任务；每轮结束后延迟检查 D1，仅补偿缺失产品，最多重试三次。"""
+    """运行单日任务；立刻检查 D1。财经失败后不再重跑财经，只补偿语言发布。"""
     if max_retries < 0:
         raise ValueError("max_retries 不能小于 0")
     if health_delay_seconds < 0:
@@ -179,9 +192,15 @@ async def run_day_with_health_retry(
         }
 
     attempts = []
+    skip_finance = False
     for attempt in range(max_retries + 1):
         try:
-            result = await run_day(publish_date, run_url, cache_scope="weekly")
+            result = await run_day(
+                publish_date,
+                run_url,
+                cache_scope="weekly",
+                skip_finance=skip_finance,
+            )
         except Exception as exc:
             result = {
                 "publish_date": publish_date,
@@ -189,12 +208,19 @@ async def run_day_with_health_retry(
                 "language": {"status": "failed", "error": str(exc)},
             }
         if health_delay_seconds:
-            await asyncio.sleep(health_delay_seconds)
+            remaining = int(health_delay_seconds)
+            while remaining > 0:
+                print(f"[{publish_date}] 等待健康检查，还剩 {remaining}s", flush=True)
+                chunk = min(30, remaining)
+                await asyncio.sleep(chunk)
+                remaining -= chunk
         health = inspect_day_health(publish_date)
         attempts.append({"attempt": attempt + 1, "result": result, "health": health})
         if health["healthy"]:
             return {**result, "health": health, "attempts": attempts}
         if attempt < max_retries:
+            if result.get("finance", {}).get("status") == "failed":
+                skip_finance = True
             print(
                 f"{publish_date} 健康检查未通过，准备第 {attempt + 1} 次补偿：{health}",
                 flush=True,

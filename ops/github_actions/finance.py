@@ -273,6 +273,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
         else:
             raise RuntimeError(f"财经标题连续三次不合格：{last_error}")
         started = await mcp.call("finance_start_storyboard", {"draft_path": draft["draft_path"], "tts_config": TTS_CONFIG})
+        print("财经：轮询分镜 TTS", flush=True)
         storyboard_context = await mcp.poll("finance_poll_task", started["task_path"])
         storyboard_prompt = storyboard_context["storyboard_prompt"]
         last_error = None
@@ -309,6 +310,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
                 "production_source": "github_workflow",
             },
         )
+        print("财经：轮询成片合成", flush=True)
         manifest = await mcp.poll("finance_poll_task", started["task_path"])
     remote = upload_run_files(
         "finance",
