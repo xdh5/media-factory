@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -76,6 +77,55 @@ def _emit(progress, message: str) -> None:
     print(f"[语言发布] {message}", flush=True)
     if progress is not None:
         progress(message)
+
+
+def _failed_batch(item: dict, channel: str, error: Exception | str) -> dict:
+    if isinstance(error, Exception):
+        payload = {"type": type(error).__name__, "message": str(error)}
+    else:
+        payload = {"type": "PublishError", "message": str(error)}
+    return {
+        "learning_mode": item.get("learning_mode"),
+        "video_format": _video_format(item),
+        "account_group": item.get("account_group"),
+        "channel": channel,
+        "success": False,
+        "results": [{"channel": channel, "success": False, "error": payload}],
+    }
+
+
+def _run_and_commit(manifest: dict, item: dict, channel: str, fn) -> dict:
+    """单个平台发布；成功的行立刻写入 D1，后续平台失败不得作废已成功记录。"""
+    try:
+        batch = fn()
+    except Exception as exc:
+        print(
+            f"[语言发布] {channel} format={_video_format(item)} 未捕获异常：{type(exc).__name__}: {exc}\n{traceback.format_exc()}",
+            flush=True,
+        )
+        batch = _failed_batch(item, channel, exc)
+    succeeded = [row for row in (batch.get("results") or []) if row.get("success")]
+    if succeeded:
+        try:
+            committed = _commit_platform_publications(manifest, [batch])
+            batch["publication_records"] = committed
+            print(
+                f"[语言发布] 已写入 D1 {channel} format={_video_format(item)} "
+                f"{len(committed.get('records') or succeeded)} 条",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"[语言发布] 写入 D1 失败 {channel} format={_video_format(item)}：{type(exc).__name__}: {exc}\n{traceback.format_exc()}",
+                flush=True,
+            )
+            batch["d1_error"] = {"type": type(exc).__name__, "message": str(exc)}
+    else:
+        print(
+            f"[语言发布] {channel} format={_video_format(item)} 没有成功行，跳过 D1",
+            flush=True,
+        )
+    return batch
 
 
 def _description(short_title: str, tags: list[str]) -> str:
@@ -751,8 +801,10 @@ def _publish_chinese_instagram(
     accounts = list_instagram_accounts()
     if not accounts:
         print("[语言发布] Instagram 账号列表为空", flush=True)
-        raise PublishError(
-            "Zernio 尚未连接 Instagram 专业账号。请先在 Zernio 完成 Instagram OAuth 连接"
+        return _failed_batch(
+            item,
+            "instagram",
+            "Zernio 尚未连接 Instagram 专业账号。请先在 Zernio 完成 Instagram OAuth 连接",
         )
     results = []
     for part, video in enumerate(item["videos"], 1):
@@ -824,8 +876,10 @@ def _publish_chinese_facebook(
     accounts = list_facebook_accounts()
     if not accounts:
         print("[语言发布] Facebook 账号列表为空", flush=True)
-        raise PublishError(
-            "Zernio 尚未连接 Facebook Page。请先在 Zernio 完成 Facebook OAuth 连接"
+        return _failed_batch(
+            item,
+            "facebook",
+            "Zernio 尚未连接 Facebook Page。请先在 Zernio 完成 Facebook OAuth 连接",
         )
     results = []
     for part, video in enumerate(item["videos"], 1):
@@ -923,19 +977,47 @@ def publish_vocabulary_videos(
             facebook_parts = _pending_item_parts(manifest, item, "facebook", video_parts, recorded)
             if include_youtube and _should_publish_youtube(manifest, item, recorded):
                 _emit(progress, f"正在发布 YouTube：{item.get('title') or ''} format={_video_format(item)}")
-                published.append(_publish_chinese_youtube(item, publish_at=_publish_time("youtube")))
+                published.append(
+                    _run_and_commit(
+                        manifest,
+                        item,
+                        "youtube",
+                        lambda: _publish_chinese_youtube(item, publish_at=_publish_time("youtube")),
+                    )
+                )
             if include_tiktok and _should_publish_tiktok(manifest, item, recorded):
                 _emit(progress, f"正在发布 TikTok：{item.get('title') or ''} format={_video_format(item)}")
-                published.append(_publish_chinese_tiktok(item, _publish_time("tiktok")))
+                published.append(
+                    _run_and_commit(
+                        manifest,
+                        item,
+                        "tiktok",
+                        lambda: _publish_chinese_tiktok(item, _publish_time("tiktok")),
+                    )
+                )
             if include_instagram and instagram_parts:
                 _emit(progress, f"正在发布 Instagram：{item.get('title') or ''} format={_video_format(item)}")
                 published.append(
-                    _publish_chinese_instagram(item, instagram_parts, _publish_time("instagram"))
+                    _run_and_commit(
+                        manifest,
+                        item,
+                        "instagram",
+                        lambda parts=instagram_parts: _publish_chinese_instagram(
+                            item, parts, _publish_time("instagram")
+                        ),
+                    )
                 )
             if include_facebook and facebook_parts:
                 _emit(progress, f"正在发布 Facebook：{item.get('title') or ''} format={_video_format(item)}")
                 published.append(
-                    _publish_chinese_facebook(item, facebook_parts, _publish_time("facebook"))
+                    _run_and_commit(
+                        manifest,
+                        item,
+                        "facebook",
+                        lambda parts=facebook_parts: _publish_chinese_facebook(
+                            item, parts, _publish_time("facebook")
+                        ),
+                    )
                 )
             continue
         if mode == "en-ko" and channel == "matrixmedia":
@@ -1014,7 +1096,11 @@ def publish_vocabulary_videos(
             _set_item_status(manifest, item, facebook_parts=parts)
             if _is_standard_item(item):
                 manifest["facebook_published_parts"] = parts
-    publication_records = _commit_platform_publications(manifest, published)
+    publication_records = {"records": []}
+    for batch in published:
+        publication_records["records"].extend(
+            list((batch.get("publication_records") or {}).get("records") or [])
+        )
     manifest["status"] = "published" if chinese_success and not matrixmedia_items else (
         "awaiting_matrixmedia" if chinese_success else "publish_failed"
     )
