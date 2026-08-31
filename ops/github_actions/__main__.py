@@ -155,7 +155,7 @@ def main() -> None:
             with Path(output_path).open("a", encoding="utf-8") as stream:
                 stream.write(f"publish_date={publish_date}\n")
     elif arguments.workflow == "weekly_plan":
-        from .weekly import compute_next_week_dates
+        from ._dates import compute_next_week_dates
 
         dates = compute_next_week_dates(arguments.week_start)
         payload = {"dates": dates}

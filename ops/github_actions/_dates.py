@@ -6,6 +6,21 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 
+def compute_next_week_dates(week_start: str = "") -> list[str]:
+    """计算下周周一至周日；本函数只依赖标准库，供计划 Job 使用。"""
+    text = str(week_start or "").strip()
+    if text:
+        monday = date.fromisoformat(text)
+    else:
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        if today.weekday() == 0:
+            monday = today + timedelta(days=7)
+        else:
+            days_until_monday = (7 - today.weekday()) % 7
+            monday = today + timedelta(days=days_until_monday)
+    return [(monday + timedelta(days=offset)).isoformat() for offset in range(7)]
+
+
 def resolve_publish_date(value: str = "", default_days_ahead: int = 0) -> str:
     """解析计划发布日期；留空时按北京时间当天加指定天数，禁止选择过去日期。"""
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
