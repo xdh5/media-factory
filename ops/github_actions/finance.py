@@ -73,8 +73,11 @@ def _article_length(article: str) -> int:
 def _article_validation_error(article: str, source_hook: str) -> str | None:
     length = _article_length(article)
     problems = []
-    if not article.startswith(source_hook):
+    if not re.sub(r"\s+", "", article).startswith(re.sub(r"\s+", "", source_hook)):
         problems.append("黄金钩子没有原样保留在正文开头")
+    long_lines = [(index, len(line.strip())) for index, line in enumerate(article.splitlines(), 1) if len(line.strip()) > 20]
+    if long_lines:
+        problems.append(f"以下行超过20字，必须按语义换行（黄金钩子允许仅插入换行）：{long_lines}")
     if length < ARTICLE_MIN_LENGTH:
         problems.append(
             f"当前 {length} 个字符，还需增加至少 {ARTICLE_MIN_LENGTH - length} 个字符"
@@ -115,7 +118,7 @@ def _adapt_article(source_text: str, source_hook: str) -> str:
             if original and expanded and previous_article.count(original) == 1:
                 candidate = previous_article.replace(original, expanded, 1)
                 length = _article_length(candidate)
-                if candidate.startswith(source_hook) and _article_length(previous_article) < length <= ARTICLE_MAX_LENGTH:
+                if re.sub(r"\s+", "", candidate).startswith(re.sub(r"\s+", "", source_hook)) and _article_length(previous_article) < length <= ARTICLE_MAX_LENGTH:
                     previous_article = candidate
                     last_error = _article_validation_error(candidate, source_hook)
                     print(f"财经局部扩写第 {attempt + 1} 次：{length} 个字符；{last_error or '校验通过'}", flush=True)

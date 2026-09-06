@@ -116,7 +116,7 @@ FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
         "source_hook": {
             "type": "string",
             "minLength": 1,
-            "description": "数据库原稿开头的黄金钩子，正文必须原样以此开头",
+            "description": "数据库原稿开头的黄金钩子，正文开头忽略空白后必须原样匹配；可按语义换行，每行不超过20字",
         },
         "publish_date": {
             "type": "string",

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ._errors import InvalidParameterError
 from ._style import resolve_subtitle_style
-from ._text import build_rich_ass_text, parse_cue_text
+from ._text import build_rich_ass_text, parse_cue_text, wrap_plain_text
 
 
 def _ass_time(seconds: float) -> str:
@@ -86,7 +86,11 @@ def write_timeline_ass(
             )
         else:
             plain = str(spans[0]["text"])
-            safe_text = _escape_ass_text(plain)
+            safe_text = wrap_plain_text(
+                    _escape_ass_text(plain),
+                    max_width=resolved["max_width"],
+                    max_lines=resolved["max_lines"],
+                )
 
         if resolved["pos"] is not None:
             pos_x, pos_y = resolved["pos"]

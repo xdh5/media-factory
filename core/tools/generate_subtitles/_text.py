@@ -118,7 +118,7 @@ def _balance_lines(value: str, max_width: int, max_lines: int) -> list[str]:
             search(end + 1, row + 1, widths + [width], groups + [list(range(start, end + 1))])
     search(0, 0, [], [])
     if best is None:
-        return _wrap_lines(value, max_width)[:max_lines]
+        raise InvalidParameterError("text", "字幕超过允许行数，请先按语义拆成多条带时间的字幕，禁止截掉尾部文字")
     return [_join_tokens(tokens, group) for group in best]
 
 

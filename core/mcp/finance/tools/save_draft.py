@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from .._constants import (
@@ -99,8 +100,11 @@ def save_draft(
         raise WorkflowStepError("source_reservation_token 不能为空")
     if not normalized_source_hook:
         raise WorkflowStepError("source_hook 不能为空")
-    if not normalized_article.startswith(normalized_source_hook):
+    if not re.sub(r"\s+", "", normalized_article).startswith(re.sub(r"\s+", "", normalized_source_hook)):
         raise WorkflowStepError("正文必须以数据库原稿的黄金钩子原样开头，不能增删或改写")
+    for index, line in enumerate(normalized_article.splitlines(), 1):
+        if len(line.strip()) > 20:
+            raise WorkflowStepError(f"正文第 {index} 行超过20字，请按语义换行；黄金钩子也允许仅插入换行，不得改字或标点")
     if not isinstance(hashtags, list):
         raise WorkflowStepError("hashtags 必须是包含四个标签的列表")
     metadata_line = "|".join([str(title), str(short_title), *(str(item) for item in hashtags)])
