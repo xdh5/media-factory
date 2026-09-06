@@ -114,6 +114,21 @@ def _repair_long_lines(article: str) -> str:
     return "\n".join(repaired)
 
 
+def _restore_source_hook(article: str, source_hook: str) -> str:
+    """恢复数据库黄金钩子的原字，只保留模型正文的后续内容。"""
+    hook = str(source_hook or "").strip()
+    current = str(article or "").strip()
+    normalized_hook = re.sub(r"\s+", "", hook)
+    normalized_current = re.sub(r"\s+", "", current)
+    if normalized_current.startswith(normalized_hook):
+        return current
+    marker = normalized_hook[:8]
+    offset = normalized_current.find(marker)
+    suffix = normalized_current[offset + len(marker):] if offset >= 0 else normalized_current
+    hook_lines = [hook[index:index + 20] for index in range(0, len(hook), 20)]
+    return "\n".join(hook_lines) + ("\n" + suffix if suffix else "")
+
+
 def _adapt_article(source_text: str, source_hook: str) -> str:
     initial_prompt = (
         _article_prompt(source_text, source_hook)
@@ -141,7 +156,10 @@ def _adapt_article(source_text: str, source_hook: str) -> str:
             original = str(revision.get("original") or "")
             expanded = str(revision.get("expanded") or "").strip()
             if original and expanded and previous_article.count(original) == 1:
-                candidate = _repair_long_lines(previous_article.replace(original, expanded, 1))
+                candidate = _restore_source_hook(
+                    _repair_long_lines(previous_article.replace(original, expanded, 1)),
+                    source_hook,
+                )
                 length = _article_length(candidate)
                 if re.sub(r"\s+", "", candidate).startswith(re.sub(r"\s+", "", source_hook)) and _article_length(previous_article) < length <= ARTICLE_MAX_LENGTH:
                     previous_article = candidate
@@ -173,7 +191,7 @@ def _adapt_article(source_text: str, source_hook: str) -> str:
             prompt,
             max_tokens=5000,
         )["text"]).strip()
-        article = _repair_long_lines(article)
+        article = _restore_source_hook(_repair_long_lines(article), source_hook)
         last_error = _article_validation_error(article, source_hook)
         print(f"财经正文第 {attempt + 1} 次：{_article_length(article)} 个字符；{last_error or '校验通过'}", flush=True)
         if last_error is None:
