@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -22,6 +24,8 @@ from ._constants import (
     DEFAULT_TEMPERATURE,
     DEFAULT_TIMEOUT_SECONDS,
     MAX_RESPONSE_BYTES,
+    REQUEST_MAX_ATTEMPTS,
+    REQUEST_RETRY_DELAY_SECONDS,
 )
 from ._errors import QwenConfigurationError, QwenRequestError, QwenResponseError
 
@@ -146,14 +150,25 @@ def generate_text(
             "X-DashScope-Wait-Timeout": "30",
         },
     )
-    try:
-        with urlopen(request, timeout=settings["timeout_seconds"]) as response:
-            raw = response.read(MAX_RESPONSE_BYTES + 1)
-    except HTTPError as exc:
-        message, details = _error_payload(exc.read(MAX_RESPONSE_BYTES + 1), exc.code)
-        raise QwenRequestError(message, details) from exc
-    except (URLError, TimeoutError, OSError) as exc:
-        raise QwenRequestError(f"无法连接千问服务：{exc}") from exc
+    for attempt in range(1, REQUEST_MAX_ATTEMPTS + 1):
+        try:
+            with urlopen(request, timeout=settings["timeout_seconds"]) as response:
+                raw = response.read(MAX_RESPONSE_BYTES + 1)
+            break
+        except HTTPError as exc:
+            message, details = _error_payload(exc.read(MAX_RESPONSE_BYTES + 1), exc.code)
+            exc.close()
+            if exc.code not in {408, 429, 500, 502, 503, 504} or attempt == REQUEST_MAX_ATTEMPTS:
+                raise QwenRequestError(message, {**details, "attempts": attempt}) from exc
+        except (URLError, TimeoutError, OSError) as exc:
+            if attempt == REQUEST_MAX_ATTEMPTS:
+                raise QwenRequestError(
+                    f"连接千问服务连续 {attempt} 次失败，请检查网络或稍后重试：{exc}",
+                    {"attempts": attempt},
+                ) from exc
+        delay = REQUEST_RETRY_DELAY_SECONDS * 2 ** (attempt - 1)
+        print(f"千问请求暂时失败，{delay} 秒后重试（{attempt}/{REQUEST_MAX_ATTEMPTS}）", file=sys.stderr, flush=True)
+        time.sleep(delay)
     if len(raw) > MAX_RESPONSE_BYTES:
         raise QwenResponseError("千问响应超过允许大小，已停止读取")
     try:

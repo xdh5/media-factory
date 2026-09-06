@@ -59,7 +59,7 @@ def _build_filter(source: str, duration: float) -> str:
         f"[slide_full_source]scale={OUTPUT_SIZE}:force_original_aspect_ratio=increase:flags=lanczos,"
         f"crop={OUTPUT_SIZE},setsar=1,format=rgba[full_source];"
         f"[full_source]hue=s=0[first];"
-        f"[slide_small_source]select='eq(n\\,0)',"
+        f"[slide_small_source]trim=end_frame=1,setpts=PTS-STARTPTS,"
         f"scale={round(OUTPUT_WIDTH * CARD_SCALE)}:{round(OUTPUT_HEIGHT * CARD_SCALE)}:"
         "force_original_aspect_ratio=decrease:flags=lanczos,"
         "setsar=1,format=rgba,split=2[photo][shadow_source];"
@@ -159,6 +159,7 @@ def slide_in_shutter(
     ]
     command = [
         ffmpeg, "-y", "-hide_banner", "-nostats", "-loglevel", "error",
+        "-filter_complex_threads", "1",
         "-loop", "1", "-framerate", str(FPS),
         "-t", f"{duration:.6f}", "-i", str(image_path),
         "-filter_complex", ";".join(chains),

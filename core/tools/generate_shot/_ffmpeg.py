@@ -49,7 +49,11 @@ def _run(command: list[str], context: str, *, timeout_seconds: float) -> None:
         raise RenderTimeoutError(context, timeout_seconds) from extra
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()[-3000:]
-        raise RenderError(f"{context}：{detail or '未知 FFmpeg 错误'}")
+        hint = "进程被 SIGKILL 终止，请检查运行器内存限制" if completed.returncode == -9 else "请检查 FFmpeg 输出与运行器资源"
+        raise RenderError(
+            f"{context}：FFmpeg 退出码 {completed.returncode}；{detail or hint}",
+            {"returncode": completed.returncode, "stderr": detail},
+        )
 
 
 def _probe(path: Path) -> dict:
