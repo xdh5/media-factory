@@ -153,6 +153,27 @@ def _fit_layout(
     return font, int(MIN_FONT_SIZE * LINE_SPACING), MIN_FONT_SIZE
 
 
+def _wrap_lines_to_width(lines: list[str], font_path: Path, box: tuple[int, int, int, int]) -> list[str]:
+    """封面行超出最小字号宽度时按字符拆行，避免标题被裁掉。"""
+    _, _, right, _ = box
+    left = box[0]
+    max_width = right - left
+    font = _load_font(font_path, MIN_FONT_SIZE)
+    wrapped: list[str] = []
+    for line in lines:
+        current = ""
+        for char in line:
+            candidate = current + char
+            if current and font.getlength(candidate) > max_width:
+                wrapped.append(current)
+                current = char
+            else:
+                current = candidate
+        if current:
+            wrapped.append(current)
+    return wrapped or lines
+
+
 def _draw_title(
     image: Image.Image,
     lines: list[str],
@@ -218,11 +239,6 @@ def generate_cover_image(
     if not normalized_title:
         raise InvalidParameterError("title", "title 必须是非空字符串")
     drawn_lines = _normalize_lines(normalized_title, lines)
-    normalized_highlights = _normalize_highlighted_words(
-        normalized_title,
-        drawn_lines,
-        highlighted_words,
-    )
     candidates = _validate_images(images)
     width, height, normalized_size = _parse_size(size)
     resolved_font = Path(font_path or DEFAULT_COVER_FONT_PATH).resolve()
@@ -237,6 +253,12 @@ def generate_cover_image(
     except (OSError, ValueError) as exc:
         raise CoverSourceImageError(f"无法读取封面底图：{source_path}。{exc}") from exc
     box = _title_box(width, height)
+    drawn_lines = _wrap_lines_to_width(drawn_lines, resolved_font, box)
+    normalized_highlights = _normalize_highlighted_words(
+        normalized_title,
+        drawn_lines,
+        highlighted_words,
+    )
     font, spacing, font_size = _fit_layout(drawn_lines, resolved_font, box)
     _draw_title(canvas, drawn_lines, font, spacing, box, normalized_highlights)
     destination = Path(output_path).resolve()
