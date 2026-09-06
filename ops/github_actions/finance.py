@@ -96,6 +96,32 @@ def _adapt_article(source_text: str, source_hook: str) -> str:
     last_error = None
     previous_article = ""
     for attempt in range(ARTICLE_GENERATION_ATTEMPTS):
+        if previous_article and _article_length(previous_article) < ARTICLE_MIN_LENGTH:
+            # 只生成局部扩写，避免模型重写全文时反复返回同一份短稿。
+            missing = ARTICLE_TARGET_LENGTH - _article_length(previous_article)
+            revision = json_text(qwen(
+                "你是严谨的中文财经编辑，只输出有效 JSON。",
+                f"请在上一版正文中选择黄金钩子之后的一句完整原句，补充其解释。"
+                f"只返回 {{\"original\":\"原句\",\"expanded\":\"扩写后的完整句组\"}}。"
+                f"expanded 比 original 增加约 {missing} 个非空白字符；"
+                "保留原意，每句单独一行且不超过20字，不新增故事、数据、承诺或分支观点。"
+                "original 必须是正文中唯一出现的连续原文，不能包含开头钩子。\n"
+                f"黄金钩子：{source_hook}\n数据库原稿：\n{source_text}\n上一版正文：\n{previous_article}",
+                json_output=True,
+                max_tokens=2000,
+            ))
+            original = str(revision.get("original") or "")
+            expanded = str(revision.get("expanded") or "").strip()
+            if original and expanded and previous_article.count(original) == 1:
+                candidate = previous_article.replace(original, expanded, 1)
+                length = _article_length(candidate)
+                if candidate.startswith(source_hook) and _article_length(previous_article) < length <= ARTICLE_MAX_LENGTH:
+                    previous_article = candidate
+                    last_error = _article_validation_error(candidate, source_hook)
+                    print(f"财经局部扩写第 {attempt + 1} 次：{length} 个字符；{last_error or '校验通过'}", flush=True)
+                    if last_error is None:
+                        return candidate
+                    continue
         if attempt == 0:
             prompt = initial_prompt
         else:
@@ -120,6 +146,7 @@ def _adapt_article(source_text: str, source_hook: str) -> str:
             max_tokens=5000,
         )["text"]).strip()
         last_error = _article_validation_error(article, source_hook)
+        print(f"财经正文第 {attempt + 1} 次：{_article_length(article)} 个字符；{last_error or '校验通过'}", flush=True)
         if last_error is None:
             return article
         previous_article = article

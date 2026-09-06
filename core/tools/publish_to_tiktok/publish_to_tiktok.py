@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import os
 import re
 import time
@@ -241,7 +243,7 @@ def _create_post(payload: dict, request_id: str) -> tuple[str, bool]:
         result = {}
     print(
         f"[TikTok] Zernio HTTP {response.status_code} body={(response.text or '')[:800]}",
-        flush=True,
+        file=sys.stderr, flush=True,
     )
     if response.status_code == 409:
         details = result.get("details") if isinstance(result, dict) else {}

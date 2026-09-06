@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import json
 import re
 import traceback
@@ -74,7 +76,7 @@ def _hashtags(tags: list[str]) -> str:
 
 
 def _emit(progress, message: str) -> None:
-    print(f"[语言发布] {message}", flush=True)
+    print(f"[语言发布] {message}", file=sys.stderr, flush=True)
     if progress is not None:
         progress(message)
 
@@ -101,7 +103,7 @@ def _run_and_commit(manifest: dict, item: dict, channel: str, fn) -> dict:
     except Exception as exc:
         print(
             f"[语言发布] {channel} format={_video_format(item)} 未捕获异常：{type(exc).__name__}: {exc}\n{traceback.format_exc()}",
-            flush=True,
+            file=sys.stderr, flush=True,
         )
         batch = _failed_batch(item, channel, exc)
     succeeded = [row for row in (batch.get("results") or []) if row.get("success")]
@@ -112,18 +114,18 @@ def _run_and_commit(manifest: dict, item: dict, channel: str, fn) -> dict:
             print(
                 f"[语言发布] 已写入 D1 {channel} format={_video_format(item)} "
                 f"{len(committed.get('records') or succeeded)} 条",
-                flush=True,
+                file=sys.stderr, flush=True,
             )
         except Exception as exc:
             print(
                 f"[语言发布] 写入 D1 失败 {channel} format={_video_format(item)}：{type(exc).__name__}: {exc}\n{traceback.format_exc()}",
-                flush=True,
+                file=sys.stderr, flush=True,
             )
             batch["d1_error"] = {"type": type(exc).__name__, "message": str(exc)}
     else:
         print(
             f"[语言发布] {channel} format={_video_format(item)} 没有成功行，跳过 D1",
-            flush=True,
+            file=sys.stderr, flush=True,
         )
     return batch
 
@@ -633,7 +635,7 @@ def _commit_platform_publications(manifest: dict, published: list[dict]) -> dict
             if not account_id:
                 print(
                     f"[语言发布] 跳过 D1：{platform} 缺少 account_id title={video.get('title')}",
-                    flush=True,
+                    file=sys.stderr, flush=True,
                 )
                 continue
             kind = video_content_kind(
@@ -662,7 +664,7 @@ def _commit_platform_publications(manifest: dict, published: list[dict]) -> dict
     print(
         f"[语言发布] 准备写入 D1 {len(records)} 条："
         f"{json.dumps([{k: item[k] for k in ('publication_id', 'platform', 'content_part', 'title')} for item in records], ensure_ascii=False)}",
-        flush=True,
+        file=sys.stderr, flush=True,
     )
     return commit_publication_records(records)
 
@@ -680,7 +682,7 @@ def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
         description = _description(item["tags"])
         print(
             f"[语言发布] YouTube 开始 format={_video_format(item)} part={part} title={title}",
-            flush=True,
+            file=sys.stderr, flush=True,
         )
         for account in channels:
             try:
@@ -699,11 +701,11 @@ def _publish_chinese_youtube(item: dict, publish_at: str | None = None) -> dict:
                 results.append({"channel": "youtube", "part": part, "account": account, "video": video, "publish_at": publish_at, "success": True, "result": upload})
                 print(
                     f"[语言发布] YouTube 成功 part={part} video_id={upload.get('video_id')} privacy={upload.get('privacy_status')}",
-                    flush=True,
+                    file=sys.stderr, flush=True,
                 )
             except YouTubeToolError as error:
                 payload = error.to_dict()["error"]
-                print(f"[语言发布] YouTube 失败 part={part} {payload}", flush=True)
+                print(f"[语言发布] YouTube 失败 part={part} {payload}", file=sys.stderr, flush=True)
                 results.append({
                     "channel": "youtube",
                     "part": part,
@@ -731,12 +733,12 @@ def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
     tiktok_account = str(item.get("tiktok_account") or item.get("youtube_account") or WORKFLOW_ID)
     print(
         f"[语言发布] TikTok 拉账号 account={tiktok_account} format={_video_format(item)}",
-        flush=True,
+        file=sys.stderr, flush=True,
     )
     accounts = _tiktok_accounts(item["account_group"], tiktok_account)
     print(
         f"[语言发布] TikTok 账号数={len(accounts)} ids={[row.get('account_id') for row in accounts]}",
-        flush=True,
+        file=sys.stderr, flush=True,
     )
     results = []
     for part, video in enumerate(item["videos"], 1):
@@ -745,7 +747,7 @@ def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
         video_url = str(video.get("video_url") or "").strip()
         print(
             f"[语言发布] TikTok 开始 format={_video_format(item)} part={part} title={title} url={video_url}",
-            flush=True,
+            file=sys.stderr, flush=True,
         )
         for account in accounts:
             try:
@@ -759,11 +761,11 @@ def _publish_chinese_tiktok(item: dict, publish_at: str | None = None) -> dict:
                 results.append({"channel": "tiktok", "part": part, "account": account, "video": video, "publish_at": publish_at, "success": True, "result": upload})
                 print(
                     f"[语言发布] TikTok 成功 part={part} post_id={upload.get('post_id')} status={upload.get('status')}",
-                    flush=True,
+                    file=sys.stderr, flush=True,
                 )
             except TikTokToolError as error:
                 payload = error.to_dict()["error"]
-                print(f"[语言发布] TikTok 失败 part={part} {payload}", flush=True)
+                print(f"[语言发布] TikTok 失败 part={part} {payload}", file=sys.stderr, flush=True)
                 results.append({
                     "channel": "tiktok",
                     "part": part,
@@ -811,7 +813,7 @@ def _publish_chinese_instagram(
 
     accounts = list_instagram_accounts()
     if not accounts:
-        print("[语言发布] Instagram 账号列表为空", flush=True)
+        print("[语言发布] Instagram 账号列表为空", file=sys.stderr, flush=True)
         return _failed_batch(
             item,
             "instagram",
@@ -826,7 +828,7 @@ def _publish_chinese_instagram(
         video_url = str(video.get("video_url") or "").strip()
         print(
             f"[语言发布] Instagram 开始 format={_video_format(item)} part={part} title={title} url={video_url}",
-            flush=True,
+            file=sys.stderr, flush=True,
         )
         for account in accounts:
             try:
@@ -848,11 +850,11 @@ def _publish_chinese_instagram(
                 })
                 print(
                     f"[语言发布] Instagram 成功 part={part} post_id={upload.get('post_id')} status={upload.get('status')}",
-                    flush=True,
+                    file=sys.stderr, flush=True,
                 )
             except InstagramToolError as error:
                 payload = error.to_dict()["error"]
-                print(f"[语言发布] Instagram 失败 part={part} {payload}", flush=True)
+                print(f"[语言发布] Instagram 失败 part={part} {payload}", file=sys.stderr, flush=True)
                 results.append({
                     "channel": "instagram",
                     "part": part,
@@ -886,7 +888,7 @@ def _publish_chinese_facebook(
 
     accounts = list_facebook_accounts()
     if not accounts:
-        print("[语言发布] Facebook 账号列表为空", flush=True)
+        print("[语言发布] Facebook 账号列表为空", file=sys.stderr, flush=True)
         return _failed_batch(
             item,
             "facebook",
@@ -901,7 +903,7 @@ def _publish_chinese_facebook(
         video_url = str(video.get("video_url") or "").strip()
         print(
             f"[语言发布] Facebook 开始 format={_video_format(item)} part={part} title={title} url={video_url}",
-            flush=True,
+            file=sys.stderr, flush=True,
         )
         for account in accounts:
             try:
@@ -923,11 +925,11 @@ def _publish_chinese_facebook(
                 })
                 print(
                     f"[语言发布] Facebook 成功 part={part} post_id={upload.get('post_id')} status={upload.get('status')}",
-                    flush=True,
+                    file=sys.stderr, flush=True,
                 )
             except FacebookToolError as error:
                 payload = error.to_dict()["error"]
-                print(f"[语言发布] Facebook 失败 part={part} {payload}", flush=True)
+                print(f"[语言发布] Facebook 失败 part={part} {payload}", file=sys.stderr, flush=True)
                 results.append({
                     "channel": "facebook",
                     "part": part,

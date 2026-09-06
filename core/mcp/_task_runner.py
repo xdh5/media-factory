@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import inspect
 import json
 import threading
@@ -115,7 +117,7 @@ def _write_task(path: Path, data: dict) -> None:
     try:
         text = json.dumps(data, ensure_ascii=False, indent=2)
     except TypeError as exc:
-        print(f"[后台任务] JSON 序列化失败，改用 str 兜底：{exc}", flush=True)
+        print(f"[后台任务] JSON 序列化失败，改用 str 兜底：{exc}", file=sys.stderr, flush=True)
         text = json.dumps(data, ensure_ascii=False, indent=2, default=str)
     path.write_text(text, encoding="utf-8")
 
@@ -191,7 +193,7 @@ def submit_task(
             trace = traceback.format_exc()
             print(
                 f"[后台任务失败] {task_id} step={step} {type(extra).__name__}: {extra}\n{trace}",
-                flush=True,
+                file=sys.stderr, flush=True,
             )
             data = json.loads(path.read_text(encoding="utf-8"))
             data["status"] = STATUS_FAILED

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import mimetypes
 import os
 import re
@@ -265,7 +267,7 @@ def publish_to_youtube(
                 print(
                     f"[YouTube] 标题已存在 {existing.get('duplicate_count') or 1} 条，跳过上传 "
                     f"title={normalized_title[:100]!r} video_id={existing['video_id']}",
-                    flush=True,
+                    file=sys.stderr, flush=True,
                 )
                 return {
                     "video_id": existing["video_id"],

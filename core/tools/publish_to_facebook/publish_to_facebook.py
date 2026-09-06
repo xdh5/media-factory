@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import os
 import time
 import uuid
@@ -100,7 +102,7 @@ def _request(
         payload = {}
     print(
         f"[Facebook] Zernio {method} {path} HTTP {response.status_code} body={(response.text or '')[:800]}",
-        flush=True,
+        file=sys.stderr, flush=True,
     )
     if not response.ok:
         message = str(payload.get("error") or payload.get("message") or response.text[:500])
