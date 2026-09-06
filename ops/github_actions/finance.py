@@ -89,6 +89,31 @@ def _article_validation_error(article: str, source_hook: str) -> str | None:
     return "；".join(problems) or None
 
 
+def _repair_long_lines(article: str) -> str:
+    """只让模型给超长行添加语义换行，逐字核对后才接受。"""
+    repaired = []
+    for line in article.splitlines():
+        if len(line.strip()) <= 20:
+            repaired.append(line)
+            continue
+        payload = json_text(qwen(
+            "你是中文断句编辑，只输出有效 JSON。",
+            '将下列原文按语义拆成每行不超过20字的短句，禁止拆开词语。'
+            '只能插入换行，不能增删任何字或标点。输出 {"lines":["第一行","第二行"]}。\n'
+            + line,
+            json_output=True,
+            max_tokens=1000,
+        ))
+        lines = payload.get("lines")
+        if (isinstance(lines, list) and lines
+                and all(isinstance(item, str) and 0 < len(item.strip()) <= 20 for item in lines)
+                and re.sub(r"\s+", "", "".join(lines)) == re.sub(r"\s+", "", line)):
+            repaired.extend(item.strip() for item in lines)
+        else:
+            repaired.append(line)
+    return "\n".join(repaired)
+
+
 def _adapt_article(source_text: str, source_hook: str) -> str:
     initial_prompt = (
         _article_prompt(source_text, source_hook)
@@ -116,7 +141,7 @@ def _adapt_article(source_text: str, source_hook: str) -> str:
             original = str(revision.get("original") or "")
             expanded = str(revision.get("expanded") or "").strip()
             if original and expanded and previous_article.count(original) == 1:
-                candidate = previous_article.replace(original, expanded, 1)
+                candidate = _repair_long_lines(previous_article.replace(original, expanded, 1))
                 length = _article_length(candidate)
                 if re.sub(r"\s+", "", candidate).startswith(re.sub(r"\s+", "", source_hook)) and _article_length(previous_article) < length <= ARTICLE_MAX_LENGTH:
                     previous_article = candidate
@@ -148,6 +173,7 @@ def _adapt_article(source_text: str, source_hook: str) -> str:
             prompt,
             max_tokens=5000,
         )["text"]).strip()
+        article = _repair_long_lines(article)
         last_error = _article_validation_error(article, source_hook)
         print(f"财经正文第 {attempt + 1} 次：{_article_length(article)} 个字符；{last_error or '校验通过'}", flush=True)
         if last_error is None:
