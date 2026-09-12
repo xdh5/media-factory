@@ -81,10 +81,10 @@ def _parse_subtitle_marks(value: str, timeline_by_id: dict) -> dict[str, str]:
         expected = display_subtitle_text(str(timeline_by_id[line_id].get("text") or ""))
         actual = display_subtitle_text(annotated)
         if actual != expected:
-            raise AgentOutputFormatError(
-                f"台词 {line_id} 去【】后必须与配音原文一致",
-                {"expected": expected, "actual": actual},
-            )
+            # 分镜模型偶尔会顺手改一个字。画面与镜头仍可使用，此时只放弃该句重点样式，
+            # 后续会自动采用时间轴中的配音原文，避免无损降级被判为整条视频失败。
+            marks[line_id] = str(timeline_by_id[line_id].get("text") or "")
+            continue
         marks[line_id] = annotated
     return marks
 

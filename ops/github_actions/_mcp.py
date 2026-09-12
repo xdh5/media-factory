@@ -42,7 +42,13 @@ class ProjectMCP:
     async def __aexit__(self, exc_type, exc, traceback) -> None:
         await self._stack.aclose()
 
-    async def call(self, name: str, arguments: dict | None = None) -> dict:
+    async def call(
+        self,
+        name: str,
+        arguments: dict | None = None,
+        *,
+        read_timeout_seconds: int = 180,
+    ) -> dict:
         if self._session is None:
             raise RuntimeError("MCP 会话尚未初始化")
         if "poll_task" not in name:
@@ -50,7 +56,7 @@ class ProjectMCP:
         result = await self._session.call_tool(
             name,
             arguments or {},
-            read_timeout_seconds=timedelta(minutes=3),
+            read_timeout_seconds=timedelta(seconds=read_timeout_seconds),
         )
         texts = [getattr(item, "text", "") for item in result.content if getattr(item, "type", "") == "text"]
         raw = "\n".join(text for text in texts if text).strip()
@@ -69,9 +75,31 @@ class ProjectMCP:
 
     async def poll(self, tool_name: str, task_path: str, *, interval_seconds: int = 15) -> dict:
         round_id = 0
+        recovering = False
         while True:
             round_id += 1
-            result = await self.call(tool_name, {"task_path": task_path})
+            try:
+                if recovering:
+                    async with ProjectMCP(self.module, self.project_root) as recovery:
+                        result = await recovery.call(tool_name, {"task_path": task_path})
+                else:
+                    result = await self.call(
+                        tool_name,
+                        {"task_path": task_path},
+                        read_timeout_seconds=45,
+                    )
+            except Exception as exc:
+                if "timed out" not in str(exc).casefold() and not isinstance(exc, TimeoutError):
+                    raise
+                # 长任务期间 stdio 协议流偶发损坏时，原会一直等满 180 秒后让整日任务失败。
+                # 后台结果已经落盘，可用独立 MCP 进程重新读取，不需要重复启动生产步骤。
+                print(
+                    f"[轮询恢复] {tool_name} 响应超时，使用新 MCP 会话读取任务状态",
+                    flush=True,
+                )
+                recovering = True
+                async with ProjectMCP(self.module, self.project_root) as recovery:
+                    result = await recovery.call(tool_name, {"task_path": task_path})
             status = str(result.get("status") or "unknown")
             step = str(result.get("step") or "")
             task_id = str(result.get("task_id") or "")

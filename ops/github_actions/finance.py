@@ -59,7 +59,11 @@ def _extract_source_hook(source_text: str) -> str:
             json_output=True,
             max_tokens=500,
         )
-        hook = str(json_text(result).get("source_hook") or "")
+        try:
+            hook = str(json_text(result).get("source_hook") or "")
+        except (json.JSONDecodeError, ValueError) as exc:
+            feedback = f"上一次 JSON 不完整或格式错误：{exc}；必须缩短钩子并输出完整 JSON"
+            continue
         if hook and source_text.startswith(hook):
             return hook
         feedback = "source_hook 必须从原稿第一个字开始连续复制，且与原稿开头完全一致"

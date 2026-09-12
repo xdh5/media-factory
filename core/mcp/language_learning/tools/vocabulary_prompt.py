@@ -69,7 +69,8 @@ def _normalize_korean_romanization(korean: str, romanization: str, row_index: in
     """统一连字符并强制韩语罗马音与韩文音节逐一对应。"""
     normalized = re.sub(r"[‐‑‒–—−]", "-", str(romanization or "").strip())
     syllable_count = sum("가" <= character <= "힣" for character in str(korean or ""))
-    parts = [part.strip() for part in normalized.split("-")]
+    # 模型常把词界写为空格、音节界写为连字符；两者都表示音节边界，可确定性归一。
+    parts = [part.strip() for part in re.split(r"[-\s]+", normalized) if part.strip()]
     if syllable_count and (len(parts) != syllable_count or any(not part for part in parts)):
         raise InvalidVocabularyError(
             f"第 {row_index} 行韩语罗马音必须按 {syllable_count} 个韩文音节用半角连字符分隔："
