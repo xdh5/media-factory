@@ -31,7 +31,7 @@ from ._constants import (
 )
 from ._errors import AccountNotFoundError, CredentialError, InvalidParameterError, PublishError
 
-__all__ = ["list_tiktok_accounts", "publish_to_tiktok"]
+__all__ = ["delete_zernio_post", "list_tiktok_accounts", "publish_to_tiktok"]
 
 load_project_env()
 
@@ -48,6 +48,19 @@ def _api_key() -> str:
             {"environment": ZERNIO_API_KEY_ENV},
         )
     return value
+
+
+def _request_with_retry(method: str, url: str, **kwargs):
+    """连接被重置时重试，避免把临时网络抖动记成发布失败。"""
+    last_error = None
+    for attempt in range(5):
+        try:
+            return requests.request(method, url, **kwargs)
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt < 4:
+                time.sleep(2 * (attempt + 1))
+    raise last_error
 
 
 def _normalize_publish_at(publish_at: str | None) -> str | None:
@@ -90,7 +103,7 @@ def list_tiktok_accounts(account: str | None = None) -> list[dict]:
     load_project_env()
     wanted = _normalize_account(account) if account else None
     try:
-        response = requests.get(
+        response = _request_with_retry("GET",
             f"{ZERNIO_API_BASE_URL}/accounts",
             headers={"Authorization": f"Bearer {_api_key()}"},
             params={"platform": "tiktok", "status": "connected"},
@@ -177,7 +190,7 @@ def _post_status(post: dict, account_id: str) -> tuple[str, str, str]:
 
 def _get_post(post_id: str) -> dict:
     try:
-        response = requests.get(
+        response = _request_with_retry("GET",
             f"{ZERNIO_API_BASE_URL}/posts/{post_id}",
             headers={"Authorization": f"Bearer {_api_key()}"},
             timeout=TIKTOK_REQUEST_TIMEOUT_SECONDS,
@@ -195,6 +208,27 @@ def _get_post(post_id: str) -> dict:
             {"post_id": post_id, "status_code": response.status_code},
         )
     return _post_data(result)
+
+
+def delete_zernio_post(post_id: str) -> dict:
+    """删除当前 TikTok Zernio 工作区中的草稿或预约帖子。"""
+    normalized_post_id = str(post_id or "").strip()
+    if not normalized_post_id:
+        raise InvalidParameterError("post_id 不能为空", {"parameter": "post_id"})
+    try:
+        response = _request_with_retry("DELETE",
+            f"{ZERNIO_API_BASE_URL}/posts/{normalized_post_id}",
+            headers={"Authorization": f"Bearer {_api_key()}"},
+            timeout=TIKTOK_REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        raise PublishError(f"删除 Zernio 帖子失败：{exc}", {"post_id": normalized_post_id}) from exc
+    if response.status_code not in (200, 204):
+        raise PublishError(
+            f"删除 Zernio 帖子失败：HTTP {response.status_code}，{response.text[:500]}",
+            {"post_id": normalized_post_id, "status_code": response.status_code},
+        )
+    return {"post_id": normalized_post_id, "deleted": True}
 
 
 def _wait_for_terminal(post_id: str, account_id: str) -> dict:
@@ -225,7 +259,7 @@ def _wait_for_terminal(post_id: str, account_id: str) -> dict:
 
 def _create_post(payload: dict, request_id: str) -> tuple[str, bool]:
     try:
-        response = requests.post(
+        response = _request_with_retry("POST",
             f"{ZERNIO_API_BASE_URL}/posts",
             headers={
                 "Authorization": f"Bearer {_api_key()}",

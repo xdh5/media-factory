@@ -321,6 +321,14 @@ def commit_publication_records(records: list[dict]) -> dict:
     return payload
 
 
+def delete_publication_records(record_ids: list[int]) -> dict:
+    """按数据库记录 ID 精确删除发布记录。"""
+    payload = _request("DELETE", "/v1/publication-records", body={"record_ids": record_ids})
+    if not isinstance(payload, dict) or not isinstance(payload.get("deleted_ids"), list):
+        raise CloudflareDataRequestError("Cloudflare 删除发布记录接口缺少 deleted_ids 数组")
+    return payload
+
+
 def list_publishing_account_groups(*, business_line: str | None = None) -> dict:
     query = {"business_line": business_line} if business_line else None
     payload = _request("GET", "/v1/publishing-account-groups", query=query)

@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 YOUTUBE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
 YOUTUBE_PRIVACY_STATUSES = ["private", "unlisted", "public"]
 DEFAULT_CATEGORY_ID = "24"

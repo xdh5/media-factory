@@ -619,13 +619,14 @@ def language_learning_start_upload_r2(
     manifest_path: str,
     run_id: str,
     subject_sheet_path: str | None = None,
+    learning_modes: list[str] | None = None,
 ) -> dict:
     """启动语言成片、主题图和发布清单上传 R2。"""
     try:
         cache_root, _ = production_dirs(run_id)
 
         def _work() -> dict:
-            return upload_publish_assets_to_r2(manifest_path, subject_sheet_path)
+            return upload_publish_assets_to_r2(manifest_path, subject_sheet_path, learning_modes)
 
         started = runner_submit_task(
             cache_dir=cache_root,

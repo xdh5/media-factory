@@ -1,4 +1,4 @@
-"""财经旁白切句与字幕显示：TTS 按换行和标点切段，屏上默认去标点、顿号保留。"""
+"""财经旁白切句与字幕显示：TTS 和屏幕字幕沿用原文的句读。"""
 
 from __future__ import annotations
 
@@ -10,23 +10,11 @@ _ENUMERATION = re.compile(
 )
 _STRONG_BREAK = set("。！？；!?")
 _COMMA_BREAK = set("，,")
-_STRIP_FOR_DISPLAY = "。，；！？,.!?;:：…—～~\"'“”‘’（）()《》[] "
 
 
 def display_subtitle_text(text: str) -> str:
-    """屏上默认去掉句读标点；顿号「、」留下。标记括号【】不进入画面。"""
-    raw = str(text or "").strip().replace("【", "").replace("】", "")
-    if not raw:
-        return ""
-    chars: list[str] = []
-    for char in raw:
-        if char == "、":
-            chars.append("、")
-            continue
-        if char in _STRIP_FOR_DISPLAY or char.isspace():
-            continue
-        chars.append(char)
-    return "".join(chars).strip()
+    """保留原文句读；重点标记括号【】不进入画面。"""
+    return str(text or "").strip().replace("【", "").replace("】", "")
 
 
 def parse_emphasis_segments(text: str) -> list[tuple[str, bool]]:

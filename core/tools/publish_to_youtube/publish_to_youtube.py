@@ -38,7 +38,7 @@ from ._constants import (
 )
 from ._errors import AccountNotFoundError, CredentialError, InvalidParameterError, UploadError
 
-__all__ = ["list_youtube_accounts", "publish_to_youtube"]
+__all__ = ["delete_youtube_video", "list_youtube_accounts", "publish_to_youtube"]
 
 load_project_env()
 
@@ -174,6 +174,24 @@ def _normalize_publish_at(publish_at: str | None) -> str | None:
             {"parameter": "publish_at", "value": value},
         )
     return normalized.isoformat().replace("+00:00", "Z")
+
+
+def delete_youtube_video(video_id: str, channel_id: str, *, account: str | None = None) -> dict:
+    """通过 YouTube Data API 删除指定频道中的视频。"""
+    normalized_video_id = str(video_id or "").strip()
+    if not normalized_video_id:
+        raise InvalidParameterError("video_id 不能为空", {"parameter": "video_id"})
+    credentials = _load_credentials(channel_id, account)
+    try:
+        youtube = build("youtube", "v3", credentials=credentials, cache_discovery=False)
+        youtube.videos().delete(id=normalized_video_id).execute()
+    except HttpError as exc:
+        status = getattr(exc.resp, "status", None)
+        raise UploadError(
+            f"删除 YouTube 视频 {normalized_video_id} 失败：HTTP {status or 'unknown'}",
+            {"video_id": normalized_video_id, "channel_id": channel_id, "status": status},
+        ) from exc
+    return {"video_id": normalized_video_id, "channel_id": channel_id, "deleted": True}
 
 
 def _find_existing_video(youtube, channel_id: str, title: str) -> dict | None:

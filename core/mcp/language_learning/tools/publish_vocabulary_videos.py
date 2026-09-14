@@ -387,6 +387,7 @@ def prepare_r2_publish_manifest(
 def upload_publish_assets_to_r2(
     manifest_path: str | Path,
     subject_sheet_path: str | Path | None = None,
+    learning_modes: list[str] | None = None,
 ) -> dict:
     """上传语言成片、可选主题图和发布清单，并把公网地址写回本地清单。"""
     path = Path(manifest_path).resolve()
@@ -396,8 +397,11 @@ def upload_publish_assets_to_r2(
         raise PublishError("发布清单缺少 run_id，无法生成 R2 对象路径")
     uploaded: list[dict] = []
     output_records = []
+    selected_modes = {str(value).strip() for value in (learning_modes or []) if str(value).strip()}
     for item in manifest.get("items") or []:
         mode = str(item.get("learning_mode") or "unknown").strip() or "unknown"
+        if selected_modes and mode not in selected_modes:
+            continue
         video_format = _video_format(item)
         content_kind = video_content_kind(mode, video_format)
         for index, video in enumerate(item.get("videos") or [], 1):
@@ -545,10 +549,6 @@ def _should_publish_youtube(
     """YouTube 已成功时不重复上传；按原版/问答版分别判断。"""
     if _recorded_parts(item, "youtube", recorded) >= {part for _, part in _item_video_rows(item)}:
         return False
-    if _item_status(manifest, item).get("youtube") is True:
-        return False
-    if _is_standard_item(item) and manifest.get("youtube_published") is True:
-        return False
     return True
 
 
@@ -559,15 +559,6 @@ def _should_publish_tiktok(
 ) -> bool:
     """TikTok 已成功时不重复提交；按原版/问答版分别判断。"""
     if _recorded_parts(item, "tiktok", recorded) >= {part for _, part in _item_video_rows(item)}:
-        return False
-    status = _item_status(manifest, item)
-    if status.get("tiktok") is True or status.get("tiktok_scheduled") is True or status.get("tiktok_draft") is True:
-        return False
-    if _is_standard_item(item) and (
-        manifest.get("tiktok_published") is True
-        or manifest.get("tiktok_scheduled") is True
-        or manifest.get("tiktok_draft_delivered") is True
-    ):
         return False
     return True
 
@@ -582,10 +573,8 @@ def _pending_item_parts(
     total = {index for index, _ in enumerate(item.get("videos") or [], 1)}
     requested = {int(part) for part in video_parts} if video_parts else set(total)
     requested &= total
-    published = {int(part) for part in (_item_status(manifest, item).get(f"{platform}_parts") or [])}
-    if _is_standard_item(item):
-        published |= {int(part) for part in (manifest.get(f"{platform}_published_parts") or [])}
-    published |= _recorded_parts(item, platform, recorded)
+    # 旧清单可能保留平台未真正接收时写入的成功标记，去重只认 D1 的正式记录。
+    published = _recorded_parts(item, platform, recorded)
     return requested - published
 
 

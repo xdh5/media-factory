@@ -8,7 +8,6 @@ const platformNames = {
   tiktok: "TikTok",
   kuaishou: "快手",
   douyin: "抖音",
-  baijiahao: "百家号",
   toutiao: "头条号",
   wechat_channels: "视频号",
 };

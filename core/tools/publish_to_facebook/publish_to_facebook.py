@@ -86,14 +86,24 @@ def _request(
     if request_id:
         headers["x-request-id"] = request_id
     try:
-        response = requests.request(
-            method,
-            f"{ZERNIO_API_BASE_URL}{path}",
-            headers=headers,
-            params=params,
-            json=json,
-            timeout=FACEBOOK_REQUEST_TIMEOUT_SECONDS,
-        )
+        last_error = None
+        for attempt in range(5):
+            try:
+                response = requests.request(
+                    method,
+                    f"{ZERNIO_API_BASE_URL}{path}",
+                    headers=headers,
+                    params=params,
+                    json=json,
+                    timeout=FACEBOOK_REQUEST_TIMEOUT_SECONDS,
+                )
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < 4:
+                    time.sleep(2 * (attempt + 1))
+        else:
+            raise last_error
     except requests.RequestException as exc:
         raise PublishError(f"请求 Zernio Facebook API 失败：{exc}") from exc
     try:

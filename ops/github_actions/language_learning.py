@@ -113,7 +113,7 @@ def _delivery_config(topic: str, modes: list[str]) -> dict:
             "account_group": "韩语",
             "tags": ["#学韩语", "#韩语单词", "#韩语入门", "#每日韩语"],
             "short_title": "韩语单词怎么说",
-            "platforms": ["dy", "ks", "blbl", "bjh", "tt", "sph"],
+            "platforms": ["dy", "ks", "blbl", "tt", "sph"],
         }
     return result
 

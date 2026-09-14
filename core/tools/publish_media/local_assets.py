@@ -118,9 +118,9 @@ def ensure_local_publish_items(
         local_rows = [item for item in local_rows if str(item.get("content_kind") or "") in wanted_kinds]
 
     def _is_valid(row: dict) -> bool:
-        expected = local_video_path(row)
         current = Path(str(row.get("local_path") or "")).resolve()
-        return current.is_file() and current == expected
+        # 兼容历史本地产物文件名与 R2 对象名不一致的情况；发布时使用 D1 已登记且存在的本地文件。
+        return current.is_file()
 
     valid_local_rows = [row for row in local_rows if _is_valid(row)]
     valid_kinds = {str(row.get("content_kind") or "") for row in valid_local_rows}
@@ -178,7 +178,7 @@ def enrich_local_publish_item(row: dict) -> dict | None:
     copy_path = output_dir / "publish-copy.txt"
     content_kind = str(row.get("content_kind") or "").strip()
     hashtags = str(row.get("hashtags") or "").strip()
-    if content_kind.startswith("en-ko"):
+    if content_kind.startswith(("en-ko", "en-zh")):
         publish_copy = hashtags
     elif copy_path.is_file():
         publish_copy = copy_path.read_text(encoding="utf-8").strip()

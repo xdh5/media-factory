@@ -26,6 +26,7 @@ from ._errors import CredentialError, InvalidParameterError, PublishError
 
 __all__ = [
     "check_instagram_connection",
+    "delete_zernio_post",
     "list_instagram_accounts",
     "publish_to_instagram",
 ]
@@ -86,14 +87,24 @@ def _request(
     if request_id:
         headers["x-request-id"] = request_id
     try:
-        response = requests.request(
-            method,
-            f"{ZERNIO_API_BASE_URL}{path}",
-            headers=headers,
-            params=params,
-            json=json,
-            timeout=INSTAGRAM_REQUEST_TIMEOUT_SECONDS,
-        )
+        last_error = None
+        for attempt in range(5):
+            try:
+                response = requests.request(
+                    method,
+                    f"{ZERNIO_API_BASE_URL}{path}",
+                    headers=headers,
+                    params=params,
+                    json=json,
+                    timeout=INSTAGRAM_REQUEST_TIMEOUT_SECONDS,
+                )
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < 4:
+                    time.sleep(2 * (attempt + 1))
+        else:
+            raise last_error
     except requests.RequestException as exc:
         raise PublishError(f"请求 Zernio Instagram API 失败：{exc}") from exc
     try:
@@ -111,6 +122,15 @@ def _request(
             {"status_code": response.status_code, "response": payload},
         )
     return payload if isinstance(payload, dict) else {}
+
+
+def delete_zernio_post(post_id: str) -> dict:
+    """删除 Meta 专用 Zernio 工作区中的草稿或预约帖子。"""
+    normalized_post_id = str(post_id or "").strip()
+    if not normalized_post_id:
+        raise InvalidParameterError("post_id 不能为空", {"parameter": "post_id"})
+    _request("DELETE", f"/posts/{normalized_post_id}")
+    return {"post_id": normalized_post_id, "deleted": True}
 
 
 def _account_rows() -> list[dict]:

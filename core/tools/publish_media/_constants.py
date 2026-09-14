@@ -16,7 +16,6 @@ SUPPORTED_PLATFORMS = (
     "tiktok",
     "kuaishou",
     "douyin",
-    "baijiahao",
     "toutiao",
     "wechat_channels",
 )
@@ -36,9 +35,6 @@ PLATFORM_ALIASES = {
     "douyin": "douyin",
     "dy": "douyin",
     "抖音": "douyin",
-    "baijiahao": "baijiahao",
-    "bjh": "baijiahao",
-    "百家号": "baijiahao",
     "toutiao": "toutiao",
     "tt": "toutiao",
     "头条": "toutiao",
@@ -50,7 +46,6 @@ PLATFORM_ALIASES = {
 MATRIXMEDIA_PLATFORM_CODES = {
     "douyin": "dy",
     "kuaishou": "ks",
-    "baijiahao": "bjh",
     "toutiao": "tt",
     "wechat_channels": "sph",
 }
@@ -58,7 +53,6 @@ MATRIXMEDIA_CODE_PLATFORMS = {
     **{value: key for key, value in MATRIXMEDIA_PLATFORM_CODES.items()},
     "抖音": "douyin",
     "快手": "kuaishou",
-    "百家号": "baijiahao",
     "头条": "toutiao",
     "头条号": "toutiao",
     "视频号": "wechat_channels",
