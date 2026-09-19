@@ -5,7 +5,7 @@
   "compatibility_date": "2025-08-21",
   "routes": [
     {
-      "pattern": "media-data.cyberlab.lol",
+      "pattern": "media-data.example.com",
       "custom_domain": true
     }
   ],
@@ -19,7 +19,7 @@
     {
       "binding": "DB",
       "database_name": "media-factory",
-      "database_id": "a9d3c3fd-9c6b-44b3-8327-a5ff8f673e32",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
       "migrations_dir": "migrations"
     }
   ]

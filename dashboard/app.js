@@ -1,4 +1,4 @@
-const API_BASE_URL = "https://media-data.cyberlab.lol";
+const API_BASE_URL = "https://media-data.example.com";
 const PIN_STORAGE_KEY = "media-factory-dashboard-pin";
 
 const platformNames = {

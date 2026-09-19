@@ -151,7 +151,7 @@ class UrlParser:
 
 
 if __name__ == '__main__':
-    # share_url = UrlParser.get_url('0.74 复制打开抖音，看看【珊珊的甜甜圈之小圈的作品】虽然桌拍我已经没问题了，这个月也可以保级了，我也不... https://v.douyin.com/ir94AJyD/ l@c.At qEh:/ 01/19 ')
+    # share_url = UrlParser.get_url('复制打开抖音，查看示例视频 https://v.douyin.com/EXAMPLE/')
     # redirect_url = WebFetcher.fetch_redirect_url(share_url)
     # if redirect_url:
     #     print(f'重定向后的链接：{redirect_url}')

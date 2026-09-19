@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "media-factory-finance": {
-      "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "command": "python",
       "args": [
         "-m",
         "core.mcp.finance"
@@ -13,7 +13,7 @@
       }
     },
     "media-factory-language-learning": {
-      "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "command": "python",
       "args": [
         "-m",
         "core.mcp.language_learning"
@@ -25,7 +25,7 @@
       }
     },
     "media-factory-publishing": {
-      "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "command": "python",
       "args": [
         "-m",
         "core.mcp.publishing"
@@ -36,7 +36,7 @@
       }
     },
     "media-factory-douyin-research": {
-      "command": "C:\\Users\\zzy\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "command": "python",
       "args": [
         "-m",
         "core.mcp.douyin_research"

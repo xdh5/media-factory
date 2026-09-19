@@ -1,5 +1,6 @@
 """语言学习 MCP 技术常量（TTS、发布等业务参数见 SKILL）。"""
 
+import os
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -32,7 +33,7 @@ SUBJECT_GENERATION_MAX_ATTEMPTS = 3
 TOPIC_DEDUPLICATION_DAYS = 30
 MAX_SUBJECT_SHEET_BYTES = 30 * 1024 * 1024
 MAX_CARD_ARCHIVE_BYTES = 300 * 1024 * 1024
-CHINESE_YOUTUBE_CHANNEL_ID = "UC2WPS9jGyQF38pzj_j2EA5g"
+CHINESE_YOUTUBE_CHANNEL_ID = os.getenv("LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID", "").strip()
 YOUTUBE_LANGUAGE_LEARNING_CATEGORY_ID = "27"
 YOUTUBE_LANGUAGE_BY_MODE = {"en-zh": "zh", "en-ko": "ko"}
 PUBLISH_MANIFEST_FILE_NAME = "publish-manifest.json"
