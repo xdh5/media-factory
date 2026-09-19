@@ -18,10 +18,9 @@
           <h1>媒体发布日历</h1>
           <p class="subtitle">按计划发布日期核对产物，以及每条内容已经到达的平台。</p>
         </div>
-        <button id="logoutButton" class="ghost-button" type="button" hidden>退出</button>
       </header>
 
-      <section id="toolbar" class="toolbar" hidden aria-label="查询条件">
+      <section id="toolbar" class="toolbar" aria-label="查询条件">
         <label>
           <span>计划发布日期</span>
           <input id="dateInput" type="date">
@@ -35,20 +34,6 @@
       <p id="status" class="status" role="status" aria-live="polite"></p>
       <section id="results" class="results" aria-label="产物与发布记录"></section>
     </main>
-
-    <div id="loginLayer" class="login-layer">
-      <form id="loginForm" class="login-card">
-        <p class="eyebrow">PRIVATE ACCESS</p>
-        <h2>输入 6 位 PIN</h2>
-        <p>验证通过后会保存在当前浏览器，下次无需重复输入。</p>
-        <label class="pin-field">
-          <span class="sr-only">6 位 PIN</span>
-          <input id="pinInput" type="password" inputmode="numeric" pattern="\d{6}" maxlength="6" autocomplete="current-password" placeholder="••••••" required autofocus>
-        </label>
-        <button class="primary-button full-button" type="submit">进入看板</button>
-        <p id="loginError" class="login-error" role="alert"></p>
-      </form>
-    </div>
 
     <script src="./app.js" defer></script>
   </body>

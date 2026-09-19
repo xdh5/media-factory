@@ -25,7 +25,7 @@ function dashboardCorsHeaders(extra = {}) {
   return {
     "Cache-Control": "no-store",
     "Access-Control-Allow-Origin": DASHBOARD_ORIGIN,
-    "Access-Control-Allow-Headers": "Content-Type, X-Dashboard-Pin",
+    "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Vary": "Origin",
     ...extra,
@@ -51,21 +51,6 @@ function downloadFilename(fileUrl, fallback = "video.mp4") {
 function contentDisposition(filename) {
   const ascii = String(filename || "video.mp4").replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_") || "video.mp4";
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
-}
-
-function isDashboardPinAuthorized(providedPin, env) {
-  const configured = String(env.DASHBOARD_PIN || "").trim();
-  const provided = String(providedPin || "").trim();
-  if (!/^\d{6}$/.test(configured) || !/^\d{6}$/.test(provided)) return false;
-  let difference = 0;
-  for (let index = 0; index < configured.length; index += 1) {
-    difference |= configured.charCodeAt(index) ^ provided.charCodeAt(index);
-  }
-  return difference === 0;
-}
-
-function isDashboardAuthorized(request, env) {
-  return isDashboardPinAuthorized(request.headers.get("X-Dashboard-Pin"), env);
 }
 
 function requiredText(value, name, maxLength = 500) {
@@ -595,9 +580,6 @@ function runDate(runId, fallback) {
 }
 
 async function dashboardRecords(request, env) {
-  if (!isDashboardAuthorized(request, env)) {
-    return dashboardResponse({ error: { code: "INVALID_PIN", message: "PIN 不正确" } }, 401);
-  }
   const url = new URL(request.url);
   const selectedDate = String(url.searchParams.get("date") || "").trim();
   if (selectedDate) productionDate(selectedDate);
@@ -704,17 +686,12 @@ async function dashboardRecords(request, env) {
 
 async function dashboardDownload(request, env) {
   let fileUrl = "";
-  let providedPin = request.headers.get("X-Dashboard-Pin");
   if (request.method === "POST") {
     const form = await request.formData();
     fileUrl = String(form.get("url") || "").trim();
-    providedPin = form.get("pin");
   } else {
     const page = new URL(request.url);
     fileUrl = String(page.searchParams.get("url") || "").trim();
-  }
-  if (!isDashboardPinAuthorized(providedPin, env)) {
-    return dashboardResponse({ error: { code: "INVALID_PIN", message: "PIN 不正确" } }, 401);
   }
   if (!fileUrl) {
     return dashboardResponse({ error: { code: "INVALID_PARAMETER", message: "url 不能为空" } }, 400);

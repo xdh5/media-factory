@@ -1,5 +1,4 @@
-const API_BASE_URL = "https://media-data.example.com";
-const PIN_STORAGE_KEY = "media-factory-dashboard-pin";
+const API_BASE_URL = "https://media-data.cyberlab.lol";
 
 const platformNames = {
   youtube: "YouTube",
@@ -12,12 +11,6 @@ const platformNames = {
   wechat_channels: "视频号",
 };
 
-const loginLayer = document.querySelector("#loginLayer");
-const loginForm = document.querySelector("#loginForm");
-const pinInput = document.querySelector("#pinInput");
-const loginError = document.querySelector("#loginError");
-const toolbar = document.querySelector("#toolbar");
-const logoutButton = document.querySelector("#logoutButton");
 const dateInput = document.querySelector("#dateInput");
 const queryButton = document.querySelector("#queryButton");
 const allButton = document.querySelector("#allButton");
@@ -29,20 +22,6 @@ function element(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
-}
-
-function showLogin(message = "") {
-  loginLayer.hidden = false;
-  toolbar.hidden = true;
-  logoutButton.hidden = true;
-  loginError.textContent = message;
-  pinInput.focus();
-}
-
-function showDashboard() {
-  loginLayer.hidden = true;
-  toolbar.hidden = false;
-  logoutButton.hidden = false;
 }
 
 function copyText(value) {
@@ -74,7 +53,6 @@ function downloadState(outputs) {
 }
 
 function downloadOutput(url) {
-  const pin = localStorage.getItem(PIN_STORAGE_KEY) || "";
   const frameName = "cloudflare-download-frame";
   let frame = document.querySelector(`iframe[name="${frameName}"]`);
   if (!frame) {
@@ -88,13 +66,11 @@ function downloadOutput(url) {
   form.action = `${API_BASE_URL}/v1/dashboard/download`;
   form.target = frameName;
   form.hidden = true;
-  for (const [name, value] of [["url", url], ["pin", pin]]) {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = name;
-    input.value = value;
-    form.append(input);
-  }
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.name = "url";
+  input.value = url;
+  form.append(input);
   document.body.append(form);
   form.submit();
   form.remove();
@@ -181,28 +157,14 @@ function render(data) {
 }
 
 async function loadRecords(date = "") {
-  const pin = localStorage.getItem(PIN_STORAGE_KEY) || "";
-  if (!/^\d{6}$/.test(pin)) {
-    showLogin();
-    return false;
-  }
   status.textContent = "正在读取 Cloudflare 数据…";
   queryButton.disabled = true;
   allButton.disabled = true;
   try {
     const query = date ? `?date=${encodeURIComponent(date)}` : "";
-    const response = await fetch(`${API_BASE_URL}/v1/dashboard/records${query}`, {
-      headers: { "X-Dashboard-Pin": pin },
-      cache: "no-store",
-    });
+    const response = await fetch(`${API_BASE_URL}/v1/dashboard/records${query}`, { cache: "no-store" });
     const payload = await response.json();
-    if (response.status === 401) {
-      localStorage.removeItem(PIN_STORAGE_KEY);
-      showLogin("PIN 不正确，请重新输入。");
-      return false;
-    }
     if (!response.ok) throw new Error(payload?.error?.message || "读取失败");
-    showDashboard();
     render(payload);
     status.textContent = date ? `已显示 ${date} 的记录。` : "已显示数据库中的全部日期。";
     return true;
@@ -215,31 +177,11 @@ async function loadRecords(date = "") {
   }
 }
 
-loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const pin = pinInput.value.trim();
-  if (!/^\d{6}$/.test(pin)) {
-    loginError.textContent = "请输入完整的 6 位数字 PIN。";
-    return;
-  }
-  localStorage.setItem(PIN_STORAGE_KEY, pin);
-  loginError.textContent = "";
-  await loadRecords(dateInput.value);
-});
-
 queryButton.addEventListener("click", () => loadRecords(dateInput.value));
 allButton.addEventListener("click", () => {
   dateInput.value = "";
   loadRecords();
 });
-logoutButton.addEventListener("click", () => {
-  localStorage.removeItem(PIN_STORAGE_KEY);
-  pinInput.value = "";
-  results.replaceChildren();
-  status.textContent = "";
-  showLogin();
-});
-
 dateInput.value = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Shanghai",
   year: "numeric",
@@ -247,5 +189,4 @@ dateInput.value = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 }).format(new Date());
 
-if (localStorage.getItem(PIN_STORAGE_KEY)) loadRecords();
-else showLogin();
+loadRecords();
