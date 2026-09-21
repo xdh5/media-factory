@@ -1,40 +1,15 @@
 """心灵鸡汤 MCP 输入结构。"""
 
-QUIZ_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "category": {"type": "string", "enum": ["finance", "success", "human_nature"]},
-        "scene_title": {"type": "string", "minLength": 1},
-        "scenario": {"type": "string", "minLength": 1},
-        "options": {
-            "type": "object",
-            "properties": {key: {"type": "string", "minLength": 1} for key in ("a", "b", "c", "d")},
-            "required": ["a", "b", "c", "d"],
-            "additionalProperties": False,
-        },
-        "results": {
-            "type": "object",
-            "properties": {key: {"type": "string", "minLength": 1} for key in ("a", "b", "c", "d")},
-            "required": ["a", "b", "c", "d"],
-            "additionalProperties": False,
-        },
-        "video_keywords": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 20,
-            "items": {"type": "string", "minLength": 1},
-        },
-    },
-    "required": ["category", "scene_title", "scenario", "options", "results", "video_keywords"],
-    "additionalProperties": False,
-}
-
 SAVE_DRAFT_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "topic": {"type": "string", "minLength": 1},
-        "quiz": QUIZ_SCHEMA,
         "article": {"type": "string", "minLength": 300},
+        "intro_scene": {
+            "type": "string",
+            "minLength": 1,
+            "description": "片头写实图场景描述：人物身份 + 关键动作 + 环境细节，从文章提炼",
+        },
         "title": {"type": "string", "minLength": 12, "maxLength": 26},
         "short_title": {"type": "string", "minLength": 6, "maxLength": 16},
         "hashtags": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "string"}},
@@ -44,7 +19,7 @@ SAVE_DRAFT_INPUT_SCHEMA = {
         "draft_path": {"type": ["string", "null"]},
     },
     "required": [
-        "topic", "quiz", "article", "title", "short_title", "hashtags",
+        "topic", "article", "intro_scene", "title", "short_title", "hashtags",
         "cover_lines", "cover_highlights", "publish_date",
     ],
     "additionalProperties": False,

@@ -1,4 +1,7 @@
-"""按计划发布日期串行生产心灵鸡汤、语言并发布语言。"""
+"""按计划发布日期串行生产语言并发布语言。
+
+心灵鸡汤已改为用户提供文章的交互式生产（quiz 自动生产已下线），不再进入每周 Workflow。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +14,6 @@ from ._shared import (
     PROJECT_ROOT,
     daily_production_preflight,
 )
-from .psychology_quiz import run as run_psychology_quiz
 from .language_learning import (
     generate_cards,
     generate_videos,
@@ -52,29 +54,10 @@ async def run_day(
     run_url: str = "",
     *,
     cache_scope: str = "daily",
-    skip_psychology_quiz: bool = False,
 ) -> dict:
     work_dir = PROJECT_ROOT / "cache" / "github_actions" / cache_scope / publish_date
     work_dir.mkdir(parents=True, exist_ok=True)
-    results: dict = {"publish_date": publish_date, "psychology_quiz": {}, "language": {}}
-
-    quiz_preflight = daily_production_preflight("psychology_quiz", publish_date)
-    try:
-        if skip_psychology_quiz:
-            print(f"[{publish_date}] 跳过心灵鸡汤生产：本轮只补偿语言", flush=True)
-            results["psychology_quiz"] = {"status": "skipped", "reason": "本轮只补偿语言"}
-        elif quiz_preflight["should_generate"]:
-            print(f"[{publish_date}] 开始心灵鸡汤生产", flush=True)
-            os.environ["DASHSCOPE_BUSINESS_LINE"] = "psychology_quiz"
-            await run_psychology_quiz(publish_date=publish_date)
-            notify_business_result("心灵鸡汤生产", True, run_url)
-            results["psychology_quiz"] = {"status": "produced"}
-        else:
-            print(f"[{publish_date}] 跳过心灵鸡汤生产：{quiz_preflight['skip_reason']}", flush=True)
-            results["psychology_quiz"] = {"status": "skipped", "reason": quiz_preflight["skip_reason"]}
-    except Exception as exc:
-        notify_business_result("心灵鸡汤生产", False, run_url, str(exc))
-        results["psychology_quiz"] = {"status": "failed", "error": str(exc)}
+    results: dict = {"publish_date": publish_date, "language": {}}
 
     lang_preflight = daily_production_preflight("language_learning", publish_date)
     if not lang_preflight["should_generate"] and not lang_preflight["should_resume_publish"]:

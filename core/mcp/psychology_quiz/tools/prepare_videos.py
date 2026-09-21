@@ -88,8 +88,8 @@ def prepare_video_searches(
             "提交 [{video_id, provider, id}]；只能选择当前 context 返回的候选。"
         ),
         "intro_image_prompt": (
-            "写实摄影风格，电影感自然光，16:9横屏，表现以下生活情境的关键瞬间："
-            f"{draft['quiz']['scenario']}。人物表情真实、有悬念感，环境细节生活化，"
+            "写实摄影风格，电影感自然光，16:9横屏，表现以下场景的关键瞬间："
+            f"{draft['intro_scene']}。人物表情真实、有悬念感，环境细节生活化，"
             "画面主体居中偏上，为底部字幕留出空间；禁止文字、字母、数字、水印、标志和拼贴。"
         ),
         "context_path": context_path.resolve().as_posix(),

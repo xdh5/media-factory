@@ -12,9 +12,12 @@ TOPIC_DEDUPLICATION_DAYS = 30
 VIDEO_SIZE = "1920x1080"
 VIDEO_RADIO = "16:9"
 MATRIXMEDIA_AI_CREATIVE_STATEMENT = "ai_generated"
+# 正文压缩目标 1000 字左右；下限在 draft 模块，这里是硬上限。
+ARTICLE_TARGET_LENGTH = 1000
+ARTICLE_MAX_LENGTH = 1200
 
 _ROOT = Path(__file__).resolve().parent
-QUIZ_PROMPT_PATH = _ROOT / "prompts" / "quiz.md"
+ARTICLE_PROMPT_PATH = _ROOT / "prompts" / "article.md"
 METADATA_PROMPT_PATH = _ROOT / "prompts" / "metadata.md"
 STORYBOARD_PROMPT_PATH = _ROOT / "prompts" / "storyboard.md"
 BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")

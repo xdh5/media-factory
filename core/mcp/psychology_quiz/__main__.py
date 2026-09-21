@@ -18,13 +18,12 @@ from core.tools.clear_cache import ConfirmationRequiredError as ClearCacheConfir
 from core.tools.clear_cache import clear_run
 from core.tools.cloudflare_data import (
     CloudflareDataError,
-    commit_scenario_quiz_question,
     list_production_outputs,
 )
 from core.tools.stock_video import StockVideoError
 from core.tools.topic_dedup import TopicDedupError, get_topic, update
 
-from ._constants import MCP_ID, QUIZ_PROMPT_PATH, TOPIC_DEDUPLICATION_DAYS
+from ._constants import ARTICLE_PROMPT_PATH, MCP_ID, TOPIC_DEDUPLICATION_DAYS
 from ._errors import ConfirmationRequiredError, PsychologyQuizError, TaskNotFoundError, WorkflowStepError
 from .tools import (
     finish_psychology_quiz_video,
@@ -32,8 +31,8 @@ from .tools import (
     download_selected_videos,
     prepare_video_searches,
     prepare_storyboard,
-    save_quiz_draft,
-    validate_draft_fields,
+    save_article_draft,
+    validate_article_fields,
 )
 
 
@@ -61,9 +60,9 @@ mcp = FastMCP(
     "media-factory-psychology-quiz",
     instructions=(
         "心灵鸡汤短视频独立编排 MCP。交互式生产前必须明确北京时间计划发布日期 publish_date。"
-        "内容必须包含夸张但不虚假的心灵鸡汤黄金钩子、具体生活场景、ABCD 四个选项和四段独立结果。"
-        "交互式生产由宿主 Agent 写稿、分镜、生成一张写实片头图并选择正文视频；"
-        "GitHub Action 没有宿主 Agent 时允许千问完成同等步骤。"
+        "内容由用户提供文章，宿主 Agent 按成稿规则压缩到 1000 字左右："
+        "保留原文结构、黄金钩子和原话，只改细枝末节；不足 1000 字直接用原文；品牌一律改为财富研习岛。"
+        "交互式生产由宿主 Agent 提炼片头场景、分镜、生成一张写实片头图并选择正文视频；"
         "只有片头允许生图；正文镜头只允许通过公共 stock_video 工具从 Pexels、Pixabay、Coverr 搜索和下载。"
         "字幕样式和字幕位置由本 MCP 的参数独立控制，不得反向调用 Finance MCP 内部实现。"
         "耗时步骤必须使用 start + psychology_quiz_poll_task 轮询。"
@@ -73,14 +72,14 @@ mcp = FastMCP(
 
 @mcp.tool()
 def psychology_quiz_get_prompt() -> dict:
-    """返回心灵鸡汤写稿 Prompt 与最近30天已用话题。"""
+    """返回心灵鸡汤文章成稿规则与最近30天已用话题。"""
     try:
         recent = get_topic(MCP_ID, TOPIC_DEDUPLICATION_DAYS)
         return {
-            "quiz_prompt": QUIZ_PROMPT_PATH.read_text(encoding="utf-8"),
+            "article_prompt": ARTICLE_PROMPT_PATH.read_text(encoding="utf-8"),
             "deduplication_days": TOPIC_DEDUPLICATION_DAYS,
             "recent_topics": [item["topic"] for item in recent],
-            "generator": "host_agent_or_qwen",
+            "generator": "host_agent",
         }
     except Exception as exc:
         raise _map_error(exc) from exc
@@ -102,8 +101,8 @@ def psychology_quiz_get_production_outputs(publish_date: str) -> dict:
 @mcp.tool()
 def psychology_quiz_save_draft(
     topic: str,
-    quiz: dict,
     article: str,
+    intro_scene: str,
     title: str,
     short_title: str,
     hashtags: list[str],
@@ -112,11 +111,11 @@ def psychology_quiz_save_draft(
     publish_date: str,
     draft_path: str | None = None,
 ) -> dict:
-    """校验并保存心灵鸡汤，使用共用话题库做30天原子去重并写入题库。"""
+    """校验并保存心灵鸡汤文章稿件，使用共用话题库做30天原子去重。"""
     try:
-        validate_draft_fields(
-            quiz=quiz,
+        validate_article_fields(
             article=article,
+            intro_scene=intro_scene,
             title=title,
             short_title=short_title,
             hashtags=hashtags,
@@ -128,10 +127,10 @@ def psychology_quiz_save_draft(
         else:
             _, existing = load_draft(draft_path, "待修改心灵鸡汤稿件")
             topic_record = {"id": int(existing["topic_record_id"]), "topic": str(existing["topic"])}
-        draft = save_quiz_draft(
+        return save_article_draft(
             topic=topic,
-            quiz=quiz,
             article=article,
+            intro_scene=intro_scene,
             title=title,
             short_title=short_title,
             hashtags=hashtags,
@@ -141,27 +140,6 @@ def psychology_quiz_save_draft(
             topic_record=topic_record,
             draft_path=draft_path,
         )
-        normalized = draft["quiz"]
-        question_record = commit_scenario_quiz_question({
-            "run_id": draft["run_id"],
-            "topic_record_id": draft["topic_record_id"],
-            "topic": draft["topic"],
-            "category": normalized["category"],
-            "scene_title": normalized["scene_title"],
-            "scenario": normalized["scenario"],
-            "option_a": normalized["options"]["a"],
-            "option_b": normalized["options"]["b"],
-            "option_c": normalized["options"]["c"],
-            "option_d": normalized["options"]["d"],
-            "result_a": normalized["results"]["a"],
-            "result_b": normalized["results"]["b"],
-            "result_c": normalized["results"]["c"],
-            "result_d": normalized["results"]["d"],
-            "image_keywords": normalized["video_keywords"],
-            "status": "reserved",
-            "publish_date": draft["publish_date"],
-        })
-        return {**draft, "question_record": question_record}
     except Exception as exc:
         raise _map_error(exc) from exc
 

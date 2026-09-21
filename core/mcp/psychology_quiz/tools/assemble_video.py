@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from core.tools.generate_cover_image import CoverError, generate_cover_image
-from core.tools.cloudflare_data import commit_production_outputs, commit_scenario_quiz_question
+from core.tools.cloudflare_data import commit_production_outputs
 from core.tools.generate_final_video import generate_final_video, safe_filename
 from core.tools.generate_shot import (
     SFX_ALERT_GAIN,
@@ -22,7 +22,6 @@ from core.tools.generate_shot import (
     generate_shot_from_intro,
     intro_bgm_start_seconds,
 )
-from core.tools.quiz_timeline import generate_quiz_timeline_ass
 
 from .._constants import (
     MATRIXMEDIA_AI_CREATIVE_STATEMENT,
@@ -64,21 +63,6 @@ def _production_config(config: dict) -> dict:
         raise WorkflowStepError("production_config.subtitle_style 必须是对象")
     if subtitle_position is not None and not isinstance(subtitle_position, dict):
         raise WorkflowStepError("production_config.subtitle_position 必须是对象")
-    timeline_position = str(config.get("quiz_timeline_position") or "bottom").strip().lower()
-    if timeline_position not in {"bottom", "top"}:
-        raise WorkflowStepError("production_config.quiz_timeline_position 只能是 bottom 或 top")
-    chapter_titles = config.get("quiz_chapter_titles") or [
-        "情境引入",
-        "A/B/C/D怎么选",
-        "选好了吗",
-        "四种答案解析",
-        "评论区见",
-    ]
-    if not isinstance(chapter_titles, list) or len(chapter_titles) != 5:
-        raise WorkflowStepError("production_config.quiz_chapter_titles 必须包含五个章节标题")
-    chapter_titles = [str(item).strip() for item in chapter_titles]
-    if any(not item for item in chapter_titles):
-        raise WorkflowStepError("production_config.quiz_chapter_titles 不能包含空标题")
     return {
         "bgm_path": Path(bgm_path),
         "intro": intro,
@@ -87,8 +71,6 @@ def _production_config(config: dict) -> dict:
         "matrixmedia_account_group": account_group,
         "subtitle_style": subtitle_style,
         "subtitle_position": subtitle_position,
-        "quiz_timeline_position": timeline_position,
-        "quiz_chapter_titles": chapter_titles,
     }
 
 
@@ -139,38 +121,6 @@ def _render_intro(image_path: Path, shot: dict, segment_path: Path, intro: str) 
     except ShotToolError as exc:
         raise WorkflowStepError(exc.message, exc.details) from exc
     return _opening_sfx() if intro == "slide_in_shutter" else []
-
-
-def _mark_scenario_quiz_used(draft: dict) -> dict | None:
-    """情境测试成片成功后，把题库记录从占用更新为已使用。"""
-    if str(draft.get("content_kind") or "") != "scenario_quiz":
-        return None
-    quiz = draft.get("quiz")
-    if not isinstance(quiz, dict):
-        raise WorkflowStepError("情境测试稿件缺少 quiz，无法更新题库状态")
-    options = quiz.get("options")
-    results = quiz.get("results")
-    if not isinstance(options, dict) or not isinstance(results, dict):
-        raise WorkflowStepError("情境测试稿件缺少完整选项或结果，无法更新题库状态")
-    return commit_scenario_quiz_question({
-        "run_id": draft["run_id"],
-        "topic_record_id": draft["topic_record_id"],
-        "topic": draft["topic"],
-        "category": quiz["category"],
-        "scene_title": quiz["scene_title"],
-        "scenario": quiz["scenario"],
-        "option_a": options["a"],
-        "option_b": options["b"],
-        "option_c": options["c"],
-        "option_d": options["d"],
-        "result_a": results["a"],
-        "result_b": results["b"],
-        "result_c": results["c"],
-        "result_d": results["d"],
-        "image_keywords": quiz["video_keywords"],
-        "status": "used",
-        "publish_date": draft["publish_date"],
-    })
 
 
 def _storyboard_hash(value: str) -> str:
@@ -237,7 +187,7 @@ def finish_psychology_quiz_video(
     if production_source not in {"local_mcp", "github_workflow"}:
         raise WorkflowStepError("production_source 必须是 local_mcp 或 github_workflow")
     record = {"id": draft["topic_record_id"], "topic": draft["topic"]}
-    content_kind = str(draft.get("content_kind") or "scenario_quiz")
+    content_kind = str(draft.get("content_kind") or "article")
     run_id = str(draft["run_id"])
     article = str(draft["article"])
     metadata = {
@@ -312,43 +262,6 @@ def finish_psychology_quiz_video(
         }
         for shot in shots
     ]
-    if len(shots) < 14:
-        raise WorkflowStepError(
-            "心灵鸡汤分镜不足14段，无法生成情境、选项、结果和结尾章节时间轴"
-        )
-    option_stages = []
-    result_stages = []
-    for label, shot_index in zip(("A", "B", "C", "D"), (4, 5, 6, 7)):
-        stage = shots[shot_index]
-        option_stages.append({"label": label, "start": stage["audio_start"], "end": stage["audio_end"]})
-    for label, shot_index in zip(("A", "B", "C", "D"), (9, 10, 11, 12)):
-        stage = shots[shot_index]
-        result_stages.append({"label": label, "start": stage["audio_start"], "end": stage["audio_end"]})
-    total_duration = float(tts.get("tts_duration") or sum(float(item["duration"]) for item in shots))
-    chapter_boundaries = [
-        0.0,
-        float(shots[4]["audio_start"]),
-        float(shots[8]["audio_start"]),
-        float(shots[9]["audio_start"]),
-        float(shots[13]["audio_start"]),
-        total_duration,
-    ]
-    chapters = [
-        {
-            "title": title,
-            "start": chapter_boundaries[index],
-            "end": chapter_boundaries[index + 1],
-        }
-        for index, title in enumerate(settings["quiz_chapter_titles"])
-    ]
-    quiz_timeline = generate_quiz_timeline_ass(
-        cache_root / "quiz-timeline.ass",
-        total_duration,
-        option_stages,
-        result_stages,
-        chapters,
-        position=settings["quiz_timeline_position"],
-    )
     try:
         final_result = generate_final_video(
             _with_display_text(video_shots),
@@ -368,7 +281,6 @@ def finish_psychology_quiz_video(
             ),
             subtitle_style=settings["subtitle_style"],
             subtitle_position=settings["subtitle_position"],
-            extra_ass_paths=[quiz_timeline["output_path"]],
             normalize_composed=True,
             progress=progress,
         )
@@ -392,7 +304,6 @@ def finish_psychology_quiz_video(
             "r2_url": None,
             "r2_expires_at": None,
         }])
-    scenario_quiz_record = _mark_scenario_quiz_used(draft)
 
     publish_copy = metadata["short_title"] + " " + " ".join(
         f"#{tag.lstrip('#')}" for tag in metadata["hashtags"]
@@ -446,7 +357,6 @@ def finish_psychology_quiz_video(
         "publish_date": publish_date,
         "production_source": production_source,
         "production_outputs": production_outputs,
-        "scenario_quiz_record": scenario_quiz_record,
         "stock_video_attributions": attributions,
         "topic_record_id": record["id"],
         "database_commit": {
