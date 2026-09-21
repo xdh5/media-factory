@@ -17,5 +17,3 @@ def parse_metadata(value: str) -> dict:
     if len(set(fields[2:])) != 4:
         raise AgentOutputFormatError("四个标签必须互不重复")
     return {"title": fields[0], "short_title": fields[1], "hashtags": fields[2:]}
-
-
