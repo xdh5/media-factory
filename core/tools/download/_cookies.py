@@ -2,10 +2,10 @@
 
 移植自 xingchen-video-download 的 app/cookies.py，async httpx 改为同步 requests。
 两层策略：
-1. 自动（默认）：抓取访客 Cookie。多数平台 GET 一次首页即可（B 站下发 buvid3），
-   抖音需要 POST 字节跳动 ttwid 注册接口（首页不下发有效 Cookie）。
+1. 自动（默认）：GET 一次平台首页抓访客 Cookie（B 站下发 buvid3 等）。
 2. 手动（可选）：`data/download/cookies/<platform>.txt`（Netscape 格式）优先于自动
    Cookie，用于会员视频或更高清晰度。
+抖音不经过本模块：yt-dlp 的抖音通道已被风控弃用，抖音走 _douyin.py 移动端接口。
 """
 
 from __future__ import annotations
@@ -76,31 +76,7 @@ def _fetch_homepage_cookies(platform: str) -> str:
     return "; ".join(pairs)
 
 
-def _fetch_douyin_cookies() -> str:
-    """抖音需要从字节跳动 ttwid 注册接口拿访客 Cookie（无需 JS）。"""
-    payload = {
-        "region": "cn", "aid": 1768, "needFid": False,
-        "service": "www.douyin.com",
-        "migrate_info": {"ticket": "", "source": "node"},
-        "cbUrlProtocol": "https", "union": True,
-    }
-    response = requests.post(
-        "https://ttwid.bytedance.com/ttwid/union/register/",
-        json=payload,
-        headers={"Content-Type": "application/json", "User-Agent": DEFAULT_UA},
-        timeout=20,
-    )
-    ttwid = response.cookies.get("ttwid", "")
-    if ttwid:
-        logger.info("douyin ttwid fetched (%d chars)", len(ttwid))
-        return f"ttwid={ttwid}"
-    logger.warning("douyin ttwid fetch failed: status %s", response.status_code)
-    return ""
-
-
 def _fetch_visitor_cookies(platform: str) -> str:
-    if platform == "douyin":
-        return _fetch_douyin_cookies()
     return _fetch_homepage_cookies(platform)
 
 

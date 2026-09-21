@@ -18,9 +18,8 @@ DEFAULT_UA = (
 )
 DEFAULT_REFERER = "https://www.douyin.com/"
 
-# 各平台解析与下载时的 Referer。
+# 各平台解析与下载时的 Referer（抖音不走 yt-dlp，见 _douyin.py）。
 PLATFORM_REFERER = {
-    "douyin": "https://www.douyin.com/",
     "bilibili": "https://www.bilibili.com/",
     "weibo": "https://weibo.com/",
     "xhs": "https://www.xiaohongshu.com/",
