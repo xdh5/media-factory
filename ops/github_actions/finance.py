@@ -20,7 +20,7 @@ from ._shared import (
 )
 
 
-TTS_CONFIG = {"voice": "zh-CN-YunjianNeural", "rate": "+20%", "trim_trailing_silence": True}
+TTS_CONFIG = {"voice": "fish:bc9e47fd83a04010ad6617ed54b92ee3", "rate": "+0%", "trim_trailing_silence": True}
 PRODUCTION_CONFIG = {
     "cover_frame_seconds": 0.03333333333333333,
     "intro": "slide_in_shutter",

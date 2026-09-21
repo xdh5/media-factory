@@ -10,6 +10,8 @@ from .._errors import WorkflowStepError
 from .parse_metadata import parse_metadata
 
 ARTICLE_MIN_LENGTH = 300
+# 每行上限约两行字幕的容量（显示层按词边界均衡换行）；只挡超长行，不再逼宿主硬切
+ARTICLE_MAX_LINE_LENGTH = 36
 CONTENT_KIND = "article"
 
 
@@ -62,10 +64,13 @@ def validate_article_fields(
     long_lines = [
         (index, len(line.strip()))
         for index, line in enumerate(normalized_article.splitlines(), 1)
-        if len(line.strip()) > 20
+        if len(line.strip()) > ARTICLE_MAX_LINE_LENGTH
     ]
     if long_lines:
-        raise WorkflowStepError("心灵鸡汤正文每行不得超过20字", {"long_lines": long_lines})
+        raise WorkflowStepError(
+            f"心灵鸡汤正文每行不得超过{ARTICLE_MAX_LINE_LENGTH}字（约两行字幕）",
+            {"long_lines": long_lines},
+        )
     normalized_intro_scene = str(intro_scene or "").strip()
     if not normalized_intro_scene:
         raise WorkflowStepError(

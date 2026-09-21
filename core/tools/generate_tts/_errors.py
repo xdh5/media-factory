@@ -17,6 +17,7 @@ __all__ = [
     "FFmpegNotFoundError",
     "AudioProcessingError",
     "LoudnessNormalizationError",
+    "FishAudioCredentialError",
 ]
 
 
@@ -98,3 +99,9 @@ class LoudnessNormalizationError(TTSError):
     """响度标准化失败，或标准化后时长发生变化。"""
 
     code = "LOUDNESS_NORMALIZATION_FAILED"
+
+
+class FishAudioCredentialError(TTSError):
+    """Fish Audio API Key 未配置（环境变量 FISH_AUDIO_API_KEY 缺失）。"""
+
+    code = "FISH_AUDIO_CREDENTIAL_MISSING"

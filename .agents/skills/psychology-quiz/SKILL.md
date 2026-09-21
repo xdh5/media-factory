@@ -59,7 +59,7 @@ MCP 入口：`python -m core.mcp.psychology_quiz`。写稿、分镜、正版视�
 
 ## 固定制作参数
 
-- TTS：`zh-CN-YunjianNeural`、`+20%`、裁剪尾部静音。
+- TTS：`zh-CN-YunjianNeural`、原速 `+0%`、裁剪尾部静音。
 - BGM：从 `nothing_to_fare.mp3` 与 `aware.mp3` 中选一首。
 - 片头：一张写实生图，使用 `slide_in_shutter` 动画；正文使用正版实拍视频。
 - 本地成片目录：`output/psychology_quiz/run-YYYYMMDD/`。

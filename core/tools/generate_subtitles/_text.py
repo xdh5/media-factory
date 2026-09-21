@@ -284,7 +284,7 @@ def _best_rich_breaks(
     max_width: int,
     line_count: int,
 ) -> list[int] | None:
-    """寻找不超宽且各行尽量均衡的断点；单字行施加高惩罚。"""
+    """寻找不超宽且各行尽量均衡的断点；单字行施加高惩罚，连接词前断行给予奖励。"""
     total_width = sum(widths)
     target_width = total_width / line_count
     best_breaks: list[int] | None = None
@@ -309,13 +309,28 @@ def _best_rich_breaks(
             line_width = sum(widths[start:end])
             if line_width > max_width:
                 break
-            next_cost = cost + _rich_line_cost(plain[start:end], line_width, target_width)
+            next_cost = (
+                cost
+                + _rich_line_cost(plain[start:end], line_width, target_width)
+                - _natural_break_bonus(plain, end, target_width)
+            )
             if best_cost is not None and next_cost >= best_cost:
                 continue
             search(end, row + 1, [*chosen, end], next_cost)
 
     search(0, 0, [], 0.0)
     return best_breaks
+
+
+# 行首为这些字时读起来自然（连接词/助词/介词起头），断行优先落在它们前面
+_PREFER_BREAK_BEFORE = set("与和或及的了吗呢吧是在也就都而把被对从向会能要更才还让给但又再")
+
+
+def _natural_break_bonus(plain: str, end: int, target_width: float) -> float:
+    """下一行以连接词/助词开头时给予奖励，避免把词切到两行。"""
+    if end < len(plain) and plain[end] in _PREFER_BREAK_BEFORE:
+        return target_width * 2
+    return 0.0
 
 
 def _rich_line_cost(text: str, width: float, target_width: float) -> float:

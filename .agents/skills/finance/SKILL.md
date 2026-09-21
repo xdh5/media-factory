@@ -46,7 +46,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 ```json
 {
   "voice": "zh-CN-YunjianNeural",
-  "rate": "+20%",
+  "rate": "+0%",
   "trim_trailing_silence": true
 }
 ```

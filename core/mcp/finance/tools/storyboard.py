@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from core.tools.generate_tts import generate_tts
+from core.tools.generate_tts import generate_tts, generate_tts_fish
 
 from .._constants import MCP_ID, STORYBOARD_CONTEXT_FILE_NAME, VIDEO_RADIO, VIDEO_SIZE
 from .._errors import AgentOutputFormatError, WorkflowStepError
@@ -32,7 +32,8 @@ def compose_tts(article: str, cache_root: Path, tts_config: dict) -> dict:
     script = [{"text": line_text, "voice": voice} for line_text in split_narration_lines(article)]
     if not script:
         raise WorkflowStepError("正文切句后没有可配音的句子")
-    return generate_tts(
+    engine = generate_tts_fish if voice.lower().startswith("fish:") else generate_tts
+    return engine(
         script,
         cache_root / "narration.wav",
         rate=rate,
