@@ -17,6 +17,7 @@ dependencies = [
     "mcp>=1.26,<2",
     "python-dotenv>=1.0",
     "requests>=2.31",
+    "yt-dlp>=2024.0.0",
     "beautifulsoup4>=4.12",
     "lxml>=5.3",
     "py-mini-racer>=0.6.0",

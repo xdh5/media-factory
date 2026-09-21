@@ -4,7 +4,7 @@ from __future__ import annotations
 
 DOWNLOAD_INPUT_SCHEMA = {
     "type": "object",
-    "description": "从分享口令或链接解析并下载视频到本地",
+    "description": "从分享口令或链接解析并下载视频到本地，支持抖音、哔哩哔哩、微博、小红书、YouTube、TikTok（免配置）与微信视频号（需 SPH_COOKIE）",
     "properties": {
         "share_text": {
             "type": "string",
@@ -24,7 +24,7 @@ DOWNLOAD_OUTPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "video_id": {"type": "string"},
-        "platform": {"type": "string"},
+        "platform": {"type": "string", "description": "中文名：抖音/哔哩哔哩/微博/小红书/YouTube/TikTok/微信视频号/其他"},
         "title": {"type": ["string", "null"]},
         "video_path": {"type": "string", "description": "已下载的本地视频路径"},
         "cover_url": {"type": ["string", "null"]},
