@@ -58,6 +58,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     env:
       DASHSCOPE_API_KEY_FINANCE: ${{ secrets.DASHSCOPE_API_KEY_FINANCE }}
+      DASHSCOPE_API_KEY_PSYCHOLOGY_QUIZ: ${{ secrets.DASHSCOPE_API_KEY_PSYCHOLOGY_QUIZ || secrets.DASHSCOPE_API_KEY_FINANCE }}
       DASHSCOPE_API_KEY_LANGUAGE: ${{ secrets.DASHSCOPE_API_KEY_LANGUAGE }}
       DASHSCOPE_MODEL: ${{ vars.DASHSCOPE_MODEL || 'qwen3.7-max' }}
       DASHSCOPE_VISION_MODEL: qwen3.7-max-2026-06-08
@@ -69,6 +70,9 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+      COVERR_API_KEY: ${{ secrets.COVERR_API_KEY }}
       DASHSCOPE_IMAGE_MODEL: ${{ vars.DASHSCOPE_IMAGE_MODEL }}
       YOUTUBE_OAUTH_CLIENT_ID: ${{ secrets.YOUTUBE_OAUTH_CLIENT_ID }}
       YOUTUBE_OAUTH_CLIENT_SECRET: ${{ secrets.YOUTUBE_OAUTH_CLIENT_SECRET }}
@@ -92,14 +96,15 @@ jobs:
         shell: bash
         run: |
           for name in \
-            DASHSCOPE_API_KEY_FINANCE DASHSCOPE_API_KEY_LANGUAGE \
+            DASHSCOPE_API_KEY_PSYCHOLOGY_QUIZ DASHSCOPE_API_KEY_LANGUAGE \
             CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN \
             R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL \
+            PEXELS_API_KEY PIXABAY_API_KEY COVERR_API_KEY \
             TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
             test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
           done
 
-      - name: 串行生产财经、语言并发布语言
+      - name: 串行生产心理测试、语言并发布语言
         env:
           PUBLISH_DATE: ${{ matrix.publish_date }}
         run: >-

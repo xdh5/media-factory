@@ -46,11 +46,11 @@ def _boolean(value: object, *, name: str) -> bool:
 
 
 def resolve_dashscope_api_key() -> str:
-    """按业务线读取千问密钥：财经用 FINANCE，语言学习用 LANGUAGE。"""
+    """按业务线读取对应的千问密钥。"""
     line = os.getenv(DASHSCOPE_BUSINESS_LINE_ENV, "").strip()
     if line and line not in DASHSCOPE_API_KEY_BY_LINE:
         raise QwenConfigurationError(
-            f"{DASHSCOPE_BUSINESS_LINE_ENV} 只能是 finance 或 language_learning"
+            f"{DASHSCOPE_BUSINESS_LINE_ENV} 只能是 finance、psychology_quiz 或 language_learning"
         )
     env_name = DASHSCOPE_API_KEY_BY_LINE.get(line, DASHSCOPE_API_KEY_ENV)
     api_key = os.getenv(env_name, "").strip()

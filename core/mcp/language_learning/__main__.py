@@ -194,6 +194,7 @@ def language_learning_occupy_topic(
     topic: str,
     learning_modes: list[str],
     publish_date: str,
+    redo_existing_run: bool = False,
 ) -> dict:
     """按北京时间计划发布日期创建生产目录；正式话题仅在发布后写入 D1。"""
     modes = [str(item).strip() for item in learning_modes if str(item).strip()]
@@ -202,15 +203,25 @@ def language_learning_occupy_topic(
     clean_topic = str(topic or "").strip()
     if re.fullmatch(r"[A-Za-z]+", clean_topic) is None:
         raise LanguageLearningError("语言学习 topic 必须是一个不含空格的英文单词")
-    recent = get_topic(WORKFLOW_ID, TOPIC_DEDUPLICATION_DAYS)
-    if clean_topic.casefold() in {
-        str(item.get("topic") or "").strip().casefold() for item in recent
-    }:
-        raise LanguageLearningError(f"语言学习 topic 最近 {TOPIC_DEDUPLICATION_DAYS} 天已经发布：{clean_topic}")
     try:
         run_id = production_run_id(publish_date)
     except ValueError as exc:
         raise LanguageLearningError(str(exc)) from exc
+    recent = get_topic(WORKFLOW_ID, TOPIC_DEDUPLICATION_DAYS)
+    is_recent = clean_topic.casefold() in {
+        str(item.get("topic") or "").strip().casefold() for item in recent
+    }
+    if is_recent and not redo_existing_run:
+        raise LanguageLearningError(f"语言学习 topic 最近 {TOPIC_DEDUPLICATION_DAYS} 天已经发布：{clean_topic}")
+    if redo_existing_run:
+        existing = list_production_outputs(
+            publish_date=str(publish_date).strip(),
+            business_line=WORKFLOW_ID,
+        )
+        if not any(str(item.get("run_id") or "") == run_id for item in existing):
+            raise LanguageLearningError(
+                f"找不到 {run_id} 的既有语言学习产物，不能使用 redo_existing_run"
+            )
     record_id = int(run_id.removeprefix("run-"))
     cache_root, output_root = production_dirs(run_id)
     cache_root.mkdir(parents=True, exist_ok=True)
@@ -224,6 +235,7 @@ def language_learning_occupy_topic(
         "run_id": run_id,
         "cache_dir": str(cache_root),
         "output_dir": str(output_root),
+        "redo_existing_run": bool(redo_existing_run),
     }
 
 
@@ -263,17 +275,31 @@ def language_learning_parse_vocabulary_response(
     learning_modes: list[str],
     topic: str,
     run_id: str,
+    redo_existing_run: bool = False,
 ) -> dict:
     """严格解析词表并校验最近 100 天新词比例；发布时才记录单词。"""
     try:
         parsed = parse_vocabulary_response(response_text, learning_modes)
         if str(parsed.get("_topic_english") or "").casefold() != str(topic).strip().casefold():
             raise LanguageLearningError("词表英文主题必须与本次单词 TOPIC 完全一致")
-        history = validate_words(
-            run_id=run_id,
-            topic=topic,
-            words_by_mode=parsed,
-        )
+        if redo_existing_run:
+            raw_date = str(run_id).removeprefix("run-")
+            publish_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+            existing = list_production_outputs(
+                publish_date=publish_date,
+                business_line=WORKFLOW_ID,
+            )
+            if not any(str(item.get("run_id") or "") == run_id for item in existing):
+                raise LanguageLearningError(
+                    f"找不到 {run_id} 的既有语言学习产物，不能复用旧词表"
+                )
+            history = {"status": "reused_existing_words", "run_id": run_id}
+        else:
+            history = validate_words(
+                run_id=run_id,
+                topic=topic,
+                words_by_mode=parsed,
+            )
         return {**parsed, "word_history": history}
     except Exception as exc:
         raise _map_error(exc) from exc
@@ -308,8 +334,8 @@ def language_learning_prepare_images(
             for keyword in ("background_edge", "背景色", "色边", "描边", "光晕", "毛边")
         )
         retry_instruction = (
-            "上一张图抠图后残留背景色边。必须改用一种与上一张明显不同、且与全部主体颜色反差更大的均匀纯色背景，"
-            "并禁止主体轮廓出现该背景色描边、光晕或反射污染"
+            "上一张图的透明边缘或抠图边缘存在杂色。必须优先重新生成带真实 Alpha 通道的干净透明背景 PNG，"
+            "禁止主体轮廓出现白边、黑边、彩边或光晕；只有透明输出确实失败时，才允许改用高反差均匀纯色背景兜底"
             if has_background_edge
             else "上一张图未通过整图视觉验收，必须修正"
         )

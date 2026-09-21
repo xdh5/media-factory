@@ -7,7 +7,7 @@ DEFAULT_CURL_MAX_TIME_SECONDS = 30
 CURL_MAX_ATTEMPTS = 5
 CURL_RETRY_DELAY_SECONDS = 1
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
-PUBLICATION_BUSINESS_LINES = ("finance", "language_learning")
+PUBLICATION_BUSINESS_LINES = ("finance", "language_learning", "psychology_quiz")
 PUBLICATION_PLATFORMS = (
     "youtube",
     "facebook",
@@ -23,5 +23,5 @@ PUBLICATION_PLATFORMS = (
 PUBLICATION_MODES = ("immediate", "scheduled")
 PUBLICATION_STATUSES = ("published", "scheduled")
 PUBLISHING_CONNECTORS = ("youtube", "zernio", "matrixmedia")
-PRODUCTION_BUSINESS_LINES = ("finance", "language_learning")
+PRODUCTION_BUSINESS_LINES = ("finance", "language_learning", "psychology_quiz")
 PRODUCTION_SOURCES = ("local_mcp", "github_workflow")

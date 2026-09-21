@@ -292,6 +292,20 @@ def commit_finance_generated_images(records: list[dict]) -> dict:
     return payload
 
 
+def list_scenario_quiz_questions(*, days: int = 30) -> list[dict]:
+    payload = _request("GET", "/v1/scenario-quiz-questions", query={"days": days})
+    if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+        raise CloudflareDataRequestError("Cloudflare 情境测试题库接口缺少 records 数组")
+    return payload["records"]
+
+
+def commit_scenario_quiz_question(record: dict) -> dict:
+    payload = _request("POST", "/v1/scenario-quiz-questions/commit", body={"record": record})
+    if not isinstance(payload, dict) or not isinstance(payload.get("record"), dict):
+        raise CloudflareDataRequestError("Cloudflare 情境测试题库写入接口缺少 record 对象")
+    return payload["record"]
+
+
 def list_publication_records(
     *,
     business_line: str | None = None,

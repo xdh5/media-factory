@@ -13,6 +13,7 @@ language_learning_get_topics
 
 language_learning_occupy_topic(topic, learning_modes, publish_date)
 └─ 查重后创建 cache/output 目录，返回按计划发布日期生成的 run_id；暂不写 D1
+└─ 重做 D1 已存在的同一期时可显式传 redo_existing_run=true；普通生产保持关闭
 
 language_learning_build_vocabulary_prompt(topic, learning_modes)
 └─ tools.vocabulary_prompt.build_vocabulary_prompt
@@ -47,13 +48,13 @@ language_learning_get_visual_validation_prompt
 
 language_learning_validate_subject_sheet
 └─ tools.compose_fixed_cards.validate_subject_sheet
-   └─ Python 整图去背景、保存完整去背景图并输出十张抠图
+   └─ 原生透明图直接保留 Alpha；纯色兜底图才自动抠图；保存完整透明图并输出十张主体
 
-[宿主 Agent 打开整张去背景后的完整主题图做一次性验收]
+[宿主 Agent 打开整张透明处理后的完整主题图做一次性验收]
   └─ 先调用 language_learning_get_sheet_validation_prompt，检查数量、完整性、文字、水印、画风和背景残色
 
 language_learning_review_subject_sheet
-└─ 发现背景残色时要求更换反差更大的纯色背景重新生图
+└─ 发现透明边缘杂色时优先重做透明图；透明生成失败时才换高反差纯色背景兜底
 └─ 未全部通过时禁止拼卡
 
 language_learning_compose_cards
@@ -88,7 +89,7 @@ language_learning_clear_run
 | --- | --- |
 | `tools/vocabulary_prompt.py` | 词表 / 主体图 Prompt 生成与词表解析 |
 | `tools/vocabulary_history.py` | 最近 100 天词库、新词比例校验与历史记录 |
-| `tools/compose_fixed_cards.py` | 接收宿主 Agent 主体框、整图去背景验收门禁并贴到固定模板单词卡 |
+| `tools/compose_fixed_cards.py` | 接收宿主 Agent 主体框，优先使用原生透明通道、纯色时再抠图，并经整图验收后贴到固定模板单词卡 |
 | `tools/create_vocabulary_videos.py` | 卡片 + 双语 TTS → 竖版成片 |
 | `tools/publish_vocabulary_videos.py` | 写发布清单、上传 R2，并通过 MCP 发布 YouTube、TikTok、Instagram 或 Facebook |
 

@@ -56,6 +56,15 @@ def _fit_image(image: Image.Image, width: int, height: int) -> Image.Image:
         return image
     if _matches_target_aspect(image.width, image.height, width, height):
         return image.resize((width, height), Image.Resampling.LANCZOS)
+    if "A" in image.getbands():
+        contained = image.copy()
+        contained.thumbnail((width, height), Image.Resampling.LANCZOS)
+        canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        canvas.alpha_composite(
+            contained.convert("RGBA"),
+            ((width - contained.width) // 2, (height - contained.height) // 2),
+        )
+        return canvas
     return ImageOps.fit(image, (width, height), method=Image.Resampling.LANCZOS)
 
 

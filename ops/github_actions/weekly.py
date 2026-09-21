@@ -1,4 +1,4 @@
-"""按计划发布日期串行生产财经、语言并发布语言。"""
+"""按计划发布日期串行生产心理测试、语言并发布语言。"""
 
 from __future__ import annotations
 
@@ -10,9 +10,8 @@ from ._shared import (
     LANGUAGE_PUBLISH_TARGETS,
     PROJECT_ROOT,
     daily_production_preflight,
-    restore_finance_image_library,
 )
-from .finance import run as run_finance
+from .psychology_quiz import run as run_psychology_quiz
 from .language_learning import (
     generate_cards,
     generate_videos,
@@ -22,11 +21,6 @@ from .language_learning import (
     upload_handoff,
 )
 from .telegram import notify_business_result
-
-def restore_finance_libraries() -> None:
-    restore_finance_image_library("finance")
-    restore_finance_image_library("finance_generated")
-
 
 async def _run_language_produce(publish_date: str, work_dir: Path) -> dict:
     state_path = work_dir / "language-learning-state.json"
@@ -58,29 +52,29 @@ async def run_day(
     run_url: str = "",
     *,
     cache_scope: str = "daily",
-    skip_finance: bool = False,
+    skip_psychology_quiz: bool = False,
 ) -> dict:
     work_dir = PROJECT_ROOT / "cache" / "github_actions" / cache_scope / publish_date
     work_dir.mkdir(parents=True, exist_ok=True)
-    results: dict = {"publish_date": publish_date, "finance": {}, "language": {}}
+    results: dict = {"publish_date": publish_date, "psychology_quiz": {}, "language": {}}
 
-    finance_preflight = daily_production_preflight("finance", publish_date)
+    quiz_preflight = daily_production_preflight("psychology_quiz", publish_date)
     try:
-        if skip_finance:
-            print(f"[{publish_date}] 跳过财经生产：本轮只补偿语言", flush=True)
-            results["finance"] = {"status": "skipped", "reason": "本轮只补偿语言"}
-        elif finance_preflight["should_generate"]:
-            print(f"[{publish_date}] 开始财经生产", flush=True)
-            os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"
-            await run_finance(publish_date=publish_date)
-            notify_business_result("财经生产", True, run_url)
-            results["finance"] = {"status": "produced"}
+        if skip_psychology_quiz:
+            print(f"[{publish_date}] 跳过心理测试生产：本轮只补偿语言", flush=True)
+            results["psychology_quiz"] = {"status": "skipped", "reason": "本轮只补偿语言"}
+        elif quiz_preflight["should_generate"]:
+            print(f"[{publish_date}] 开始心理测试生产", flush=True)
+            os.environ["DASHSCOPE_BUSINESS_LINE"] = "psychology_quiz"
+            await run_psychology_quiz(publish_date=publish_date)
+            notify_business_result("心理测试生产", True, run_url)
+            results["psychology_quiz"] = {"status": "produced"}
         else:
-            print(f"[{publish_date}] 跳过财经生产：{finance_preflight['skip_reason']}", flush=True)
-            results["finance"] = {"status": "skipped", "reason": finance_preflight["skip_reason"]}
+            print(f"[{publish_date}] 跳过心理测试生产：{quiz_preflight['skip_reason']}", flush=True)
+            results["psychology_quiz"] = {"status": "skipped", "reason": quiz_preflight["skip_reason"]}
     except Exception as exc:
-        notify_business_result("财经生产", False, run_url, str(exc))
-        results["finance"] = {"status": "failed", "error": str(exc)}
+        notify_business_result("心理测试生产", False, run_url, str(exc))
+        results["psychology_quiz"] = {"status": "failed", "error": str(exc)}
 
     lang_preflight = daily_production_preflight("language_learning", publish_date)
     if not lang_preflight["should_generate"] and not lang_preflight["should_resume_publish"]:
@@ -123,7 +117,6 @@ async def run_day(
 
 async def run_week(week_start: str = "", run_url: str = "") -> dict:
     dates = compute_next_week_dates(week_start)
-    restore_finance_libraries()
     day_results = []
     for publish_date in dates:
         day_results.append(await run_day(publish_date, run_url, cache_scope="weekly"))

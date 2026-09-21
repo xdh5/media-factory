@@ -226,6 +226,19 @@ def poll_task(*, task_path: str) -> dict:
         raise TaskNotFoundError(str(path))
 
     data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("status") == STATUS_RUNNING:
+        task_id = str(data.get("task_id") or "")
+        with _registry_lock:
+            is_live = task_id in _live_tasks
+        if not is_live:
+            data["status"] = STATUS_FAILED
+            data["progress"] = None
+            data["error"] = {
+                "message": "MCP 进程已退出，后台任务已中断。请重新 start 该步骤，不要继续 poll 此任务。",
+                "type": "OrphanTaskError",
+            }
+            _write_task(path, data)
+
     created = datetime.fromisoformat(str(data["created_at"]).replace("Z", "+00:00"))
     if data.get("status") == STATUS_RUNNING:
         duration = max((datetime.now(timezone.utc) - created).total_seconds(), 0.0)

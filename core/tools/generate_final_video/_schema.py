@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from core.tools.generate_subtitles import SUBTITLE_POSITION_SCHEMA, SUBTITLE_STYLE_SCHEMA
+
 __all__ = [
     "GENERATE_FINAL_VIDEO_INPUT_SCHEMA",
     "GENERATE_FINAL_VIDEO_OUTPUT_SCHEMA",
@@ -27,6 +29,13 @@ GENERATE_FINAL_VIDEO_INPUT_SCHEMA = {
             "type": "number",
             "minimum": 0,
             "description": "BGM 起播时间（秒）；默认 0。财经 slide_in_shutter 由 MCP 按片头拍照结束自动传入",
+        },
+        "subtitle_style": SUBTITLE_STYLE_SCHEMA,
+        "subtitle_position": SUBTITLE_POSITION_SCHEMA,
+        "extra_ass_paths": {"type": "array", "items": {"type": "string"}, "description": "附加 ASS 画面图层路径"},
+        "normalize_composed": {
+            "type": "boolean",
+            "description": "是否把拼接视频规范为恒定30帧；混合来源镜头出现时间戳漂移时启用",
         },
         "stickers": {"type": "array", "items": {"type": "string"}},
         "opening_sfx": {

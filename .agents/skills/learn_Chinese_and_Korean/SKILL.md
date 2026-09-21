@@ -93,7 +93,7 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 词表与主体图 Prompt 由 MCP 工具返回，不要自行改写模板结构：
 
 - `language_learning_build_vocabulary_prompt` → `user_prompt`
-- `language_learning_prepare_images` 内部根据词表生成主体图 Prompt；纯色仅作为与全部主体反差明显的临时抠图背景。主体必须是具有自然多色、材质细节和内部明暗的精致全彩插画，禁止单色染色、线稿图标、白色剪影、UI 符号和廉价塑料感；地点、服务、动作等词允许用紧凑小场景表达。背景上仍禁止投影，并明确禁止生成任何文字、标签、数字、网格线和水印
+- `language_learning_prepare_images` 内部根据词表生成主体图 Prompt；必须优先生成带真实 Alpha 通道的透明背景 PNG，只有当前生图能力无法生成透明图时才允许用与全部主体反差明显的单一纯色背景抠图兜底。主体必须是具有自然多色、材质细节和内部明暗的精致全彩插画，禁止单色染色、线稿图标、白色剪影、UI 符号和廉价塑料感；地点、服务、动作等词允许用紧凑小场景表达。主体外部禁止投影、光晕和杂色边缘，并明确禁止生成任何文字、标签、数字、网格线和水印
 
 TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 天去重：每期 10 个英语单词中，至少 5 个必须未在最近 100 天使用。`build_vocabulary_prompt` 会把历史词库写进 `user_prompt`，`parse_vocabulary_response` 只校验、不写库；用户触发发布后才把话题与全部 10 个单词正式写入 D1。
 
@@ -115,8 +115,8 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 3. `language_learning_build_vocabulary_prompt(topic, learning_modes)` 获取包含最近 100 天词库的 Prompt，按原样生成纯文本词表；再调用 `language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)`，由 MCP 强制校验至少 5 个新词，但暂不写库。
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
 5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问兜底生图）→ `language_learning_poll_task`。MCP 不调用千问文本或视觉模型。
-6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 只提取按上排从左到右、下排从左到右排序的十个保守边界框，不检查文字、水印、画风、内容或主体完整性；调用 `language_learning_validate_subject_sheet` 后，Python 整图去背景、输出十张抠图，并保存 `subject-sheet-background-removed.png`。
-7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**整张去背景后的完整主题图**（不是十张单独抠图），按返回 Prompt 一次性检查：主体数量是否为 10、完整性、文字、水印、全彩配色与材质质感、语义表达、背景残色；全体单色染色、大片无层次纯色块、线稿图标、白色剪影、UI 符号或廉价塑料感必须按 `style` 判定失败。再调用 `language_learning_review_subject_sheet` 提交一条结论。失败时 `failure_kind` 取 `background_edge` / `text` / `watermark` / `style` / `count` / `completeness` 之一。背景残色时必须要求换一种与上一张明显不同、且与全部主体反差更大的纯色背景重新生成主题图。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对整图调用千问视觉执行同一个 MCP Prompt。
+6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 只提取按上排从左到右、下排从左到右排序的十个保守边界框，不检查文字、水印、画风、内容或主体完整性；调用 `language_learning_validate_subject_sheet` 后，透明图直接保留 Alpha 通道并裁出十张主体，纯色兜底图才执行自动抠图，统一保存 `subject-sheet-background-removed.png`。
+7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**整张透明处理后的完整主题图**（不是十张单独主体），按返回 Prompt 一次性检查：主体数量是否为 10、完整性、文字、水印、全彩配色与材质质感、语义表达、透明边缘残色；全体单色染色、大片无层次纯色块、线稿图标、白色剪影、UI 符号或廉价塑料感必须按 `style` 判定失败。再调用 `language_learning_review_subject_sheet` 提交一条结论。失败时 `failure_kind` 取 `background_edge` / `text` / `watermark` / `style` / `count` / `completeness` 之一。透明图出现杂色边缘时优先重新生成干净透明图；只有透明生成持续失败时才改用高反差单一纯色背景抠图兜底。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对整图调用千问视觉执行同一个 MCP Prompt。
 8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
 9. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause`；默认同时生成原版分段和倒计时问答版，倒计时音轨用仓库 `core/mcp/language_learning/static/countdown.mp3`，不必再传 `countdown_audio_path`。只出原版时才传 `video_formats=["standard"]` → poll 至 `done=true`。
 10. 用户确认发布后：韩语原版与问答版一起交给 MatrixMedia；中文调用 `language_learning_start_publish`，原版两段和问答版一条一起发到 YouTube、TikTok、Instagram、Facebook。问答版标题与原版同一套格式，不得加 `guess` 或 `看图猜词`。目标平台需要公网视频地址时，才调用 `language_learning_start_upload_r2` 上传发布资产。发布 MCP 幂等写入正式话题与本期 10 个单词。

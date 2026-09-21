@@ -31,6 +31,7 @@ def mix_body(
     tts_path: str | Path,
     bgm_path: str | Path | None = None,
     ass_path: str | Path | None = None,
+    extra_ass_paths: list[str | Path] | None = None,
     fontsdir: str | Path | None = None,
     overlays: list[dict] | None = None,
     cover_path: str | Path | None = None,
@@ -103,9 +104,15 @@ def mix_body(
     command.extend(overlay_input_args(layers))
     overlay_start = next_index
 
+    extra_ass = []
+    for index, value in enumerate(extra_ass_paths or []):
+        path = _validate_file(value, f"extra_ass_paths[{index}]")
+        if path.suffix.lower() != ".ass":
+            raise InvalidParameterError(f"extra_ass_paths[{index}]", "附加字幕图层必须是 .ass 文件")
+        extra_ass.append(path)
     video_chains: list[str] = []
     current = "0:v"
-    encode_video = bool(ass or layers or cover is not None)
+    encode_video = bool(ass or extra_ass or layers or cover is not None)
     if ass is not None:
         subtitle_filter = f"subtitles='{_filter_path(ass)}'"
         if fontsdir is not None:
@@ -115,16 +122,22 @@ def mix_body(
             subtitle_filter += f":fontsdir='{_filter_path(font_directory)}'"
         video_chains.append(f"[0:v]{subtitle_filter}[subtitled]")
         current = "subtitled"
+    for index, path in enumerate(extra_ass):
+        input_label = current
+        output_label = f"extra_ass_{index}"
+        filter_value = f"subtitles='{_filter_path(path)}'"
+        video_chains.append(f"[{input_label}]{filter_value}[{output_label}]")
+        current = output_label
     if layers:
         video_chains.append(overlay_filtergraph(current, layers, overlay_start))
         current = "vout"
     if cover_index is not None:
         video_chains.append(
             f"[{cover_index}:v]scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
-            f"crop={width}:{height},setsar=1[cover]"
+            f"crop={width}:{height},setsar=1,trim=end_frame={cover_frames},setpts=PTS-STARTPTS[cover]"
         )
         video_chains.append(
-            f"[{current}][cover]overlay=0:0:enable='lt(n,{cover_frames})'[video]"
+            f"[{current}][cover]overlay=0:0:enable='lt(n,{cover_frames})':eof_action=pass[video]"
         )
         video_map = "[video]"
     elif current == "0:v":

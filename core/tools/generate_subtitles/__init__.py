@@ -3,6 +3,7 @@
 from ._constants import SUPPORTED_SUBTITLE_LANGUAGES
 from ._errors import InvalidParameterError, SubtitlesError, UnsupportedSubtitleLanguageError
 from .generate_subtitles import generate_subtitles
+from ._schema import SUBTITLE_POSITION_SCHEMA, SUBTITLE_STYLE_SCHEMA
 
 __all__ = [
     "generate_subtitles",
@@ -10,4 +11,6 @@ __all__ = [
     "InvalidParameterError",
     "UnsupportedSubtitleLanguageError",
     "SUPPORTED_SUBTITLE_LANGUAGES",
+    "SUBTITLE_POSITION_SCHEMA",
+    "SUBTITLE_STYLE_SCHEMA",
 ]

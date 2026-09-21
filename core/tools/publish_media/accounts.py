@@ -40,7 +40,9 @@ def _matrixmedia_command() -> tuple[list[str], Path]:
     electron = matrix_dir / "node_modules" / "electron" / "dist" / "electron.exe"
     built_main = matrix_dir / "dist" / "electron" / "main.js"
     if electron.is_file() and built_main.is_file():
-        return [str(electron), ".", "--", "cli"], matrix_dir
+        # 受限环境（沙箱/无 GPU 会话）下 GPU 进程会崩溃退出：--no-sandbox 允许 GPU 进程启动，
+        # --disable-gpu 降低对显卡依赖；注意不能加 --in-process-gpu，否则 webview 加载 about:blank 会 ERR_FAILED。
+        return [str(electron), "--no-sandbox", "--disable-gpu", ".", "--", "cli"], matrix_dir
     installed = shutil.which("matrixmedia")
     if installed:
         return [installed, "cli"], matrix_dir

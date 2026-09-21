@@ -18,6 +18,7 @@ def main() -> None:
             "finance_restore_library",
             "finance_upload_libraries",
             "finance",
+            "psychology_quiz",
             "language_learning_preflight",
             "language_learning_words",
             "language_learning_cards",
@@ -54,7 +55,9 @@ def main() -> None:
     parser.add_argument("--skipped", default="false")
     parser.add_argument("--run-url", default="")
     arguments = parser.parse_args()
-    if arguments.workflow.startswith("finance"):
+    if arguments.workflow == "psychology_quiz":
+        os.environ["DASHSCOPE_BUSINESS_LINE"] = "psychology_quiz"
+    elif arguments.workflow.startswith("finance"):
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"
     elif arguments.workflow.startswith("language_learning"):
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
@@ -89,6 +92,11 @@ def main() -> None:
         from .finance import run as run_finance
 
         result = asyncio.run(run_finance(arguments.topic, arguments.publish_date))
+        payload = {"status": "succeeded", "r2": result["r2"]}
+    elif arguments.workflow == "psychology_quiz":
+        from .psychology_quiz import run as run_psychology_quiz
+
+        result = asyncio.run(run_psychology_quiz(arguments.topic, arguments.publish_date))
         payload = {"status": "succeeded", "r2": result["r2"]}
     elif arguments.workflow == "language_learning_words":
         from .language_learning import generate_words
@@ -180,7 +188,7 @@ def main() -> None:
     if arguments.workflow in {"daily_day", "weekly_day"}:
         failed = any(
             str(payload.get(name, {}).get("status", "")).endswith("failed")
-            for name in ("finance", "language")
+            for name in ("psychology_quiz", "language")
         )
         if failed:
             raise SystemExit("当日生产或发布失败，请查看上方业务结果")

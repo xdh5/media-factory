@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections import deque
 from pathlib import Path
 from statistics import median
 
@@ -18,6 +19,7 @@ from .._constants import (
     SUBJECT_ALPHA_THRESHOLD,
     SUBJECT_CHROMA_HIGH_DISTANCE,
     SUBJECT_CHROMA_LOW_DISTANCE,
+    SUBJECT_COMPONENT_MIN_RATIO,
     SUBJECT_CUTOUT_STRATEGY_VERSION,
     SUBJECT_GENERATION_MAX_ATTEMPTS,
     SUBJECT_SHEET_SIZE,
@@ -89,6 +91,63 @@ def _sheet(path: Path) -> Image.Image:
 
 def _visible_mask(image: Image.Image) -> Image.Image:
     return image.getchannel("A").point(lambda value: 255 if value > SUBJECT_ALPHA_THRESHOLD else 0)
+
+
+def _remove_tiny_islands(image: Image.Image) -> Image.Image:
+    """删除误带入相邻格的极小孤立透明前景，保留正常的多人物动作主体。"""
+    mask = _visible_mask(image)
+    width, height = mask.size
+    pixels = mask.load()
+    seen: set[tuple[int, int]] = set()
+    components: list[list[tuple[int, int]]] = []
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y] == 0 or (x, y) in seen:
+                continue
+            queue = deque([(x, y)])
+            seen.add((x, y))
+            component: list[tuple[int, int]] = []
+            while queue:
+                current_x, current_y = queue.popleft()
+                component.append((current_x, current_y))
+                for next_x, next_y in (
+                    (current_x - 1, current_y),
+                    (current_x + 1, current_y),
+                    (current_x, current_y - 1),
+                    (current_x, current_y + 1),
+                ):
+                    if (
+                        0 <= next_x < width
+                        and 0 <= next_y < height
+                        and pixels[next_x, next_y] != 0
+                        and (next_x, next_y) not in seen
+                    ):
+                        seen.add((next_x, next_y))
+                        queue.append((next_x, next_y))
+            components.append(component)
+    if len(components) < 2:
+        return image
+    largest = max(len(component) for component in components)
+    minimum = max(1, round(largest * SUBJECT_COMPONENT_MIN_RATIO))
+    retained = Image.new("L", image.size, 0)
+    retained_pixels = retained.load()
+    edge_limit = round(width * 0.2)
+    for component in components:
+        component_width = max(x for x, _ in component) + 1
+        is_left_edge_collision = (
+            len(component) < round(largest * 0.2)
+            and min(x for x, _ in component) == 0
+            and component_width <= edge_limit
+        )
+        if len(component) < minimum or is_left_edge_collision:
+            continue
+        for x, y in component:
+            retained_pixels[x, y] = 255
+    alpha = image.getchannel("A")
+    alpha = ImageChops.multiply(alpha, retained)
+    result = image.copy()
+    result.putalpha(alpha)
+    return result
 
 
 def _sheet_signature(path: Path) -> str:
@@ -229,7 +288,7 @@ def review_subject_sheet(
     )
     validation_issues = [f"[{failure_kind}] {issue}" if failure_kind else issue]
     regeneration_instruction = (
-        "换一种与上一张明显不同、且与全部主体颜色反差更大的均匀纯色背景重新生成"
+        "优先重新生成无白边、黑边、彩边或光晕的真实透明背景 PNG；透明输出失败时才用高反差纯色背景兜底"
         if failure_kind == "background_edge"
         else "按验收问题重新生成主题图"
     )
@@ -259,8 +318,12 @@ def _estimate_background_rgb(sheet: Image.Image) -> tuple[int, int, int]:
     return tuple(round(median(channel)) for channel in zip(*samples))
 
 
-def _remove_sheet_background(sheet: Image.Image) -> tuple[Image.Image, tuple[int, int, int]]:
-    """删除纯色背景，并收紧一像素边缘以消除背景色污染。"""
+def _remove_sheet_background(sheet: Image.Image) -> tuple[Image.Image, tuple[int, int, int] | None]:
+    """透明图直接保留 Alpha；只有不透明图片才删除纯色背景。"""
+    rgba = sheet.convert("RGBA")
+    alpha_minimum, _ = rgba.getchannel("A").getextrema()
+    if alpha_minimum < 250:
+        return rgba, None
     rgb = sheet.convert("RGB")
     background_rgb = _estimate_background_rgb(rgb)
     background = Image.new("RGB", rgb.size, background_rgb)
@@ -336,8 +399,8 @@ def _validated_visual_layout(payload: dict) -> dict:
 def _detect_subjects(
     sheet: Image.Image,
     visual_boxes: list[list[int]],
-) -> tuple[list[Image.Image], list[dict], list[str], list[list[int]], tuple[int, int, int]]:
-    """全局删除纯色背景后，严格按宿主 Agent 的框逐个紧裁主体。"""
+) -> tuple[list[Image.Image], list[dict], list[str], list[list[int]], tuple[int, int, int] | None]:
+    """优先使用原图透明通道；纯色兜底图先抠图，再按定位框裁主体。"""
     issues: list[str] = []
     subjects: list[Image.Image] = []
     cells: list[dict] = []
@@ -363,13 +426,20 @@ def _detect_subjects(
                 "issues": [issue],
             })
             continue
+        initial_bbox = local_bbox
+        subject_region = _remove_tiny_islands(region.crop(initial_bbox))
+        final_bbox = _visible_mask(subject_region).getbbox()
+        if final_bbox is None:
+            issue = f"第 {index} 个位置去除孤立残片后没有有效前景"
+            issues.append(issue)
+            continue
         bbox = (
-            box[0] + local_bbox[0],
-            box[1] + local_bbox[1],
-            box[0] + local_bbox[2],
-            box[1] + local_bbox[3],
+            box[0] + initial_bbox[0] + final_bbox[0],
+            box[1] + initial_bbox[1] + final_bbox[1],
+            box[0] + initial_bbox[0] + final_bbox[2],
+            box[1] + initial_bbox[1] + final_bbox[3],
         )
-        subject = region.crop(local_bbox)
+        subject = subject_region.crop(final_bbox)
         subjects.append(subject)
         foreground_pixels = _visible_mask(subject).histogram()[255]
         cells.append({
@@ -415,6 +485,7 @@ def validate_subject_sheet(
         background_rgb = background_rgb or saved_background_rgb
         background_removed_sheet_path = _background_removed_sheet_path(cache_dir)
         background_removed_sheet.save(background_removed_sheet_path, format="PNG")
+    vision["background_mode"] = "solid_color_fallback" if background_rgb else "transparent_alpha"
     vision["background_rgb"] = list(background_rgb) if background_rgb else []
     if valid and cache_dir:
         _save_cached_cutouts(
@@ -434,7 +505,7 @@ def validate_subject_sheet(
         "top_count": vision["top_count"],
         "bottom_count": vision["bottom_count"],
         "has_text": vision["has_text"],
-        "background_removed": background_rgb is not None,
+        "background_removed": background_removed_sheet_path is not None,
         "background_removed_sheet_path": (
             str(background_removed_sheet_path) if background_removed_sheet_path else ""
         ),

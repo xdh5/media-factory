@@ -1,5 +1,5 @@
 const ACTIVE_STATUSES = ["reserved", "completed", "published", "used"];
-const PUBLICATION_BUSINESS_LINES = ["finance", "language_learning"];
+const PUBLICATION_BUSINESS_LINES = ["finance", "language_learning", "psychology_quiz"];
 const PUBLICATION_PLATFORMS = [
   "youtube", "facebook", "instagram", "tiktok", "kuaishou",
   "douyin", "baijiahao", "xiaohongshu", "toutiao", "wechat_channels",
@@ -483,6 +483,102 @@ async function commitFinanceGeneratedImages(request, env) {
     saved.push(row);
   }
   return jsonResponse({ records: saved }, 201);
+}
+
+async function listScenarioQuizQuestions(request, env) {
+  const url = new URL(request.url);
+  const days = positiveInteger(url.searchParams.get("days") || "30", "days", 3650);
+  const result = await env.DB.prepare(
+    `SELECT id, run_id, topic_record_id, topic, category, scene_title, scenario,
+            option_a, option_b, option_c, option_d, result_a, result_b, result_c, result_d,
+            image_keywords_json, status, publish_date, created_at, updated_at
+     FROM scenario_quiz_questions
+     WHERE created_at >= ?
+     ORDER BY created_at DESC`,
+  ).bind(cutoffTimestamp(days)).all();
+  return jsonResponse({
+    records: (result.results || []).map((row) => ({
+      ...row,
+      image_keywords: JSON.parse(row.image_keywords_json || "[]"),
+      image_keywords_json: undefined,
+    })),
+  });
+}
+
+async function commitScenarioQuizQuestion(request, env) {
+  const body = await request.json();
+  const item = body.record;
+  if (!item || typeof item !== "object") throw new Error("record 必须是对象");
+  const runId = requiredText(item.run_id, "run_id", 100);
+  const topicRecordId = positiveInteger(item.topic_record_id, "topic_record_id", 2147483647);
+  const topic = requiredText(item.topic, "topic", 500);
+  const category = requiredText(item.category, "category", 32);
+  if (!["finance", "success", "human_nature"].includes(category)) {
+    throw new Error("category 必须从 finance、success、human_nature 中选择");
+  }
+  const imageKeywords = item.image_keywords;
+  if (!Array.isArray(imageKeywords) || !imageKeywords.length || imageKeywords.length > 20) {
+    throw new Error("image_keywords 必须是包含 1 到 20 项的数组");
+  }
+  const normalizedKeywords = imageKeywords.map((value, index) =>
+    requiredText(value, `image_keywords[${index}]`, 100));
+  const status = String(item.status || "reserved").trim();
+  if (!["reserved", "used", "rejected"].includes(status)) {
+    throw new Error("status 必须从 reserved、used、rejected 中选择");
+  }
+  const publishDate = productionDate(item.publish_date);
+  const values = {
+    sceneTitle: requiredText(item.scene_title, "scene_title", 200),
+    scenario: requiredText(item.scenario, "scenario", 4000),
+    optionA: requiredText(item.option_a, "option_a", 500),
+    optionB: requiredText(item.option_b, "option_b", 500),
+    optionC: requiredText(item.option_c, "option_c", 500),
+    optionD: requiredText(item.option_d, "option_d", 500),
+    resultA: requiredText(item.result_a, "result_a", 2000),
+    resultB: requiredText(item.result_b, "result_b", 2000),
+    resultC: requiredText(item.result_c, "result_c", 2000),
+    resultD: requiredText(item.result_d, "result_d", 2000),
+  };
+  const row = await env.DB.prepare(
+    `INSERT INTO scenario_quiz_questions(
+       run_id, topic_record_id, topic, category, scene_title, scenario,
+       option_a, option_b, option_c, option_d, result_a, result_b, result_c, result_d,
+       image_keywords_json, status, publish_date
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(run_id) DO UPDATE SET
+       topic_record_id = excluded.topic_record_id,
+       topic = excluded.topic,
+       category = excluded.category,
+       scene_title = excluded.scene_title,
+       scenario = excluded.scenario,
+       option_a = excluded.option_a,
+       option_b = excluded.option_b,
+       option_c = excluded.option_c,
+       option_d = excluded.option_d,
+       result_a = excluded.result_a,
+       result_b = excluded.result_b,
+       result_c = excluded.result_c,
+       result_d = excluded.result_d,
+       image_keywords_json = excluded.image_keywords_json,
+       status = excluded.status,
+       publish_date = excluded.publish_date,
+       updated_at = CURRENT_TIMESTAMP
+     RETURNING id, run_id, topic_record_id, topic, category, scene_title, scenario,
+               option_a, option_b, option_c, option_d, result_a, result_b, result_c, result_d,
+               image_keywords_json, status, publish_date, created_at, updated_at`,
+  ).bind(
+    runId, topicRecordId, topic, category, values.sceneTitle, values.scenario,
+    values.optionA, values.optionB, values.optionC, values.optionD,
+    values.resultA, values.resultB, values.resultC, values.resultD,
+    JSON.stringify(normalizedKeywords), status, publishDate,
+  ).first();
+  return jsonResponse({
+    record: {
+      ...row,
+      image_keywords: JSON.parse(row.image_keywords_json || "[]"),
+      image_keywords_json: undefined,
+    },
+  }, 201);
 }
 
 async function listPublicationRecords(request, env) {
@@ -1190,6 +1286,8 @@ export default {
       if (request.method === "GET" && url.pathname === "/v1/image-library") return await listImageLibrary(request, env);
       if (request.method === "GET" && url.pathname === "/v1/finance-generated-images") return await listFinanceGeneratedImages(request, env);
       if (request.method === "POST" && url.pathname === "/v1/finance-generated-images/commit") return await commitFinanceGeneratedImages(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/scenario-quiz-questions") return await listScenarioQuizQuestions(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/scenario-quiz-questions/commit") return await commitScenarioQuizQuestion(request, env);
       if (request.method === "GET" && url.pathname === "/v1/publication-records") return await listPublicationRecords(request, env);
       if (request.method === "DELETE" && url.pathname === "/v1/publication-records") return await deletePublicationRecords(request, env);
       if (request.method === "POST" && url.pathname === "/v1/publication-records/commit") return await commitPublicationRecords(request, env);

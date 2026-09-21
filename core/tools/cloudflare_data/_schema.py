@@ -74,13 +74,52 @@ FINANCE_GENERATED_IMAGE_OUTPUT_SCHEMA = {
     "additionalProperties": False,
 }
 
+SCENARIO_QUIZ_CATEGORIES = ["finance", "success", "human_nature"]
+
+SCENARIO_QUIZ_QUESTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "integer"},
+        "run_id": {"type": "string"},
+        "topic_record_id": {"type": "integer"},
+        "topic": {"type": "string"},
+        "category": {"type": "string", "enum": SCENARIO_QUIZ_CATEGORIES},
+        "scene_title": {"type": "string"},
+        "scenario": {"type": "string"},
+        "option_a": {"type": "string"},
+        "option_b": {"type": "string"},
+        "option_c": {"type": "string"},
+        "option_d": {"type": "string"},
+        "result_a": {"type": "string"},
+        "result_b": {"type": "string"},
+        "result_c": {"type": "string"},
+        "result_d": {"type": "string"},
+        "image_keywords": {"type": "array", "items": {"type": "string"}},
+        "status": {"type": "string", "enum": ["reserved", "used", "rejected"]},
+        "publish_date": {"type": "string", "format": "date"},
+    },
+    "required": [
+        "run_id", "topic_record_id", "topic", "category", "scene_title", "scenario",
+        "option_a", "option_b", "option_c", "option_d", "result_a", "result_b",
+        "result_c", "result_d", "image_keywords", "status", "publish_date",
+    ],
+    "additionalProperties": False,
+}
+
+SCENARIO_QUIZ_COMMIT_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {"record": SCENARIO_QUIZ_QUESTION_SCHEMA},
+    "required": ["record"],
+    "additionalProperties": False,
+}
+
 PUBLICATION_RECORD_SCHEMA = {
     "type": "object",
     "properties": {
         "id": {"type": "integer"},
         "publication_id": {"type": "string"},
         "run_id": {"type": "string"},
-        "business_line": {"type": "string", "enum": ["finance", "language_learning"]},
+        "business_line": {"type": "string", "enum": ["finance", "language_learning", "psychology_quiz"]},
         "platform": {
             "type": "string",
             "enum": [
@@ -145,7 +184,7 @@ PRODUCTION_OUTPUT_SCHEMA = {
         "production_id": {"type": "string"},
         "run_id": {"type": "string"},
         "publish_date": {"type": "string", "format": "date"},
-        "business_line": {"type": "string", "enum": ["finance", "language_learning"]},
+        "business_line": {"type": "string", "enum": ["finance", "language_learning", "psychology_quiz"]},
         "content_kind": {"type": "string"},
         "content_part": {"type": "integer", "minimum": 1},
         "title": {"type": "string"},
