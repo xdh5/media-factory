@@ -1,4 +1,4 @@
-"""心理测试成片：封面与最终合成。"""
+"""心灵鸡汤成片：封面与最终合成。"""
 
 from __future__ import annotations
 
@@ -223,7 +223,7 @@ def finish_psychology_quiz_video(
     progress=None,
 ) -> dict:
     settings = _production_config(production_config)
-    resolved_draft, draft = load_draft(draft_path, "心理测试稿件")
+    resolved_draft, draft = load_draft(draft_path, "心灵鸡汤稿件")
     required_draft_fields = {
         "topic", "run_id", "topic_record_id", "article", "title", "short_title",
         "hashtags", "cache_dir", "output_dir",
@@ -231,7 +231,7 @@ def finish_psychology_quiz_video(
     missing_fields = sorted(required_draft_fields.difference(draft))
     if missing_fields:
         raise WorkflowStepError(
-            f"心理测试稿件缺少字段：{missing_fields}",
+            f"心灵鸡汤稿件缺少字段：{missing_fields}",
             {"draft_path": str(resolved_draft)},
         )
     if production_source not in {"local_mcp", "github_workflow"}:
@@ -314,7 +314,7 @@ def finish_psychology_quiz_video(
     ]
     if len(shots) < 14:
         raise WorkflowStepError(
-            "心理测试分镜不足14段，无法生成情境、选项、结果和结尾章节时间轴"
+            "心灵鸡汤分镜不足14段，无法生成情境、选项、结果和结尾章节时间轴"
         )
     option_stages = []
     result_stages = []
@@ -373,7 +373,7 @@ def finish_psychology_quiz_video(
             progress=progress,
         )
     except Exception as extra:
-        raise WorkflowStepError(f"心理测试成片失败：{extra}") from extra
+        raise WorkflowStepError(f"心灵鸡汤成片失败：{extra}") from extra
     final_path = Path(final_result["output_path"])
     publish_date = publish_date_from_run_id(run_id)
     production_outputs = None

@@ -1,4 +1,4 @@
-"""心理测试 MCP 内部编排模块。"""
+"""心灵鸡汤 MCP 内部编排模块。"""
 
 from .assemble_video import finish_psychology_quiz_video
 from .draft import load_draft, save_quiz_draft, validate_draft_fields, validate_quiz

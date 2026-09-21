@@ -1,4 +1,4 @@
-"""按计划发布日期串行生产心理测试、语言并发布语言。"""
+"""按计划发布日期串行生产心灵鸡汤、语言并发布语言。"""
 
 from __future__ import annotations
 
@@ -61,19 +61,19 @@ async def run_day(
     quiz_preflight = daily_production_preflight("psychology_quiz", publish_date)
     try:
         if skip_psychology_quiz:
-            print(f"[{publish_date}] 跳过心理测试生产：本轮只补偿语言", flush=True)
+            print(f"[{publish_date}] 跳过心灵鸡汤生产：本轮只补偿语言", flush=True)
             results["psychology_quiz"] = {"status": "skipped", "reason": "本轮只补偿语言"}
         elif quiz_preflight["should_generate"]:
-            print(f"[{publish_date}] 开始心理测试生产", flush=True)
+            print(f"[{publish_date}] 开始心灵鸡汤生产", flush=True)
             os.environ["DASHSCOPE_BUSINESS_LINE"] = "psychology_quiz"
             await run_psychology_quiz(publish_date=publish_date)
-            notify_business_result("心理测试生产", True, run_url)
+            notify_business_result("心灵鸡汤生产", True, run_url)
             results["psychology_quiz"] = {"status": "produced"}
         else:
-            print(f"[{publish_date}] 跳过心理测试生产：{quiz_preflight['skip_reason']}", flush=True)
+            print(f"[{publish_date}] 跳过心灵鸡汤生产：{quiz_preflight['skip_reason']}", flush=True)
             results["psychology_quiz"] = {"status": "skipped", "reason": quiz_preflight["skip_reason"]}
     except Exception as exc:
-        notify_business_result("心理测试生产", False, run_url, str(exc))
+        notify_business_result("心灵鸡汤生产", False, run_url, str(exc))
         results["psychology_quiz"] = {"status": "failed", "error": str(exc)}
 
     lang_preflight = daily_production_preflight("language_learning", publish_date)

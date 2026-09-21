@@ -1,4 +1,4 @@
-"""心理测试 GitHub Action：千问代替宿主 Agent 完成写稿、分镜和选图。"""
+"""心灵鸡汤 GitHub Action：千问代替宿主 Agent 完成写稿、分镜和选图。"""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def _generate_quiz(prompt: str, recent_topics: list[str], requested_topic: str, 
         f"{prompt}\n\n"
         f"最近30天已用主题：{json.dumps(recent_topics, ensure_ascii=False)}\n"
         f"用户可选侧重点：{requested_topic.strip() or '无'}\n"
-        "生成一条全新的生活化心理测试，不得使用最近主题的同义改写。"
+        "生成一条全新的生活化心灵鸡汤，不得使用最近主题的同义改写。"
         "输出 JSON：topic、quiz、article、title、short_title、hashtags、cover_lines、cover_highlights。"
         "quiz 包含 category、scene_title、scenario、options、results、video_keywords；"
         "options 和 results 都使用 a、b、c、d 四个键。"
@@ -58,7 +58,7 @@ def _generate_quiz(prompt: str, recent_topics: list[str], requested_topic: str, 
     if feedback:
         user_prompt += f"\n上一次程序校验失败，必须修正：{feedback}"
     return json_text(qwen(
-        "你是生活化心理测试短视频编辑。第一句必须直说心理测试并制造强烈悬念；只输出有效 JSON。",
+        "你是生活化心灵鸡汤短视频编辑。第一句必须直说心灵鸡汤并制造强烈悬念；只输出有效 JSON。",
         user_prompt,
         json_output=True,
         max_tokens=6000,
@@ -86,7 +86,7 @@ def _select_videos(search_context: dict) -> list[dict]:
             ],
         })
     payload = json_text(qwen(
-        "你是心理测试短视频素材导演，只输出有效 JSON。",
+        "你是心灵鸡汤短视频素材导演，只输出有效 JSON。",
         "根据字幕、英文检索词和候选标题，为每个镜头选择生活动作最贴近的视频。\n"
         f"候选：{json.dumps(compact, ensure_ascii=False)}\n"
         "输出 {\"selections\":[{\"video_id\":\"shot-001\",\"provider\":\"pexels\",\"id\":\"123\"}]}，覆盖全部镜头。",
@@ -132,7 +132,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
             except (KeyError, ValueError, MCPCallError) as exc:
                 last_error = exc
         else:
-            raise RuntimeError(f"心理测试连续三次不合格：{last_error}")
+            raise RuntimeError(f"心灵鸡汤连续三次不合格：{last_error}")
 
         started = await mcp.call("psychology_quiz_start_storyboard", {
             "draft_path": draft["draft_path"],
@@ -143,7 +143,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
         last_error = None
         for _ in range(3):
             storyboard = qwen(
-                "你是严格的心理测试视频分镜导演，只输出规定格式的 VIDEO 和 SUB 行。",
+                "你是严格的心灵鸡汤视频分镜导演，只输出规定格式的 VIDEO 和 SUB 行。",
                 storyboard_prompt,
                 max_tokens=14000,
             )["text"]
@@ -163,7 +163,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
                 last_error = exc
                 storyboard_prompt += f"\n\n上一次输出校验失败，必须修正：{exc}"
         else:
-            raise RuntimeError(f"心理测试分镜连续三次不合格：{last_error}")
+            raise RuntimeError(f"心灵鸡汤分镜连续三次不合格：{last_error}")
 
         started = await mcp.call("psychology_quiz_start_download_videos", {
             "context_path": prepared["context_path"],
@@ -172,7 +172,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
         video_manifest = await mcp.poll("psychology_quiz_poll_task", started["task_path"])
         intro_prompt = str(prepared.get("intro_image_prompt") or "").strip()
         if not intro_prompt:
-            raise RuntimeError("心理测试视频搜索结果缺少片头写实图 Prompt")
+            raise RuntimeError("心灵鸡汤视频搜索结果缺少片头写实图 Prompt")
         intro_image = generate_qwen_image(
             intro_prompt,
             Path(draft["cache_dir"]) / "intro-realistic.png",
@@ -206,7 +206,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
     }
     video_url = uploaded_by_name.get(Path(manifest["video_path"]).name, "")
     if not video_url:
-        raise RuntimeError("心理测试成片已上传，但 R2 返回结果缺少视频地址")
+        raise RuntimeError("心灵鸡汤成片已上传，但 R2 返回结果缺少视频地址")
     production_outputs = commit_production_outputs([{
         "production_id": f"github_workflow:psychology_quiz:{manifest['run_id']}:scenario_quiz:1",
         "run_id": manifest["run_id"],
@@ -221,7 +221,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
         "r2_url": video_url,
         "r2_expires_at": None,
     }])
-    write_summary("心理测试成片已生成", [
+    write_summary("心灵鸡汤成片已生成", [
         ("话题", topic),
         ("标题", manifest["title"]),
         ("视频来源", "Pexels → Pixabay → Coverr 逐镜头兜底"),

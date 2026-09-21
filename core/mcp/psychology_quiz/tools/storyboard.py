@@ -1,4 +1,4 @@
-"""心理测试分镜 Prompt 生成、TTS 与分镜解析。"""
+"""心灵鸡汤分镜 Prompt 生成、TTS 与分镜解析。"""
 
 from __future__ import annotations
 
@@ -148,10 +148,10 @@ def parse_storyboard(value: str, timeline: list[dict]) -> list[dict]:
 
 
 def prepare_storyboard(draft_path: str | Path, *, tts_config: dict) -> dict:
-    resolved_draft, draft = load_draft(draft_path, "心理测试稿件")
+    resolved_draft, draft = load_draft(draft_path, "心灵鸡汤稿件")
     for key in ("article", "cache_dir", "topic_record_id"):
         if not draft.get(key):
-            raise WorkflowStepError(f"心理测试稿件缺少字段：{key}")
+            raise WorkflowStepError(f"心灵鸡汤稿件缺少字段：{key}")
     cache_root = Path(draft["cache_dir"]).resolve()
     tts_result = compose_tts(str(draft["article"]), cache_root, tts_config)
     prompt = build_storyboard_prompt(tts_result["timeline"], radio=VIDEO_RADIO, size=VIDEO_SIZE)

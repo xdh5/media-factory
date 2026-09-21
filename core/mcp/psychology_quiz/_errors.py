@@ -1,4 +1,4 @@
-"""心理测试 MCP 错误。"""
+"""心灵鸡汤 MCP 错误。"""
 
 
 class PsychologyQuizError(Exception):

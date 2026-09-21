@@ -1,4 +1,4 @@
-"""心理测试时间轴工具常量。"""
+"""心灵鸡汤时间轴工具常量。"""
 
 ASS_HEADER = """[Script Info]
 ScriptType: v4.00+

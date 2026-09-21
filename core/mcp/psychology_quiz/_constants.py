@@ -1,4 +1,4 @@
-"""心理测试 MCP 技术常量。"""
+"""心灵鸡汤 MCP 技术常量。"""
 
 from datetime import date, datetime
 from pathlib import Path

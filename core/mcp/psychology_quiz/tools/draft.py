@@ -1,4 +1,4 @@
-"""心理测试稿件校验与保存。"""
+"""心灵鸡汤稿件校验与保存。"""
 
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def validate_quiz(quiz: dict, article: str) -> dict:
     article_length = len("".join(normalized_article.split()))
     if article_length < QUIZ_ARTICLE_MIN_LENGTH:
         raise WorkflowStepError(
-            f"心理测试正文去除空白后不得少于 {QUIZ_ARTICLE_MIN_LENGTH} 个字符，当前为 {article_length} 个字符"
+            f"心灵鸡汤正文去除空白后不得少于 {QUIZ_ARTICLE_MIN_LENGTH} 个字符，当前为 {article_length} 个字符"
         )
     long_lines = [
         (index, len(line.strip()))
@@ -85,7 +85,7 @@ def validate_quiz(quiz: dict, article: str) -> dict:
         if len(line.strip()) > 20
     ]
     if long_lines:
-        raise WorkflowStepError("心理测试正文每行不得超过20字", {"long_lines": long_lines})
+        raise WorkflowStepError("心灵鸡汤正文每行不得超过20字", {"long_lines": long_lines})
     compact_article = "".join(normalized_article.split())
     for key in QUIZ_KEYS:
         if "".join(normalized_options[key].split()) not in compact_article:
@@ -135,9 +135,9 @@ def save_quiz_draft(
         target = cache_root / DRAFT_FILE_NAME
         record_id = int(topic_record["id"])
     else:
-        resolved, existing = load_draft(draft_path, "待修改心理测试稿件")
+        resolved, existing = load_draft(draft_path, "待修改心灵鸡汤稿件")
         if normalized_topic != str(existing.get("topic") or "").strip():
-            raise WorkflowStepError("修改已有心理测试稿件时不能更换话题")
+            raise WorkflowStepError("修改已有心灵鸡汤稿件时不能更换话题")
         run_id = str(existing["run_id"])
         cache_root = Path(existing["cache_dir"]).resolve()
         output_root = Path(existing["output_dir"]).resolve()

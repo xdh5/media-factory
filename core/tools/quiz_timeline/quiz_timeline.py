@@ -1,4 +1,4 @@
-"""生成心理测试选项卡片与可视化时间轴的 ASS 图层。"""
+"""生成心灵鸡汤选项卡片与可视化时间轴的 ASS 图层。"""
 
 from __future__ import annotations
 

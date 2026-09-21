@@ -1,4 +1,4 @@
-"""心理测试 Prompt 读取与分镜模板拼装。"""
+"""心灵鸡汤 Prompt 读取与分镜模板拼装。"""
 
 from pathlib import Path
 

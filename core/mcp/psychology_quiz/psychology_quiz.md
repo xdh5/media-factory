@@ -1,8 +1,8 @@
-# 心理测试 MCP
+# 心灵鸡汤 MCP
 
 入口：`python -m core.mcp.psychology_quiz`。
 
-该 MCP 独立负责心理测试的写稿、分镜、正版视频素材搜索、字幕版式和成片记录，不调用 Finance MCP 内部实现。
+该 MCP 独立负责心灵鸡汤的写稿、分镜、正版视频素材搜索、字幕版式和成片记录，不调用 Finance MCP 内部实现。
 
 ## 流程
 

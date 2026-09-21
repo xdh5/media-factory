@@ -1,4 +1,4 @@
-"""心理测试 MCP：`python -m core.mcp.psychology_quiz`。"""
+"""心灵鸡汤 MCP：`python -m core.mcp.psychology_quiz`。"""
 
 from __future__ import annotations
 
@@ -60,8 +60,8 @@ def _map_error(exc: Exception) -> PsychologyQuizError:
 mcp = FastMCP(
     "media-factory-psychology-quiz",
     instructions=(
-        "心理测试短视频独立编排 MCP。交互式生产前必须明确北京时间计划发布日期 publish_date。"
-        "内容必须包含夸张但不虚假的心理测试黄金钩子、具体生活场景、ABCD 四个选项和四段独立结果。"
+        "心灵鸡汤短视频独立编排 MCP。交互式生产前必须明确北京时间计划发布日期 publish_date。"
+        "内容必须包含夸张但不虚假的心灵鸡汤黄金钩子、具体生活场景、ABCD 四个选项和四段独立结果。"
         "交互式生产由宿主 Agent 写稿、分镜、生成一张写实片头图并选择正文视频；"
         "GitHub Action 没有宿主 Agent 时允许千问完成同等步骤。"
         "只有片头允许生图；正文镜头只允许通过公共 stock_video 工具从 Pexels、Pixabay、Coverr 搜索和下载。"
@@ -73,7 +73,7 @@ mcp = FastMCP(
 
 @mcp.tool()
 def psychology_quiz_get_prompt() -> dict:
-    """返回心理测试写稿 Prompt 与最近30天已用话题。"""
+    """返回心灵鸡汤写稿 Prompt 与最近30天已用话题。"""
     try:
         recent = get_topic(MCP_ID, TOPIC_DEDUPLICATION_DAYS)
         return {
@@ -88,7 +88,7 @@ def psychology_quiz_get_prompt() -> dict:
 
 @mcp.tool()
 def psychology_quiz_get_production_outputs(publish_date: str) -> dict:
-    """按北京时间计划发布日期查询心理测试成片。"""
+    """按北京时间计划发布日期查询心灵鸡汤成片。"""
     try:
         return {
             "publish_date": publish_date,
@@ -112,7 +112,7 @@ def psychology_quiz_save_draft(
     publish_date: str,
     draft_path: str | None = None,
 ) -> dict:
-    """校验并保存心理测试，使用共用话题库做30天原子去重并写入题库。"""
+    """校验并保存心灵鸡汤，使用共用话题库做30天原子去重并写入题库。"""
     try:
         validate_draft_fields(
             quiz=quiz,
@@ -126,7 +126,7 @@ def psychology_quiz_save_draft(
         if draft_path is None:
             topic_record = update(MCP_ID, topic, TOPIC_DEDUPLICATION_DAYS)
         else:
-            _, existing = load_draft(draft_path, "待修改心理测试稿件")
+            _, existing = load_draft(draft_path, "待修改心灵鸡汤稿件")
             topic_record = {"id": int(existing["topic_record_id"]), "topic": str(existing["topic"])}
         draft = save_quiz_draft(
             topic=topic,
@@ -170,7 +170,7 @@ def psychology_quiz_save_draft(
 def psychology_quiz_start_storyboard(draft_path: str, tts_config: dict) -> dict:
     """启动 TTS 和分镜上下文生成。"""
     try:
-        _, draft = load_draft(draft_path, "心理测试稿件")
+        _, draft = load_draft(draft_path, "心灵鸡汤稿件")
 
         def _work() -> dict:
             return prepare_storyboard(draft_path, tts_config=tts_config)
@@ -188,7 +188,7 @@ def psychology_quiz_start_storyboard(draft_path: str, tts_config: dict) -> dict:
 
 @mcp.tool()
 def psychology_quiz_poll_task(task_path: str) -> dict:
-    """轮询心理测试后台任务。"""
+    """轮询心灵鸡汤后台任务。"""
     try:
         return runner_poll_task(task_path=task_path)
     except RunnerTaskNotFoundError as exc:
@@ -203,7 +203,7 @@ def psychology_quiz_start_video_search(
 ) -> dict:
     """后台从 Pexels、Pixabay、Coverr 逐镜头搜索视频候选。"""
     try:
-        _, draft = load_draft(draft_path, "心理测试稿件")
+        _, draft = load_draft(draft_path, "心灵鸡汤稿件")
 
         def _work(progress=None) -> dict:
             return prepare_video_searches(
@@ -232,7 +232,7 @@ def psychology_quiz_start_download_videos(context_path: str, selections: list[di
         metadata = context.get("metadata")
         if not isinstance(metadata, dict):
             raise WorkflowStepError("正版视频搜索上下文缺少 metadata")
-        _, draft = load_draft(str(metadata.get("draft_path") or ""), "心理测试稿件")
+        _, draft = load_draft(str(metadata.get("draft_path") or ""), "心灵鸡汤稿件")
 
         def _work(progress=None) -> dict:
             return download_selected_videos(resolved_context, selections, progress=progress)
@@ -258,9 +258,9 @@ def psychology_quiz_start_finish_video(
     force_shot_ids: list[str] | None = None,
     production_source: str = "local_mcp",
 ) -> dict:
-    """启动心理测试成片合成，字幕样式与位置从 production_config 读取。"""
+    """启动心灵鸡汤成片合成，字幕样式与位置从 production_config 读取。"""
     try:
-        _, draft = load_draft(draft_path, "心理测试稿件")
+        _, draft = load_draft(draft_path, "心灵鸡汤稿件")
 
         def _work(progress=None) -> dict:
             return finish_psychology_quiz_video(
@@ -287,7 +287,7 @@ def psychology_quiz_start_finish_video(
 
 @mcp.tool()
 def psychology_quiz_clear_run(run_id: str, confirmed: bool) -> dict:
-    """用户确认后清理本次心理测试缓存与成片。"""
+    """用户确认后清理本次心灵鸡汤缓存与成片。"""
     try:
         return clear_run(MCP_ID, run_id, confirmed=confirmed)
     except ClearCacheConfirmationRequiredError as exc:

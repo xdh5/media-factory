@@ -1,4 +1,4 @@
-"""为心理测试分镜搜索、选择并规范化正版视频素材。"""
+"""为心灵鸡汤分镜搜索、选择并规范化正版视频素材。"""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def prepare_video_searches(
     orientation = str(video_config.get("orientation") or "landscape").strip()
     per_provider = int(video_config.get("per_provider") or 8)
     providers = video_config.get("providers") or ["pexels", "pixabay", "coverr"]
-    resolved_draft, draft = load_draft(draft_path, "心理测试稿件")
+    resolved_draft, draft = load_draft(draft_path, "心灵鸡汤稿件")
     cache_root = Path(str(draft.get("cache_dir") or "")).resolve()
     _, context = load_draft(cache_root / STORYBOARD_CONTEXT_FILE_NAME, "分镜上下文")
     timeline = context.get("timeline")

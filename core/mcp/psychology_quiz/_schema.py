@@ -1,4 +1,4 @@
-"""心理测试 MCP 输入结构。"""
+"""心灵鸡汤 MCP 输入结构。"""
 
 QUIZ_SCHEMA = {
     "type": "object",

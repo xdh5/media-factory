@@ -1,4 +1,4 @@
-"""心理测试时间轴工具错误。"""
+"""心灵鸡汤时间轴工具错误。"""
 
 
 class QuizTimelineError(Exception):
