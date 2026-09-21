@@ -7,6 +7,7 @@ from pathlib import Path
 from ._errors import InvalidParameterError
 from ._style import resolve_subtitle_style
 from ._text import build_rich_ass_text, parse_cue_text, wrap_plain_text
+from ._words import build_word_events, build_word_units
 
 
 def _ass_time(seconds: float) -> str:
@@ -68,6 +69,23 @@ def write_timeline_ass(
         if canvas is None:
             canvas = resolved
         resolved_styles[resolved["style_name"]] = resolved
+
+        use_word_events = bool(resolved.get("animation")) and isinstance(cue.get("text"), str)
+
+        if use_word_events:
+            units = build_word_units(cue, parameter=f"cues[{index}]")
+            word_events = build_word_events(units, resolved, language)
+            for event_start, event_end, body in word_events:
+                text = body
+                if resolved["pos"] is not None:
+                    pos_x, pos_y = resolved["pos"]
+                    text = rf"{{\pos({pos_x},{pos_y})}}{text}"
+                events.append(
+                    f"Dialogue: 0,{_ass_time(event_start)},{_ass_time(event_end)},"
+                    f"{resolved['style_name']},,0,0,0,,{text}"
+                )
+            if word_events:
+                continue
 
         has_inline_style = any(span.get("style") for span in spans)
         if has_inline_style or isinstance(cue.get("text"), list):

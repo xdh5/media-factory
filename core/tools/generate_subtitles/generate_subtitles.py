@@ -47,6 +47,22 @@ def generate_subtitles(
         _validate_options(cue.get("style"), f"cues[{index}].style", _STYLE_KEYS)
         _validate_options(cue.get("position"), f"cues[{index}].position", _POSITION_KEYS)
         validate_cue_text(cue.get("text"), parameter=f"cues[{index}].text")
+        words = cue.get("words")
+        if words is not None:
+            if not isinstance(words, list) or not words:
+                raise InvalidParameterError(
+                    f"cues[{index}].words", "words 必须是至少一个词的对象数组",
+                )
+            for word_index, item in enumerate(words):
+                word_parameter = f"cues[{index}].words[{word_index}]"
+                if not isinstance(item, dict) or not str(item.get("text") or "").strip():
+                    raise InvalidParameterError(word_parameter, "每个词必须包含非空 text")
+                for key in ("start", "end"):
+                    value = item.get(key)
+                    if isinstance(value, bool) or not isinstance(value, (int, float)):
+                        raise InvalidParameterError(
+                            f"{word_parameter}.{key}", "必须是数字（秒）",
+                        )
 
     destination = Path(output_path).resolve()
     if destination.suffix.lower() != ".ass":

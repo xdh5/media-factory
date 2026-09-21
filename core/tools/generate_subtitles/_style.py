@@ -12,9 +12,12 @@ from ._constants import (
     SUBTITLE_DEFAULT_COLORS,
     SUBTITLE_DEFAULT_FONT_SIZE,
     SUBTITLE_MAX_LINES,
+    SUBTITLE_PRESETS,
     SUBTITLE_STYLES,
     SUPPORTED_SUBTITLE_ALIGNMENTS,
+    SUPPORTED_SUBTITLE_ANIMATIONS,
     SUPPORTED_SUBTITLE_LANGUAGES,
+    SUPPORTED_SUBTITLE_PRESETS,
 )
 from ._errors import InvalidParameterError, UnsupportedSubtitleLanguageError
 
@@ -31,6 +34,7 @@ _POSITION_KEYS = frozenset({
 })
 
 _STYLE_KEYS = frozenset({
+    "preset",
     "font",
     "font_size",
     "font_size_ratio",
@@ -44,6 +48,9 @@ _STYLE_KEYS = frozenset({
     "shadow_ratio",
     "bold",
     "italic",
+    "letter_spacing",
+    "animation",
+    "uppercase",
     "max_lines",
     "canvas_width_ratio",
 })
@@ -134,6 +141,28 @@ def _style_fingerprint(resolved: dict) -> str:
     return digest[:10]
 
 
+def _preset_style_layer(preset_name: str, *, parameter: str) -> tuple[dict, dict]:
+    """把预设拆成（样式层，动画配置）；样式层优先级介于语言默认与用户覆盖之间。"""
+    if not isinstance(preset_name, str) or preset_name not in SUBTITLE_PRESETS:
+        raise InvalidParameterError(
+            parameter,
+            f"preset 必须是 {SUPPORTED_SUBTITLE_PRESETS} 之一，收到 {preset_name!r}",
+        )
+    preset = SUBTITLE_PRESETS[preset_name]
+    return dict(preset["style"]), {
+        "highlight_color": str(preset["highlight_color"]),
+        "animation": str(preset["animation"]),
+        "uppercase": bool(preset["uppercase"]),
+    }
+
+
+def _preset_from_layers(layers: list[dict]) -> tuple[dict, dict]:
+    for layer in reversed(layers):
+        if "preset" in layer:
+            return _preset_style_layer(layer["preset"], parameter="style")
+    return {}, {}
+
+
 def resolve_subtitle_style(
     language: str,
     width: int,
@@ -153,6 +182,9 @@ def resolve_subtitle_style(
         deepcopy(SUBTITLE_STYLES[normalized_language]),
         _validate_options(style, style_parameter, _STYLE_KEYS),
     ]
+    preset_style, preset_motion = _preset_from_layers(style_layers)
+    if preset_style:
+        style_layers.insert(1, preset_style)
     position_layers = [_validate_options(position, position_parameter, _POSITION_KEYS)]
 
     font = _pick_string(style_layers, "font", parameter=style_parameter) or SUBTITLE_STYLES[normalized_language]["font"]
@@ -194,6 +226,34 @@ def resolve_subtitle_style(
     if bold is None:
         bold = False
     italic = _pick_bool(style_layers, "italic", parameter=style_parameter)
+    if italic is None:
+        italic = False
+
+    letter_spacing = _pick_number(
+        style_layers, "letter_spacing", parameter=style_parameter, minimum=0, maximum=50,
+    )
+
+    animation = _pick_string(style_layers, "animation", parameter=style_parameter)
+    if animation is None:
+        animation = preset_motion.get("animation")
+    if animation is not None and animation not in SUPPORTED_SUBTITLE_ANIMATIONS:
+        raise InvalidParameterError(
+            style_parameter,
+            f"animation 必须是 {SUPPORTED_SUBTITLE_ANIMATIONS} 之一，收到 {animation!r}",
+        )
+
+    uppercase = _pick_bool(style_layers, "uppercase", parameter=style_parameter)
+    if uppercase is None:
+        uppercase = preset_motion.get("uppercase", False)
+
+    highlight_color: str | None = None
+    for layer in style_layers:
+        if "highlight_color" in layer:
+            highlight_color = _parse_color(
+                str(layer["highlight_color"]), f"{style_parameter}.highlight_color",
+            )
+    if highlight_color is None and "highlight_color" in preset_motion:
+        highlight_color = _parse_color(preset_motion["highlight_color"], f"{style_parameter}.highlight_color")
 
     primary_color = SUBTITLE_DEFAULT_COLORS["primary_color"]
     secondary_color = SUBTITLE_DEFAULT_COLORS["secondary_color"]
@@ -268,6 +328,10 @@ def resolve_subtitle_style(
         "shadow": int(shadow),
         "bold": bool(bold),
         "italic": bool(italic),
+        "letter_spacing": letter_spacing,
+        "animation": animation,
+        "uppercase": bool(uppercase),
+        "highlight_color": highlight_color,
         "alignment": alignment,
         "margin_left": int(margin_left),
         "margin_right": int(margin_right),
