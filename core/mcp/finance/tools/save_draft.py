@@ -7,8 +7,8 @@ import re
 from pathlib import Path
 
 from .._constants import (
-    ARTICLE_MAX_LENGTH,
-    ARTICLE_MIN_LENGTH,
+    ARTICLE_MAX_LINE_LENGTH,
+    CONTENT_KIND,
     DRAFT_FILE_NAME,
     MCP_ID,
     production_dirs,
@@ -73,6 +73,7 @@ def save_draft(
     publish_date: str,
     draft_path: str | Path | None = None,
     cover_highlights: list[str] | None = None,
+    intro_scene: str = "",
 ) -> dict:
     normalized_topic = str(topic or "").strip()
     normalized_article = str(article or "").strip()
@@ -80,17 +81,6 @@ def save_draft(
         raise WorkflowStepError("topic 不能为空")
     if not normalized_article:
         raise WorkflowStepError("article 不能为空")
-    article_length = len("".join(normalized_article.split()))
-    if not ARTICLE_MIN_LENGTH <= article_length <= ARTICLE_MAX_LENGTH:
-        raise WorkflowStepError(
-            f"article 去除所有空白后必须为 {ARTICLE_MIN_LENGTH}～{ARTICLE_MAX_LENGTH} 个字符，"
-            f"当前为 {article_length} 个字符",
-            {
-                "article_length": article_length,
-                "minimum": ARTICLE_MIN_LENGTH,
-                "maximum": ARTICLE_MAX_LENGTH,
-            },
-        )
     normalized_source_aweme_id = str(source_aweme_id or "").strip()
     normalized_source_token = str(source_reservation_token or "").strip()
     normalized_source_hook = str(source_hook or "").strip()
@@ -102,15 +92,24 @@ def save_draft(
         raise WorkflowStepError("source_hook 不能为空")
     if not re.sub(r"\s+", "", normalized_article).startswith(re.sub(r"\s+", "", normalized_source_hook)):
         raise WorkflowStepError("正文必须以数据库原稿的黄金钩子原样开头，不能增删或改写")
-    for index, line in enumerate(normalized_article.splitlines(), 1):
-        if len(line.strip()) > 20:
-            raise WorkflowStepError(f"正文第 {index} 行超过20字，请按语义换行；黄金钩子也允许仅插入换行，不得改字或标点")
+    long_lines = [
+        (index, len(line.strip()))
+        for index, line in enumerate(normalized_article.splitlines(), 1)
+        if len(line.strip()) > ARTICLE_MAX_LINE_LENGTH
+    ]
+    if long_lines:
+        raise WorkflowStepError(
+            f"正文每行不得超过{ARTICLE_MAX_LINE_LENGTH}字（约两行字幕），请按语义换行；"
+            "黄金钩子也允许仅插入换行，不得改字或标点",
+            {"long_lines": long_lines},
+        )
     if not isinstance(hashtags, list):
         raise WorkflowStepError("hashtags 必须是包含四个标签的列表")
     metadata_line = "|".join([str(title), str(short_title), *(str(item) for item in hashtags)])
     metadata = parse_metadata(metadata_line)
     normalized_cover_lines = _cover_lines(cover_lines)
     normalized_cover_highlights = _cover_highlights(metadata["title"], cover_highlights)
+    normalized_intro_scene = str(intro_scene or "").strip()
     if draft_path is not None:
         resolved_draft, existing = load_draft(draft_path, "待修改稿件")
         if normalized_topic != str(existing.get("topic") or "").strip():
@@ -119,6 +118,7 @@ def save_draft(
             raise WorkflowStepError("修改已有稿件时不能更换数据库来源稿件")
         if normalized_source_token != str(existing.get("source_reservation_token") or "").strip():
             raise WorkflowStepError("修改已有稿件时必须沿用原来源稿件的占用令牌")
+        normalized_intro_scene = normalized_intro_scene or str(existing.get("intro_scene") or "").strip()
         record = {"id": int(existing["topic_record_id"]), "topic": normalized_topic}
         run_id = str(existing["run_id"])
         cache_root = Path(existing["cache_dir"]).resolve()
@@ -137,6 +137,7 @@ def save_draft(
     draft = {
         "version": 1,
         "line": MCP_ID,
+        "content_kind": CONTENT_KIND,
         "status": "ready_for_production",
         "topic": record["topic"],
         "run_id": run_id,
@@ -152,6 +153,7 @@ def save_draft(
         "source_hook": normalized_source_hook,
         "source_database_status": str(existing.get("source_database_status") or "reserved") if draft_path is not None else "reserved",
         "article": normalized_article,
+        "intro_scene": normalized_intro_scene,
         **metadata,
         "cover_lines": normalized_cover_lines,
         "cover_highlights": normalized_cover_highlights,

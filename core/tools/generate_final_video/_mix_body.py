@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
 from pathlib import Path
 from uuid import uuid4
 
@@ -24,6 +25,30 @@ from ._overlay import normalize_overlays, overlay_filtergraph, overlay_input_arg
 __all__ = ["mix_body"]
 
 
+def _padded_bgm(bgm: Path, duration: float) -> tuple[Path, Path | None]:
+    """BGM 比片长短时，用 concat demuxer 无损循环补长（-stream_loop 对 mp3 在
+    filter_complex 场景下会静音失效，见 2026-09-22 run-20260923 踩坑）。
+
+    统一返回 (BGM 路径, 临时目录或 None)；无需补长时临时目录为 None。
+    """
+    info = _probe(bgm)
+    bgm_duration = float(info["duration"] or 0)
+    if bgm_duration <= 0 or bgm_duration >= duration:
+        return bgm, None
+    repeats = int(duration / bgm_duration) + 2
+    workdir = Path(tempfile.mkdtemp(prefix="bgm-pad-"))
+    list_file = workdir / "list.txt"
+    list_file.write_text("".join(f"file '{bgm.as_posix()}'\n" for _ in range(repeats)), encoding="utf-8")
+    padded = workdir / "bgm-padded.wav"
+    command = [
+        shutil.which("ffmpeg"), "-y", "-f", "concat", "-safe", "0",
+        "-i", str(list_file), "-ar", "48000", "-ac", "2",
+        "-c:a", "pcm_s16le", str(padded),
+    ]
+    _run(command, "循环补长 BGM", timeout_seconds=120)
+    return padded, workdir
+
+
 def mix_body(
     video_path: str | Path,
     output_path: str | Path,
@@ -38,6 +63,7 @@ def mix_body(
     cover_duration: float | None = None,
     opening_sfx: list[dict] | None = None,
     bgm_start_seconds: float | None = None,
+    bgm_gain: float | None = None,
 ) -> dict:
     """画面烧字幕/贴纸/封面（如有）并重编码；叠 TTS 与可选 BGM、片头音效。原片无音轨。"""
     video = _validate_file(video_path, "video_path")
@@ -66,7 +92,7 @@ def mix_body(
         raise FFmpegNotFoundError("ffmpeg")
     probe = _probe(video)
     duration = probe["duration"]
-    timeout_seconds = max(VIDEO_FFMPEG_TIMEOUT_SECONDS, duration * 15)
+    timeout_seconds = max(VIDEO_FFMPEG_TIMEOUT_SECONDS, duration * 40)
     video_stream = next(
         (item for item in probe.get("streams") or [] if item.get("codec_type") == "video"),
         {},
@@ -79,9 +105,11 @@ def mix_body(
     command = [ffmpeg, "-y", "-i", str(video), "-i", str(tts)]
     next_index = 2
     bgm_index = None
+    padded_bgm_dir: Path | None = None
     if bgm is not None:
         bgm_index = next_index
-        command.extend(["-stream_loop", "-1", "-i", str(bgm)])
+        padded, padded_bgm_dir = _padded_bgm(bgm, duration)
+        command.extend(["-i", str(padded)])
         next_index += 1
     sfx_indices = []
     for item in sfx_items:
@@ -126,6 +154,8 @@ def mix_body(
         input_label = current
         output_label = f"extra_ass_{index}"
         filter_value = f"subtitles='{_filter_path(path)}'"
+        if fontsdir is not None:
+            filter_value += f":fontsdir='{_filter_path(Path(fontsdir).resolve())}'"
         video_chains.append(f"[{input_label}]{filter_value}[{output_label}]")
         current = output_label
     if layers:
@@ -164,7 +194,7 @@ def mix_body(
         audio_chains.append(
             f"[{bgm_index}:a]atrim=0:{duration:.9f},asetpts=PTS-STARTPTS,"
             f"aresample={VIDEO_AUDIO_RATE},aformat=channel_layouts=stereo,"
-            f"volume={BGM_GAIN:.6f},"
+            f"volume={float(bgm_gain) if bgm_gain is not None else BGM_GAIN:.6f},"
             f"afade=t=in:st={bgm_start:.3f}:d={BGM_FADE_IN_SECONDS:.3f},"
             f"afade=t=out:st={fade_out_start:.3f}:d={BGM_FADE_OUT_SECONDS:.3f}[bgm]"
         )
@@ -207,5 +237,7 @@ def mix_body(
     finally:
         if temporary.exists():
             temporary.unlink(missing_ok=True)
+        if padded_bgm_dir is not None:
+            shutil.rmtree(padded_bgm_dir, ignore_errors=True)
     result = _probe(destination)
     return {"output_path": str(destination), "duration": round(result["duration"], 6)}

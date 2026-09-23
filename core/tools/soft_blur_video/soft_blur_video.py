@@ -1,7 +1,7 @@
-"""对视频素材施加雾面磨砂玻璃感（黑位抬升 + 降对比褪色 + 轻微模糊）并重编码。
+"""对视频素材施加白蒙版磨砂感（半透明白色蒙版 + 降对比褪色 + 轻微模糊）并重编码。
 
-用于心灵鸡汤文章成片：正文素材视频在拼接前做雾面处理，
-画面像蒙了层薄雾（发白、降对比、微褪色、轻糊），既提升字幕可读性，
+用于 stock_video（正版实拍视频）素材策略：正文素材视频在拼接前做白蒙版处理，
+画面像蒙了一层白色蒙版（发白、降对比、微褪色、轻糊），既提升字幕可读性，
 也带来磨砂玻璃质感。输出编码参数与 generate_final_video 的 copy 拼接约定一致
 （libx264/veryfast/crf21/yuv420p/30fps），拼接前无需转码。
 """
@@ -18,8 +18,6 @@ from pathlib import Path
 from typing import Callable
 
 from ._constants import (
-    SOFT_BLUR_BLACK_LIFT,
-    SOFT_BLUR_BRIGHTNESS,
     SOFT_BLUR_CODEC,
     SOFT_BLUR_CONTRAST,
     SOFT_BLUR_CRF,
@@ -33,6 +31,7 @@ from ._constants import (
     SOFT_BLUR_TIMEOUT_PER_SECOND,
     SOFT_BLUR_VERSION,
     SOFT_BLUR_WORKERS,
+    SOFT_BLUR_WHITE_ALPHA,
 )
 from ._errors import SoftBlurError, SoftBlurTimeoutError
 
@@ -79,10 +78,10 @@ def _signature(source: Path, params: dict) -> str:
 
 
 def _frost_filter(params: dict) -> str:
-    """雾面磨砂滤镜链：黑位抬升（雾感）-> 降对比/褪色/提亮 -> 轻微高斯模糊。"""
+    """白蒙版磨砂滤镜链：降对比/褪色 -> 整屏半透明白色蒙版 -> 轻微高斯模糊。"""
     return (
-        f"colorlevels=rimin={params['black_lift']}:gimin={params['black_lift']}:bimin={params['black_lift']},"
-        f"eq=contrast={params['contrast']}:saturation={params['saturation']}:brightness={params['brightness']},"
+        f"eq=contrast={params['contrast']}:saturation={params['saturation']},"
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=white@{params['white_alpha']}:t=fill,"
         f"gblur=sigma={params['sigma']}"
     )
 
@@ -148,21 +147,19 @@ def apply_soft_blur(
     output_path: str | Path,
     *,
     sigma: float = SOFT_BLUR_SIGMA,
-    black_lift: float = SOFT_BLUR_BLACK_LIFT,
+    white_alpha: float = SOFT_BLUR_WHITE_ALPHA,
     contrast: float = SOFT_BLUR_CONTRAST,
     saturation: float = SOFT_BLUR_SATURATION,
-    brightness: float = SOFT_BLUR_BRIGHTNESS,
 ) -> dict:
-    """对单个视频施加雾面磨砂感，返回 {"source", "output", "cached"}。"""
+    """对单个视频施加白蒙版磨砂感，返回 {"source", "output", "cached"}。"""
     source = Path(source_path).resolve()
     if not source.is_file():
         raise SoftBlurError(f"源视频不存在：{source}")
     params = {
         "sigma": float(sigma),
-        "black_lift": float(black_lift),
+        "white_alpha": float(white_alpha),
         "contrast": float(contrast),
         "saturation": float(saturation),
-        "brightness": float(brightness),
     }
     return _blur_one(source, Path(output_path).resolve(), params)
 
@@ -172,10 +169,9 @@ def blur_video_segments(
     cache_dir: str | Path,
     *,
     sigma: float = SOFT_BLUR_SIGMA,
-    black_lift: float = SOFT_BLUR_BLACK_LIFT,
+    white_alpha: float = SOFT_BLUR_WHITE_ALPHA,
     contrast: float = SOFT_BLUR_CONTRAST,
     saturation: float = SOFT_BLUR_SATURATION,
-    brightness: float = SOFT_BLUR_BRIGHTNESS,
     workers: int = SOFT_BLUR_WORKERS,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, str]:
@@ -185,10 +181,9 @@ def blur_video_segments(
     """
     params = {
         "sigma": float(sigma),
-        "black_lift": float(black_lift),
+        "white_alpha": float(white_alpha),
         "contrast": float(contrast),
         "saturation": float(saturation),
-        "brightness": float(brightness),
     }
     cache_root = Path(cache_dir).resolve()
     cache_root.mkdir(parents=True, exist_ok=True)

@@ -1,20 +1,32 @@
-"""财经旁白切句与字幕显示：TTS 和屏幕字幕沿用原文的句读。"""
+"""旁白切句与字幕显示：TTS 沿用原文句读，屏上字幕去掉句尾标点。"""
 
 from __future__ import annotations
 
 import re
 
+# 兼容旧分镜里的【】重点标记：去掉标记后与 karaoke 逐词动画一致，不再单独上色。
 SUBTITLE_EMPHASIS_STYLE = {"font_size": 130, "primary_color": "#FFD54A"}
 _ENUMERATION = re.compile(
     r"[\u4e00-\u9fffA-Za-z0-9]{1,8}(?:、[\u4e00-\u9fffA-Za-z0-9]{1,8})+"
 )
 _STRONG_BREAK = set("。！？；!?")
 _COMMA_BREAK = set("，,")
+_TRAILING_PUNCTUATION = re.compile(r"[，。！？、；：,.!?;:…]+$")
+
+
+def _without_emphasis_marks(text: str) -> str:
+    return str(text or "").strip().replace("【", "").replace("】", "")
+
+
+def bare_text(text: str) -> str:
+    """去掉全部空白与标点，只保留字符，用于跨层文本比对。"""
+    return re.sub(r"[\s\W_]+", "", str(text or ""))
 
 
 def display_subtitle_text(text: str) -> str:
-    """保留原文句读；重点标记括号【】不进入画面。"""
-    return str(text or "").strip().replace("【", "").replace("】", "")
+    """去掉重点括号和句尾标点，保留句子中间的标点。"""
+    cleaned = _without_emphasis_marks(text)
+    return _TRAILING_PUNCTUATION.sub("", cleaned).rstrip()
 
 
 def parse_emphasis_segments(text: str) -> list[tuple[str, bool]]:
@@ -53,9 +65,17 @@ def display_subtitle_cue(text: str) -> str | list[dict]:
     """去标点后的屏上文本；有【】时返回带重点样式的分段。"""
     rendered: list[tuple[str, bool]] = []
     for chunk, emphasized in parse_emphasis_segments(str(text or "").strip()):
-        shown = display_subtitle_text(chunk)
+        shown = _without_emphasis_marks(chunk)
         if shown:
             rendered.append((shown, emphasized))
+    if not rendered:
+        return ""
+    last_text, last_emphasized = rendered[-1]
+    last_text = _TRAILING_PUNCTUATION.sub("", last_text).rstrip()
+    if last_text:
+        rendered[-1] = (last_text, last_emphasized)
+    else:
+        rendered.pop()
     if not rendered:
         return ""
     if not any(emphasized for _, emphasized in rendered):

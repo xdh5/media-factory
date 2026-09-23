@@ -13,6 +13,7 @@ from pathlib import Path
 
 from ._constants import (
     FISH_AUDIO_CONCURRENCY,
+    FISH_VOICE_RATES,
     TTS_BETWEEN_SENTENCE_TRAILING_SECONDS,
     TTS_DEFAULT_RATE,
     TTS_ENDING_PADDING_SECONDS,
@@ -45,7 +46,12 @@ def _parse_line(item: object, index: int, default_speed: float) -> dict:
         raise InvalidParameterError("script", f"第 {index} 项 text 不能为空")
     if not voice:
         raise InvalidParameterError("script", f"第 {index} 项必须提供 voice（Fish Audio reference_id）")
-    speed = rate_to_speed(item["rate"]) if "rate" in item else default_speed
+    if "rate" in item:
+        speed = rate_to_speed(item["rate"])
+    else:
+        # 优先级：行内 rate > 音色绑定语速 > 调用方 rate 参数
+        bound_rate = FISH_VOICE_RATES.get(resolve_reference_id(voice).lower())
+        speed = rate_to_speed(bound_rate) if bound_rate else default_speed
     return {"text": text, "voice": voice, "speed": speed}
 
 

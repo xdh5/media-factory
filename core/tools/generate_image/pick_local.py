@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import random
 from pathlib import Path
 
 from core.tools.cloudflare_data import (
     CloudflareDataError,
-    list_finance_generated_images,
     list_image_library,
 )
 
 from ._constants import (
-    FINANCE_GENERATED_LIBRARY_LINE,
     FINANCE_LEGACY_LIBRARY_LINE,
     FINANCE_LOCAL_LIBRARY_LINES,
     IMAGE_LIBRARY_PROJECT_ROOT,
@@ -24,8 +21,8 @@ __all__ = ["choose_finance_library_line", "list_local_images"]
 
 
 def choose_finance_library_line() -> str:
-    """每期随机固定一个财经本地图库；整期所有镜头必须来自同一图库。"""
-    return random.choice(list(FINANCE_LOCAL_LIBRARY_LINES))
+    """财经自动生产固定使用保留的存量图库。"""
+    return FINANCE_LEGACY_LIBRARY_LINE
 
 
 def _validate_line(line: str) -> str:
@@ -50,8 +47,6 @@ def _resolve_image(image_path: str | None) -> Path | None:
 
 
 def _list_catalog_rows(line: str) -> list[dict]:
-    if line == FINANCE_GENERATED_LIBRARY_LINE:
-        return list_finance_generated_images()
     if line == FINANCE_LEGACY_LIBRARY_LINE:
         return list_image_library(line=FINANCE_LEGACY_LIBRARY_LINE)
     raise InvalidParameterError("line", f"未实现的财经图库 line：{line}")

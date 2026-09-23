@@ -2,24 +2,24 @@
 
 编排入口：`python -m core.mcp.finance`。
 
-财经 Skill 提供数据库原稿改编规则等业务参数；标题标签与分镜 Prompt 在 `core/mcp/finance/prompts/`。完整流程见 `.agents/skills/finance/SKILL.md`。
+财经线是唯一的文章成片线（原心灵鸡汤线已并入删除）；财经 Skill 提供原稿整理规则等业务参数，标题标签与分镜 Prompt 在 `core/mcp/finance/prompts/`。完整流程见 `.agents/skills/finance/SKILL.md`。
 
 ## 工具编排
 
 ```
 finance_get_source_stats
 └─ cloudflare_data.get_douyin_research_script_stats
-   └─ 只读统计财经原稿总数、可用数、有效占用数和已使用数
+   └─ 只读统计原稿总数、可用数、有效占用数和已使用数
 
 finance_get_source_script
 └─ cloudflare_data.reserve_douyin_research_script
-   └─ 从财经分类选择未使用原稿并临时占用
+   └─ 选择未使用原稿并临时占用
 
 finance_get_metadata_prompt
 └─ tools.prompts.build_metadata_prompt
    └─ prompts/metadata.md
 
-[Agent 按 Skill 保留黄金钩子和原结构，把数据库原稿改为约 500 字，再按 metadata_prompt 写标题标签]
+[Agent 按 Skill 把原稿全文整理为正文：只替换作者与品牌、按语义断行，再按 metadata_prompt 写标题标签]
 
 finance_save_draft(...)
 └─ topic_dedup.get_topic 查重；暂不写 D1
@@ -29,55 +29,53 @@ finance_save_draft(...)
    └─ 保存成功后将来源原稿标记为已使用
 
 finance_get_topics
-└─ topic_dedup.get_topic（兼容保留，新流程不作为第一步）
+└─ topic_dedup.get_topic
 
-finance_prepare_storyboard(draft_path, tts_config)
-└─ tools.storyboard.prepare_storyboard  （同步，易超时）
-
-finance_start_storyboard(...)
+finance_start_storyboard(draft_path, tts_config, material_strategy)
 └─ core.mcp._task_runner.submit_task
    └─ tools.storyboard.prepare_storyboard
+      └─ prompts/shot_image_rules.md（image_library / qwen_reference）
+      └─ prompts/stock_video_rules.md（stock_video）
 
 finance_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task
 
-finance_start_upload_r2(manifest_path, run_id)
-└─ core.mcp._task_runner.submit_task
-   └─ tools.upload_to_r2.upload_finance_assets_to_r2
+[Agent 按 storyboard_prompt 写分镜行，并为每句原样写 SUB 字幕；成片统一套用黄色 karaoke 逐字扫]
 
-[Agent 按 storyboard_prompt 写分镜 IMAGE 行，并按财经 Skill 为每句写 SUB 字幕重点]
-
+素材策略 A：存量图库 / 参考图生图
 finance_prepare_images(..., image_config)
 └─ tools.prepare_shot_images.prepare_shot_images
    └─ local_library → generate_image.list_local_images
    └─ qwen_reference → 每个镜头建立独立任务并附带用户参考图
-
 finance_start_generate_images(context_path)
-└─ core.mcp._task_runner.submit_task
-   └─ tools.generate_qwen_shot_images.generate_qwen_shot_images
-      └─ generate_image.generate_qwen_image（逐任务）
-      └─ cloudflare_data.commit_finance_generated_images
-      └─ data/image_library_finance/{连续编号}.png
+└─ tools.generate_qwen_shot_images.generate_qwen_shot_images
+finance_save_images / finance_submit_images
+└─ generate_image 保存或提交 Agent 图任务
 
-finance_save_images
-└─ generate_image.save_agent_image_tasks
+素材策略 B：正版实拍视频
+finance_start_video_search(draft_path, storyboard_text, video_config)
+└─ tools.prepare_videos.prepare_video_searches
+   └─ stock_video.search_stock_videos（Pexels → Pixabay → Coverr 兜底）
+finance_start_download_videos(context_path, selections)
+└─ tools.prepare_videos.download_selected_videos
+   └─ stock_video.prepare_stock_clip 裁到镜头时长
+   └─ soft_blur_video.blur_video_segments 正文素材白蒙版磨砂
 
-finance_submit_images
-└─ generate_image.submit_agent_image_tasks
-
-finance_finish_video(..., production_config)
-└─ tools.assemble_finance_video.finish_finance_video  （同步，易超时）
-
-finance_start_finish_video(...)
+finance_start_finish_video(..., production_config, material_manifest_path, intro_image_path?)
 └─ core.mcp._task_runner.submit_task
    └─ tools.assemble_finance_video.finish_finance_video
+      └─ 按素材清单自动识别策略（images → 图库/生图；videos → 实拍视频）
       └─ 复用 prepare_storyboard 的 tts_path
       └─ generate_cover_image
-      └─ generate_shot.generate_shot_from_intro
+      └─ generate_shot.generate_shot_from_intro（片头动画 + 快门音效）
+      └─ 黄金钩子图层：字幕位置覆盖 + generate_subtitles 按行生成 hook-title-N.ass（字魂群英体 165px，按标点断行，单行红字黑边 / 多行首行黄黑边其余红白边，\pos 堆叠）
       └─ generate_final_video
 
 finance_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task
+
+finance_record_publications
+└─ cloudflare_data.commit_publication_records
 
 finance_clear_run
 └─ clear_cache.clear_run
@@ -87,25 +85,23 @@ finance_clear_run
 
 | 文件 | 职责 |
 | --- | --- |
-| `tools/prompts.py` | 标题标签 / 分镜 Prompt 读取与拼装 |
-| `tools/save_draft.py` | 稿件读写、封面断行与重点词校验 |
+| `tools/prompts.py` | 标题标签 Prompt、分镜规则（按素材策略选文件）读取与拼装 |
+| `tools/save_draft.py` | 稿件读写、品牌替换后正文的断行与标签校验 |
 | `tools/parse_metadata.py` | 标题标签格式校验 |
-| `tools/storyboard.py` | TTS、timeline 与分镜解析 |
+| `tools/storyboard.py` | TTS、timeline 与分镜解析（IMAGE / VIDEO 两种行标记） |
+| `tools/narration.py` | 旁白切句与字幕显示（去句尾标点） |
 | `tools/prepare_shot_images.py` | 按 image_config 准备镜头图 |
 | `tools/generate_qwen_shot_images.py` | 逐镜头千问生图并登记独立生成图库 |
-| `tools/assemble_finance_video.py` | 封面、片头、成片合成 |
-| `tools/generate_qwen_shot_images.py` | 千问逐镜头生图；支持现有完整图片仅重试 D1 入库 |
-| `tools/upload_to_r2.py` | 上传财经成片、封面和发布清单到 R2 |
-| `tools/narration.py` | 旁白切句与字幕显示 |
+| `tools/prepare_videos.py` | 正版实拍视频搜索、下载、规范化与磨砂 |
+| `tools/assemble_finance_video.py` | 封面、片头、钩子图层与最终合成 |
+| `tools/upload_to_r2.py` | 上传成片、封面和发布清单到 R2 |
 
 ## 目录
 
 - 缓存：`cache/finance/{run_id}/`
 - 成片：`output/finance/run-YYYYMMDD/`，日期为北京时间计划发布日期
-- 产物记录：成片成功后自动写入 D1 `production_outputs`；`finance_get_production_outputs(publish_date)` 可按日期查询
+- 产物记录：成片成功后自动写入 D1 `production_outputs`
 - 千问生成图库：`data/image_library_finance/{连续编号}.png`
-- 话题库：通过 `CLOUDFLARE_DATA_API_URL` 指向的鉴权 Worker 访问 Cloudflare D1
-- 来源稿件：抖音研究数据库“财经”分类；占用两小时后自动过期，保存稿件成功后永久标记已使用
-- 来源稿件统计：`finance_get_source_stats` 只读查询余量，过期占用按可用计算，不会占用新稿件
-- 稿件：保存后直接制作，不设置稿件确认门禁
-- 图片记录：独立 D1 表 `finance_generated_images`，D1 编号、本地文件名和路径编号完全一致
+- 来源稿件：抖音研究数据库；占用两小时后自动过期，保存稿件成功后永久标记为已使用
+- 素材来源清单：实拍视频策略会写出 `output/finance/{run_id}/attribution-comment.txt`
+- 图片记录：独立 D1 表 `finance_generated_images`

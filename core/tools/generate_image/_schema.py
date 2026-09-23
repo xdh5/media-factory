@@ -139,8 +139,8 @@ LIST_LOCAL_IMAGES_INPUT_SCHEMA = {
         "line": {
             "type": "string",
             "minLength": 1,
-            "enum": ["finance", "finance_generated"],
-            "description": "财经本地图库 line；finance 读 image_library，finance_generated 读 finance_generated_images",
+            "enum": ["finance"],
+            "description": "财经本地图库 line；当前仅支持 finance，对应 image_library",
         },
     },
     "required": ["line"],

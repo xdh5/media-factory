@@ -16,12 +16,27 @@ TOPIC_DEDUPLICATION_DAYS = 30
 VIDEO_SIZE = "1920x1080"
 VIDEO_RADIO = "16:9"
 MATRIXMEDIA_AI_CREATIVE_STATEMENT = "ai_generated"
-ARTICLE_MIN_LENGTH = 450
-ARTICLE_MAX_LENGTH = 550
+CONTENT_KIND = "finance"
+
+# 正文按数据库原稿全文保留，只替换作者与品牌、按语义断行；
+# 每行上限约两行字幕容量（显示层再按词边界均衡换行），只挡超长行。
+ARTICLE_MAX_LINE_LENGTH = 36
+
+# 素材策略：三类并列的镜头素材来源，由用户在制作时指定。
+MATERIAL_IMAGE_LIBRARY = "image_library"      # 存量图库选图（GitHub Action 固定使用）
+MATERIAL_QWEN_REFERENCE = "qwen_reference"    # 用户参考图 + 千问逐镜头生图
+MATERIAL_STOCK_VIDEO = "stock_video"          # Pexels/Pixabay/Coverr 正版实拍视频
+MATERIAL_STRATEGIES = (
+    MATERIAL_IMAGE_LIBRARY,
+    MATERIAL_QWEN_REFERENCE,
+    MATERIAL_STOCK_VIDEO,
+)
+IMAGE_MATERIAL_STRATEGIES = (MATERIAL_IMAGE_LIBRARY, MATERIAL_QWEN_REFERENCE)
 
 _ROOT = Path(__file__).resolve().parent
 METADATA_PROMPT_PATH = _ROOT / "prompts" / "metadata.md"
 SHOT_IMAGE_RULES_PATH = _ROOT / "prompts" / "shot_image_rules.md"
+STOCK_VIDEO_RULES_PATH = _ROOT / "prompts" / "stock_video_rules.md"
 
 
 def _project_root() -> Path:

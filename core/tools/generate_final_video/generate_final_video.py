@@ -78,12 +78,16 @@ def _subtitle_cues(shots: list[dict], shot_results: list[dict]) -> list[dict]:
                 end = cursor + min(duration, float(item.get("end") or duration))
                 if end <= start:
                     end = min(cursor + duration, start + 0.08)
-                cues.append({
+                cue = {
                     "start": round(start, 3),
                     "end": round(end, 3),
                     "text": text,
                     "language": language,
-                })
+                }
+                position = item.get("position")
+                if isinstance(position, dict) and position:
+                    cue["position"] = position
+                cues.append(cue)
         else:
             text = str(source.get("subtitle") or "").strip()
             if text:
@@ -128,6 +132,7 @@ def generate_final_video(
     force_shot_ids: list[str] | None = None,
     opening_sfx: list[dict] | None = None,
     bgm_start_seconds: float | None = None,
+    bgm_gain: float | None = None,
     subtitle_style: dict | None = None,
     subtitle_position: dict | None = None,
     extra_ass_paths: list[str | Path] | None = None,
@@ -191,6 +196,7 @@ def generate_final_video(
         cover_duration=cover_duration,
         opening_sfx=opening_sfx,
         bgm_start_seconds=bgm_start_seconds,
+        bgm_gain=bgm_gain,
     )
     return {
         "output_path": body["output_path"],

@@ -48,7 +48,7 @@ def main() -> None:
     parser.add_argument("--targets", default="")
     parser.add_argument("--publish-date", default="")
     parser.add_argument("--default-days-ahead", type=int, choices=(0, 1), default=0)
-    parser.add_argument("--library-line", default="finance_generated")
+    parser.add_argument("--library-line", default="finance")
     parser.add_argument("--week-start", default="")
     parser.add_argument("--notify-label", default="语言发布")
     parser.add_argument("--skipped", default="false")

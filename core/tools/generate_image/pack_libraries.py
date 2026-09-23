@@ -8,9 +8,6 @@ from pathlib import Path
 from core.tools.r2_storage import upload_public_file
 
 from ._constants import (
-    FINANCE_GENERATED_LIBRARY_ARCHIVE_KEY,
-    FINANCE_GENERATED_LIBRARY_ARCHIVE_NAME,
-    FINANCE_GENERATED_LIBRARY_ROOT,
     FINANCE_LEGACY_LIBRARY_ARCHIVE_KEY,
     FINANCE_LEGACY_LIBRARY_ARCHIVE_NAME,
     FINANCE_LEGACY_LIBRARY_PACK_ROOT,
@@ -38,35 +35,24 @@ def _pack_directory(source_dir: Path, archive_path: Path, *, arcname: str) -> di
 
 
 def pack_finance_libraries() -> dict:
-    """把两个财经图库目录分别打成 tar。"""
+    """把保留的财经存量图库打成 tar。"""
     legacy_archive = IMAGE_LIBRARY_CACHE_ROOT / FINANCE_LEGACY_LIBRARY_ARCHIVE_NAME
-    generated_archive = IMAGE_LIBRARY_CACHE_ROOT / FINANCE_GENERATED_LIBRARY_ARCHIVE_NAME
     return {
         "finance": _pack_directory(
             FINANCE_LEGACY_LIBRARY_PACK_ROOT,
             legacy_archive,
             arcname="data/image_library",
         ),
-        "finance_generated": _pack_directory(
-            FINANCE_GENERATED_LIBRARY_ROOT,
-            generated_archive,
-            arcname="data/image_library_finance",
-        ),
     }
 
 
 def upload_finance_libraries() -> dict:
-    """打包并上传两个财经图库 tar 到 R2。"""
+    """打包并上传保留的财经存量图库到 R2。"""
     packed = pack_finance_libraries()
     uploaded = {
         "finance": upload_public_file(
             packed["finance"]["archive_path"],
             FINANCE_LEGACY_LIBRARY_ARCHIVE_KEY,
-            content_type="application/x-tar",
-        ),
-        "finance_generated": upload_public_file(
-            packed["finance_generated"]["archive_path"],
-            FINANCE_GENERATED_LIBRARY_ARCHIVE_KEY,
             content_type="application/x-tar",
         ),
     }

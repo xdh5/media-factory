@@ -11,10 +11,6 @@ from pathlib import Path, PurePosixPath
 from core.tools.r2_storage import R2StorageError, download_public_file
 
 from ._constants import (
-    FINANCE_GENERATED_LIBRARY_ARCHIVE_KEY,
-    FINANCE_GENERATED_LIBRARY_ARCHIVE_NAME,
-    FINANCE_GENERATED_LIBRARY_LINE,
-    FINANCE_GENERATED_LIBRARY_ROOT,
     FINANCE_LEGACY_LIBRARY_ARCHIVE_KEY,
     FINANCE_LEGACY_LIBRARY_ARCHIVE_NAME,
     FINANCE_LEGACY_LIBRARY_LINE,
@@ -43,16 +39,6 @@ FINANCE_LIBRARY_SPECS: dict[str, FinanceLibrarySpec] = {
         extract_candidates=(
             "data/image_library/finance",
             "image_library/finance",
-        ),
-    ),
-    FINANCE_GENERATED_LIBRARY_LINE: FinanceLibrarySpec(
-        line=FINANCE_GENERATED_LIBRARY_LINE,
-        local_root=FINANCE_GENERATED_LIBRARY_ROOT,
-        archive_name=FINANCE_GENERATED_LIBRARY_ARCHIVE_NAME,
-        archive_key=FINANCE_GENERATED_LIBRARY_ARCHIVE_KEY,
-        extract_candidates=(
-            "data/image_library_finance",
-            "image_library_finance",
         ),
     ),
 }

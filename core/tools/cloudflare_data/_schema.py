@@ -119,7 +119,7 @@ PUBLICATION_RECORD_SCHEMA = {
         "id": {"type": "integer"},
         "publication_id": {"type": "string"},
         "run_id": {"type": "string"},
-        "business_line": {"type": "string", "enum": ["finance", "language_learning", "psychology_quiz"]},
+        "business_line": {"type": "string", "enum": ["finance", "language_learning"]},
         "platform": {
             "type": "string",
             "enum": [
@@ -184,7 +184,7 @@ PRODUCTION_OUTPUT_SCHEMA = {
         "production_id": {"type": "string"},
         "run_id": {"type": "string"},
         "publish_date": {"type": "string", "format": "date"},
-        "business_line": {"type": "string", "enum": ["finance", "language_learning", "psychology_quiz"]},
+        "business_line": {"type": "string", "enum": ["finance", "language_learning"]},
         "content_kind": {"type": "string"},
         "content_part": {"type": "integer", "minimum": 1},
         "title": {"type": "string"},

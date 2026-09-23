@@ -56,6 +56,13 @@ FISH_AUDIO_RETRY_BASE_SECONDS = 1.0
 FISH_AUDIO_RETRY_MAX_SECONDS = 8.0
 FISH_AUDIO_RETRY_JITTER_SECONDS = 0.25
 
+# 音色绑定的语速：脚本行用到该 reference_id 时，**只要没在行内显式写 rate**，就用这里的值，
+# 优先级高于调用方的 rate 参数（即"这个音色天然就是 +10%"）。
+# 2026-09-23 用户要求：财经线（原心灵鸡汤）音色固定 +10%。
+FISH_VOICE_RATES = {
+    "28df7fe4d3ec45f692af03d0a372805b": "+10%",
+}
+
 
 # 音色库
 TTS_VOICES = [

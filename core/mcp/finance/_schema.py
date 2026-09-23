@@ -14,7 +14,7 @@ IMAGE_CONFIG_SCHEMA = {
     "type": "object",
     "properties": {
         "source": {"type": "string", "enum": ["local_library", "qwen_reference"]},
-        "library_line": {"type": "string", "enum": ["finance", "finance_generated"]},
+        "library_line": {"type": "string", "enum": ["finance"]},
         "reference_image_path": {"type": "string", "minLength": 1},
     },
     "required": ["source"],
@@ -38,6 +38,24 @@ PRODUCTION_CONFIG_SCHEMA = {
         "intro": {"type": "string", "minLength": 1},
         "intro_sfx_path": {"type": "string"},
         "shot_stickers": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "subtitle_position": {
+            "type": "object",
+            "properties": {
+                "alignment": {"type": "integer", "enum": [5]},
+                "margin_vertical_ratio": {"type": "number", "minimum": 0, "maximum": 1},
+            },
+            "required": ["alignment", "margin_vertical_ratio"],
+            "additionalProperties": False,
+        },
+        "subtitle_style": {
+            "type": "object",
+            "properties": {
+                "preset": {"type": "string", "enum": ["karaoke"]},
+                "highlight_color": {"type": "string", "enum": ["#FFD54A"]},
+            },
+            "required": ["preset", "highlight_color"],
+            "additionalProperties": False,
+        },
         "matrixmedia_account_group": {"type": "string", "minLength": 1},
     },
     "required": ["bgm_path", "cover_frame_seconds", "intro", "shot_stickers", "matrixmedia_account_group"],

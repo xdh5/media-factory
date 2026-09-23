@@ -50,7 +50,8 @@ def resolve_dashscope_api_key() -> str:
     line = os.getenv(DASHSCOPE_BUSINESS_LINE_ENV, "").strip()
     if line and line not in DASHSCOPE_API_KEY_BY_LINE:
         raise QwenConfigurationError(
-            f"{DASHSCOPE_BUSINESS_LINE_ENV} 只能是 finance、psychology_quiz 或 language_learning"
+            f"{DASHSCOPE_BUSINESS_LINE_ENV} 只能是 "
+            + "、".join(sorted(DASHSCOPE_API_KEY_BY_LINE))
         )
     env_name = DASHSCOPE_API_KEY_BY_LINE.get(line, DASHSCOPE_API_KEY_ENV)
     api_key = os.getenv(env_name, "").strip()

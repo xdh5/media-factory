@@ -1,11 +1,13 @@
 ---
 name: finance-video
-description: 使用项目财经 MCP 制作中文财经短视频；适用于“做财经视频”“运行 Finance”“生成理财短视频”等请求。不适用于抖音关键词搜索、爬取或内容研究请求。
+description: 使用项目财经 MCP 制作中文短视频（财经、心灵鸡汤等文章类内容）；适用于“做财经视频”“运行 Finance”“生成理财短视频”“做心灵鸡汤视频”等请求。不适用于抖音关键词搜索、爬取或内容研究请求。
 ---
 
 # 财经视频
 
-MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文、TTS、BGM、片头、发布账号组与完整流程**；MCP 只负责编排。禁止绕过 MCP 或直接读写内部文件。
+MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文、素材策略、TTS、BGM、片头、发布账号组与完整流程**；MCP 只负责编排。禁止绕过 MCP 或直接读写内部文件。
+
+本线是唯一的文章成片线：**心灵鸡汤等非财经文章内容同样走这条线**，不再有独立业务线。内容类型由数据库原稿决定，制作流程完全一致。
 
 开始交互式生产前，必须先让用户明确这期视频的北京时间计划发布日期 `publish_date`。用户没说清是哪一天时必须先追问；禁止默认今天、禁止先选稿或创建 run，也禁止在日期不明确时生成成片并写入 `production_outputs`。
 
@@ -15,45 +17,59 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 | 用途 | 位置 |
 | --- | --- |
-| 数据库原稿改编 | 本 Skill：`prompts/finance.md` |
+| 原稿整理（保留原稿全文，只替换作者与品牌） | 本 Skill：`prompts/finance.md` |
 | 标题标签 | MCP：`finance_get_metadata_prompt` |
-| 分镜 | MCP：`finance_prepare_storyboard` 返回 `storyboard_prompt` |
+| 分镜 | MCP：`finance_start_storyboard` 返回的 `storyboard_prompt`（按素材策略给出 IMAGE 或 VIDEO 规则） |
 
-### 数据库原稿改编
+### 原稿整理
 
-第一步必须调用 `finance_get_source_script`，从抖音研究数据库的“财经”分类选择一条未使用稿件。禁止自行从零写正文，也禁止从 `examples/` 选择范文代替数据库原稿。
+第一步必须调用 `finance_get_source_script`，从抖音研究数据库选择一条未使用稿件。禁止自行从零写正文，也禁止从 `examples/` 选择范文代替数据库原稿。
 
-如果工具返回 `DOUYIN_SCRIPTS_EXHAUSTED`，说明所有财经稿件都已使用；必须向用户报告并停止制作，不得复用旧稿或自行写稿。如果返回 `DOUYIN_SCRIPTS_BUSY`，说明剩余稿件正在其他任务中制作，也必须停止本次制作。
+如果工具返回 `DOUYIN_SCRIPTS_EXHAUSTED`，说明所有稿件都已使用；必须向用户报告并停止制作，不得复用旧稿或自行写稿。如果返回 `DOUYIN_SCRIPTS_BUSY`，说明剩余稿件正在其他任务中制作，也必须停止本次制作。
 
 按返回的 `source.transcript` 识别原稿开头完整的黄金钩子，填入本 Skill 的 `prompts/finance.md`：
 
 - `{{source_text}}`：`source.transcript` 原文
 - `{{source_hook}}`：原稿开头的完整黄金钩子
 
-改编必须满足：
+整理必须满足：
 
-- 黄金钩子一字不改，改编正文必须以它原样开头。
-- 保留原稿论述顺序、段落功能、案例位置、正反对比和结尾结构；只删减或补充细节。
-- 正文目标 500 字左右，允许 450～550 字。过长则删重复解释和次要细节；不足则在原段落位置补细节，不得新增分支结构。
-- 保持口语短句：每句单独一行；单句指该行完整一句话，全部字符（含所有标点符号）不得超过 20 字。写稿时自行拆行，禁止把一个词或固定搭配拆到两行。句与句之间换行，不要用逗号连两句完整话。
-- 原稿出现作者、账号、课程、机构或其他宣传品牌时，统一替换为【财富研习岛】。
+- **正文保留原稿全文**：原稿的每句话、每个字和标点都保留，不压缩、不扩写、不改写、不重排；原稿多长正文就多长。
+- **唯一允许的改动是替换作者与品牌**：作者名、账号名、课程名、机构名或其他宣传品牌统一替换为「财富研习岛」。
+- 黄金钩子一字不改，正文必须以它原样开头；钩子内部的机构名、研究名、权威背书按原文保留，不做品牌替换。
+- 只做排版断行：每句单独一行，单行全部字符（含所有标点）不超过 36 字；断行只插入换行符，不得增删任何字或标点，也不得把一个词或固定搭配拆到两行。
+- 句与句之间换行，不要用逗号连两句完整话；顿号列举写在同一句里。
 - `finance_save_draft` 必须传回 `source.aweme_id`、`reservation.reservation_token` 和 `source_hook`；保存成功后 MCP 自动将数据库来源标记为已使用，下次不再选择。
 
 ## 固定参数（调用 MCP 时必须按此传）
 
-### TTS（`finance_start_storyboard` 的 `tts_config`）
+### 素材策略（`finance_start_storyboard` 的 `material_strategy`）
+
+三类策略并列保留，**必须先问用户这期用哪一种**，再启动分镜（分镜规则随策略不同）：
+
+| 取值 | 画面 | 适用 |
+| --- | --- | --- |
+| `image_library` | 存量图库选图 → 静态图慢推拉 | GitHub Action 固定使用；交互式需要省时间时也可用 |
+| `qwen_reference` | 用户参考图 + 千问逐镜头生图 | 交互式默认；需要统一画风时使用 |
+| `stock_video` | Pexels/Pixabay/Coverr 正版实拍视频 + 片头写实图 | 需要真实实拍画面上屏时使用 |
+
+### 镜头图（`image_config`，仅 `image_library` / `qwen_reference` 需要）
+
+`image_library`：
 
 ```json
 {
-  "voice": "zh-CN-YunjianNeural",
-  "rate": "+0%",
-  "trim_trailing_silence": true
+  "source": "local_library",
+  "library_line": "finance"
 }
 ```
 
-### 镜头图（`finance_prepare_images` 的 `image_config`）
+- 图库记录格式：`{id, caption, image_path}`
+- `finance_prepare_images` 返回 `library_catalog` 与 `selection_tasks`；Agent 对照每个镜头的 `match_query` 与各图 `caption`，选出语义最贴近的一张
+- 选好后调用 `finance_submit_images`，`images` 传入 `[{image_id, image_path}]`
+- 同一期可重复使用同一张图；禁止宿主生图
 
-本地交互式财经制作使用用户提供的单张参考图，通过千问逐镜头生图：
+`qwen_reference`（交互式默认）：
 
 ```json
 {
@@ -69,34 +85,44 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 - 所有任务必须携带同一张用户参考图，但参考图只能用于统一画风、笔触、光影、色彩和质感；禁止参考或复制图中的人物身份、面孔、发型、服装、办公室场景、构图、书桌、电脑及其他物体摆放。必须优先执行当前镜头的场景描述，不得默认生成蓝色西装、办公桌、笔记本电脑或窗边办公室；生成画面禁止文字和水印。
 - 调用 `finance_start_generate_images(context_path)` 后，用 `finance_poll_task` 轮询；任一镜头失败即停止，不得用旧图库图片补位。
 - 如果全部本地图片已经生成，仅最终 D1 入库因网络异常失败，重连 MCP 后必须调用 `finance_commit_existing_images(context_path)`；该恢复工具只校验现有图片并入库，禁止再次调用千问生图。
-- 图片统一保存到 `data/image_library_finance/`，文件名使用与 D1 相同的连续数字编号，例如 `1.png`、`2.png`。
-- 每次生图从文件夹中现有 `.png` 的最大数字编号继续递增；全部成功后，MCP 自动把相同编号、图片描述和路径写入 `finance_generated_images`。
+- 图片统一保存到 `data/image_library_finance/`，文件名使用与 D1 相同的连续数字编号，例如 `1.png`。
 
-GitHub Action 继续使用本地图库选图模式，不得删除或改成千问生图。每期开始必须先随机固定一个图库 line，整期所有镜头只能来自该图库，禁止混用：
-
-- `finance`：存量图库，D1 表 `image_library`，目录 `data/image_library/finance/`，R2 包 `assets/image_library.tar`
-- `finance_generated`：千问生成图库，D1 表 `finance_generated_images`，目录 `data/image_library_finance/`，R2 包 `assets/image_library_finance.tar`
-
-随机选定后，`finance_prepare_images` 传入：
+### 实拍视频（`video_config`，仅 `stock_video` 需要）
 
 ```json
 {
-  "source": "local_library",
-  "library_line": "finance 或 finance_generated"
+  "orientation": "landscape",
+  "per_provider": 8,
+  "providers": ["pexels", "pixabay", "coverr"],
+  "soft_blur_sigma": 0.55
 }
 ```
 
-- 图库记录格式：`{id, caption, image_path}`
-- `finance_prepare_images` 返回 `library_catalog` 与 `selection_tasks`；Agent 对照每个镜头的 `match_query` 与各图 `caption`，选出语义最贴近的一张
-- 选好后调用 `finance_submit_images`，`images` 传入 `[{image_id, image_path}]`（`image_path` 用 catalog 中的路径）
-- 同一期可重复使用同一张图；禁止跨图库混选
-- 禁止宿主生图
+- `soft_blur_sigma` 控制正文素材的白蒙版磨砂强度（`core/tools/soft_blur_video`），传 `0` 关闭；片头图与封面帧保持清晰。
+- 流程：`finance_start_video_search(draft_path, storyboard_text, video_config)` → 轮询 → Agent 选候选 → `finance_start_download_videos(context_path, selections)` → 轮询。
+- 搜索结果里的 `intro_image_prompt` 用来生成片头写实图（宿主 Agent 生图或 ImageGen 均可），成片时通过 `intro_image_path` 传入。
+- 分镜第一个镜头是片头图 + 转场动画，正文从第二个镜头起使用实拍素材；分镜至少要有两个镜头。
+- 素材来源不烧进视频；成片会在 `output/finance/<run_id>/attribution-comment.txt` 保留来源页、作者和署名文案。
 
-### 成片（`finance_finish_video` 的 `production_config`）
+### TTS（`finance_start_storyboard` 的 `tts_config`）
 
 ```json
 {
-  "bgm_path": "从下方两个路径中随机选择一个",
+  "voice": "fish:28df7fe4d3ec45f692af03d0a372805b",
+  "rate": "+10%",
+  "trim_trailing_silence": true
+}
+```
+
+> 语速绑定在音色上：`generate_tts_fish.FISH_VOICE_RATES` 里 `28df7fe4…` 固定 `+10%`，
+> 只要用这个音色就 +10%（行内显式写 `rate` 才会覆盖）。这里的 `rate` 只是兜底默认值，Agent 不用改。
+
+### 成片（`finance_start_finish_video` 的 `production_config`）
+
+```json
+{
+  "bgm_path": "core/tools/generate_bgm/static/easy-lemon-kevin-macleod.mp3",
+  "bgm_gain": 0.84,
   "cover_frame_seconds": 0.03333333333333333,
   "intro": "slide_in_shutter",
   "shot_stickers": ["rec"],
@@ -104,9 +130,12 @@ GitHub Action 继续使用本地图库选图模式，不得删除或改成千问
 }
 ```
 
-- 每期 BGM 必须从 `core/tools/generate_bgm/static/nothing_to_fare.mp3` 和 `core/tools/generate_bgm/static/aware.mp3` 中随机选择一首；同一期只选择一次并沿用到成片，Agent 不得使用其他曲目或修改混音参数
-- 本地生产完成后保留本地产物，不自动上传 R2；只有 GitHub Workflow 或用户明确要求远程交付时才调用 `finance_start_upload_r2`
-- 发布服务器 MatrixMedia 使用账号组 `心灵鸡汤`，账号配置由发布环境提供，不再从 D1 读取发布账号组。
+- **BGM 固定使用 `easy-lemon-kevin-macleod.mp3`**，音量 `bgm_gain` 0.84；不得换曲或改混音参数。
+- **不要配置 `bgm_credit`**：音乐署名由用户自己补充，生产环节不得写入任何音乐署名。
+- 字幕样式、字幕位置、黄金钩子展示等视觉参数全部走 MCP 默认值（`core/tools/generate_final_video/_defaults.py`），Agent 不得在 `production_config` 里重复或覆盖。
+- 片头转场固定 `slide_in_shutter`，保留快门音效与 `rec` 贴纸。
+- 本地生产完成后保留本地产物，不自动上传 R2；只有 GitHub Workflow 或用户明确要求远程交付时才调用 `finance_start_upload_r2`。
+- 发布服务器 MatrixMedia 使用账号组 `心灵鸡汤`。这里的内容线已并入 `finance`，账号组的业务线也就是 `finance`。
 - MatrixMedia 发布所有平台时必须传 `creativeStatement="ai_generated"`，给成片添加各平台对应的 AI 生成内容标记；不得省略或改为无标注。
 - 跳过掘金、番茄、小红书
 - **短标题映射**：用成片返回的 `short_title` 作为可选 `bt2`，不得用长标题 `title` 回填；视频号未传时保持短标题框为空。其它平台有该字段时同样传入。
@@ -115,29 +144,29 @@ GitHub Action 继续使用本地图库选图模式，不得删除或改成千问
 
 ## 确认门禁
 
-1. **成片**：稿件生成后直接制作；`finance_start_finish_video` 完成后展示 `output/finance/run-YYYYMMDD/` 中的 `video_path`、标题、标签与发布文案；`YYYYMMDD` 必须是北京时间计划发布日期。未确认不得调用发布 MCP。本地 MCP 制作不得自动上传 R2；GitHub Workflow 产物才自动交付 R2。成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；查询某天是否有财经产物使用 `finance_get_production_outputs(publish_date)`。
-2. **清缓存**：发布结束后用户确认才调用 `finance_clear_run(run_id, confirmed=true)`。
-
-传统财经管线保留手动生产入口，不再由 `weekly-production` 定时生产；每周六的自动生产改由独立心理测试业务线承担。
+1. **素材策略**：开始制作前必须问清这期用 `image_library` / `qwen_reference` / `stock_video` 哪一种。
+2. **成片**：稿件生成后直接制作；`finance_start_finish_video` 完成后展示 `output/finance/run-YYYYMMDD/` 中的 `video_path`、标题、标签与发布文案；`YYYYMMDD` 必须是北京时间计划发布日期。未确认不得调用发布 MCP。本地 MCP 制作不得自动上传 R2；GitHub Workflow 产物才自动交付 R2。成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；查询某天是否有产物使用 `finance_get_production_outputs(publish_date)`。
+3. **清缓存**：发布结束后用户确认才调用 `finance_clear_run(run_id, confirmed=true)`。
 
 中间步骤不逐项确认。
 
-## 字幕重点
+## 字幕与片头钩子
 
-写分镜时必须给 timeline 里每一句台词标重点，不要等成片后再改。
+字幕统一使用 `karaoke` 逐词动画：整句白字显示，当前字按配音时间以黄色 `#FFD54A` 从左向右扫过，字幕固定在屏幕正中，屏上文本自动去掉句尾标点。
 
-- 格式：`SUB|台词ID|屏上文本`，写在全部 IMAGE 行之后（或穿插均可，解析按 ID 合并）。
-- 用【】包住要强调的词；**括号只是标记，画面上不显示**。
-- 一句可以：只标几个字、**整句都包进【】**、或**完全不标**（原样抄台词、不加括号）。
-- 同一句可以有多处【】，但不能嵌套；【】内不能为空。
-- 去掉【】之后，必须与该句配音原文一致（屏上仍会去掉句读标点，顿号保留）。
-- 成片自动套用样式，Agent 不要改字号或颜色：相对默认字幕 **130%**（`font_size: 130`），颜色 **`#FFD54A`**。
+片头黄金钩子单独展示：第一个镜头的前几句（稿件黄金钩子覆盖的台词行，MCP 按原稿钩子自动识别）改放到屏幕下方的旧版字幕位置逐行出现，同一时间段稿件标题居中显示；钩子读完后，其余字幕回到屏幕正中。标题用字魂群英体（商用需授权，需保证 `static/font/字魂群英体.ttf` 在包内）、字号 165，按标点断行：单行红字（#E30F13）黑边；多行时第一行字幕黄（#FFD54A）黑边，其余行红字白边。这些位置与配色都由 MCP 默认值（`core/tools/generate_final_video/_defaults.py`）控制，Agent 不得覆盖。
+
+分镜里：
+
+- 格式：`台词ID|时长|IMAGE（或 VIDEO）|画面描述或英文检索词|动效参数`，写在全部素材行之后或穿插均可，解析按 ID 合并。
+- 每一句都必须原样抄写配音原文，不加 `【】` 或其他重点标记。
+- 成片自动套用黄色逐词扫动画，Agent 不得修改预设、颜色或位置。
 
 示例：
 
 ```
 L001,L002|3.20|IMAGE|油画书房窗边的人对着空钱包|1.00^1.08^0.45^0.50^0.55^0.50^0^0
-SUB|L001|普通人最大的【财富陷阱】
+SUB|L001|普通人最大的财富陷阱
 SUB|L002|你以为涨薪就能存钱
 ```
 
@@ -145,23 +174,29 @@ SUB|L002|你以为涨薪就能存钱
 
 ### 第一阶段：稿件
 
-1. `finance_get_source_script`：选择并临时占用一条未使用的财经数据库原稿。
-2. 按本 Skill 的 `prompts/finance.md` 把原稿改为 450～550 字；黄金钩子和原结构不得改变，宣传品牌统一替换为【财富研习岛】。
-3. 从改编正文提炼 `topic`；调用 `finance_get_metadata_prompt` 后写标题标签行。
+1. `finance_get_source_script`：选择并临时占用一条未使用的数据库原稿。
+2. 按本 Skill 的 `prompts/finance.md` 整理原稿：**全文保留**，只把作者与品牌替换为「财富研习岛」并按语义断行。
+3. 从正文提炼 `topic`；调用 `finance_get_metadata_prompt` 后写标题标签行。
 4. 用**长标题**按语义断成 1～3 行 `cover_lines`。封面不自动折行。
 5. 从长标题中选出 1～3 个真正承载点击理由的重点词，作为 `cover_highlights` 传入；每项必须原样出现在 `title` 中。封面重点词使用 `#F2A623` 金黄色，其他文字使用白色，统一加 6px 黑色描边。
-6. 先确定北京时间计划发布日期 `publish_date`（`YYYY-MM-DD`，不得早于当天）；`finance_save_draft` 除原参数外传入 `publish_date`、`source_aweme_id`、`source_reservation_token`、`source_hook` 和 `cover_highlights`。MCP 创建 `output/finance/run-YYYYMMDD/`；日期只表示计划发布日，不包含具体时间。保存成功后 MCP 自动将数据库原稿标记为已使用，直接进入制作。
+6. 先确定北京时间计划发布日期 `publish_date`（`YYYY-MM-DD`，不得早于当天）；`finance_save_draft` 除原参数外传入 `publish_date`、`source_aweme_id`、`source_reservation_token`、`source_hook`、`cover_highlights`，`stock_video` 策略还要传 `intro_scene`（片头写实图场景描述）。MCP 创建 `output/finance/run-YYYYMMDD/`；日期只表示计划发布日，不包含具体时间。保存成功后 MCP 自动将数据库原稿标记为已使用，直接进入制作。
 
 ### 第二阶段：制作与发布
 
-1. `finance_start_storyboard(draft_path, tts_config=…)` → `finance_poll_task(task_path)` 直至 `done=true`，取 `result` 作为分镜上下文。
-2. 按 `result.storyboard_prompt` 写完整分镜文本（IMAGE 行 + 每句一条 `SUB` 行，见上文「字幕重点」）。
-3. 本地交互制作调用 `finance_prepare_images`，传入 `qwen_reference` 配置和用户参考图；确认返回的任务数量覆盖全部镜头。
-4. 调用 `finance_start_generate_images(context_path)` → `finance_poll_task` 直至 `done=true`；全部生成后直接写入图库，结果包含生图清单、当次图片目录和数据库连续编号，不设置人物、画风或情绪检查门禁。
-5. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`；配音直接用 `prepare_storyboard` 的 `tts_path`。
-6. 展示本地成片路径和发布信息，不在本地制作阶段调用 `finance_start_upload_r2`。
-7. 用户确认后，把本地清单和成片交给 MatrixMedia MCP；发布 MCP 先把正式话题幂等写入 D1，再用账号组 `心灵鸡汤` 发布，并对每个平台传入清单中的 `creativeStatement="ai_generated"`。只有用户明确要求远程交付时才上传 R2。
-8. 展示发布结果后，确认清缓存。
+1. 先和用户确认素材策略，再 `finance_start_storyboard(draft_path, tts_config=…, material_strategy=…)` → `finance_poll_task(task_path)` 直至 `done=true`，取 `result` 作为分镜上下文。
+2. 按 `result.storyboard_prompt` 写完整分镜文本（素材行 + 每句一条纯文本 `SUB` 行，见上文「字幕与片头钩子」）。
+3. 按策略准备素材：
+   - `image_library` / `qwen_reference`：`finance_prepare_images` → （生图策略）`finance_start_generate_images` + 轮询 / （图库策略）Agent 选图后 `finance_submit_images`；
+   - `stock_video`：`finance_start_video_search` + 轮询 → Agent 选候选 → `finance_start_download_videos` + 轮询；同时按 `intro_image_prompt` 生成片头写实图。
+4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`、素材清单路径（`material_manifest_path`），`stock_video` 策略另传 `intro_image_path`。配音直接用 `prepare_storyboard` 的 `tts_path`。
+5. 展示本地成片路径和发布信息，不在本地制作阶段调用 `finance_start_upload_r2`。
+6. 用户确认后，把本地清单和成片交给 MatrixMedia MCP；发布 MCP 先把正式话题幂等写入 D1，再用账号组 `心灵鸡汤` 发布，并对每个平台传入清单中的 `creativeStatement="ai_generated"`。只有用户明确要求远程交付时才上传 R2。
+7. 展示发布结果后，确认清缓存。
+
+### 生产入口
+
+- GitHub Action：`python -m ops.github_actions finance`（固定 `material_strategy=image_library`、`finance` 存量图库、产物自动上传 R2，不发布平台）。
+- 交互式：`python -m core.mcp.finance`（本地制作，保留本地产物，发布需用户确认）。
 
 ### 后台任务轮询
 
@@ -174,21 +209,24 @@ SUB|L002|你以为涨薪就能存钱
 
 | 工具 | 作用 |
 | --- | --- |
-| `finance_get_source_stats` | 只读统计财经原稿总数、可用数、有效占用数和已使用数；不会占用稿件 |
-| `finance_get_production_outputs` | 按北京时间计划发布日期查询财经成片及本地/R2位置 |
-| `finance_get_source_script` | 选择并临时占用未使用的财经数据库原稿；全部用完时报错 |
-| `finance_get_topics` | 兼容保留的已占用话题查询；新流程不作为第一步 |
+| `finance_get_source_stats` | 只读统计原稿总数、可用数、有效占用数和已使用数；不会占用稿件 |
+| `finance_get_production_outputs` | 按北京时间计划发布日期查询成片及本地/R2位置 |
+| `finance_get_source_script` | 选择并临时占用未使用的数据库原稿；全部用完时报错 |
+| `finance_get_topics` | 最近 30 天已占用话题查询 |
 | `finance_get_metadata_prompt` | 返回标题标签 Prompt |
-| `finance_save_draft` | 保存数据库改编稿并将来源标记为已使用 |
+| `finance_save_draft` | 保存按原稿全文整理的稿件并将来源标记为已使用 |
 | `finance_prepare_storyboard` | TTS + 分镜（同步，易超时，勿用） |
-| `finance_start_storyboard` | 启动 TTS + 分镜后台任务 |
+| `finance_start_storyboard` | 启动 TTS + 分镜后台任务（需传 `material_strategy`） |
 | `finance_poll_task` | 轮询后台任务 |
-| `finance_prepare_images` | 按 image_config 准备镜头图 |
+| `finance_prepare_images` | 按 image_config 准备镜头图（图库/生图策略） |
 | `finance_start_generate_images` | 按用户参考图逐镜头调用千问生图，并直接写入独立连续编号图库 |
 | `finance_commit_existing_images` | 生图已完成但 D1 入库失败时，仅校验现有图并重试入库，绝不重新生图 |
 | `finance_save_images` | 写入已生成图（通常不用） |
 | `finance_submit_images` | 提交选图清单 |
+| `finance_start_video_search` | 实拍视频策略：逐镜头搜索 Pexels/Pixabay/Coverr 候选 |
+| `finance_start_download_videos` | 实拍视频策略：下载、规范化并按配置磨砂 |
 | `finance_finish_video` | 合成成片（同步，易超时，勿用） |
 | `finance_start_finish_video` | 启动成片合成后台任务 |
-| `finance_start_upload_r2` | 后台上传财经成片、封面和发布清单到 R2 |
+| `finance_start_upload_r2` | 后台上传成片、封面和发布清单到 R2 |
+| `finance_record_publications` | 发布成功后写入 D1 发布记录 |
 | `finance_clear_run` | 清本次目录 |

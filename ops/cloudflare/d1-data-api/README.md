@@ -33,7 +33,7 @@
 可通过 `GET /v1/finance-generated-images` 按连续编号读取。
 
 存量图库通过 `GET /v1/image-library?line=finance` 读取；本地缺失时从 R2 的 `assets/image_library.tar` 恢复。
-千问图库本地缺失时从 R2 的 `assets/image_library_finance.tar` 恢复。
+千问生成图库只供本地交互式生产持续写入，不再打包到 R2，也不参与 GitHub 自动生产选图。
 
 部署前需要：
 

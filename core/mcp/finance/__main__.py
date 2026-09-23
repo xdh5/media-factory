@@ -47,10 +47,12 @@ from ._errors import ConfirmationRequiredError, FinanceError, TaskNotFoundError,
 from .tools import (
     build_metadata_prompt,
     commit_existing_qwen_shot_images,
+    download_selected_videos,
     finish_finance_video,
     generate_qwen_shot_images,
     prepare_shot_images,
     prepare_storyboard,
+    prepare_video_searches,
     save_draft,
     save_source_usage,
     upload_finance_assets_to_r2,
@@ -81,16 +83,19 @@ def _map_error(exc: Exception) -> FinanceError:
 mcp = FastMCP(
     "media-factory-finance",
     instructions=(
-        "财经短视频编排 MCP。业务 Prompt、生图方案、TTS、BGM、片头等以财经 Skill 为准，"
+        "财经短视频编排 MCP。业务 Prompt、素材方案、TTS、BGM、片头等以财经 Skill 为准，"
         "Agent 必须按 Skill 传参。"
         "交互式生产前必须先向用户确认北京时间计划发布日期 publish_date；日期不明确时禁止选稿、创建 run、生产或落库。"
-        "第一步必须从抖音研究数据库选择未使用的财经稿件，禁止自行从零写正文；"
+        "第一步必须从抖音研究数据库选择未使用的原稿，禁止自行从零写正文；"
+        "正文按原稿全文保留，只把作者与品牌替换为财富研习岛、并按语义断行，不做长度压缩；"
         "保存稿件成功后必须把数据库来源标记为已使用。"
         "查询稿件余量必须使用只读的 finance_get_source_stats，不得用选稿工具代替统计。"
-        "本地交互制作使用用户参考图逐镜头调用千问生图，每张图都必须有独立任务；"
-        "GitHub Action 每期随机固定 finance 或 finance_generated 其中一个本地图库，整期不得混用两个图库。"
+        "镜头素材有三类并列策略，必须在 finance_start_storyboard 用 material_strategy 明确指定："
+        "image_library（存量图库选图，GitHub Action 固定使用）、"
+        "qwen_reference（用户参考图 + 千问逐镜头生图）、"
+        "stock_video（Pexels/Pixabay/Coverr 正版实拍视频 + 片头写实图）。"
         "稿件生成后直接制作视频；成品完成后展示成片并等待确认再发布。"
-        "耗时步骤（TTS、成片合成）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
+        "耗时步骤（TTS、素材、成片合成）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
         "禁止绕过 MCP 运行本地脚本。"
     ),
 )
@@ -198,8 +203,9 @@ def finance_save_draft(
     publish_date: str,
     draft_path: str | None = None,
     cover_highlights: list[str] | None = None,
+    intro_scene: str = "",
 ) -> dict:
-    """保存数据库改编稿，随后把来源稿件标记为已使用。"""
+    """保存按原稿全文整理的稿件，随后把来源稿件标记为已使用。"""
     try:
         if draft_path is None:
             clean_topic = str(topic or "").strip()
@@ -208,7 +214,7 @@ def finance_save_draft(
                 str(item.get("topic") or "").strip().casefold() for item in recent
             }:
                 raise WorkflowStepError(
-                    f"财经话题最近 {TOPIC_DEDUPLICATION_DAYS} 天已经发布：{clean_topic}"
+                    f"话题最近 {TOPIC_DEDUPLICATION_DAYS} 天已经发布：{clean_topic}"
                 )
         draft = save_draft(
             topic,
@@ -223,6 +229,7 @@ def finance_save_draft(
             publish_date,
             draft_path,
             cover_highlights,
+            intro_scene,
         )
         usage = mark_douyin_research_script_used(
             aweme_id=str(draft["source_aweme_id"]),
@@ -240,10 +247,11 @@ def finance_save_draft(
 def finance_prepare_storyboard(
     draft_path: str,
     tts_config: dict,
+    material_strategy: str,
 ) -> dict:
     """生成 TTS 与分镜上下文（同步，易超时）。优先使用 finance_start_storyboard + poll_task。"""
     try:
-        return prepare_storyboard(draft_path, tts_config=tts_config)
+        return prepare_storyboard(draft_path, tts_config=tts_config, material_strategy=material_strategy)
     except Exception as exc:
         raise _map_error(exc) from exc
 
@@ -252,15 +260,25 @@ def finance_prepare_storyboard(
 def finance_start_storyboard(
     draft_path: str,
     tts_config: dict,
+    material_strategy: str,
 ) -> dict:
-    """启动 TTS 与分镜上下文生成；立即返回 task_path，用 finance_poll_task 轮询至 done=true。"""
+    """启动 TTS 与分镜上下文生成；material_strategy 决定分镜写 IMAGE 行还是 VIDEO 行。
+
+    取值：image_library（存量图库选图）、qwen_reference（参考图千问生图）、
+    stock_video（Pexels/Pixabay/Coverr 正版实拍视频）。
+    立即返回 task_path，用 finance_poll_task 轮询至 done=true。
+    """
     try:
         _, draft = load_draft(draft_path, "财经稿件")
         cache_dir = Path(str(draft["cache_dir"]))
         run_id = str(draft["run_id"])
 
         def _work() -> dict:
-            return prepare_storyboard(draft_path, tts_config=tts_config)
+            return prepare_storyboard(
+                draft_path,
+                tts_config=tts_config,
+                material_strategy=material_strategy,
+            )
 
         started = runner_submit_task(
             cache_dir=cache_dir,
@@ -358,20 +376,85 @@ def finance_submit_images(
 
 
 @mcp.tool()
+def finance_start_video_search(
+    draft_path: str,
+    storyboard_text: str,
+    video_config: dict,
+) -> dict:
+    """stock_video 策略：后台从 Pexels、Pixabay、Coverr 逐镜头搜索实拍视频候选。
+
+    video_config 例：{"orientation": "landscape", "per_provider": 8,
+    "providers": ["pexels","pixabay","coverr"], "soft_blur_sigma": 0.55}。
+    soft_blur_sigma 控制正文素材的白蒙版磨砂强度，传 0 关闭。
+    """
+    try:
+        _, draft = load_draft(draft_path, "财经稿件")
+
+        def _work(progress=None) -> dict:
+            return prepare_video_searches(
+                draft_path,
+                storyboard_text,
+                video_config=video_config,
+                progress=progress,
+            )
+
+        started = runner_submit_task(
+            cache_dir=Path(str(draft["cache_dir"])),
+            run_id=str(draft["run_id"]),
+            step="search_stock_videos",
+            fn=_work,
+        )
+        return {**started, "poll_tool": "finance_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_start_download_videos(context_path: str, selections: list[dict]) -> dict:
+    """stock_video 策略：后台下载选择的视频、规范化为与配音一致的镜头并加磨砂。"""
+    try:
+        resolved_context, context = load_draft(context_path, "正版视频搜索上下文")
+        metadata = context.get("metadata")
+        if not isinstance(metadata, dict):
+            raise WorkflowStepError("正版视频搜索上下文缺少 metadata")
+        _, draft = load_draft(str(metadata.get("draft_path") or ""), "财经稿件")
+
+        def _work(progress=None) -> dict:
+            return download_selected_videos(resolved_context, selections, progress=progress)
+
+        started = runner_submit_task(
+            cache_dir=Path(str(draft["cache_dir"])),
+            run_id=str(draft["run_id"]),
+            step="download_stock_videos",
+            fn=_work,
+        )
+        return {**started, "poll_tool": "finance_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
 def finance_finish_video(
     draft_path: str,
-    image_manifest_path: str,
     production_config: dict,
+    material_manifest_path: str = "",
+    intro_image_path: str = "",
     storyboard_text: str | None = None,
     force_shot_ids: list[str] | None = None,
     production_source: str = "local_mcp",
+    image_manifest_path: str = "",
 ) -> dict:
-    """合成成片（同步，易超时）。优先使用 finance_start_finish_video + poll_task。"""
+    """合成成片（同步，易超时）。优先使用 finance_start_finish_video + poll_task。
+
+    material_manifest_path 传选图清单或视频素材清单，按清单内容自动识别素材策略；
+    stock_video 策略必须同时传 intro_image_path 指向片头写实图。
+    """
     try:
         return finish_finance_video(
             draft_path,
-            image_manifest_path=image_manifest_path,
+            material_manifest_path=material_manifest_path or image_manifest_path,
             production_config=production_config,
+            intro_image_path=intro_image_path or None,
             storyboard_text=storyboard_text,
             force_shot_ids=force_shot_ids,
             production_source=production_source,
@@ -383,14 +466,19 @@ def finance_finish_video(
 @mcp.tool()
 def finance_start_finish_video(
     draft_path: str,
-    image_manifest_path: str,
     production_config: dict,
+    material_manifest_path: str = "",
+    intro_image_path: str = "",
     storyboard_text: str | None = None,
     force_shot_ids: list[str] | None = None,
     production_source: str = "local_mcp",
+    image_manifest_path: str = "",
 ) -> dict:
     """启动成片合成；立即返回 task_path，用 finance_poll_task 轮询至 done=true。"""
     try:
+        material_manifest = material_manifest_path or image_manifest_path
+        if not material_manifest:
+            raise WorkflowStepError("必须传 material_manifest_path（选图清单或视频素材清单）")
         _, draft = load_draft(draft_path, "财经稿件")
         cache_dir = Path(str(draft["cache_dir"]))
         run_id = str(draft["run_id"])
@@ -398,8 +486,9 @@ def finance_start_finish_video(
         def _work(progress=None) -> dict:
             return finish_finance_video(
                 draft_path,
-                image_manifest_path=image_manifest_path,
+                material_manifest_path=material_manifest,
                 production_config=production_config,
+                intro_image_path=intro_image_path or None,
                 storyboard_text=storyboard_text,
                 force_shot_ids=force_shot_ids,
                 production_source=production_source,

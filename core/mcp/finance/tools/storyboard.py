@@ -7,11 +7,20 @@ from pathlib import Path
 
 from core.tools.generate_tts import generate_tts, generate_tts_fish
 
-from .._constants import MCP_ID, STORYBOARD_CONTEXT_FILE_NAME, VIDEO_RADIO, VIDEO_SIZE
+from .._constants import (
+    MATERIAL_STRATEGIES,
+    MCP_ID,
+    STORYBOARD_CONTEXT_FILE_NAME,
+    VIDEO_RADIO,
+    VIDEO_SIZE,
+)
 from .._errors import AgentOutputFormatError, WorkflowStepError
 from .narration import display_subtitle_text, parse_emphasis_segments, split_narration_lines
 from .prompts import build_metadata_prompt, build_storyboard_prompt
 from .save_draft import load_draft
+
+# 镜头行标记：图库/生图策略用 IMAGE，实拍视频策略用 VIDEO；两种结构完全一致。
+SHOT_MARKERS = ("IMAGE", "VIDEO")
 
 
 def _tts_config(config: dict) -> tuple[str, str, bool]:
@@ -62,7 +71,7 @@ def _parse_motion(value: str) -> dict:
 
 
 def _parse_subtitle_marks(value: str, timeline_by_id: dict) -> dict[str, str]:
-    """读取 SUB|台词ID|带【】的屏上文本。"""
+    """读取 SUB|台词ID|屏上文本；兼容旧分镜中的【】重点标记。"""
     marks: dict[str, str] = {}
     for row in value.splitlines():
         if "|" not in row:
@@ -99,7 +108,7 @@ def parse_storyboard(value: str, timeline: list[dict]) -> list[dict]:
         if "|" not in row:
             continue
         fields = [field.strip() for field in row.split("|", 4)]
-        if len(fields) != 5 or fields[2].upper() != "IMAGE":
+        if len(fields) != 5 or fields[2].upper() not in SHOT_MARKERS:
             continue
         line_ids = [item.strip() for item in fields[0].split(",") if item.strip()]
         if not line_ids or any(line_id not in timeline_by_id for line_id in line_ids):
@@ -148,18 +157,36 @@ def parse_storyboard(value: str, timeline: list[dict]) -> list[dict]:
     return shots
 
 
-def prepare_storyboard(draft_path: str | Path, *, tts_config: dict) -> dict:
+def resolve_material_strategy(value: str) -> str:
+    """校验素材策略取值。"""
+    strategy = str(value or "").strip()
+    if strategy not in MATERIAL_STRATEGIES:
+        raise WorkflowStepError(
+            f"material_strategy 必须是 {'、'.join(MATERIAL_STRATEGIES)} 之一",
+            {"material_strategy": strategy},
+        )
+    return strategy
+
+
+def prepare_storyboard(draft_path: str | Path, *, tts_config: dict, material_strategy: str) -> dict:
+    strategy = resolve_material_strategy(material_strategy)
     resolved_draft, draft = load_draft(draft_path, "财经稿件")
     for key in ("article", "cache_dir", "topic_record_id"):
         if not draft.get(key):
             raise WorkflowStepError(f"财经稿件缺少字段：{key}")
     cache_root = Path(draft["cache_dir"]).resolve()
     tts_result = compose_tts(str(draft["article"]), cache_root, tts_config)
-    prompt = build_storyboard_prompt(tts_result["timeline"], radio=VIDEO_RADIO, size=VIDEO_SIZE)
+    prompt = build_storyboard_prompt(
+        tts_result["timeline"],
+        radio=VIDEO_RADIO,
+        size=VIDEO_SIZE,
+        material_strategy=strategy,
+    )
     context_path = cache_root / STORYBOARD_CONTEXT_FILE_NAME
     context = {
         "status": "awaiting_storyboard",
         "line": MCP_ID,
+        "material_strategy": strategy,
         "draft_path": str(resolved_draft),
         "storyboard_prompt": prompt,
         "timeline": tts_result["timeline"],

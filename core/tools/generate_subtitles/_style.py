@@ -42,6 +42,7 @@ _STYLE_KEYS = frozenset({
     "secondary_color",
     "outline_color",
     "back_color",
+    "highlight_color",
     "outline",
     "outline_ratio",
     "shadow",

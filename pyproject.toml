@@ -15,12 +15,14 @@ dependencies = [
     "boto3>=1.34",
     "Pillow>=10.0",
     "mcp>=1.26,<2",
+    "msgpack>=1.0",
     "python-dotenv>=1.0",
     "requests>=2.31",
     "yt-dlp>=2024.0.0",
     "beautifulsoup4>=4.12",
     "lxml>=5.3",
     "py-mini-racer>=0.6.0",
+    "fonttools>=4.53",
     # 系统依赖（非 pip 包）：ffmpeg 需自行安装并加入 PATH（如 winget install Gyan.FFmpeg）
 ]
 

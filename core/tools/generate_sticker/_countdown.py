@@ -119,7 +119,8 @@ def write_countdown_sticker(
     frame_count = max(len(COUNTDOWN_DIGITS), round(duration * STICKER_FPS))
     rendered_duration = frame_count / STICKER_FPS
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="generate-sticker-countdown-", dir=destination.parent) as temporary:
+    # 帧临时目录放系统 TEMP：项目内一次性清理大量帧文件会触发宿主 safe-delete 批量删除保护，中断 MCP 进程
+    with tempfile.TemporaryDirectory(prefix="generate-sticker-countdown-") as temporary:
         root = Path(temporary)
         for frame_index in range(frame_count):
             _draw_frame(layout, frame_index, frame_count).save(root / f"frame-{frame_index:04d}.png")

@@ -135,8 +135,11 @@ def _is_latinish(text: str) -> bool:
 
 
 def _animation_tag(animation: str, unit: dict, highlight_color: str) -> str:
+    # karaoke 的 \kf 时长用词的真实时长，保证填色在本词窗口内走完；
+    # 其他动画沿用最短 30cs 的保守时长。
     duration_cs = max(30, int((unit["end"] - unit["start"]) * 100))
     if animation == "karaoke":
+        duration_cs = max(1, int(round((unit["end"] - unit["start"]) * 100)))
         return rf"{{\kf{duration_cs}\c{highlight_color}&}}"
     if animation == "scale":
         return rf"{{\fscx110\fscy110\c{highlight_color}&}}"
@@ -185,13 +188,18 @@ def build_word_events(
                 for row, (candidate_line, candidate_texts) in enumerate(zip(block, block_lines)):
                     if row > 0:
                         parts.append(r"\N")
+                    # karaoke：当前词之前的词（含前面几行）保持高亮色，实现从左到右累积扫色
+                    sung_row = row < line_index
                     for position, (candidate, text) in enumerate(zip(candidate_line, candidate_texts)):
+                        escaped = _escape_ass_text(text)
                         if row == line_index and position == word_index:
                             parts.append(_animation_tag(animation, candidate, highlight_color))
-                            parts.append(_escape_ass_text(text))
+                            parts.append(escaped)
                             parts.append(r"{\r}")
+                        elif animation == "karaoke" and (sung_row or position < word_index):
+                            parts.append(rf"{{\c{highlight_color}&}}{escaped}{{\r}}")
                         else:
-                            parts.append(_escape_ass_text(text))
+                            parts.append(escaped)
                         if position + 1 < len(candidate_line):
                             neighbor = candidate_line[position + 1]
                             neighbor_text = candidate_texts[position + 1]

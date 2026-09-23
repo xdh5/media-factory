@@ -133,7 +133,8 @@ def write_rec_sticker(destination: Path, canvas_height: int) -> dict:
     if not ffmpeg:
         raise FFmpegNotFoundError("ffmpeg")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="generate-sticker-rec-", dir=destination.parent) as temporary:
+    # 帧临时目录放系统 TEMP：项目内一次性清理大量帧文件会触发宿主 safe-delete 批量删除保护，中断 MCP 进程
+    with tempfile.TemporaryDirectory(prefix="generate-sticker-rec-") as temporary:
         root = Path(temporary)
         on_path = root / "on.png"
         off_path = root / "off.png"

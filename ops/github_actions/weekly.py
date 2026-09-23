@@ -1,6 +1,7 @@
 """按计划发布日期串行生产语言并发布语言。
 
-心灵鸡汤已改为用户提供文章的交互式生产（quiz 自动生产已下线），不再进入每周 Workflow。
+心灵鸡汤线路已并入财经业务线（原 psychology_quiz 线删除），中韩语言之外的视频
+不再进入每周 Workflow，财经走独立的手动/交互入口。
 """
 
 from __future__ import annotations

@@ -1,9 +1,11 @@
-"""财经 GitHub Action：自动生成稿件并制作成片，不发布平台。"""
+"""财经 GitHub Action：自动生成稿件并制作成片，不发布平台。
+
+稿件按原稿全文保留：只把作者与品牌替换为财富研习岛，并按语义断行，不做长度压缩。
+"""
 
 from __future__ import annotations
 
 import json
-import random
 import re
 from pathlib import Path
 
@@ -20,21 +22,21 @@ from ._shared import (
 )
 
 
-TTS_CONFIG = {"voice": "fish:bc9e47fd83a04010ad6617ed54b92ee3", "rate": "+0%", "trim_trailing_silence": True}
+# 语速另有音色绑定：generate_tts_fish.FISH_VOICE_RATES 里 28df7fe4… 固定 "+10%"，
+# 只要用这个音色就 +10%（行内显式 rate 优先）。这里的 rate 只是兜底默认值。
+TTS_CONFIG = {"voice": "fish:28df7fe4d3ec45f692af03d0a372805b", "rate": "+10%", "trim_trailing_silence": True}
+BGM_PATH = "core/tools/generate_bgm/static/easy-lemon-kevin-macleod.mp3"
 PRODUCTION_CONFIG = {
     "cover_frame_seconds": 0.03333333333333333,
     "intro": "slide_in_shutter",
     "shot_stickers": ["rec"],
     "matrixmedia_account_group": "心灵鸡汤",
+    "bgm_gain": 0.84,
 }
-BGM_PATHS = (
-    "core/tools/generate_bgm/static/nothing_to_fare.mp3",
-    "core/tools/generate_bgm/static/aware.mp3",
-)
-ARTICLE_MIN_LENGTH = 450
-ARTICLE_MAX_LENGTH = 550
-ARTICLE_TARGET_LENGTH = 500
+MATERIAL_STRATEGY = "image_library"
+ARTICLE_MAX_LINE_LENGTH = 36
 ARTICLE_GENERATION_ATTEMPTS = 5
+BRAND_NAME = "财富研习岛"
 
 
 def _article_prompt(source_text: str, source_hook: str) -> str:
@@ -70,52 +72,60 @@ def _extract_source_hook(source_text: str) -> str:
     raise ValueError("千问连续三次识别的黄金钩子都不是数据库原稿的精确开头")
 
 
-def _article_length(article: str) -> int:
-    return len(re.sub(r"\s+", "", article))
+def _bare(text: str) -> str:
+    """去掉全部空白与标点，只留字符，用于「除品牌替换外逐字一致」的校验。"""
+    return re.sub(r"[\s\W_]+", "", str(text or ""))
 
 
-def _article_validation_error(article: str, source_hook: str) -> str | None:
-    length = _article_length(article)
-    problems = []
-    if not re.sub(r"\s+", "", article).startswith(re.sub(r"\s+", "", source_hook)):
-        problems.append("黄金钩子没有原样保留在正文开头")
-    long_lines = [(index, len(line.strip())) for index, line in enumerate(article.splitlines(), 1) if len(line.strip()) > 20]
+def _normalize_replacements(replacements) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    if not isinstance(replacements, list):
+        return rows
+    for item in replacements:
+        if not isinstance(item, dict):
+            continue
+        source = _bare(item.get("from"))
+        target = _bare(item.get("to"))
+        if source:
+            rows.append((source, target or _bare(BRAND_NAME)))
+    return rows
+
+
+def _article_validation_error(
+    article: str,
+    source_text: str,
+    source_hook: str,
+    replacements: list[tuple[str, str]],
+) -> str | None:
+    problems: list[str] = []
+    article_body = _bare(article)
+    hook_body = _bare(source_hook)
+    source_body = _bare(source_text)
+    if not hook_body or not source_body.startswith(hook_body):
+        problems.append("原稿开头与黄金钩子不一致，无法校验")
+    if not article_body.startswith(hook_body):
+        problems.append("黄金钩子没有原样保留在正文开头（钩子内不得替换品牌）")
+    long_lines = []
+    for index, line in enumerate(article.splitlines(), 1):
+        text = line.strip()
+        if len(text) > ARTICLE_MAX_LINE_LENGTH:
+            long_lines.append((index, len(text)))
     if long_lines:
-        problems.append(f"以下行超过20字，必须按语义换行（黄金钩子允许仅插入换行）：{long_lines}")
-    if length < ARTICLE_MIN_LENGTH:
         problems.append(
-            f"当前 {length} 个字符，还需增加至少 {ARTICLE_MIN_LENGTH - length} 个字符"
+            f"以下行超过{ARTICLE_MAX_LINE_LENGTH}字，必须按语义换行（黄金钩子允许仅插入换行）：{long_lines}"
         )
-    elif length > ARTICLE_MAX_LENGTH:
+    mismatched = [item for item in replacements if item[1] != _bare(BRAND_NAME)]
+    if mismatched:
+        problems.append(f"replacements 只能替换为「{BRAND_NAME}」：{mismatched}")
+    expected_body = source_body[len(hook_body):]
+    for source_brand, target_brand in replacements:
+        expected_body = expected_body.replace(source_brand, target_brand)
+    if expected_body != article_body[len(hook_body):]:
         problems.append(
-            f"当前 {length} 个字符，必须删减至少 {length - ARTICLE_MAX_LENGTH} 个字符"
+            "正文与「原稿只替换作者和品牌、其余逐字保留」不一致："
+            "不得压缩、扩写、改写或重排原稿内容，也不得漏报替换项"
         )
     return "；".join(problems) or None
-
-
-def _repair_long_lines(article: str) -> str:
-    """只让模型给超长行添加语义换行，逐字核对后才接受。"""
-    repaired = []
-    for line in article.splitlines():
-        if len(line.strip()) <= 20:
-            repaired.append(line)
-            continue
-        payload = json_text(qwen(
-            "你是中文断句编辑，只输出有效 JSON。",
-            '将下列原文按语义拆成每行不超过20字的短句，禁止拆开词语。'
-            '只能插入换行，不能增删任何字或标点。输出 {"lines":["第一行","第二行"]}。\n'
-            + line,
-            json_output=True,
-            max_tokens=1000,
-        ))
-        lines = payload.get("lines")
-        if (isinstance(lines, list) and lines
-                and all(isinstance(item, str) and 0 < len(item.strip()) <= 20 for item in lines)
-                and re.sub(r"\s+", "", "".join(lines)) == re.sub(r"\s+", "", line)):
-            repaired.extend(item.strip() for item in lines)
-        else:
-            repaired.append(line)
-    return "\n".join(repaired)
 
 
 def _restore_source_hook(article: str, source_hook: str) -> str:
@@ -133,76 +143,50 @@ def _restore_source_hook(article: str, source_hook: str) -> str:
     return "\n".join(hook_lines) + ("\n" + suffix if suffix else "")
 
 
-def _adapt_article(source_text: str, source_hook: str) -> str:
-    initial_prompt = (
-        _article_prompt(source_text, source_hook)
-        + f"\n\n硬性校验：最终正文去除所有空白后必须为 {ARTICLE_MIN_LENGTH}～"
-        f"{ARTICLE_MAX_LENGTH} 个字符，并尽量写到 {ARTICLE_TARGET_LENGTH} 个字符。"
-        "字符数由程序复核。只输出正文，不要解释字数。"
+def _prepare_article(source_text: str, source_hook: str) -> str:
+    """保留原稿全文，只替换作者与品牌并按语义断行；程序逐字复核。"""
+    json_rule = (
+        "\n\n只输出 JSON："
+        "{\"article\":\"断行后的完整正文\","
+        "\"replacements\":[{\"from\":\"原稿里被替换掉的作者或品牌原文\",\"to\":\"" + BRAND_NAME + "\"}]}。"
+        "replacements 必须完整列出你做过的每一处替换；"
+        "程序会按去掉空白和标点后的口径复核："
+        f"「原稿开头黄金钩子之外的部分」在执行完 replacements 后必须与正文逐字一致。"
+        f"没有可替换内容时 replacements 输出空数组。硬性要求：每一行不得超过{ARTICLE_MAX_LINE_LENGTH}个字符。"
     )
+    initial_prompt = _article_prompt(source_text, source_hook) + json_rule
     last_error = None
-    previous_article = ""
+    previous_payload = ""
     for attempt in range(ARTICLE_GENERATION_ATTEMPTS):
-        if previous_article and _article_length(previous_article) < ARTICLE_MIN_LENGTH:
-            # 只生成局部扩写，避免模型重写全文时反复返回同一份短稿。
-            missing = ARTICLE_TARGET_LENGTH - _article_length(previous_article)
-            revision = json_text(qwen(
-                "你是严谨的中文财经编辑，只输出有效 JSON。",
-                f"请在上一版正文中选择黄金钩子之后的一句完整原句，补充其解释。"
-                f"只返回 {{\"original\":\"原句\",\"expanded\":\"扩写后的完整句组\"}}。"
-                f"expanded 比 original 增加约 {missing} 个非空白字符；"
-                "保留原意，每句单独一行且不超过20字，不新增故事、数据、承诺或分支观点。"
-                "original 必须是正文中唯一出现的连续原文，不能包含开头钩子。\n"
-                f"黄金钩子：{source_hook}\n数据库原稿：\n{source_text}\n上一版正文：\n{previous_article}",
-                json_output=True,
-                max_tokens=2000,
-            ))
-            original = str(revision.get("original") or "")
-            expanded = str(revision.get("expanded") or "").strip()
-            if original and expanded and previous_article.count(original) == 1:
-                candidate = _restore_source_hook(
-                    _repair_long_lines(previous_article.replace(original, expanded, 1)),
-                    source_hook,
-                )
-                length = _article_length(candidate)
-                if re.sub(r"\s+", "", candidate).startswith(re.sub(r"\s+", "", source_hook)) and _article_length(previous_article) < length <= ARTICLE_MAX_LENGTH:
-                    previous_article = candidate
-                    last_error = _article_validation_error(candidate, source_hook)
-                    print(f"财经局部扩写第 {attempt + 1} 次：{length} 个字符；{last_error or '校验通过'}", flush=True)
-                    if last_error is None:
-                        return candidate
-                    continue
         if attempt == 0:
             prompt = initial_prompt
         else:
-            previous_length = _article_length(previous_article)
             prompt = (
-                "请直接修订下面的上一版正文，不要从零另写。\n\n"
+                "请直接修订上一版输出，不要从零另写。\n\n"
                 f"程序校验结果：{last_error}。\n"
-                f"上一版去除空白后为 {previous_length} 个字符；目标为 "
-                f"{ARTICLE_TARGET_LENGTH} 个字符，合格范围为 {ARTICLE_MIN_LENGTH}～"
-                f"{ARTICLE_MAX_LENGTH} 个字符。\n"
                 f"必须原样保留在开头的黄金钩子：{source_hook}\n\n"
-                "修订规则：只在原有段落位置补充解释或删减冗余，保持论述顺序、事实、"
-                "案例位置和结尾结构；不得新增分支观点。输出前按去除所有空白后的口径计数。"
-                "只输出修订后的完整正文，不要输出说明或字数。\n\n"
-                f"数据库原稿（只用于核对事实与结构）：\n{source_text}\n\n"
-                f"上一版正文（必须在此基础上定向修订）：\n{previous_article}"
+                "修订规则：正文必须逐字保留原稿的全部内容与顺序，只允许替换作者和品牌"
+                f"为「{BRAND_NAME}」、以及在语义处插入换行；"
+                "不得删减、扩写、改写或重排任何一句话。\n\n"
+                f"数据库原稿（正文的唯一来源）：\n{source_text}\n\n"
+                f"上一版输出（必须在此基础上定向修订）：\n{previous_payload}"
             )
-        article = str(qwen(
-            "你是严谨的中文财经短视频改编编辑，只输出正文。"
-            f"正文去除空白后必须为 {ARTICLE_MIN_LENGTH}～{ARTICLE_MAX_LENGTH} 个字符。",
+        payload = json_text(qwen(
+            "你是中文短视频编辑，必须输出有效 JSON，不要输出 Markdown。"
+            f"正文必须逐字保留原稿全部内容，只替换作者和品牌为「{BRAND_NAME}」并按语义断行。",
             prompt,
-            max_tokens=5000,
-        )["text"]).strip()
-        article = _restore_source_hook(_repair_long_lines(article), source_hook)
-        last_error = _article_validation_error(article, source_hook)
-        print(f"财经正文第 {attempt + 1} 次：{_article_length(article)} 个字符；{last_error or '校验通过'}", flush=True)
+            json_output=True,
+            max_tokens=12000,
+        ))
+        previous_payload = json.dumps(payload, ensure_ascii=False)
+        article = _restore_source_hook(str(payload.get("article") or ""), source_hook)
+        replacements = _normalize_replacements(payload.get("replacements"))
+        last_error = _article_validation_error(article, source_text, source_hook, replacements)
+        print(f"财经正文第 {attempt + 1} 次：{len(_bare(article))} 个字符；{last_error or '校验通过'}", flush=True)
         if last_error is None:
             return article
-        previous_article = article
     raise RuntimeError(
-        f"财经原稿连续 {ARTICLE_GENERATION_ATTEMPTS} 次改编不合格，程序已阻止不合格正文进入后续步骤："
+        f"财经正文连续 {ARTICLE_GENERATION_ATTEMPTS} 次整理不合格，程序已阻止不合格正文进入后续步骤："
         f"{last_error}"
     )
 
@@ -213,14 +197,14 @@ def _choose_topic(article: str, recent_topics: list[str], requested_topic: str) 
     feedback = ""
     for _ in range(3):
         user_prompt = (
-            "从下面已经改编好的正文提炼一个准确、简短的财经话题，不得改变正文主题。"
+            "从下面整理好的正文提炼一个准确、简短的话题，不得改变正文主题。"
             f"用户提供的可选侧重点：{requested_hint or '无'}。"
             f"不得与最近30天话题重复：{json.dumps(recent_topics, ensure_ascii=False)}。\n\n正文：\n{article}"
         )
         if feedback:
             user_prompt += f"\n\n上一次输出校验失败，必须修正：{feedback}"
         result = qwen(
-            "你是财经短视频选题编辑。只返回一个中文话题，不加序号、引号或说明。",
+            "你是短视频选题编辑。只返回一个中文话题，不加序号、引号或说明。",
             user_prompt,
             max_tokens=100,
         )
@@ -249,7 +233,7 @@ def _metadata(metadata_prompt: str, article: str, *, feedback: str = "") -> dict
     if feedback:
         user_prompt += f"\n\n上一次输出校验失败，必须修正：{feedback}"
     result = qwen(
-        "你是财经短视频标题编辑，必须输出有效 JSON，不要输出 Markdown。",
+        "你是短视频标题编辑，必须输出有效 JSON，不要输出 Markdown。",
         user_prompt,
         json_output=True,
         max_tokens=600,
@@ -321,7 +305,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
         reservation = selected["reservation"]
         source_text = str(source["transcript"]).strip()
         source_hook = _extract_source_hook(source_text)
-        article = _adapt_article(source_text, source_hook)
+        article = _prepare_article(source_text, source_hook)
         topics = await mcp.call("finance_get_topics")
         topic = _choose_topic(article, topics.get("recent_topics") or [], requested_topic)
         metadata_prompt = (await mcp.call("finance_get_metadata_prompt"))["metadata_prompt"]
@@ -350,7 +334,14 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
                 last_error = exc
         else:
             raise RuntimeError(f"财经标题连续三次不合格：{last_error}")
-        started = await mcp.call("finance_start_storyboard", {"draft_path": draft["draft_path"], "tts_config": TTS_CONFIG})
+        started = await mcp.call(
+            "finance_start_storyboard",
+            {
+                "draft_path": draft["draft_path"],
+                "tts_config": TTS_CONFIG,
+                "material_strategy": MATERIAL_STRATEGY,
+            },
+        )
         print("财经：轮询分镜 TTS", flush=True)
         storyboard_context = await mcp.poll("finance_poll_task", started["task_path"])
         storyboard_prompt = storyboard_context["storyboard_prompt"]
@@ -377,12 +368,12 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
             "finance_submit_images",
             {"context_path": prepared["context_path"], "images": selections},
         )
-        production_config = {**PRODUCTION_CONFIG, "bgm_path": random.choice(BGM_PATHS)}
+        production_config = {**PRODUCTION_CONFIG, "bgm_path": BGM_PATH}
         started = await mcp.call(
             "finance_start_finish_video",
             {
                 "draft_path": draft["draft_path"],
-                "image_manifest_path": image_manifest["manifest_path"],
+                "material_manifest_path": image_manifest["manifest_path"],
                 "production_config": production_config,
                 "storyboard_text": storyboard,
                 "production_source": "github_workflow",
@@ -422,8 +413,9 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
         [
             ("话题", topic),
             ("标题", manifest["title"]),
+            ("素材策略", MATERIAL_STRATEGY),
             ("图库", library_line),
-            ("BGM", production_config["bgm_path"].rsplit("/", 1)[-1]),
+            ("BGM", Path(BGM_PATH).name),
             ("R2 清单", remote["manifest"]["url"]),
             ("平台发布", "未执行"),
         ],

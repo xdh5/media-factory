@@ -1,4 +1,8 @@
-"""为心灵鸡汤分镜搜索、选择并规范化正版视频素材。"""
+"""正版实拍视频素材策略：逐镜头搜索、选择、下载并规范化为与配音一致的镜头。
+
+这是财经线三类素材策略之一（与存量图库选图、参考图千问生图并列）。
+只有第一个镜头由宿主机生成的写实片头图承担，正文从第二个镜头开始使用实拍素材。
+"""
 
 from __future__ import annotations
 
@@ -7,12 +11,35 @@ import json
 from pathlib import Path
 
 from core.tools.stock_video import download_stock_video, prepare_stock_clip, search_stock_videos
+from core.tools.soft_blur_video import blur_video_segments
 
-from .._constants import MCP_ID, STORYBOARD_CONTEXT_FILE_NAME, STORYBOARD_TEXT_FILE_NAME, VIDEO_SIZE
+from .._constants import (
+    MATERIAL_STOCK_VIDEO,
+    MCP_ID,
+    STORYBOARD_CONTEXT_FILE_NAME,
+    STORYBOARD_TEXT_FILE_NAME,
+    VIDEO_SIZE,
+)
 from .._errors import WorkflowStepError
-from .draft import load_draft
 from .narration import display_subtitle_text
+from .save_draft import load_draft
 from .storyboard import parse_storyboard
+
+DEFAULT_SOFT_BLUR_SIGMA = 0.55
+
+
+def _intro_image_prompt(draft: dict) -> str:
+    scene = str(draft.get("intro_scene") or "").strip()
+    if not scene:
+        raise WorkflowStepError(
+            "稿件缺少 intro_scene，无法生成片头写实图 Prompt。"
+            "保存稿件时请从原稿提炼一句片头场景描述（人物身份 + 关键动作 + 环境细节）"
+        )
+    return (
+        "写实摄影风格，电影感自然光，16:9横屏，表现以下场景的关键瞬间："
+        f"{scene}。人物表情真实、有悬念感，环境细节生活化，"
+        "画面主体居中偏上，为底部字幕留出空间；禁止文字、字母、数字、水印、标志和拼贴。"
+    )
 
 
 def prepare_video_searches(
@@ -29,14 +56,17 @@ def prepare_video_searches(
     if not isinstance(video_config, dict):
         raise WorkflowStepError("video_config 必须是对象")
     orientation = str(video_config.get("orientation") or "landscape").strip()
-    per_provider = int(video_config.get("per_provider") or 8)
+    try:
+        per_provider = int(video_config.get("per_provider") or 8)
+    except (TypeError, ValueError) as exc:
+        raise WorkflowStepError("video_config.per_provider 必须是整数") from exc
     providers = video_config.get("providers") or ["pexels", "pixabay", "coverr"]
-    resolved_draft, draft = load_draft(draft_path, "心灵鸡汤稿件")
+    resolved_draft, draft = load_draft(draft_path, "财经稿件")
     cache_root = Path(str(draft.get("cache_dir") or "")).resolve()
     _, context = load_draft(cache_root / STORYBOARD_CONTEXT_FILE_NAME, "分镜上下文")
     timeline = context.get("timeline")
     if not isinstance(timeline, list) or not timeline:
-        raise WorkflowStepError("分镜上下文缺少 timeline，请先完成 psychology_quiz_start_storyboard")
+        raise WorkflowStepError("分镜上下文缺少 timeline，请先完成 finance_start_storyboard")
     shots = parse_storyboard(normalized_storyboard, timeline)
     storyboard_path = cache_root / STORYBOARD_TEXT_FILE_NAME
     storyboard_path.write_text(normalized_storyboard, encoding="utf-8")
@@ -71,6 +101,7 @@ def prepare_video_searches(
         "metadata": {
             "workflow": MCP_ID,
             "line": MCP_ID,
+            "material_strategy": MATERIAL_STOCK_VIDEO,
             "draft_path": str(resolved_draft),
             "storyboard_text": normalized_storyboard,
             "storyboard_path": str(storyboard_path),
@@ -79,6 +110,7 @@ def prepare_video_searches(
                 "orientation": orientation,
                 "per_provider": per_provider,
                 "providers": list(providers),
+                "soft_blur_sigma": video_config.get("soft_blur_sigma"),
             },
             "tts_path": context.get("tts_path"),
         },
@@ -87,11 +119,7 @@ def prepare_video_searches(
             "宿主 Agent 根据字幕、检索词、预览图、标题和时长选择每个镜头的视频。"
             "提交 [{video_id, provider, id}]；只能选择当前 context 返回的候选。"
         ),
-        "intro_image_prompt": (
-            "写实摄影风格，电影感自然光，16:9横屏，表现以下场景的关键瞬间："
-            f"{draft['intro_scene']}。人物表情真实、有悬念感，环境细节生活化，"
-            "画面主体居中偏上，为底部字幕留出空间；禁止文字、字母、数字、水印、标志和拼贴。"
-        ),
+        "intro_image_prompt": _intro_image_prompt(draft),
         "context_path": context_path.resolve().as_posix(),
     }
     context_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -99,7 +127,7 @@ def prepare_video_searches(
 
 
 def download_selected_videos(context_path: str | Path, selections: list[dict], *, progress=None) -> dict:
-    """下载选择结果、规范化镜头并写出视频素材清单。"""
+    """下载选择结果、规范化镜头并按配置做白蒙版磨砂，写出视频素材清单。"""
     resolved_context, context = load_draft(context_path, "正版视频搜索上下文")
     searches = context.get("searches")
     metadata = context.get("metadata")
@@ -156,10 +184,28 @@ def download_selected_videos(context_path: str | Path, selections: list[dict], *
             "attribution": candidate["attribution"],
             "attribution_url": candidate["attribution_url"],
         })
+    video_config = metadata.get("video_config") if isinstance(metadata.get("video_config"), dict) else {}
+    raw_sigma = video_config.get("soft_blur_sigma")
+    if raw_sigma is None:
+        try:
+            sigma = float(DEFAULT_SOFT_BLUR_SIGMA)
+        except TypeError:
+            sigma = DEFAULT_SOFT_BLUR_SIGMA
+    else:
+        try:
+            sigma = float(raw_sigma)
+        except (TypeError, ValueError) as exc:
+            raise WorkflowStepError("video_config.soft_blur_sigma 必须是数字，或传 0 关闭磨砂") from exc
+    if sigma > 0:
+        if progress:
+            progress("正在为正文素材加白蒙版磨砂")
+        videos = blur_video_segments(videos, output_root / "soft-blur", sigma=sigma, progress=progress)
     manifest_path = output_root / "stock-video-manifest.json"
     manifest = {
         "version": 1,
         "status": "ready",
+        "material_strategy": MATERIAL_STOCK_VIDEO,
+        "soft_blur_sigma": sigma,
         "videos": videos,
         "frames": frames,
         "attributions": attributions,
