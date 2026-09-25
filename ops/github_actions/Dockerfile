@@ -7,6 +7,7 @@ ENV PYTHONUTF8=1 \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
+        curl \
         ffmpeg \
         fontconfig \
         fonts-dejavu-core \
