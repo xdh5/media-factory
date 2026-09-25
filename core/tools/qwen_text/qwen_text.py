@@ -1,4 +1,4 @@
-"""通过百炼 OpenAI 兼容接口调用千问文本模型。"""
+"""通过百炼 OpenAI 兼容接口调用文本与视觉模型。"""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from ._constants import (
     DASHSCOPE_VISION_MODEL_ENV,
     DEFAULT_BASE_URL,
     DEFAULT_MODEL,
+    DEFAULT_VISION_MODEL,
     DEFAULT_TEMPERATURE,
     DEFAULT_TIMEOUT_SECONDS,
     MAX_RESPONSE_BYTES,
@@ -67,7 +68,7 @@ def get_qwen_configuration() -> dict:
     api_key = resolve_dashscope_api_key()
     base_url = os.getenv(DASHSCOPE_BASE_URL_ENV, "").strip() or DEFAULT_BASE_URL
     model = os.getenv(DASHSCOPE_MODEL_ENV, "").strip() or DEFAULT_MODEL
-    vision_model = os.getenv(DASHSCOPE_VISION_MODEL_ENV, "").strip() or model
+    vision_model = os.getenv(DASHSCOPE_VISION_MODEL_ENV, "").strip() or DEFAULT_VISION_MODEL
     thinking_value = os.getenv(DASHSCOPE_ENABLE_THINKING_ENV)
     enable_thinking = _boolean(
         False if thinking_value is None else thinking_value,
