@@ -81,7 +81,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 1. **成片**：本地制作完成后展示 `output/language_learning/run-YYYYMMDD/` 中的成片路径、标题、标签与账号组；`YYYYMMDD` 必须是北京时间计划发布日期。未确认不得调用发布 MCP。本地制作不得在成片阶段自动上传 R2；仅 GitHub Workflow 生产完成后自动交付 R2，本地只有在用户确认发布且目标平台需要公网视频地址时才上传发布资产。本地成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；GitHub Workflow 只在 R2 交付成功后以 `source=github_workflow` 写入。查询某天产物使用 `language_learning_get_production_outputs(publish_date)`。
 2. **清缓存**：发布结束后用户确认才调用 `language_learning_clear_run(run_id, confirmed=true)`。
 
-用户明确启用的自动 Workflow 属于持续发布授权：`weekly-production` 每周六北京时间 12:00 串行生产下周周一至周日内容，语言生产完成后自动提交 YouTube、TikTok、Facebook、Instagram 的北京时间 16:00 预约。每周生产禁止用 D1 健康检查触发自动补发，禁止发布失败后自动整批重试；单独的手动发布 Workflow 仍按数据库预检结果最多重试 3 次。YouTube 继续使用官方 API，完整上传或预约并返回 `video_id` 才记为成功，抛错或缺少 `video_id` 记为失败。TikTok、Facebook、Instagram 调用 Zernio；Zernio 请求成功并返回 `post_id` 与成功或预约状态后，立即把标题、发布时间、平台、账号、分段及外部 ID 写入现有 `publication_records`，请求失败则不写入。单独的手动发布 Workflow 只复用 GitHub 已交付 R2 的中文成片，手动 MCP 制作仍执行上述成片确认门禁。自动 Workflow 不清缓存。原每日生产命令保留但不再配置定时调度。
+`weekly-production` 每周六北京时间 12:00 串行生产下周周一至周日内容，只生产并交付 R2，禁止自动发布语言视频。单独的手动发布 Workflow 按数据库预检结果最多重试 3 次；YouTube 使用官方 API，完整上传或预约并返回 `video_id` 才记为成功，抛错或缺少 `video_id` 记为失败。TikTok、Facebook、Instagram 调用 Zernio；Zernio 请求成功并返回 `post_id` 与成功或预约状态后，立即把标题、发布时间、平台、账号、分段及外部 ID 写入现有 `publication_records`，请求失败则不写入。手动发布 Workflow 只复用 GitHub 已交付 R2 的中文成片，手动 MCP 制作仍执行上述成片确认门禁。生产 Workflow 不清缓存。原每日生产命令保留但不再配置定时调度。
 
 词表、主体图、卡片、出片中间步骤不逐项确认。
 

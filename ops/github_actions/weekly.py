@@ -1,4 +1,4 @@
-"""按计划发布日期串行生产财经，再生产并发布语言。"""
+"""按计划发布日期串行生产财经与语言，只交付成片，不发布平台。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from .language_learning import (
     generate_cards,
     generate_videos,
     generate_words,
-    schedule_publication,
     upload_failed_subject_sheets,
     upload_handoff,
 )
@@ -37,13 +36,6 @@ async def _run_language_produce(publish_date: str, work_dir: Path) -> dict:
     except Exception:
         pass
     return result
-
-
-def _manifest_url(run_id: str) -> str:
-    base = os.getenv("R2_PUBLIC_BASE_URL", "").strip().rstrip("/")
-    if not base:
-        raise RuntimeError("缺少环境变量 R2_PUBLIC_BASE_URL")
-    return f"{base}/runs/language_learning/{run_id}/r2-manifest.json"
 
 
 async def run_day(
@@ -101,40 +93,20 @@ async def run_day(
             "language_learning_get_automation_plan",
             {"publish_date": publish_date},
         )
-    if not lang_preflight["should_generate"] and not lang_preflight["should_resume_publish"]:
+    if not lang_preflight["should_generate"]:
         results["language"] = {"status": "skipped", "reason": lang_preflight["skip_reason"]}
         return results
 
-    run_id = str(lang_preflight["existing_run_id"] or "")
-    publish_targets = list(lang_preflight["pending_targets"])
-
-    if lang_preflight["should_generate"]:
-        try:
-            print(f"[{publish_date}] 开始语言生产", flush=True)
-            os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
-            upload_result = await _run_language_produce(publish_date, work_dir)
-            run_id = str(upload_result["run_id"])
-            publish_targets = list(lang_preflight["publish_targets"])
-        except Exception as exc:
-            notify_business_result("语言生产", False, run_url, str(exc))
-            results["language"] = {"status": "produce_failed", "error": str(exc)}
-            return results
-
-    if not run_id:
-        raise RuntimeError(f"{publish_date} 缺少可发布的 language_learning run_id")
-
     try:
-        print(f"[{publish_date}] 开始语言发布：{publish_targets}", flush=True)
-        await schedule_publication(
-            _manifest_url(run_id),
-            run_id,
-            targets=publish_targets,
-        )
-        notify_business_result("语言发布", True, run_url)
-        results["language"] = {"status": "published", "run_id": run_id}
+        print(f"[{publish_date}] 开始语言生产", flush=True)
+        os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
+        upload_result = await _run_language_produce(publish_date, work_dir)
+        run_id = str(upload_result["run_id"])
+        notify_business_result("语言生产", True, run_url)
+        results["language"] = {"status": "produced", "run_id": run_id}
     except Exception as exc:
-        notify_business_result("语言发布", False, run_url, str(exc))
-        results["language"] = {"status": "publish_failed", "error": str(exc)}
+        notify_business_result("语言生产", False, run_url, str(exc))
+        results["language"] = {"status": "produce_failed", "error": str(exc)}
 
     return results
 

@@ -42,7 +42,7 @@ jobs:
         run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START"
 
   produce-day:
-    name: 生产2条财经及生产发布语言 ${{ matrix.publish_date }}
+    name: 生产2条财经及语言 ${{ matrix.publish_date }}
     needs: plan
     strategy:
       matrix:
@@ -73,18 +73,6 @@ jobs:
       PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
       COVERR_API_KEY: ${{ secrets.COVERR_API_KEY }}
       DASHSCOPE_IMAGE_MODEL: ${{ vars.DASHSCOPE_IMAGE_MODEL }}
-      YOUTUBE_OAUTH_CLIENT_ID: ${{ secrets.YOUTUBE_OAUTH_CLIENT_ID }}
-      YOUTUBE_OAUTH_CLIENT_SECRET: ${{ secrets.YOUTUBE_OAUTH_CLIENT_SECRET }}
-      LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID }}
-      LANGUAGE_LEARNING_YOUTUBE_CHANNEL_TITLE: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_CHANNEL_TITLE }}
-      LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN: ${{ secrets.LANGUAGE_LEARNING_YOUTUBE_REFRESH_TOKEN }}
-      ZERNIO_API_KEY: ${{ secrets.ZERNIO_API_KEY }}
-      zernio_api_key_meta: ${{ secrets.ZERNIO_API_KEY_META }}
-      LANGUAGE_LEARNING_TIKTOK_ACCOUNT_ID: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_ACCOUNT_ID }}
-      LANGUAGE_LEARNING_TIKTOK_ACCOUNT_TITLE: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_ACCOUNT_TITLE }}
-      LANGUAGE_LEARNING_TIKTOK_USERNAME: ${{ secrets.LANGUAGE_LEARNING_TIKTOK_USERNAME }}
-      LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID: ${{ secrets.LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID }}
-      LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID: ${{ secrets.LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
@@ -103,7 +91,7 @@ jobs:
             test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
           done
 
-      - name: 生产2条财经及生产发布语言
+      - name: 生产2条财经及语言并交付 R2
         env:
           PUBLISH_DATE: ${{ matrix.publish_date }}
         run: >-

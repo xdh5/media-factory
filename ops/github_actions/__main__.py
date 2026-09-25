@@ -189,7 +189,7 @@ def main() -> None:
             for name in ("finance", "language")
         )
         if failed:
-            raise SystemExit("当日生产或发布失败，请查看上方业务结果")
+            raise SystemExit("当日生产失败，请查看上方业务结果")
 
 
 if __name__ == "__main__":
