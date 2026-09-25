@@ -224,6 +224,27 @@ PRODUCTION_OUTPUTS_OUTPUT_SCHEMA = {
     "additionalProperties": False,
 }
 
+PRODUCTION_OUTPUTS_DELETE_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "record_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {"type": "integer", "minimum": 1},
+        },
+    },
+    "required": ["record_ids"],
+    "additionalProperties": False,
+}
+
+PRODUCTION_OUTPUTS_DELETE_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {"deleted_ids": {"type": "array", "items": {"type": "integer"}}},
+    "required": ["deleted_ids"],
+    "additionalProperties": False,
+}
+
 CLOUDFLARE_DATA_ERROR_SCHEMA = {
     "type": "object",
     "properties": {

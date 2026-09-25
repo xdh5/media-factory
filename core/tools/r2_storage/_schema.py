@@ -44,3 +44,28 @@ DOWNLOAD_PUBLIC_FILE_OUTPUT_SCHEMA = {
     "required": ["path", "key", "bucket", "size"],
     "additionalProperties": False,
 }
+
+DELETE_PUBLIC_FILES_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "object_keys": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "items": {"type": "string", "minLength": 1, "maxLength": 512},
+        },
+    },
+    "required": ["object_keys"],
+    "additionalProperties": False,
+}
+
+DELETE_PUBLIC_FILES_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "deleted": {"type": "boolean"},
+        "keys": {"type": "array", "items": {"type": "string"}},
+        "bucket": {"type": "string"},
+    },
+    "required": ["deleted", "keys", "bucket"],
+    "additionalProperties": False,
+}

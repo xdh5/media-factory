@@ -919,6 +919,23 @@ async function listProductionOutputs(request, env) {
   return jsonResponse({ records: result.results || [] });
 }
 
+async function deleteProductionOutputs(request, env) {
+  const body = await request.json();
+  const recordIds = body.record_ids;
+  if (!Array.isArray(recordIds) || recordIds.length < 1 || recordIds.length > 100) {
+    throw new Error("record_ids 必须是包含 1 到 100 个记录 ID 的数组");
+  }
+  const ids = recordIds.map((value) => positiveInteger(value, "record_id", 2147483647));
+  const placeholders = ids.map(() => "?").join(", ");
+  const existing = await env.DB.prepare(
+    `SELECT id FROM production_outputs WHERE id IN (${placeholders}) ORDER BY id`,
+  ).bind(...ids).all();
+  await env.DB.prepare(
+    `DELETE FROM production_outputs WHERE id IN (${placeholders})`,
+  ).bind(...ids).run();
+  return jsonResponse({ deleted_ids: (existing.results || []).map((row) => row.id) });
+}
+
 async function commitProductionOutputs(request, env) {
   const body = await request.json();
   const records = body.records;
@@ -1293,6 +1310,7 @@ export default {
       if (request.method === "POST" && url.pathname === "/v1/publication-records/commit") return await commitPublicationRecords(request, env);
       if (request.method === "GET" && url.pathname === "/v1/publishing-account-groups") return await listPublishingAccountGroups(request, env);
       if (request.method === "GET" && url.pathname === "/v1/production-outputs") return await listProductionOutputs(request, env);
+      if (request.method === "DELETE" && url.pathname === "/v1/production-outputs") return await deleteProductionOutputs(request, env);
       if (request.method === "POST" && url.pathname === "/v1/production-outputs/commit") return await commitProductionOutputs(request, env);
       if (request.method === "GET" && url.pathname === "/v1/douyin-research/ids") return await listDouyinResearchIds(env);
       if (request.method === "POST" && url.pathname === "/v1/douyin-research/commit") return await commitDouyinResearch(request, env);

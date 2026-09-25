@@ -18,7 +18,7 @@
 
 通过 `POST /v1/publication-records/commit` 幂等写入发布记录；数据库以业务线、标题、平台、账号和分段作为稳定唯一键，不允许外部任务 ID 变化造成重复记录，也不接受空账号。通过 `GET /v1/publication-records` 查询，可选按 `business_line`、`platform`、`publish_date` 和 `run_id` 过滤。通过 `GET /v1/publishing-account-groups` 查询数据库账号组。
 
-通过 `POST /v1/production-outputs/commit` 幂等写入成片记录；通过 `GET /v1/production-outputs` 查询，可选按 `publish_date`、`business_line` 和 `source` 过滤。`source=local_mcp` 保留 `local_path`，按需上传 R2 后补充 `r2_url`；`source=github_workflow` 只在 R2 交付成功后写入 `r2_url`，禁止保存 Runner 临时路径。
+通过 `POST /v1/production-outputs/commit` 幂等写入成片记录；通过 `GET /v1/production-outputs` 查询，可选按 `publish_date`、`business_line` 和 `source` 过滤；仅可通过 `DELETE /v1/production-outputs` 按精确记录 ID 清理已确认废弃的成片记录。`source=local_mcp` 保留 `local_path`，按需上传 R2 后补充 `r2_url`；`source=github_workflow` 只在 R2 交付成功后写入 `r2_url`，禁止保存 Runner 临时路径。
 
 抖音研究 MCP 接收用户提供的抖音链接和分类，完成下载、转写后调用 `POST /v1/douyin-research/commit`。作品内容只存一份，内容分类和来源标识记录在 `douyin_research_discoveries`；链接直投的来源标识固定为 `direct_link`。
 

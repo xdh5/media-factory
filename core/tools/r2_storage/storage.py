@@ -14,7 +14,7 @@ from ._errors import CredentialError, DownloadError, InvalidParameterError, Uplo
 
 load_project_env()
 
-__all__ = ["upload_public_file", "download_public_file", "delete_public_file"]
+__all__ = ["upload_public_file", "download_public_file", "delete_public_file", "delete_public_files"]
 
 
 def _env(name: str) -> str:
@@ -137,3 +137,31 @@ def delete_public_file(object_key: str) -> dict:
             {"bucket": settings["R2_BUCKET"], "key": key},
         ) from exc
     return {"deleted": True, "key": key, "bucket": settings["R2_BUCKET"]}
+
+
+def delete_public_files(object_keys: list[str | Path]) -> dict:
+    """批量删除 R2 对象；对象不存在也视为成功。"""
+    keys = list(dict.fromkeys(_normalize_key(str(item)) for item in object_keys))
+    if not keys:
+        raise InvalidParameterError("object_keys 至少需要包含一个对象路径", {"parameter": "object_keys"})
+    if len(keys) > 1000:
+        raise InvalidParameterError("object_keys 单次最多删除 1000 个对象", {"parameter": "object_keys"})
+    settings = _settings()
+    client = _client(settings["R2_ACCOUNT_ID"], settings["R2_ACCESS_KEY_ID"], settings["R2_SECRET_ACCESS_KEY"])
+    try:
+        response = client.delete_objects(
+            Bucket=settings["R2_BUCKET"],
+            Delete={"Objects": [{"Key": key} for key in keys], "Quiet": True},
+        )
+    except Exception as exc:
+        raise UploadError(
+            f"从 Cloudflare R2 批量删除失败：{exc}",
+            {"bucket": settings["R2_BUCKET"], "count": len(keys)},
+        ) from exc
+    errors = response.get("Errors") or []
+    if errors:
+        raise UploadError(
+            "从 Cloudflare R2 批量删除时部分对象失败",
+            {"bucket": settings["R2_BUCKET"], "errors": errors},
+        )
+    return {"deleted": True, "keys": keys, "bucket": settings["R2_BUCKET"]}
