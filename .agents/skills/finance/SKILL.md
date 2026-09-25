@@ -17,7 +17,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 | 用途 | 位置 |
 | --- | --- |
-| 原稿整理（保留原稿全文，只替换作者与品牌） | 本 Skill：`prompts/finance.md` |
+| 原稿整理（三类必做改动 + 措辞级改写，保留大结构与信息） | 本 Skill：`prompts/finance.md` |
 | 标题标签 | MCP：`finance_get_metadata_prompt` |
 | 分镜 | MCP：`finance_start_storyboard` 返回的 `storyboard_prompt`（按素材策略给出 IMAGE 或 VIDEO 规则） |
 
@@ -30,14 +30,17 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 按返回的 `source.transcript` 识别原稿开头完整的黄金钩子，填入本 Skill 的 `prompts/finance.md`：
 
 - `{{source_text}}`：`source.transcript` 原文
-- `{{source_hook}}`：原稿开头的完整黄金钩子
+- `{{source_hook}}`：原稿开头完整黄金钩子中**完成品牌替换后的版本**（该版本也是 `finance_save_draft` 要传的 `source_hook`）
 
-整理必须满足：
+整理必须满足（交互式与 GitHub Action 统一执行同一套规则）：
 
-- **正文保留原稿全文**：原稿的每句话、每个字和标点都保留，不压缩、不扩写、不改写、不重排；原稿多长正文就多长。
-- **唯一允许的改动是替换作者与品牌**：作者名、账号名、课程名、机构名或其他宣传品牌统一替换为「财富研习岛」。
-- 黄金钩子一字不改，正文必须以它原样开头；钩子内部的机构名、研究名、权威背书按原文保留，不做品牌替换。
-- 只做排版断行：每句单独一行，单行全部字符（含所有标点）不超过 36 字；断行只插入换行符，不得增删任何字或标点，也不得把一个词或固定搭配拆到两行。
+- **三类必做改动**：
+  1. **替换作者与品牌**：作者名、账号名、课程名、机构名或其他宣传品牌统一替换为「财富研习岛」。**黄金钩子内部同样执行**——钩子里的机构名、研究名、权威背书也要替换，不留原品牌。
+  2. **改写连载指涉**：本文是「财富研习岛」作者独立的一篇文章，没有任何前文。原稿出现「第 X 集/期/话」「上一集/上一期」「这一集/这一期」「下一集/下一期」「上回」「上一条/上个/上一支视频」「前情回顾」「往期」等指向系列前文或后文的表述时，改写成不依赖任何前文也能读懂的独立表述。
+  3. **修正错别字**：只修正答案明确的错别字、同音错字和明显转写错误，不改变原意；拿不准时保留原词。
+- **在三类改动之外允许措辞级改写**：逐句换说法、调整句式和用词，避免和原稿逐字雷同；但句子顺序、段落划分与论证逻辑必须与原稿一致，每个观点、数字、例子的信息都必须保留，不得压缩、扩写、增删观点或重排段落，正文长度与原稿基本相当。
+- **黄金钩子保持原样**：钩子只做品牌替换和明确错别字修正，不做措辞改写；正文必须以处理后的钩子原字原标点原顺序开头，钩子之后才开始改写。
+- 断行：按语义切成口语短句，每句单独一行，单行全部字符（含所有标点）不超过 36 字；不得把一个词或固定搭配拆到两行。
 - 句与句之间换行，不要用逗号连两句完整话；顿号列举写在同一句里。
 - `finance_save_draft` 必须传回 `source.aweme_id`、`reservation.reservation_token` 和 `source_hook`；保存成功后 MCP 自动将数据库来源标记为已使用，下次不再选择。
 
@@ -121,7 +124,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 ```json
 {
-  "bgm_path": "core/tools/generate_bgm/static/easy-lemon-kevin-macleod.mp3",
+  "bgm_path": "static/bgm/easy-lemon-kevin-macleod.mp3",
   "bgm_gain": 0.84,
   "cover_frame_seconds": 0.03333333333333333,
   "intro": "slide_in_shutter",
@@ -175,7 +178,7 @@ SUB|L002|你以为涨薪就能存钱
 ### 第一阶段：稿件
 
 1. `finance_get_source_script`：选择并临时占用一条未使用的数据库原稿。
-2. 按本 Skill 的 `prompts/finance.md` 整理原稿：**全文保留**，只把作者与品牌替换为「财富研习岛」并按语义断行。
+2. 按本 Skill 的 `prompts/finance.md` 整理原稿：执行三类必做改动并做措辞级改写（保留大结构与全部信息），把作者与品牌替换为「财富研习岛」并按语义断行。
 3. 从正文提炼 `topic`；调用 `finance_get_metadata_prompt` 后写标题标签行。
 4. 用**长标题**按语义断成 1～3 行 `cover_lines`。封面不自动折行。
 5. 从长标题中选出 1～3 个真正承载点击理由的重点词，作为 `cover_highlights` 传入；每项必须原样出现在 `title` 中。封面重点词使用 `#F2A623` 金黄色，其他文字使用白色，统一加 6px 黑色描边。
@@ -189,6 +192,11 @@ SUB|L002|你以为涨薪就能存钱
    - `image_library` / `qwen_reference`：`finance_prepare_images` → （生图策略）`finance_start_generate_images` + 轮询 / （图库策略）Agent 选图后 `finance_submit_images`；
    - `stock_video`：`finance_start_video_search` + 轮询 → Agent 选候选 → `finance_start_download_videos` + 轮询；同时按 `intro_image_prompt` 生成片头写实图。
 4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`、素材清单路径（`material_manifest_path`），`stock_video` 策略另传 `intro_image_path`。配音直接用 `prepare_storyboard` 的 `tts_path`。
+   - 交互式生产必须由宿主 Agent 判断重点句、每段 1～2 行语义断行及每行 1～2 个标红重点词，并通过 `production_config.emphasis_lines.groups` 传入；禁止让 MCP 在交互式生产中自行调用文本模型。
+   - 每组可用 `sentence_text` 传入完整句子原文，由工具精确匹配对应字幕句；也可使用工具返回的 `sentence` 编号。不要猜编号。
+   - 每个重点显示行必须至少有一个原文连续子串作为标红词；任何一行缺少重点词、拆开词语或拼回后不等于原文，工具都会拒绝该配置。
+   - 重点字幕不触发任何提示音效；只保留字幕动画与标红效果。
+   - GitHub Action 没有宿主 Agent，允许不传 `groups`，由生产 Runner 调用文本模型 API 完成相同判断。
 5. 展示本地成片路径和发布信息，不在本地制作阶段调用 `finance_start_upload_r2`。
 6. 用户确认后，把本地清单和成片交给 MatrixMedia MCP；发布 MCP 先把正式话题幂等写入 D1，再用账号组 `心灵鸡汤` 发布，并对每个平台传入清单中的 `creativeStatement="ai_generated"`。只有用户明确要求远程交付时才上传 R2。
 7. 展示发布结果后，确认清缓存。

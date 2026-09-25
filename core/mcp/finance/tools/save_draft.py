@@ -17,6 +17,16 @@ from .._constants import (
 from .._errors import DraftNotFoundError, WorkflowStepError
 from .parse_metadata import parse_metadata
 
+# 连载/前文指涉：本文必须是「财富研习岛」独立成篇的文章，出现这些表述必须由 Agent 改写。
+_SERIAL_REFERENCE_PATTERN = re.compile(
+    r"第[0-9０-９一二两三四五六七八九十百千]+[集期话]"
+    r"|上[一那]?[集期]"
+    r"|下[一那]?[集期]"
+    r"|这[一那][集期]"
+    r"|上[一]?[条个支]视频"
+    r"|上回|前情回顾|往期"
+)
+
 
 def load_draft(path: str | Path, label: str) -> tuple[Path, dict]:
     resolved = Path(path).resolve()
@@ -74,6 +84,7 @@ def save_draft(
     draft_path: str | Path | None = None,
     cover_highlights: list[str] | None = None,
     intro_scene: str = "",
+    content_part: int = 1,
 ) -> dict:
     normalized_topic = str(topic or "").strip()
     normalized_article = str(article or "").strip()
@@ -103,6 +114,17 @@ def save_draft(
             "黄金钩子也允许仅插入换行，不得改字或标点",
             {"long_lines": long_lines},
         )
+    serial_hits = [
+        {"line": index, "match": match.group(0)}
+        for index, line in enumerate(normalized_article.splitlines(), 1)
+        if (match := _SERIAL_REFERENCE_PATTERN.search(line))
+    ]
+    if serial_hits:
+        raise WorkflowStepError(
+            "正文不得出现连载/前文指涉：本文是「财富研习岛」作者独立的一篇文章，没有任何前文；"
+            "请把命中处改写成不依赖任何前文也能读懂的独立表述，其余内容按措辞级改写规则处理（保留大结构与信息）",
+            {"serial_references": serial_hits},
+        )
     if not isinstance(hashtags, list):
         raise WorkflowStepError("hashtags 必须是包含四个标签的列表")
     metadata_line = "|".join([str(title), str(short_title), *(str(item) for item in hashtags)])
@@ -110,6 +132,8 @@ def save_draft(
     normalized_cover_lines = _cover_lines(cover_lines)
     normalized_cover_highlights = _cover_highlights(metadata["title"], cover_highlights)
     normalized_intro_scene = str(intro_scene or "").strip()
+    if isinstance(content_part, bool) or not isinstance(content_part, int) or content_part < 1:
+        raise WorkflowStepError("content_part 必须是大于等于 1 的整数（同一天第二条传 2）")
     if draft_path is not None:
         resolved_draft, existing = load_draft(draft_path, "待修改稿件")
         if normalized_topic != str(existing.get("topic") or "").strip():
@@ -121,6 +145,7 @@ def save_draft(
         normalized_intro_scene = normalized_intro_scene or str(existing.get("intro_scene") or "").strip()
         record = {"id": int(existing["topic_record_id"]), "topic": normalized_topic}
         run_id = str(existing["run_id"])
+        content_part = int(existing.get("content_part") or 1)
         cache_root = Path(existing["cache_dir"]).resolve()
         output_root = Path(existing["output_dir"]).resolve()
         target_draft_path = resolved_draft
@@ -129,8 +154,13 @@ def save_draft(
             run_id = production_run_id(publish_date)
         except ValueError as exc:
             raise WorkflowStepError(str(exc)) from exc
-        record = {"id": int(run_id.removeprefix("run-")), "topic": normalized_topic}
-        cache_root, output_root = production_dirs(run_id)
+        # 话题库记录 ID：part 1 沿用 run-YYYYMMDD 的纯数字；part 2 起追加两位分片号避免撞车。
+        record = {
+            "id": int(run_id.removeprefix("run-")) if content_part == 1
+            else int(f"{run_id.removeprefix('run-')}{content_part:02d}"),
+            "topic": normalized_topic,
+        }
+        cache_root, output_root = production_dirs(run_id, content_part)
         target_draft_path = cache_root / DRAFT_FILE_NAME
     cache_root.mkdir(parents=True, exist_ok=True)
     output_root.mkdir(parents=True, exist_ok=True)
@@ -141,6 +171,7 @@ def save_draft(
         "status": "ready_for_production",
         "topic": record["topic"],
         "run_id": run_id,
+        "content_part": content_part,
         "topic_record_id": record["id"],
         "database_status": "pending_publish",
         "publish_date": (

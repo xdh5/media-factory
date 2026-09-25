@@ -1,6 +1,6 @@
 """财经 GitHub Action：自动生成稿件并制作成片，不发布平台。
 
-稿件按原稿全文保留：只把作者与品牌替换为财富研习岛，并按语义断行，不做长度压缩。
+稿件在三类必做改动（品牌替换、连载指涉改写、错别字修正）之外允许措辞级改写：保留大结构与信息量并按语义断行；黄金钩子保持原样（仅品牌替换与错字修正）。与交互式财经 Skill 的整理规则保持一致。
 """
 
 from __future__ import annotations
@@ -25,16 +25,20 @@ from ._shared import (
 # 语速另有音色绑定：generate_tts_fish.FISH_VOICE_RATES 里 28df7fe4… 固定 "+10%"，
 # 只要用这个音色就 +10%（行内显式 rate 优先）。这里的 rate 只是兜底默认值。
 TTS_CONFIG = {"voice": "fish:28df7fe4d3ec45f692af03d0a372805b", "rate": "+10%", "trim_trailing_silence": True}
-BGM_PATH = "core/tools/generate_bgm/static/easy-lemon-kevin-macleod.mp3"
+BGM_PATH = "static/bgm/easy-lemon-kevin-macleod.mp3"
 PRODUCTION_CONFIG = {
     "cover_frame_seconds": 0.03333333333333333,
     "intro": "slide_in_shutter",
     "shot_stickers": ["rec"],
     "matrixmedia_account_group": "心灵鸡汤",
-    "bgm_gain": 0.84,
+    "bgm_gain": 0.672,
 }
 MATERIAL_STRATEGY = "image_library"
 ARTICLE_MAX_LINE_LENGTH = 36
+# 措辞级改写允许的长度浮动：去空白标点后正文长度 / 原稿长度。
+# 低于下限说明压缩或漏了观点；高于上限说明扩写。品牌替换可能带来少量长度差，范围留了余量。
+ARTICLE_LENGTH_RATIO_MIN = 0.80
+ARTICLE_LENGTH_RATIO_MAX = 1.20
 ARTICLE_GENERATION_ATTEMPTS = 5
 BRAND_NAME = "财富研习岛"
 
@@ -78,17 +82,40 @@ def _bare(text: str) -> str:
 
 
 def _normalize_replacements(replacements) -> list[tuple[str, str]]:
+    """返回 (原稿原文, 替换文本) 的原文层级列表；校验时统一再按 bare 口径比对。"""
     rows: list[tuple[str, str]] = []
     if not isinstance(replacements, list):
         return rows
     for item in replacements:
         if not isinstance(item, dict):
             continue
-        source = _bare(item.get("from"))
-        target = _bare(item.get("to"))
+        source = str(item.get("from") or "").strip()
+        target = str(item.get("to") or "").strip() or BRAND_NAME
         if source:
-            rows.append((source, target or _bare(BRAND_NAME)))
+            rows.append((source, target))
     return rows
+
+
+def _normalize_corrections(corrections) -> list[tuple[str, str]]:
+    """错别字修正必须同时给出明确原文和修正文，不允许缺省成品牌名。"""
+    rows: list[tuple[str, str]] = []
+    if not isinstance(corrections, list):
+        return rows
+    for item in corrections:
+        if not isinstance(item, dict):
+            continue
+        source = str(item.get("from") or "").strip()
+        target = str(item.get("to") or "").strip()
+        if source and target and source != target:
+            rows.append((source, target))
+    return rows
+
+
+def _replace_raw(text: str, rows: list[tuple[str, str]]) -> str:
+    result = str(text or "")
+    for source_brand, target_brand in rows:
+        result = result.replace(source_brand, target_brand)
+    return result
 
 
 def _article_validation_error(
@@ -96,15 +123,23 @@ def _article_validation_error(
     source_text: str,
     source_hook: str,
     replacements: list[tuple[str, str]],
+    corrections: list[tuple[str, str]],
 ) -> str | None:
+    """措辞级改写口径的程序校验：钩子原样、行长、品牌替换目标、长度比例。
+
+    正文其余部分允许换说法，不再做逐字一致比对；信息完整性由长度比例与提示词约束兜底。
+    """
     problems: list[str] = []
     article_body = _bare(article)
-    hook_body = _bare(source_hook)
+    original_hook_body = _bare(source_hook)
     source_body = _bare(source_text)
-    if not hook_body or not source_body.startswith(hook_body):
+    if not original_hook_body or not source_body.startswith(original_hook_body):
         problems.append("原稿开头与黄金钩子不一致，无法校验")
+    # 黄金钩子不做措辞改写：正文开头必须与「替换后的钩子」逐字一致。
+    replaced_hook = _replace_raw(_replace_raw(source_hook, replacements), corrections)
+    hook_body = _bare(replaced_hook)
     if not article_body.startswith(hook_body):
-        problems.append("黄金钩子没有原样保留在正文开头（钩子内不得替换品牌）")
+        problems.append("正文开头必须是黄金钩子（完成品牌替换后）的原样内容，只允许插入换行，钩子不得改写")
     long_lines = []
     for index, line in enumerate(article.splitlines(), 1):
         text = line.strip()
@@ -114,45 +149,62 @@ def _article_validation_error(
         problems.append(
             f"以下行超过{ARTICLE_MAX_LINE_LENGTH}字，必须按语义换行（黄金钩子允许仅插入换行）：{long_lines}"
         )
-    mismatched = [item for item in replacements if item[1] != _bare(BRAND_NAME)]
+    mismatched = [item for item in replacements if _bare(item[1]) != _bare(BRAND_NAME)]
     if mismatched:
         problems.append(f"replacements 只能替换为「{BRAND_NAME}」：{mismatched}")
-    expected_body = source_body[len(hook_body):]
-    for source_brand, target_brand in replacements:
-        expected_body = expected_body.replace(source_brand, target_brand)
-    if expected_body != article_body[len(hook_body):]:
-        problems.append(
-            "正文与「原稿只替换作者和品牌、其余逐字保留」不一致："
-            "不得压缩、扩写、改写或重排原稿内容，也不得漏报替换项"
-        )
+    if source_body and article_body:
+        ratio = len(article_body) / len(source_body)
+        if ratio < ARTICLE_LENGTH_RATIO_MIN or ratio > ARTICLE_LENGTH_RATIO_MAX:
+            problems.append(
+                f"正文长度（去空白标点后 {len(article_body)} 字）是原稿（{len(source_body)} 字）的 {ratio:.2f} 倍，"
+                f"超出 {ARTICLE_LENGTH_RATIO_MIN}~{ARTICLE_LENGTH_RATIO_MAX}："
+                "措辞级改写只换说法，不得压缩、扩写或漏掉任何观点、数字与例子，请逐句核对信息是否完整保留"
+            )
     return "；".join(problems) or None
 
 
-def _restore_source_hook(article: str, source_hook: str) -> str:
-    """恢复数据库黄金钩子的原字，只保留模型正文的后续内容。"""
-    hook = str(source_hook or "").strip()
+def _restore_source_hook(
+    article: str,
+    source_hook: str,
+    replacements: list[tuple[str, str]],
+    corrections: list[tuple[str, str]],
+) -> str:
+    """用品牌替换并修正错字后的钩子锚定正文开头，只保留模型正文的后续内容。"""
+    original_hook = str(source_hook or "").strip()
+    replaced_hook = _replace_raw(_replace_raw(original_hook, replacements), corrections)
     current = str(article or "").strip()
-    normalized_hook = re.sub(r"\s+", "", hook)
     normalized_current = re.sub(r"\s+", "", current)
+    normalized_hook = re.sub(r"\s+", "", replaced_hook)
     if normalized_current.startswith(normalized_hook):
         return current
+    # 模型漏替换钩子时，先用替换后钩子的开头定位；定位不到再用原钩子开头，
+    # 保证不会把整段原文重复拼在钩子后面。
     marker = normalized_hook[:8]
+    if marker not in normalized_current:
+        marker = re.sub(r"\s+", "", original_hook)[:8]
     offset = normalized_current.find(marker)
     suffix = normalized_current[offset + len(marker):] if offset >= 0 else normalized_current
-    hook_lines = [hook[index:index + 20] for index in range(0, len(hook), 20)]
+    hook_lines = [replaced_hook[index:index + 20] for index in range(0, len(replaced_hook), 20)]
     return "\n".join(hook_lines) + ("\n" + suffix if suffix else "")
 
 
-def _prepare_article(source_text: str, source_hook: str) -> str:
-    """保留原稿全文，只替换作者与品牌并按语义断行；程序逐字复核。"""
+def _prepare_article(source_text: str, source_hook: str) -> tuple[str, str]:
+    """三类必做改动 + 措辞级改写，程序校验钩子原样、行长与长度比例。
+
+    返回 (正文, 完成品牌替换后的黄金钩子)；后者传给 finance_save_draft 的 source_hook。
+    """
     json_rule = (
         "\n\n只输出 JSON："
         "{\"article\":\"断行后的完整正文\","
-        "\"replacements\":[{\"from\":\"原稿里被替换掉的作者或品牌原文\",\"to\":\"" + BRAND_NAME + "\"}]}。"
-        "replacements 必须完整列出你做过的每一处替换；"
-        "程序会按去掉空白和标点后的口径复核："
-        f"「原稿开头黄金钩子之外的部分」在执行完 replacements 后必须与正文逐字一致。"
-        f"没有可替换内容时 replacements 输出空数组。硬性要求：每一行不得超过{ARTICLE_MAX_LINE_LENGTH}个字符。"
+        "\"replacements\":[{\"from\":\"原稿里被替换掉的作者或品牌原文\",\"to\":\"" + BRAND_NAME + "\"}],"
+        "\"corrections\":[{\"from\":\"原稿错字\",\"to\":\"正确文字\"}]}。"
+        "replacements 必须完整列出你做过的每一处品牌替换（黄金钩子内部的机构名、权威背书等品牌同样要替换并列出）；"
+        "corrections 必须完整列出每项明确错别字或转写同音错字修正；措辞级改写不需要逐条报告，只输出最终正文。"
+        "程序会校验：黄金钩子（完成品牌替换后）必须原样出现在正文开头、"
+        f"正文长度（去空白标点后）必须在原稿的 {ARTICLE_LENGTH_RATIO_MIN}~{ARTICLE_LENGTH_RATIO_MAX} 倍之间。"
+        "改写硬性要求：句子顺序、段落划分与原稿一致，观点、数字、例子一个不少，不得压缩、扩写或重排；"
+        "逐句换说法、调整句式和用词，不得整句整段照抄原稿。"
+        f"硬性要求：每一行不得超过{ARTICLE_MAX_LINE_LENGTH}个字符。"
     )
     initial_prompt = _article_prompt(source_text, source_hook) + json_rule
     last_error = None
@@ -164,27 +216,38 @@ def _prepare_article(source_text: str, source_hook: str) -> str:
             prompt = (
                 "请直接修订上一版输出，不要从零另写。\n\n"
                 f"程序校验结果：{last_error}。\n"
-                f"必须原样保留在开头的黄金钩子：{source_hook}\n\n"
-                "修订规则：正文必须逐字保留原稿的全部内容与顺序，只允许替换作者和品牌"
-                f"为「{BRAND_NAME}」、以及在语义处插入换行；"
-                "不得删减、扩写、改写或重排任何一句话。\n\n"
-                f"数据库原稿（正文的唯一来源）：\n{source_text}\n\n"
+                f"开头黄金钩子（原文）：{source_hook}\n"
+                f"黄金钩子内部的机构名、研究名、权威背书等品牌同样替换为「{BRAND_NAME}」，"
+                "替换后的钩子必须原样保留在正文开头，钩子不做措辞改写。\n\n"
+                "修订规则：执行三类必做改动（品牌替换、连载指涉改写、错别字修正），"
+                f"品牌统一为「{BRAND_NAME}」；三类改动之外允许措辞级改写——逐句换说法、调整句式和用词，"
+                "但句子顺序、段落划分与原稿一致，观点、数字、例子一个不少，不得压缩、扩写或重排；"
+                "每项错字修正必须写入 corrections。每一行不超过36字。\n\n"
+                f"数据库原稿（正文的唯一信息来源）：\n{source_text}\n\n"
                 f"上一版输出（必须在此基础上定向修订）：\n{previous_payload}"
             )
         payload = json_text(qwen(
             "你是中文短视频编辑，必须输出有效 JSON，不要输出 Markdown。"
-            f"正文必须逐字保留原稿全部内容，只替换作者和品牌为「{BRAND_NAME}」并按语义断行。",
+            "正文在三类必做改动（品牌替换（含黄金钩子内部）、连载指涉改写、错别字修正）之外允许措辞级改写："
+            "逐句换说法、不得逐字照搬原稿，但保留大结构与信息量并按语义断行。",
             prompt,
             json_output=True,
             max_tokens=12000,
         ))
         previous_payload = json.dumps(payload, ensure_ascii=False)
-        article = _restore_source_hook(str(payload.get("article") or ""), source_hook)
         replacements = _normalize_replacements(payload.get("replacements"))
-        last_error = _article_validation_error(article, source_text, source_hook, replacements)
+        corrections = _normalize_corrections(payload.get("corrections"))
+        article = _restore_source_hook(
+            str(payload.get("article") or ""), source_hook, replacements, corrections
+        )
+        last_error = _article_validation_error(
+            article, source_text, source_hook, replacements, corrections
+        )
         print(f"财经正文第 {attempt + 1} 次：{len(_bare(article))} 个字符；{last_error or '校验通过'}", flush=True)
         if last_error is None:
-            return article
+            return article, _replace_raw(
+                _replace_raw(source_hook, replacements), corrections
+            )
     raise RuntimeError(
         f"财经正文连续 {ARTICLE_GENERATION_ATTEMPTS} 次整理不合格，程序已阻止不合格正文进入后续步骤："
         f"{last_error}"
@@ -305,7 +368,7 @@ async def run(requested_topic: str = "", publish_date: str = "") -> dict:
         reservation = selected["reservation"]
         source_text = str(source["transcript"]).strip()
         source_hook = _extract_source_hook(source_text)
-        article = _prepare_article(source_text, source_hook)
+        article, source_hook = _prepare_article(source_text, source_hook)
         topics = await mcp.call("finance_get_topics")
         topic = _choose_topic(article, topics.get("recent_topics") or [], requested_topic)
         metadata_prompt = (await mcp.call("finance_get_metadata_prompt"))["metadata_prompt"]

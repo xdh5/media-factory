@@ -14,9 +14,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from core.tools.generate_cover_image import CoverError, generate_cover_image
+from core.tools.generate_cover_image._constants import DEFAULT_COVER_BACKGROUND_IMAGE
 from core.tools.cloudflare_data import commit_production_outputs
 from core.tools.generate_final_video import generate_final_video, safe_filename
 from core.tools.generate_final_video._defaults import (
+    DEFAULT_CHAPTER_TIMELINE,
     DEFAULT_HOOK_LINES,
     DEFAULT_HOOK_SUBTITLE_POSITION,
     DEFAULT_HOOK_TITLE_DARK_OUTLINE,
@@ -27,6 +29,9 @@ from core.tools.generate_final_video._defaults import (
     DEFAULT_HOOK_TITLE_POSITION,
     DEFAULT_HOOK_TITLE_SINGLE_COLOR,
     DEFAULT_HOOK_TITLE_STYLE,
+    DEFAULT_BGM_GAIN,
+    DEFAULT_EMPHASIS_LINES,
+    DEFAULT_SECONDARY_SUBTITLES,
     DEFAULT_SUBTITLE_POSITION,
     DEFAULT_SUBTITLE_STYLE,
 )
@@ -34,6 +39,11 @@ from core.tools.generate_final_video._ffmpeg import _probe
 from core.tools.generate_final_video._size import parse_size
 from core.tools.generate_subtitles import generate_subtitles
 from core.tools.generate_subtitles._constants import SUBTITLE_FONT_DIRECTORY
+from core.tools.generate_timeline import (
+    fallback_chapter_titles,
+    generate_chapter_timeline,
+    generate_chapter_titles,
+)
 from core.tools.generate_shot import (
     INTRO_RENDERER_VERSION,
     SFX_SHUTTER_GAIN,
@@ -187,11 +197,85 @@ def _production_config(config: dict) -> dict:
     except (TypeError, ValueError) as exc:
         raise WorkflowStepError("production_config.hook_title_line_height 必须是数字") from exc
     bgm_gain = config.get("bgm_gain")
-    if bgm_gain is not None:
-        try:
-            bgm_gain = float(bgm_gain)
-        except (TypeError, ValueError) as exc:
-            raise WorkflowStepError("production_config.bgm_gain 必须是数字") from exc
+    if bgm_gain is None:
+        # 2026-09-23 起财经线统一默认（0.84 基础上 -20%），两个生产入口保持一致。
+        bgm_gain = DEFAULT_BGM_GAIN
+    try:
+        bgm_gain = float(bgm_gain)
+    except (TypeError, ValueError) as exc:
+        raise WorkflowStepError("production_config.bgm_gain 必须是数字") from exc
+    # 中文下方的英文翻译字幕层：None = 默认开启（字号=中文字号×0.4，白字黑边）。
+    secondary_subtitles = config.get("secondary_subtitles")
+    if secondary_subtitles is None:
+        secondary_settings = dict(DEFAULT_SECONDARY_SUBTITLES)
+    elif isinstance(secondary_subtitles, dict):
+        secondary_settings = {
+            **DEFAULT_SECONDARY_SUBTITLES,
+            **secondary_subtitles,
+            "style": {
+                **DEFAULT_SECONDARY_SUBTITLES["style"],
+                **(secondary_subtitles.get("style") or {}),
+            },
+            "position": {
+                **DEFAULT_SECONDARY_SUBTITLES["position"],
+                **(secondary_subtitles.get("position") or {}),
+            },
+        }
+        unknown = set(secondary_subtitles) - {"enabled", "font_size_ratio", "style", "position"}
+        if unknown:
+            raise WorkflowStepError(
+                f"production_config.secondary_subtitles 含未知字段：{sorted(unknown)}"
+            )
+    else:
+        raise WorkflowStepError("production_config.secondary_subtitles 必须是对象")
+    # 章节时间轴条：None = 用默认（贴下方、8 段、AI 标题）；enabled=False 关闭。
+    chapter_timeline = config.get("chapter_timeline")
+    if chapter_timeline is not None and not isinstance(chapter_timeline, dict):
+        raise WorkflowStepError("production_config.chapter_timeline 必须是对象")
+    if chapter_timeline is None:
+        chapter_settings = dict(DEFAULT_CHAPTER_TIMELINE)
+    else:
+        chapter_settings = {**DEFAULT_CHAPTER_TIMELINE, **chapter_timeline}
+        unknown = set(chapter_timeline) - {
+            "enabled", "position", "segment_count", "ai_titles", "font_size",
+            "bar_height", "margin_horizontal", "margin_vertical_ratio",
+            "track_color", "track_opacity", "title_color", "active_color",
+            "progress_color", "progress_opacity", "separator_color",
+            "separator_opacity", "separator_width", "font",
+        }
+        if unknown:
+            raise WorkflowStepError(
+                f"production_config.chapter_timeline 含未知字段：{sorted(unknown)}"
+            )
+    chapter_settings["enabled"] = bool(chapter_settings.get("enabled", True))
+    chapter_settings["ai_titles"] = bool(chapter_settings.get("ai_titles", True))
+    chapter_settings["position"] = str(chapter_settings.get("position") or "bottom").strip().lower()
+    if chapter_settings["position"] not in ("top", "bottom"):
+        raise WorkflowStepError("production_config.chapter_timeline.position 必须是 top 或 bottom")
+    try:
+        chapter_settings["segment_count"] = int(chapter_settings.get("segment_count") or 8)
+    except (TypeError, ValueError) as exc:
+        raise WorkflowStepError("production_config.chapter_timeline.segment_count 必须是整数") from exc
+    if not 2 <= chapter_settings["segment_count"] <= 12:
+        raise WorkflowStepError("production_config.chapter_timeline.segment_count 必须在 2~12 之间")
+    # 重点句大字层：None = 默认开启（AI 识别提示/总结句，中央大字随机动画）。
+    emphasis_lines = config.get("emphasis_lines")
+    if emphasis_lines is not None and not isinstance(emphasis_lines, dict):
+        raise WorkflowStepError("production_config.emphasis_lines 必须是对象")
+    if emphasis_lines is None:
+        emphasis_settings = dict(DEFAULT_EMPHASIS_LINES)
+    else:
+        emphasis_settings = {**DEFAULT_EMPHASIS_LINES, **emphasis_lines}
+        unknown = set(emphasis_lines) - {
+            "enabled", "font_size", "primary_color", "highlight_color",
+            "outline_color", "outline", "bold", "center_ratio", "line_height",
+            "animations", "animation_duration",
+            "ai_detect", "seed", "groups",
+        }
+        if unknown:
+            raise WorkflowStepError(
+                f"production_config.emphasis_lines 含未知字段：{sorted(unknown)}"
+            )
     return {
         "bgm_path": Path(bgm_path),
         "bgm_gain": bgm_gain,
@@ -202,10 +286,15 @@ def _production_config(config: dict) -> dict:
         "shot_stickers": tuple(str(item) for item in stickers),
         "subtitle_position": subtitle_position,
         "subtitle_style": subtitle_style,
+        "secondary_subtitles": secondary_settings,
+        "emphasis_lines": emphasis_settings,
         "matrixmedia_account_group": account_group,
         "hook_lines": hook_lines,
         "hook_subtitle_position": hook_subtitle_position,
         "hook_title_text": str(config.get("hook_title_text") or "").strip(),
+        # 2026-09-24 用户要求标题换行由宿主 LLM 语义决定：传了就用传入的行，
+        # 不传才回退到按标点/宽度的算法断行。
+        "hook_title_lines": _hook_title_lines_override(config.get("hook_title_lines")),
         "hook_title_style": hook_title_style,
         "hook_title_position": hook_title_position,
         "hook_title_single_color": hook_title_single_color,
@@ -214,6 +303,7 @@ def _production_config(config: dict) -> dict:
         "hook_title_dark_outline": hook_title_dark_outline,
         "hook_title_light_outline": hook_title_light_outline,
         "hook_title_line_height": hook_title_line_height,
+        "chapter_timeline": chapter_settings,
     }
 
 
@@ -386,14 +476,23 @@ def _center_title_ink(
     return [round(y + delta) for y in ys]
 
 
-def _split_title_lines(text: str, max_chars: int) -> list[str]:
-    """标题按标点断行（标点不入行）；断不开的超宽行再按宽度硬切。"""
-    text = str(text or "").strip()
-    if not text:
-        return []
+def _hook_title_lines_override(raw) -> list[str] | None:
+    """校验宿主 LLM 传入的标题分行（1~3 行非空字符串）；不传返回 None。"""
+    if raw is None:
+        return None
+    if not isinstance(raw, list) or not raw or len(raw) > 3:
+        raise WorkflowStepError("production_config.hook_title_lines 必须是 1~3 行的非空字符串列表")
+    lines = [str(item).strip() for item in raw]
+    if any(not line for line in lines):
+        raise WorkflowStepError("production_config.hook_title_lines 里不能有空行")
+    return lines
+
+
+def _split_title_parts(text: str) -> list[str]:
+    """标题按标点切段（标点不入段）。"""
     parts: list[str] = []
     current = ""
-    for char in text:
+    for char in str(text or "").strip():
         if char in _HOOK_TITLE_BREAK_CHARS:
             if current.strip():
                 parts.append(current.strip())
@@ -402,8 +501,16 @@ def _split_title_lines(text: str, max_chars: int) -> list[str]:
             current += char
     if current.strip():
         parts.append(current.strip())
+    return parts
+
+
+def _split_title_lines(text: str, max_chars: int) -> list[str]:
+    """标题按标点断行（标点不入行）；断不开的超宽行再按宽度硬切。"""
+    text = str(text or "").strip()
+    if not text:
+        return []
     lines: list[str] = []
-    for part in parts:
+    for part in _split_title_parts(text):
         while len(part) > max_chars:
             lines.append(part[:max_chars])
             part = part[max_chars:]
@@ -419,6 +526,8 @@ def _hook_title_layers(
     canvas_width: int,
     canvas_height: int,
     cache_root: Path,
+    *,
+    title_lines: list[str] | None = None,
 ) -> list[str]:
     """钩子标题图层：一行一个 ASS，按行配色并用 \\pos 垂直堆叠居中。
 
@@ -429,8 +538,18 @@ def _hook_title_layers(
         font_size = max(1, int(title_style.get("font_size") or 110))
     except (TypeError, ValueError):
         font_size = 110
-    max_chars = max(1, int(canvas_width * 0.8 // font_size))
-    lines = _split_title_lines(title_text, max_chars)
+    override_lines = settings.get("hook_title_lines")
+    if override_lines:
+        # 宿主 LLM 已语义断行：直接用传入的行，超宽时缩字号保住整行不拆词。
+        longest = max(len(line) for line in override_lines)
+        if longest > 0:
+            fit_size = int(canvas_width * 0.8 // longest)
+            if fit_size >= 1:
+                font_size = min(font_size, fit_size)
+        lines = list(override_lines)
+    else:
+        max_chars = max(1, int(canvas_width * 0.8 // font_size))
+        lines = _split_title_lines(title_text, max_chars)
     if not lines:
         return []
     multi = len(lines) > 1
@@ -508,11 +627,99 @@ def _hook_layer(
             hook_end = 0.0
     if hook_end <= 0:
         return []
-    title_text = settings["hook_title_text"] or metadata["title"]
+    # 2026-09-24 用户要求第一镜头钩子标题用短标题，标题缺失时回退全称。
+    title_text = settings["hook_title_text"] or metadata.get("short_title") or metadata["title"]
     canvas_width, canvas_height = parse_size(VIDEO_SIZE)
     return _hook_title_layers(
-        title_text, hook_end, settings, canvas_width, canvas_height, cache_root
+        title_text,
+        hook_end,
+        settings,
+        canvas_width,
+        canvas_height,
+        cache_root,
+        title_lines=settings["hook_title_lines"],
     )
+
+
+def _chapter_groups(shots: list[dict], count: int) -> list[list[dict]]:
+    """把镜头按时长均分成 count 个连续章节组（边界落在镜头边缘）。"""
+    target = sum(float(shot["duration"]) for shot in shots) / count
+    groups: list[list[dict]] = []
+    current: list[dict] = [shots[0]]
+    accumulated = float(shots[0]["duration"])
+    for shot in shots[1:]:
+        if accumulated >= target and len(groups) < count - 1:
+            groups.append(current)
+            current = []
+            accumulated = 0.0
+        current.append(shot)
+        accumulated += float(shot["duration"])
+    if current:
+        groups.append(current)
+    return [group for group in groups if group]
+
+
+def _chapter_layer(
+    shots: list[dict],
+    settings: dict,
+    cache_root: Path,
+    progress=None,
+) -> list[str]:
+    """章节时间轴条图层：横条分段 + AI 段落标题 + 进度色随播放推进。"""
+    chapter = settings["chapter_timeline"]
+    if not chapter.get("enabled") or len(shots) < 2:
+        return []
+    count = max(2, min(int(chapter["segment_count"]), len(shots)))
+    groups = _chapter_groups(shots, count)
+    if len(groups) < 2:
+        return []
+    segments = []
+    chapter_texts = []
+    for group in groups:
+        start = float(group[0]["audio_start"])
+        end = float(group[-1]["audio_end"])
+        if end - start < 1.0:
+            continue
+        segments.append({"start": start, "end": end, "title": ""})
+        chapter_texts.append(
+            " ".join(str(shot.get("subtitle") or "") for shot in group)
+        )
+    if len(segments) < 2:
+        return []
+    if chapter.get("ai_titles", True):
+        titles = generate_chapter_titles(chapter_texts, progress=progress)
+    else:
+        titles = fallback_chapter_titles(chapter_texts)
+    for segment, title in zip(segments, titles, strict=True):
+        segment["title"] = title
+    canvas_width, canvas_height = parse_size(VIDEO_SIZE)
+    try:
+        layer = generate_chapter_timeline(
+            segments,
+            cache_root / "chapter-timeline.ass",
+            canvas_width,
+            canvas_height,
+            position=str(chapter["position"]),
+            style={
+                key: chapter[key]
+                for key in (
+                    "font_size",
+                    "bar_height",
+                    "margin_horizontal",
+                    "margin_vertical_ratio",
+                )
+                if key in chapter
+            },
+        )
+    except Exception as exc:
+        raise WorkflowStepError(f"生成章节时间轴条失败：{exc}") from exc
+    if progress is not None:
+        progress(
+            "章节时间轴条（{}，{} 段）：{}".format(
+                layer["position"], layer["segment_count"], "、".join(layer["titles"])
+            )
+        )
+    return [layer["output_path"]]
 
 
 def _hash_file(path: str | Path) -> str:
@@ -792,8 +999,19 @@ def finish_finance_video(
         )
     if production_source not in {"local_mcp", "github_workflow"}:
         raise WorkflowStepError("production_source 必须是 local_mcp 或 github_workflow")
+    emphasis_settings = settings.get("emphasis_lines") or {}
+    if (
+        production_source == "local_mcp"
+        and emphasis_settings.get("enabled", True)
+        and emphasis_settings.get("groups") is None
+    ):
+        raise WorkflowStepError(
+            "交互式 Finance 成片必须由宿主 Agent 在 production_config.emphasis_lines.groups "
+            "传入重点句、语义断行和逐行标红词；MCP 禁止自行调用文本模型"
+        )
     record = {"id": draft["topic_record_id"], "topic": draft["topic"]}
     content_kind = str(draft.get("content_kind") or CONTENT_KIND)
+    content_part = int(draft.get("content_part") or 1)
     run_id = str(draft["run_id"])
     article = str(draft["article"])
     metadata = {
@@ -838,8 +1056,13 @@ def finish_finance_video(
         if isinstance(image_config, dict):
             material_strategy = str(image_config.get("source") or "").strip()
     try:
+        # 2026-09-23 起封面底图固定（用户指定），存在即不再从镜头候选图随机抽。
+        fixed_background = DEFAULT_COVER_BACKGROUND_IMAGE
+        cover_image_sources = (
+            [str(fixed_background)] if fixed_background.is_file() else cover_sources
+        )
         cover = generate_cover_image(
-            cover_sources,
+            cover_image_sources,
             metadata["title"],
             cache_root / "cover.png",
             size=VIDEO_SIZE,
@@ -886,6 +1109,7 @@ def finish_finance_video(
     extra_ass_paths = _hook_layer(
         video_shots, settings, metadata, str(draft.get("source_hook") or ""), cache_root
     )
+    extra_ass_paths += _chapter_layer(shots, settings, cache_root, progress=progress)
     try:
         final_result = generate_final_video(
             _with_display_text(video_shots),
@@ -906,6 +1130,8 @@ def finish_finance_video(
             opening_sfx=opening_sfx,
             subtitle_position=settings["subtitle_position"],
             subtitle_style=settings["subtitle_style"],
+            secondary_subtitles=settings["secondary_subtitles"],
+            emphasis_lines=settings["emphasis_lines"],
             extra_ass_paths=extra_ass_paths,
             normalize_composed=stock_video,
             progress=progress,
@@ -917,12 +1143,12 @@ def finish_finance_video(
     production_outputs = None
     if production_source == "local_mcp":
         production_outputs = commit_production_outputs([{
-            "production_id": f"local_mcp:finance:{run_id}:{content_kind}:1",
+            "production_id": f"local_mcp:finance:{run_id}:{content_kind}:{content_part}",
             "run_id": run_id,
             "publish_date": publish_date,
             "business_line": "finance",
             "content_kind": content_kind,
-            "content_part": 1,
+            "content_part": content_part,
             "title": metadata["title"],
             "hashtags": " ".join(f"#{str(tag).lstrip('#')}" for tag in metadata["hashtags"]),
             "source": "local_mcp",
@@ -954,6 +1180,7 @@ def finish_finance_video(
         ),
         "topic": record["topic"],
         "run_id": run_id,
+        "content_part": content_part,
         "article": article,
         **metadata,
         "cover_path": cover["output_path"],

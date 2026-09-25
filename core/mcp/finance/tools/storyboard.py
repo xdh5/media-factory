@@ -15,7 +15,7 @@ from .._constants import (
     VIDEO_SIZE,
 )
 from .._errors import AgentOutputFormatError, WorkflowStepError
-from .narration import display_subtitle_text, parse_emphasis_segments, split_narration_lines
+from .narration import display_subtitle_text, ends_sentence, parse_emphasis_segments, split_narration_lines
 from .prompts import build_metadata_prompt, build_storyboard_prompt
 from .save_draft import load_draft
 
@@ -135,6 +135,7 @@ def parse_storyboard(value: str, timeline: list[dict]) -> list[dict]:
                     "text": subtitle_marks.get(item["id"], item["text"]),
                     "start": round(item["start"] - start, 6),
                     "end": round(item["end"] - start, 6),
+                    "ends_sentence": ends_sentence(item["text"]),
                 }
                 for item in selected
             ],

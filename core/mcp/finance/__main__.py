@@ -87,7 +87,7 @@ mcp = FastMCP(
         "Agent 必须按 Skill 传参。"
         "交互式生产前必须先向用户确认北京时间计划发布日期 publish_date；日期不明确时禁止选稿、创建 run、生产或落库。"
         "第一步必须从抖音研究数据库选择未使用的原稿，禁止自行从零写正文；"
-        "正文按原稿全文保留，只把作者与品牌替换为财富研习岛、并按语义断行，不做长度压缩；"
+        "正文执行三类必做改动（品牌替换、连载指涉改写、错别字修正）之外允许措辞级改写，保留大结构与信息量并按语义断行；"
         "保存稿件成功后必须把数据库来源标记为已使用。"
         "查询稿件余量必须使用只读的 finance_get_source_stats，不得用选稿工具代替统计。"
         "镜头素材有三类并列策略，必须在 finance_start_storyboard 用 material_strategy 明确指定："
@@ -204,8 +204,13 @@ def finance_save_draft(
     draft_path: str | None = None,
     cover_highlights: list[str] | None = None,
     intro_scene: str = "",
+    content_part: int = 1,
 ) -> dict:
-    """保存按原稿全文整理的稿件，随后把来源稿件标记为已使用。"""
+    """保存完成三类必做改动与措辞级改写的稿件，随后把来源稿件标记为已使用。
+
+    同一天制作第二条时传 content_part=2：缓存与产物目录独立（run-YYYYMMDD-part2），
+    D1 落库使用 content_part 区分，run_id 仍为 run-YYYYMMDD。
+    """
     try:
         if draft_path is None:
             clean_topic = str(topic or "").strip()
@@ -230,6 +235,7 @@ def finance_save_draft(
             draft_path,
             cover_highlights,
             intro_scene,
+            content_part,
         )
         usage = mark_douyin_research_script_used(
             aweme_id=str(draft["source_aweme_id"]),

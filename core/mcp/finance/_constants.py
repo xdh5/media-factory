@@ -18,7 +18,8 @@ VIDEO_RADIO = "16:9"
 MATRIXMEDIA_AI_CREATIVE_STATEMENT = "ai_generated"
 CONTENT_KIND = "finance"
 
-# 正文按数据库原稿全文保留，只替换作者与品牌、按语义断行；
+# 正文在三类必做改动（品牌替换、连载指涉改写、错别字修正）之外允许措辞级改写，
+# 但大结构与信息量必须与原稿一致；
 # 每行上限约两行字幕容量（显示层再按词边界均衡换行），只挡超长行。
 ARTICLE_MAX_LINE_LENGTH = 36
 
@@ -85,7 +86,16 @@ def publish_date_from_run_id(run_id: str) -> str:
         raise ValueError(f"run_id 包含无效日期：{value}") from exc
 
 
-def production_dirs(run_id: str) -> tuple[Path, Path]:
-    """本次生产目录：(cache_dir, output_dir)。"""
+def production_dirs(run_id: str, content_part: int = 1) -> tuple[Path, Path]:
+    """本次生产目录：(cache_dir, output_dir)。
+
+    同一天第二条及以后（content_part >= 2）使用 run-YYYYMMDD-partN 后缀目录；
+    run_id 本身保持 run-YYYYMMDD，供 D1 唯一键 (run_id, content_part) 使用。
+    """
     rid = str(run_id).strip()
-    return PROJECT_CACHE_ROOT / MCP_ID / rid, PROJECT_OUTPUT_ROOT / MCP_ID / rid
+    part = int(content_part or 1)
+    suffix = "" if part <= 1 else f"-part{part}"
+    return (
+        PROJECT_CACHE_ROOT / MCP_ID / f"{rid}{suffix}",
+        PROJECT_OUTPUT_ROOT / MCP_ID / f"{rid}{suffix}",
+    )

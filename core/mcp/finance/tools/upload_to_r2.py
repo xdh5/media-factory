@@ -24,16 +24,19 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
     run_id = str(manifest.get("run_id") or "").strip()
     if not run_id:
         raise WorkflowStepError("财经发布清单缺少 run_id")
+    content_part = int(manifest.get("content_part") or 1)
+    # part 1 沿用历史 R2 路径；part 2 起加 -partN 后缀，避免同日多条互相覆盖。
+    r2_dir = run_id if content_part <= 1 else f"{run_id}-part{content_part}"
     video_path = Path(str(manifest.get("video_path") or "")).resolve()
     cover_path = Path(str(manifest.get("cover_path") or "")).resolve()
     video = upload_public_file(
         video_path,
-        f"runs/{MCP_ID}/{run_id}/{video_path.name}",
+        f"runs/{MCP_ID}/{r2_dir}/{video_path.name}",
         content_type="video/mp4",
     )
     cover = upload_public_file(
         cover_path,
-        f"runs/{MCP_ID}/{run_id}/{cover_path.name}",
+        f"runs/{MCP_ID}/{r2_dir}/{cover_path.name}",
         content_type="image/png" if cover_path.suffix.lower() == ".png" else "image/jpeg",
     )
     manifest["video_url"] = video["url"]
@@ -43,12 +46,12 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
     manifest["r2_uploaded"] = True
     source = str(manifest.get("production_source") or "local_mcp").strip()
     production_outputs = commit_production_outputs([{
-        "production_id": f"{source}:{MCP_ID}:{run_id}:finance:1",
+        "production_id": f"{source}:{MCP_ID}:{run_id}:finance:{content_part}",
         "run_id": run_id,
         "publish_date": str(manifest.get("publish_date") or "").strip(),
         "business_line": MCP_ID,
         "content_kind": "finance",
-        "content_part": 1,
+        "content_part": content_part,
         "title": str(manifest.get("title") or "").strip(),
         "hashtags": " ".join(
             f"#{str(tag).strip().lstrip('#')}"
@@ -64,7 +67,7 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     remote = upload_public_file(
         path,
-        f"runs/{MCP_ID}/{run_id}/manifest.json",
+        f"runs/{MCP_ID}/{r2_dir}/manifest.json",
         content_type="application/json",
     )
     manifest["manifest_url"] = remote["url"]

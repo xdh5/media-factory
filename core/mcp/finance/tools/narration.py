@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 
 # 兼容旧分镜里的【】重点标记：去掉标记后与 karaoke 逐词动画一致，不再单独上色。
-SUBTITLE_EMPHASIS_STYLE = {"font_size": 130, "primary_color": "#FFD54A"}
+# 字号随 karaoke 预设（2026-09-24 用户要求整体字幕 -20%：130 → 104）。
+SUBTITLE_EMPHASIS_STYLE = {"font_size": 104, "primary_color": "#FFD54A"}
 _ENUMERATION = re.compile(
     r"[\u4e00-\u9fffA-Za-z0-9]{1,8}(?:、[\u4e00-\u9fffA-Za-z0-9]{1,8})+"
 )
@@ -59,6 +60,12 @@ def parse_emphasis_segments(text: str) -> list[tuple[str, bool]]:
         segments.append((raw[index:next_mark], False))
         index = next_mark
     return segments
+
+
+def ends_sentence(text: str) -> bool:
+    """判断 TTS 台词原文是否收束了一个完整句子（不以逗号结尾）。"""
+    cleaned = str(text or "").strip()
+    return bool(cleaned) and cleaned[-1] not in _COMMA_BREAK
 
 
 def display_subtitle_cue(text: str) -> str | list[dict]:
