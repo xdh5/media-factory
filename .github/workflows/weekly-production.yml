@@ -86,7 +86,7 @@ jobs:
             DASHSCOPE_API_KEY_FINANCE DASHSCOPE_API_KEY_LANGUAGE \
             CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN \
             R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL \
-            PEXELS_API_KEY PIXABAY_API_KEY COVERR_API_KEY \
+            PEXELS_API_KEY \
             TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
             test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
           done
