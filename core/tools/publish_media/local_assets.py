@@ -36,17 +36,28 @@ def stored_video_filename(record: dict) -> str:
     return f"{safe_filename(title)}.mp4"
 
 
+def _r2_dir_for_record(record: dict) -> str:
+    """part≥2 的目录带 -partN 后缀，与 finance upload_to_r2 的 r2_dir 规则一致。"""
+    run_id = str(record.get("run_id") or "").strip()
+    part = int(record.get("content_part") or 1)
+    return run_id if part <= 1 else f"{run_id}-part{part}"
+
+
 def local_video_path(record: dict) -> Path:
-    """本地成片路径：output/{业务线}/{run_id}/{R2对象名}。"""
+    """本地成片路径：output/{业务线}/{run_id}[-partN]/{R2对象名}。"""
     business_line = str(record.get("business_line") or "").strip()
     run_id = str(record.get("run_id") or "").strip()
     if not business_line or not run_id:
         raise InvalidPublishRequestError("production_outputs 缺少 business_line 或 run_id")
+    base = PROJECT_ROOT / "output" / business_line / _r2_dir_for_record(record)
+    if base.is_dir():
+        return (base / stored_video_filename(record)).resolve()
+    # 兼容旧记录：part 目录不存在时回退到基础 run 目录。
     return (PROJECT_ROOT / "output" / business_line / run_id / stored_video_filename(record)).resolve()
 
 
 def r2_object_key(record: dict) -> str:
-    return f"runs/{record['business_line']}/{record['run_id']}/{stored_video_filename(record)}"
+    return f"runs/{record['business_line']}/{_r2_dir_for_record(record)}/{stored_video_filename(record)}"
 
 
 def _materialize_finance_publish_metadata(record: dict, output_dir: Path) -> None:
@@ -54,7 +65,7 @@ def _materialize_finance_publish_metadata(record: dict, output_dir: Path) -> Non
     if str(record.get("business_line") or "").strip() != "finance":
         return
 
-    prefix = f"runs/finance/{record['run_id']}"
+    prefix = f"runs/finance/{_r2_dir_for_record(record)}"
     for filename in ("title.txt", "short-title.txt", "publish-copy.txt"):
         destination = output_dir / filename
         if destination.is_file():
