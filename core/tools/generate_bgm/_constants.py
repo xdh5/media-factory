@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-_BGM_FILE_DIR = Path(__file__).resolve().parent / "static"
+# 音频统一放在项目根 static/bgm/（BGM 曲库），按相对层级回溯项目根
+_BGM_FILE_DIR = Path(__file__).resolve().parents[3] / "static" / "bgm"
 
 
 def _p(filename: str) -> Path:

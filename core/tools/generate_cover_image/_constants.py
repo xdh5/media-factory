@@ -9,12 +9,15 @@ def _project_root() -> Path:
     raise RuntimeError("找不到项目根目录：缺少 AGENTS.md 或 agents.md")
 
 
-DEFAULT_COVER_FONT_PATH = _project_root() / "static" / "font" / "MonuTitl-0.95CnBd.ttf"
+DEFAULT_COVER_FONT_PATH = _project_root() / "static" / "font" / "MechSong-DemiBold-2.ttf"
+# 固定封面底图（2026-09-23 用户指定）：不再从镜头候选图随机抽，统一用这张。
+DEFAULT_COVER_BACKGROUND_IMAGE = _project_root() / "static" / "cover" / "default-background.jpg"
 DEFAULT_COVER_SIZE = "1920x1080"
 # 抖音资料页会从横屏正中裁出 3:4 小图，标题必须落在该裁切区内。
 DOUYIN_THUMB_ASPECT = 3 / 4
 TITLE_INSET_X = 0.06
-TITLE_INSET_TOP = 0.08
+# 标题块放在画面下方 50%（top = 0.5 * 高度），底部仍留 0.22 安全边。
+TITLE_INSET_TOP = 0.5
 TITLE_INSET_BOTTOM = 0.22
 TITLE_VERTICAL_BIAS = -0.12
 MIN_FONT_SIZE = 42

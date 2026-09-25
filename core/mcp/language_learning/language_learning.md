@@ -65,7 +65,7 @@ language_learning_start_compose_cards
 
 language_learning_create_videos / language_learning_start_create_videos
 └─ 默认同时生成 standard 原版分段和 quiz 倒计时问答版
-└─ 问答版倒计时音轨默认 static/countdown.mp3
+└─ 问答版倒计时音轨默认 static/sfx/countdown.mp3
 └─ tools.create_vocabulary_videos.create_vocabulary_videos
 └─ tools.publish_vocabulary_videos.attach_publish_manifest
 

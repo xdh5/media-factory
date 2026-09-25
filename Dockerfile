@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     pip install -i https://pypi.tuna.tsinghua.edu.cn/simple .
 
 # ---- 层 3：项目代码与静态资源 ----
-# 日常改动只重建这一层（含 core/tools/generate_intro/static 音效）
+# 日常改动只重建这一层（含根 static/bgm BGM 曲库与 static/sfx 提示音效）
 COPY . .
 
 # 库文件、缓存、成片由部署侧分别挂载持久化。

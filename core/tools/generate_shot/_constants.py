@@ -54,7 +54,8 @@ CARD_SHADOW_OFFSET_Y = 36
 CARD_SHADOW_OPACITY = 0.52
 CARD_SHADOW_BLUR = 40
 
-_STATIC_DIR = Path(__file__).resolve().parent / "static"
+# 音效统一放在项目根 static/sfx/（提示音效库），按相对层级回溯项目根
+_STATIC_DIR = Path(__file__).resolve().parents[3] / "static" / "sfx"
 SFX_ALERT_PATH = _STATIC_DIR / "alert.wav"
 SFX_SHUTTER_PATH = _STATIC_DIR / "shutter.wav"
 SFX_ALERT_SECONDS = SLIDE_IN_SECONDS

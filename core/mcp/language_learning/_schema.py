@@ -301,7 +301,7 @@ CREATE_VIDEOS_INPUT_SCHEMA = {
         },
         "countdown_audio_path": {
             "type": ["string", "null"],
-            "description": "问答版倒计时音轨；不传则使用仓库 static/countdown.mp3",
+            "description": "问答版倒计时音轨；不传则使用仓库 static/sfx/countdown.mp3",
         },
         "record_production_outputs": {
             "type": "boolean",

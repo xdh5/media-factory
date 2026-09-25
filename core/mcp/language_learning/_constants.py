@@ -96,8 +96,9 @@ def production_dirs(run_id: str) -> tuple[Path, Path]:
     return PROJECT_CACHE_ROOT / WORKFLOW_ID / rid, PROJECT_OUTPUT_ROOT / WORKFLOW_ID / rid
 
 
+# 卡片模板仍在本包 static/；倒计时音效统一放项目根 static/sfx/
 STATIC_ROOT = _ROOT / "static"
-COUNTDOWN_AUDIO_PATH = STATIC_ROOT / "countdown.mp3"
+COUNTDOWN_AUDIO_PATH = PROJECT_ROOT / "static" / "sfx" / "countdown.mp3"
 TEMPLATE_FILENAMES = {
     "en-ko": "korean-fixed-vocabulary-template.jpg",
     "en-zh": "chinese-fixed-vocabulary-template.jpg",
