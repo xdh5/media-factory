@@ -59,14 +59,20 @@ def main() -> None:
     elif arguments.workflow.startswith("language_learning"):
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
     if arguments.workflow in {"finance_preflight", "language_learning_preflight"}:
-        from ._shared import daily_production_preflight
-
         business_line = "finance" if arguments.workflow == "finance_preflight" else "language_learning"
-        payload = daily_production_preflight(
-            business_line,
-            arguments.publish_date,
-            arguments.default_days_ahead,
-        )
+        from ._dates import resolve_publish_date
+        from ._mcp import ProjectMCP
+        from ._shared import PROJECT_ROOT
+
+        publish_date = resolve_publish_date(arguments.publish_date, arguments.default_days_ahead)
+
+        async def _load_plan() -> dict:
+            module = "core.mcp.finance" if business_line == "finance" else "core.mcp.language_learning"
+            tool = "finance_get_automation_plan" if business_line == "finance" else "language_learning_get_automation_plan"
+            async with ProjectMCP(module, PROJECT_ROOT) as mcp:
+                return await mcp.call(tool, {"publish_date": publish_date})
+
+        payload = asyncio.run(_load_plan())
         output_path = os.getenv("GITHUB_OUTPUT", "").strip()
         if output_path:
             with Path(output_path).open("a", encoding="utf-8") as stream:
@@ -122,7 +128,7 @@ def main() -> None:
     elif arguments.workflow == "language_learning_r2":
         from .language_learning import upload_handoff
 
-        result = upload_handoff(arguments.handoff_dir)
+        result = asyncio.run(upload_handoff(arguments.handoff_dir))
         payload = {"status": "succeeded", "r2": result["r2"]}
         output_path = os.getenv("GITHUB_OUTPUT", "").strip()
         if output_path:

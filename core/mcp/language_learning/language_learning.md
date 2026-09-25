@@ -2,6 +2,13 @@
 
 编排入口：`python -m core.mcp.language_learning`。
 
+固定生产、模型任务 Prompt、自动预检与发布时间参数以本 MCP 返回值为唯一标准；Agent 与 GitHub Runner 只在模型执行主体上不同。
+
+language_learning_get_production_config
+language_learning_get_automation_plan
+language_learning_get_publish_schedule
+language_learning_get_topic_generation_prompt / language_learning_validate_topic_response
+
 TTS、发布账号组与完整流程见 `.agents/skills/learn_Chinese_and_Korean/SKILL.md`。Prompt 模板在 `prompts/`。
 
 ## 工具编排

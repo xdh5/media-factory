@@ -41,6 +41,23 @@ PUBLISH_MANIFEST_FILE_NAME = "publish-manifest.json"
 MATRIXMEDIA_AI_CREATIVE_STATEMENT = "ai_generated"
 TASKS_DIR_NAME = "tasks"
 
+# 语言学习 MCP 是固定生产与自动发布参数的唯一真源。
+DEFAULT_PRODUCTION_CONFIG = {
+    "learning_modes": ["en-zh", "en-ko"],
+    "voices": {
+        "en": "en-US-AriaNeural",
+        "zh": "zh-CN-XiaoxiaoNeural",
+        "ko": "ko-KR-SunHiNeural",
+    },
+    "language_pause": 0.3,
+    "word_pause": 0.3,
+    "video_formats": ["standard", "quiz"],
+    "subject_generation_max_attempts": SUBJECT_GENERATION_MAX_ATTEMPTS,
+    "model_retry_attempts": 3,
+    "publish_targets": ["youtube", "tiktok", "instagram", "facebook"],
+    "publish_hour_beijing": 16,
+}
+
 _ROOT = Path(__file__).resolve().parent
 
 

@@ -5,29 +5,22 @@ description: 使用语言学习 MCP 制作中英/韩英词汇短视频；适用�
 
 # 语言学习视频
 
-MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt；**本 Skill 提供 TTS 音色、发布账号组与完整流程**。禁止绕过 MCP 或直接读写内部文件。
+MCP 入口：`python -m core.mcp.language_learning`。**语言学习 MCP 是 Prompt、TTS、停顿、成片格式、发布账号组、平台和自动排期参数的唯一真源**；本 Skill 只描述交互门禁与完整流程。禁止绕过 MCP 或直接读写内部文件。
 
 开始交互式生产前，必须先让用户明确这期视频的北京时间计划发布日期 `publish_date`。用户没说清是哪一天时必须先追问；禁止默认今天、禁止占用话题或创建 run，也禁止在日期不明确时生成成片并写入 `production_outputs`。
 
-## 固定参数（调用 MCP 时必须按此传）
+## 固定参数
+
+开始生产时先调用 `language_learning_get_production_config(topic, learning_modes)`；Agent 与 GitHub Action 都必须原样复用返回值，禁止在各自入口维护参数副本。
 
 ### 语言方向
 
 - `en-zh`：中英学习
 - `en-ko`：韩英学习
 
-### TTS 音色（`language_learning_start_create_videos` 的 `voices`）
+### TTS 与配音停顿
 
-| 键 | Edge 音色 | 用途 |
-| --- | --- | --- |
-| `en` | `en-US-AriaNeural` | 每个词的英语读音 |
-| `zh` | `zh-CN-XiaoxiaoNeural` | 中文学习片的目标语 |
-| `ko` | `ko-KR-SunHiNeural` | 韩语学习片的目标语 |
-
-### 配音停顿（默认，除非用户明确要求修改）
-
-- `language_pause`：`0.3`（英语与目标语之间）
-- `word_pause`：`0.3`（每个词之间）
+分别使用 MCP 返回的 `voices`、`language_pause` 与 `word_pause`，Skill 不保留副本。
 
 ### 标题、文件名与描述
 
@@ -51,16 +44,9 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 
 ### 发布配置（`language_learning_start_create_videos` 的 `publish_config`）
 
-**中文 `en-zh`**
+完整配置使用 MCP 返回的 `publish_config`，以下仅描述平台行为，不维护参数副本。
 
-```json
-{
-  "account_group": "中文",
-  "youtube_account": "language_learning",
-  "tags": ["#learnchinese", "#chinesevocabulary", "#mandarinchinese", "#dailychinese"],
-  "short_title": "中文{topic}怎么说"
-}
-```
+**中文 `en-zh`**
 
 - YouTube 使用项目共用的 `YOUTUBE_OAUTH_CLIENT_ID`、`YOUTUBE_OAUTH_CLIENT_SECRET`，并使用 `.env` 里按频道隔离的 `LANGUAGE_LEARNING_YOUTUBE_*`（`youtube_account` 即账号前缀）
 - 多平台发布时间不一致时，给 `language_learning_start_publish` 传 `publish_at_by_target`，键为 `youtube`、`tiktok`、`instagram`、`facebook`，值为带时区的 ISO 8601；值为 `null` 表示立即发布。例如 YouTube、TikTok 在北京时间 16:00 发布而 Meta 立即发布：`{"youtube":"2026-08-24T16:00:00+08:00","tiktok":"2026-08-24T16:00:00+08:00","instagram":null,"facebook":null}`。四个平台同一时间时可继续使用兼容参数 `publish_at`。
@@ -71,15 +57,6 @@ MCP 入口：`python -m core.mcp.language_learning`。MCP 负责编排与 Prompt
 - 展示给用户看的账号组名为 `中文`；账号配置由 YouTube 与 Zernio 的环境变量提供，不再从 D1 读取发布账号组。官方平台发布成功或预约成功后由语言学习 MCP 自动写入发布记录。
 
 **韩语 `en-ko`**
-
-```json
-{
-  "account_group": "韩语",
-  "tags": ["#学韩语", "#韩语单词", "#韩语入门", "#每日韩语"],
-  "short_title": "韩语单词怎么说",
-  "platforms": ["dy", "ks", "bjh", "xhs", "tt", "sph"]
-}
-```
 
 - 本地生产完成后保留本地产物，不自动上传 R2；只有 GitHub Workflow 或已确认发布的平台需要公网视频地址时才调用 `language_learning_start_upload_r2`
 - 发布服务器 MatrixMedia 使用账号组 `韩语`，账号配置由发布环境提供，不再从 D1 读取发布账号组。
@@ -110,7 +87,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 
 ## 制作流程
 
-1. `language_learning_get_topics`：避开近 30 天重复主题。
+1. `language_learning_get_production_config` 获取唯一标准参数；`language_learning_get_topics` 获取最近主题，再调用 `language_learning_get_topic_generation_prompt`，宿主 Agent 生成后必须交给 `language_learning_validate_topic_response`。
 2. 先确定北京时间计划发布日期 `publish_date`（`YYYY-MM-DD`，不得早于当天）；自选单个英文单词主题后调用 `language_learning_occupy_topic(topic, learning_modes, publish_date)`，创建 `output/language_learning/run-YYYYMMDD/` 并拿到 `run_id`，不写 D1。日期只表示计划发布日，不包含具体时间。
 3. `language_learning_build_vocabulary_prompt(topic, learning_modes)` 获取包含最近 100 天词库的 Prompt，按原样生成纯文本词表；再调用 `language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)`，由 MCP 强制校验至少 5 个新词，但暂不写库。
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
@@ -118,7 +95,7 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 只提取按上排从左到右、下排从左到右排序的十个保守边界框，不检查文字、水印、画风、内容或主体完整性；调用 `language_learning_validate_subject_sheet` 后，透明图直接保留 Alpha 通道并裁出十张主体，纯色兜底图才执行自动抠图，统一保存 `subject-sheet-background-removed.png`。
 7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**整张透明处理后的完整主题图**（不是十张单独主体），按返回 Prompt 一次性检查：主体数量是否为 10、完整性、文字、水印、全彩配色与材质质感、语义表达、透明边缘残色；全体单色染色、大片无层次纯色块、线稿图标、白色剪影、UI 符号或廉价塑料感必须按 `style` 判定失败。再调用 `language_learning_review_subject_sheet` 提交一条结论。失败时 `failure_kind` 取 `background_edge` / `text` / `watermark` / `style` / `count` / `completeness` 之一。透明图出现杂色边缘时优先重新生成干净透明图；只有透明生成持续失败时才改用高反差单一纯色背景抠图兜底。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对整图调用千问视觉执行同一个 MCP Prompt。
 8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
-9. `language_learning_start_create_videos`：传入本 Skill 的 `voices`、`publish_config`、`language_pause`、`word_pause`；默认同时生成原版分段和倒计时问答版，倒计时音轨用仓库 `core/mcp/language_learning/static/countdown.mp3`，不必再传 `countdown_audio_path`。只出原版时才传 `video_formats=["standard"]` → poll 至 `done=true`。
+9. `language_learning_start_create_videos`：传入 MCP 配置返回的 `voices`、`publish_config`、`language_pause`、`word_pause` 和 `video_formats`；倒计时音轨使用 MCP 默认值，不必传 `countdown_audio_path` → poll 至 `done=true`。
 10. 用户确认发布后：韩语原版与问答版一起交给 MatrixMedia；中文调用 `language_learning_start_publish`，原版两段和问答版一条一起发到 YouTube、TikTok、Instagram、Facebook。问答版标题与原版同一套格式，不得加 `guess` 或 `看图猜词`。目标平台需要公网视频地址时，才调用 `language_learning_start_upload_r2` 上传发布资产。发布 MCP 幂等写入正式话题与本期 10 个单词。
 11. 展示发布结果后，确认清缓存。
 
@@ -133,6 +110,10 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 
 | 工具 | 作用 |
 | --- | --- |
+| `language_learning_get_production_config` | 返回 Agent 与 GitHub Runner 共用的全部固定生产和自动发布参数 |
+| `language_learning_get_automation_plan` | 返回每周生产与补齐发布的统一预检结果 |
+| `language_learning_get_publish_schedule` | 返回 MCP 统一维护的自动发布平台和北京时间预约时间 |
+| `language_learning_get_topic_generation_prompt` / `language_learning_validate_topic_response` | 共用主题生成 Prompt 与校验 |
 | `language_learning_get_topics` | 查已占用主题和最近 100 天单词 |
 | `language_learning_get_production_outputs` | 按北京时间计划发布日期查询语言学习成片并区分本地与 GitHub 来源 |
 | `language_learning_occupy_topic` | 占坑并创建 run |

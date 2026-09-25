@@ -11,8 +11,10 @@ from .publish_vocabulary_videos import (
 from .vocabulary_prompt import (
     build_sheet_validation_prompt,
     build_subject_sheet_prompt,
+    build_topic_prompt,
     build_visual_validation_prompt,
     build_vocabulary_prompt,
+    validate_topic_response,
     parse_vocabulary_response,
 )
 from .vocabulary_history import build_database_word_entries, list_recent_words, validate_words
@@ -21,8 +23,10 @@ __all__ = [
     "attach_publish_manifest",
     "build_sheet_validation_prompt",
     "build_subject_sheet_prompt",
+    "build_topic_prompt",
     "build_visual_validation_prompt",
     "build_vocabulary_prompt",
+    "validate_topic_response",
     "build_database_word_entries",
     "compose_fixed_cards",
     "create_vocabulary_videos",

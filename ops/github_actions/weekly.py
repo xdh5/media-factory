@@ -7,9 +7,7 @@ from pathlib import Path
 
 from ._dates import compute_next_week_dates
 from ._shared import (
-    LANGUAGE_PUBLISH_TARGETS,
     PROJECT_ROOT,
-    daily_production_preflight,
 )
 from .finance import run as run_finance
 from ._mcp import ProjectMCP
@@ -33,7 +31,7 @@ async def _run_language_produce(publish_date: str, work_dir: Path) -> dict:
     await generate_words("", ["en-zh", "en-ko"], state_path, publish_date)
     await generate_cards(state_path, diagnostics_dir)
     await generate_videos(state_path, handoff_dir)
-    result = upload_handoff(handoff_dir)
+    result = await upload_handoff(handoff_dir)
     try:
         upload_failed_subject_sheets(diagnostics_dir)
     except Exception:
@@ -98,7 +96,11 @@ async def run_day(
             "reason": finance_preflight["skip_reason"],
         }
 
-    lang_preflight = daily_production_preflight("language_learning", publish_date)
+    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as language_mcp:
+        lang_preflight = await language_mcp.call(
+            "language_learning_get_automation_plan",
+            {"publish_date": publish_date},
+        )
     if not lang_preflight["should_generate"] and not lang_preflight["should_resume_publish"]:
         results["language"] = {"status": "skipped", "reason": lang_preflight["skip_reason"]}
         return results
@@ -112,7 +114,7 @@ async def run_day(
             os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
             upload_result = await _run_language_produce(publish_date, work_dir)
             run_id = str(upload_result["run_id"])
-            publish_targets = list(LANGUAGE_PUBLISH_TARGETS)
+            publish_targets = list(lang_preflight["publish_targets"])
         except Exception as exc:
             notify_business_result("语言生产", False, run_url, str(exc))
             results["language"] = {"status": "produce_failed", "error": str(exc)}

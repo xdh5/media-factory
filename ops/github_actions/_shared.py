@@ -9,89 +9,12 @@ from pathlib import Path
 
 import boto3
 
-from ._dates import resolve_publish_date
 from core.tools.qwen_text import generate_text
 from core.tools.qwen_vision import analyze_image
 from core.tools.r2_storage import upload_public_file
-from core.tools.cloudflare_data import list_production_outputs, list_publication_records
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LANGUAGE_PUBLISH_TARGETS = ("youtube", "tiktok", "instagram", "facebook")
-
-
-def daily_production_preflight(
-    business_line: str,
-    publish_date: str = "",
-    default_days_ahead: int = 0,
-) -> dict:
-    """按计划发布日期查询成片和发布记录，决定是否生产及需要补发的平台。"""
-    publish_date = resolve_publish_date(publish_date, default_days_ahead)
-    outputs = list_production_outputs(
-        publish_date=publish_date,
-        business_line=business_line,
-    )
-    publications = list_publication_records(
-        business_line=business_line,
-        publish_date=publish_date,
-    )
-    github_outputs = [
-        item for item in outputs
-        if item.get("source") == "github_workflow" and item.get("r2_url")
-    ]
-    existing_run_id = str(github_outputs[0].get("run_id") or "") if github_outputs else ""
-    published_keys = {
-        (
-            str(item.get("title") or "").strip(),
-            str(item.get("platform") or "").strip(),
-            int(item.get("content_part") or 1),
-        )
-        for item in publications
-    }
-    pending_targets = []
-    if business_line == "language_learning":
-        publishable = [
-            item
-            for item in (github_outputs or outputs)
-            if str(item.get("content_kind") or "").strip() == "en-zh"
-            and str(item.get("title") or "").strip()
-        ]
-        for target in LANGUAGE_PUBLISH_TARGETS:
-            for output in publishable:
-                title = str(output.get("title") or "").strip()
-                part = int(output.get("content_part") or 1)
-                if title and (title, target, part) not in published_keys:
-                    pending_targets.append(target)
-                    break
-    published_platforms = {
-        str(item.get("platform") or "").strip()
-        for item in publications
-        if str(item.get("platform") or "").strip()
-    }
-    should_generate = not outputs and not publications
-    should_resume_publish = (
-        business_line == "language_learning"
-        and not should_generate
-        and bool(existing_run_id)
-        and bool(pending_targets)
-    )
-    return {
-        "publish_date": publish_date,
-        "business_line": business_line,
-        "should_generate": should_generate,
-        "should_resume_publish": should_resume_publish,
-        "existing_run_id": existing_run_id,
-        "pending_targets": pending_targets,
-        "output_count": len(outputs),
-        "github_output_count": len(github_outputs),
-        "publication_count": len(publications),
-        "published_platforms": sorted(published_platforms),
-        "skip_reason": (
-            "该计划发布日期没有可复用的 GitHub R2 成片"
-            if should_generate
-            else f"该计划发布日期已有 {len(outputs)} 条成片记录、{len(publications)} 条发布记录"
-        ),
-    }
 
 
 def restore_finance_image_library(library_line: str) -> Path:
@@ -144,24 +67,6 @@ def json_text(result: dict) -> dict:
     return payload
 
 
-def upload_run_files(workflow: str, run_id: str, paths: list[str | Path], manifest: dict) -> dict:
-    """把成片与主题图上传 R2，只做交付，不触发任何平台发布。"""
-    uploaded = []
-    for value in paths:
-        path = Path(value).resolve()
-        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        stored = upload_public_file(path, f"runs/{workflow}/{run_id}/{path.name}", content_type=content_type)
-        uploaded.append({**stored, "source_path": str(path), "source_name": path.name})
-    output_dir = Path(str(manifest["output_dir"])).resolve()
-    remote_manifest_path = output_dir / "r2-manifest.json"
-    remote_manifest = {**manifest, "r2_files": uploaded, "platform_publish": False}
-    remote_manifest_path.write_text(json.dumps(remote_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    remote_manifest_upload = upload_public_file(
-        remote_manifest_path,
-        f"runs/{workflow}/{run_id}/r2-manifest.json",
-        content_type="application/json; charset=utf-8",
-    )
-    return {"files": uploaded, "manifest": remote_manifest_upload}
 
 
 def upload_diagnostic_files(workflow: str, run_id: str, paths: list[str | Path], manifest: dict) -> dict:

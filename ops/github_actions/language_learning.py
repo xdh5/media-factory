@@ -5,27 +5,18 @@ from __future__ import annotations
 import json
 import re
 import shutil
-from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from ._mcp import MCPCallError, ProjectMCP
-from core.tools.cloudflare_data import commit_production_outputs
 from core.tools.r2_storage import download_public_file
 
 from ._shared import (
     PROJECT_ROOT,
     qwen,
     qwen_vision,
-    resolve_publish_date,
     upload_diagnostic_files,
-    upload_run_files,
     write_summary,
 )
-
-
-VOICES = {"en": "en-US-AriaNeural", "zh": "zh-CN-XiaoxiaoNeural", "ko": "ko-KR-SunHiNeural"}
-SUBJECT_GENERATION_MAX_ATTEMPTS = 3
 
 
 def _compact_publish_row(row: dict) -> dict:
@@ -77,45 +68,21 @@ def _publish_failure_payload(result: dict) -> dict:
     }
 
 
-def _choose_topic(recent_topics: list[str], requested_topic: str) -> str:
-    recent = {str(item).strip().casefold() for item in recent_topics if str(item).strip()}
-    if requested_topic.strip():
-        topic = requested_topic.strip()
-        if not re.fullmatch(r"[A-Za-z]+", topic):
-            raise ValueError("语言学习 TOPIC 必须是一个不含空格的英文单词")
-        if topic.casefold() in recent:
-            raise ValueError(f"语言学习 TOPIC 最近 30 天已经发布：{topic}")
-        return topic
-    for _ in range(3):
-        topic = str(qwen(
-            "你是语言学习短视频选题编辑，只返回一个不含空格的英文单词，不加说明。",
-            "选择一个能扩展出10个初学者生活常用词的英文类别词。"
-            f"不得与最近30天主题重复：{json.dumps(recent_topics, ensure_ascii=False)}",
-            max_tokens=30,
-        )["text"]).strip().strip("“”\"'")
-        if re.fullmatch(r"[A-Za-z]+", topic) and topic.casefold() not in recent:
-            return topic
-    raise ValueError("千问连续三次未返回单个英文单词 TOPIC")
-
-
-def _delivery_config(topic: str, modes: list[str]) -> dict:
-    """只生成后续发布所需文案元数据，不执行发布。"""
-    result = {}
-    if "en-zh" in modes:
-        result["en-zh"] = {
-            "account_group": "中文",
-            "youtube_account": "language_learning",
-            "tags": ["#learnchinese", "#chinesevocabulary", "#mandarinchinese", "#dailychinese"],
-            "short_title": f"中文{topic}怎么说",
-        }
-    if "en-ko" in modes:
-        result["en-ko"] = {
-            "account_group": "韩语",
-            "tags": ["#学韩语", "#韩语单词", "#韩语入门", "#每日韩语"],
-            "short_title": "韩语单词怎么说",
-            "platforms": ["dy", "ks", "blbl", "tt", "sph"],
-        }
-    return result
+async def _choose_topic(mcp: ProjectMCP, recent_topics: list[str], requested_topic: str, attempts: int) -> str:
+    feedback = ""
+    for _ in range(attempts):
+        prompt = await mcp.call("language_learning_get_topic_generation_prompt", {
+            "recent_topics": recent_topics, "requested_topic": requested_topic, "feedback": feedback,
+        })
+        response = qwen(prompt["system_prompt"], prompt["user_prompt"], max_tokens=30)["text"]
+        try:
+            result = await mcp.call("language_learning_validate_topic_response", {
+                "response_text": response, "recent_topics": recent_topics,
+            })
+            return str(result["topic"])
+        except MCPCallError as exc:
+            feedback = str(exc)
+    raise RuntimeError(f"语言学习主题连续 {attempts} 次不合格：{feedback}")
 
 
 def _read_state(state_path: str | Path) -> dict:
@@ -139,11 +106,13 @@ async def generate_words(
     publish_date: str = "",
 ) -> dict:
     """第一段：选题、创建生产目录并生成通过校验的双语词表。"""
-    learning_modes = modes or ["en-zh", "en-ko"]
-    publish_date = resolve_publish_date(publish_date)
+    if not str(publish_date or "").strip():
+        raise ValueError("GitHub 语言生产必须明确传入 publish_date")
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+        config = await mcp.call("language_learning_get_production_config", {"learning_modes": modes or None})
+        learning_modes = list(config["learning_modes"])
         topics = await mcp.call("language_learning_get_topics")
-        topic = _choose_topic(topics.get("recent_topics") or [], requested_topic)
+        topic = await _choose_topic(mcp, topics.get("recent_topics") or [], requested_topic, int(config["model_retry_attempts"]))
         occupied = await mcp.call(
             "language_learning_occupy_topic",
             {"topic": topic, "learning_modes": learning_modes, "publish_date": publish_date},
@@ -154,9 +123,9 @@ async def generate_words(
             {"topic": topic, "learning_modes": learning_modes},
         )
         last_error = None
-        for _ in range(3):
+        for _ in range(int(config["model_retry_attempts"])):
             response_text = qwen(
-                "你是语言学习词表编辑。只输出用户规定的纯文本表格；第一行必须是“英文主题｜单个英文单词 TOPIC”，禁止 Markdown、标题、解释或省略首行。",
+                prompt["system_prompt"],
                 prompt["user_prompt"],
                 max_tokens=2500,
             )["text"]
@@ -245,10 +214,14 @@ async def generate_cards(
     approved_validation = None
     submitted = None
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+        config = await mcp.call("language_learning_get_production_config", {
+            "topic": topic, "learning_modes": learning_modes,
+        })
         primary_words = words.get("en-zh") or words.get("en-ko")
         sheet_prompt = await mcp.call("language_learning_get_sheet_validation_prompt")
         generation_issues: list[str] = []
-        for generation_attempt in range(1, SUBJECT_GENERATION_MAX_ATTEMPTS + 1):
+        max_attempts = int(config["subject_generation_max_attempts"])
+        for generation_attempt in range(1, max_attempts + 1):
             prepared = await mcp.call(
                 "language_learning_prepare_images",
                 {
@@ -341,7 +314,7 @@ async def generate_cards(
             diagnostic_payload["status"] = "failed"
             _write_diagnostics(diagnostic_root, diagnostic_payload)
             details = "；".join(generation_issues) or "没有返回具体视觉错误"
-            raise RuntimeError(f"原始主题图连续 {SUBJECT_GENERATION_MAX_ATTEMPTS} 次未通过检查：{details}")
+            raise RuntimeError(f"原始主题图连续 {max_attempts} 次未通过检查：{details}")
         card_dirs = {}
         for mode in learning_modes:
             started = await mcp.call(
@@ -408,7 +381,8 @@ async def recompose_cards_from_r2(
     visual_layout = dict(source_validation.get("vision") or {})
     source_review = dict(source_validation.get("review") or {})
     source_reviews = list(source_validation.get("reviews") or [])
-    publish_date = resolve_publish_date(publish_date)
+    if not str(publish_date or "").strip():
+        raise ValueError("重组语言学习成片必须明确传入 publish_date")
     has_legacy_review = (
         len(source_reviews) == 10
         and all(item.get("valid") is True for item in source_reviews)
@@ -507,19 +481,22 @@ async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> di
     words = dict(state["words"])
     card_dirs = dict(state["card_dirs"])
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+        config = await mcp.call("language_learning_get_production_config", {
+            "topic": topic, "learning_modes": learning_modes,
+        })
         started = await mcp.call(
             "language_learning_start_create_videos",
             {
                 "card_dirs": card_dirs,
                 "words_by_mode": {mode: words[mode] for mode in learning_modes},
                 "run_id": run_id,
-                "voices": VOICES,
-                "publish_config": _delivery_config(topic, learning_modes),
+                "voices": config["voices"],
+                "publish_config": config["publish_config"],
                 "topic": topic,
-                "language_pause": 0.3,
-                "word_pause": 0.3,
+                "language_pause": config["language_pause"],
+                "word_pause": config["word_pause"],
                 "production_source": "github_workflow",
-                "video_formats": ["standard", "quiz"],
+                "video_formats": config["video_formats"],
             },
         )
         manifest = await mcp.poll("language_learning_poll_task", started["task_path"])
@@ -557,7 +534,7 @@ async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> di
     return handoff
 
 
-def upload_handoff(handoff_dir: str | Path) -> dict:
+async def upload_handoff(handoff_dir: str | Path) -> dict:
     """读取上一 Job 的交接文件，将成片与元数据上传 R2。"""
     destination = Path(handoff_dir).resolve()
     handoff = _read_state(destination / "handoff.json")
@@ -565,78 +542,31 @@ def upload_handoff(handoff_dir: str | Path) -> dict:
     subject_sheet_path = destination / handoff["subject_sheet_file"]
     metadata_path = destination / handoff["metadata_file"] if handoff.get("metadata_file") else None
     manifest = dict(handoff["manifest"])
-    manifest["output_dir"] = str(destination)
-    paths = [subject_sheet_path, *video_paths]
-    if metadata_path is not None:
-        paths.append(metadata_path)
-    remote = upload_run_files("language_learning", str(handoff["run_id"]), paths, manifest)
-    uploaded_by_name = {
-        str(item.get("source_name") or ""): str(item.get("url") or "")
-        for item in remote.get("files") or []
-    }
-    publish_date = str(handoff.get("publish_date") or "").strip()
-    if not publish_date:
-        raw_date = str(handoff["run_id"]).removeprefix("run-")
-        publish_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
-    output_records = []
-    publish_items = [
-        *(manifest.get("publish_items") or []),
-        *(manifest.get("matrixmedia_items") or []),
-    ]
-    hashtags_by_mode = {
-        str(item.get("learning_mode") or ""): " ".join(
-            f"#{str(tag).strip().lstrip('#')}"
-            for tag in item.get("tags") or []
-            if str(tag).strip().lstrip("#")
-        )
-        for item in publish_items
-    }
-    for video in manifest.get("videos") or []:
-        mode = str(video.get("learning_mode") or "").strip()
-        video_format = str(video.get("video_format") or "standard").strip() or "standard"
-        content_kind = mode if video_format == "standard" else f"{mode}-{video_format}"
-        for fallback_part, part in enumerate(video.get("video_parts") or [], 1):
-            part_number = int(part.get("part") or fallback_part)
-            source_name = Path(str(part.get("output_path") or "")).name
-            r2_url = uploaded_by_name.get(source_name, "")
-            if not r2_url:
-                raise RuntimeError(f"R2 上传结果缺少成片地址：{source_name}")
-            output_records.append({
-                "production_id": f"github_workflow:language_learning:{handoff['run_id']}:{content_kind}:{part_number}",
+    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+        started = await mcp.call(
+            "language_learning_start_upload_r2",
+            {
+                "manifest_path": manifest["manifest_path"],
                 "run_id": str(handoff["run_id"]),
-                "publish_date": publish_date,
-                "business_line": "language_learning",
-                "content_kind": content_kind,
-                "content_part": part_number,
-                "title": str(part.get("title") or "").strip(),
-                "hashtags": hashtags_by_mode.get(mode, ""),
-                "source": "github_workflow",
-                "local_path": None,
-                "r2_url": r2_url,
-                "r2_expires_at": None,
-            })
-    production_outputs = commit_production_outputs(output_records)
-    subject_sheet_url = uploaded_by_name.get(subject_sheet_path.name, "")
+                "subject_sheet_path": str(subject_sheet_path),
+                "learning_modes": list(handoff["learning_modes"]),
+            },
+        )
+        remote = await mcp.poll("language_learning_poll_task", started["task_path"])
     download_urls = {}
-    for video in manifest.get("videos") or []:
-        mode = str(video.get("learning_mode") or "").strip()
-        urls = [
-            uploaded_by_name.get(Path(value).name, "")
-            for value in video.get("output_paths") or []
-        ]
-        urls = [url for url in urls if url]
-        if urls:
-            download_urls[mode] = urls[0]
+    for item in remote.get("uploaded") or []:
+        mode = str(item.get("learning_mode") or "").strip()
+        if item.get("kind") == "video" and mode and mode not in download_urls:
+            download_urls[mode] = str(item.get("url") or "")
     return {
         "run_id": str(handoff["run_id"]),
         "manifest": manifest,
-        "r2": remote,
-        "production_outputs": production_outputs,
+        "r2": {"manifest": {"url": remote["manifest_url"]}},
+        "production_outputs": remote.get("production_outputs") or [],
         "topic": str(handoff["topic"]),
-        "subject_sheet_url": subject_sheet_url,
+        "subject_sheet_url": str(remote.get("subject_sheet_url") or ""),
         "download_urls": download_urls,
     }
-
 
 async def schedule_publication(
     manifest_url: str,
@@ -644,24 +574,16 @@ async def schedule_publication(
     *,
     targets: list[str] | None = None,
 ) -> dict:
-    """通过语言学习 MCP 把尚未发布的平台排到计划发布日期北京时间 16:00。"""
-    now = datetime.now(ZoneInfo("Asia/Shanghai"))
-    try:
-        publish_time = datetime.strptime(
-            f"{str(run_id).removeprefix('run-')} 16:00",
-            "%Y%m%d %H:%M",
-        ).replace(tzinfo=ZoneInfo("Asia/Shanghai"))
-    except ValueError as exc:
-        raise RuntimeError("run_id 必须是包含有效计划发布日期的 run-YYYYMMDD") from exc
-    if publish_time <= now:
-        raise RuntimeError("计划发布日期的北京时间 16:00 已经过期，禁止预约到过去")
-    publish_at = publish_time.isoformat()
+    """按语言学习 MCP 配置，把尚未发布的平台排到计划发布日期的指定北京时间。"""
+    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+        schedule = await mcp.call("language_learning_get_publish_schedule", {"run_id": run_id})
+    publish_at = str(schedule["publish_at"])
     selected_targets = [
         str(item).strip().casefold()
-        for item in (targets or ["youtube", "tiktok", "instagram", "facebook"])
+        for item in (targets or schedule["targets"])
         if str(item).strip()
     ]
-    unknown = set(selected_targets) - {"youtube", "tiktok", "instagram", "facebook"}
+    unknown = set(selected_targets) - set(schedule["targets"])
     if unknown:
         raise RuntimeError(f"不支持的语言学习发布平台：{', '.join(sorted(unknown))}")
     if not selected_targets:

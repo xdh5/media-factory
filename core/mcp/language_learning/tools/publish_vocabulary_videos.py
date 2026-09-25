@@ -397,6 +397,7 @@ def upload_publish_assets_to_r2(
         raise PublishError("发布清单缺少 run_id，无法生成 R2 对象路径")
     uploaded: list[dict] = []
     output_records = []
+    production_source = str(manifest.get("production_source") or "local_mcp").strip()
     selected_modes = {str(value).strip() for value in (learning_modes or []) if str(value).strip()}
     for item in manifest.get("items") or []:
         mode = str(item.get("learning_mode") or "unknown").strip() or "unknown"
@@ -413,10 +414,9 @@ def upload_publish_assets_to_r2(
             )
             video["video_url"] = stored["url"]
             video["r2_key"] = stored["key"]
-            uploaded.append({"kind": "video", "learning_mode": mode, "video_format": video_format, **stored})
-            if manifest.get("production_source") == "local_mcp":
-                output_records.append({
-                    "production_id": video_production_id("local_mcp", run_id, mode, video_format, index),
+            uploaded.append({"kind": "video", "source_name": video_path.name, "learning_mode": mode, "video_format": video_format, **stored})
+            output_records.append({
+                    "production_id": video_production_id(production_source, run_id, mode, video_format, index),
                     "run_id": run_id,
                     "publish_date": str(manifest.get("publish_date") or "").strip(),
                     "business_line": WORKFLOW_ID,
@@ -424,8 +424,8 @@ def upload_publish_assets_to_r2(
                     "content_part": index,
                     "title": str(video.get("title") or item.get("title") or "").strip(),
                     "hashtags": _hashtags(list(item.get("tags") or [])),
-                    "source": "local_mcp",
-                    "local_path": str(video_path),
+                    "source": production_source,
+                    "local_path": str(video_path) if production_source == "local_mcp" else None,
                     "r2_url": stored["url"],
                     "r2_expires_at": None,
                 })
@@ -440,10 +440,9 @@ def upload_publish_assets_to_r2(
         )
         manifest["subject_sheet_url"] = stored["url"]
         manifest["subject_sheet_r2_key"] = stored["key"]
-        uploaded.append({"kind": "subject_sheet", **stored})
+        uploaded.append({"kind": "subject_sheet", "source_name": sheet_path.name, **stored})
     manifest["r2_uploaded"] = True
-    if output_records:
-        manifest["production_outputs"] = commit_production_outputs(output_records)
+    manifest["production_outputs"] = commit_production_outputs(output_records) if output_records else []
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     stored_manifest = upload_public_file(
         path,
@@ -458,12 +457,35 @@ def upload_publish_assets_to_r2(
         stored_manifest["key"],
         content_type="application/json",
     )
-    uploaded.append({"kind": "manifest", **stored_manifest})
+    uploaded.append({"kind": "manifest", "source_name": PUBLISH_MANIFEST_FILE_NAME, **stored_manifest})
+    delivery_manifest = {
+        "workflow": WORKFLOW_ID,
+        "run_id": run_id,
+        "topic": str(manifest.get("topic") or ""),
+        "publish_date": str(manifest.get("publish_date") or ""),
+        "r2_files": [
+            {
+                "source_name": str(item.get("source_name") or ""),
+                "key": item.get("key"),
+                "url": item.get("url"),
+                "kind": item.get("kind"),
+            }
+            for item in uploaded
+        ],
+    }
+    delivery_path = path.parent / "r2-manifest.json"
+    delivery_path.write_text(json.dumps(delivery_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    stored_delivery = upload_public_file(
+        delivery_path,
+        f"runs/{WORKFLOW_ID}/{run_id}/r2-manifest.json",
+        content_type="application/json",
+    )
     return {
         "manifest_path": str(path),
-        "manifest_url": stored_manifest["url"],
+        "manifest_url": stored_delivery["url"],
         "subject_sheet_url": manifest.get("subject_sheet_url"),
-        "uploaded": uploaded,
+        "uploaded": [*uploaded, {"kind": "delivery_manifest", **stored_delivery}],
+        "production_outputs": manifest["production_outputs"],
     }
 
 

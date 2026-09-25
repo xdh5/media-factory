@@ -107,7 +107,29 @@ def build_vocabulary_prompt(topic: str, learning_modes: list[str], recent_words:
         "recent_words": history,
         "word_history_days": WORD_HISTORY_DAYS,
         "minimum_new_words": MINIMUM_NEW_WORDS,
+        "system_prompt": "你是语言学习词表编辑。只输出用户规定的纯文本表格；第一行必须是‘英文主题｜单个英文单词 TOPIC’，禁止 Markdown、标题、解释或省略首行。",
     }
+
+
+def build_topic_prompt(recent_topics: list[str], requested_topic: str = "", feedback: str = "") -> dict:
+    requested = str(requested_topic or "").strip()
+    prompt = (
+        "选择一个能扩展出10个初学者生活常用词的英文类别词。"
+        f"不得与最近30天主题重复：{recent_topics}。"
+        f"用户指定主题：{requested or '无'}。只返回一个不含空格的英文单词。"
+    )
+    if feedback:
+        prompt += f"\n上一次校验失败：{feedback}"
+    return {"system_prompt": "你是语言学习短视频选题编辑，只返回一个不含空格的英文单词，不加说明。", "user_prompt": prompt}
+
+
+def validate_topic_response(response_text: str, recent_topics: list[str]) -> dict:
+    topic = str(response_text or "").strip().strip("“”\"'")
+    if re.fullmatch(r"[A-Za-z]+", topic) is None:
+        raise InvalidVocabularyError("语言学习 TOPIC 必须是一个不含空格的英文单词")
+    if topic.casefold() in {str(item).strip().casefold() for item in recent_topics}:
+        raise InvalidVocabularyError(f"语言学习 TOPIC 最近 30 天已经使用：{topic}")
+    return {"topic": topic}
 
 
 def build_subject_sheet_prompt(topic: str, words: list[dict]) -> dict:

@@ -6,6 +6,8 @@ import json
 import os
 import re
 import warnings
+from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 
 os.environ.setdefault("DASHSCOPE_BUSINESS_LINE", "language_learning")
@@ -23,6 +25,7 @@ from core.tools.cloudflare_data import (
     CloudflareDataError,
     commit_publication_records,
     list_production_outputs,
+    list_publication_records,
 )
 from core.tools.generate_image import (
     ImageGenerationError,
@@ -39,6 +42,8 @@ from core.mcp._task_runner import poll_task as runner_poll_task
 from core.mcp._task_runner import submit_task as runner_submit_task
 
 from ._constants import (
+    BEIJING_TIMEZONE,
+    DEFAULT_PRODUCTION_CONFIG,
     SUBJECT_CUTOUT_CACHE_DIR_NAME,
     SUBJECT_GENERATION_MAX_ATTEMPTS,
     SUBJECT_SHEET_IMAGE_ID,
@@ -49,6 +54,8 @@ from ._constants import (
     WORD_HISTORY_DAYS,
     WORKFLOW_ID,
     production_dirs,
+    normalize_publish_date,
+    publish_date_from_run_id,
     production_run_id,
 )
 from ._errors import ConfirmationRequiredError, LanguageLearningError, TaskNotFoundError
@@ -56,6 +63,7 @@ from .tools import (
     attach_publish_manifest,
     build_sheet_validation_prompt,
     build_subject_sheet_prompt,
+    build_topic_prompt,
     build_visual_validation_prompt,
     build_vocabulary_prompt,
     compose_fixed_cards,
@@ -67,6 +75,7 @@ from .tools import (
     review_subject_sheet,
     upload_publish_assets_to_r2,
     validate_subject_sheet,
+    validate_topic_response,
     validate_words,
 )
 
@@ -74,8 +83,8 @@ mcp = FastMCP(
     "media-factory-language-learning",
     instructions=(
         "语言学习视频编排 MCP。交互式生产前必须先向用户确认北京时间计划发布日期 publish_date；"
-        "日期不明确时禁止占用话题、创建 run、生产或落库。Prompt 由本 MCP 工具返回；TTS 音色、发布账号组等固定参数以 Skill "
-        "learn_Chinese_and_Korean 为准，Agent 必须按 Skill 传参。"
+        "日期不明确时禁止占用话题、创建 run、生产或落库。Prompt、TTS、发布账号组和固定生产参数"
+        "以 language_learning_get_production_config 为唯一标准，Agent 与 GitHub Runner 必须复用。"
         "每期 10 个英语单词中至少 5 个必须未在最近 100 天使用；只有用户触发发布后才记录话题与全部单词。"
         "文本生成和图片视觉验收由宿主 Agent 完成；千问只用于宿主生图失败后的兜底。"
         "耗时步骤（千问兜底生图、拼卡、出片、发布）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
@@ -85,6 +94,104 @@ mcp = FastMCP(
         "禁止绕过 MCP 自行读写内部文件。"
     ),
 )
+
+
+@mcp.tool()
+def language_learning_get_production_config(topic: str = "", learning_modes: list[str] | None = None) -> dict:
+    """返回 Agent 与 GitHub Runner 共用的语言学习固定生产参数。"""
+    config = deepcopy(DEFAULT_PRODUCTION_CONFIG)
+    modes = list(learning_modes or config["learning_modes"])
+    clean_topic = str(topic or "").strip()
+    publish_config = {}
+    if "en-zh" in modes:
+        publish_config["en-zh"] = {
+            "account_group": "中文",
+            "youtube_account": "language_learning",
+            "tags": ["#learnchinese", "#chinesevocabulary", "#mandarinchinese", "#dailychinese"],
+            "short_title": f"中文{clean_topic}怎么说",
+        }
+    if "en-ko" in modes:
+        publish_config["en-ko"] = {
+            "account_group": "韩语",
+            "tags": ["#学韩语", "#韩语单词", "#韩语入门", "#每日韩语"],
+            "short_title": "韩语单词怎么说",
+            "platforms": ["dy", "ks", "bjh", "xhs", "tt", "sph"],
+        }
+    config["learning_modes"] = modes
+    config["publish_config"] = publish_config
+    return config
+
+
+@mcp.tool()
+def language_learning_get_automation_plan(publish_date: str) -> dict:
+    """返回每周自动生产与补齐发布所需的统一预检结果。"""
+    try:
+        normalized_date = normalize_publish_date(publish_date)
+        outputs = list_production_outputs(publish_date=normalized_date, business_line=WORKFLOW_ID)
+        publications = list_publication_records(business_line=WORKFLOW_ID, publish_date=normalized_date)
+        github_outputs = [row for row in outputs if row.get("source") == "github_workflow" and row.get("r2_url")]
+        existing_run_id = str(github_outputs[0].get("run_id") or "") if github_outputs else ""
+        published = {
+            (str(row.get("title") or "").strip(), str(row.get("platform") or "").strip(), int(row.get("content_part") or 1))
+            for row in publications
+        }
+        publishable = [row for row in (github_outputs or outputs) if str(row.get("content_kind") or "") == "en-zh"]
+        targets = list(DEFAULT_PRODUCTION_CONFIG["publish_targets"])
+        pending = [
+            target for target in targets
+            if any((str(row.get("title") or "").strip(), target, int(row.get("content_part") or 1)) not in published for row in publishable)
+        ]
+        should_generate = not outputs and not publications
+        return {
+            "publish_date": normalized_date,
+            "should_generate": should_generate,
+            "should_resume_publish": not should_generate and bool(existing_run_id) and bool(pending),
+            "existing_run_id": existing_run_id,
+            "pending_targets": pending,
+            "publish_targets": targets,
+            "skip_reason": "" if should_generate else f"该计划发布日期已有 {len(outputs)} 条成片记录、{len(publications)} 条发布记录",
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def language_learning_get_publish_schedule(run_id: str) -> dict:
+    """按 MCP 配置返回自动发布目标和北京时间预约时间。"""
+    try:
+        publish_date = publish_date_from_run_id(run_id)
+        hour = int(DEFAULT_PRODUCTION_CONFIG["publish_hour_beijing"])
+        publish_at = datetime.fromisoformat(f"{publish_date}T{hour:02d}:00:00").replace(
+            tzinfo=BEIJING_TIMEZONE
+        )
+        if publish_at <= datetime.now(BEIJING_TIMEZONE):
+            raise LanguageLearningError("计划发布时间已经过去，禁止预约到过去")
+        return {
+            "run_id": run_id,
+            "publish_date": publish_date,
+            "publish_at": publish_at.isoformat(),
+            "targets": list(DEFAULT_PRODUCTION_CONFIG["publish_targets"]),
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def language_learning_get_topic_generation_prompt(recent_topics: list[str], requested_topic: str = "", feedback: str = "") -> dict:
+    """返回宿主 Agent 与 GitHub Runner 共用的主题生成 Prompt。"""
+    try:
+        return build_topic_prompt(recent_topics, requested_topic, feedback)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def language_learning_validate_topic_response(response_text: str, recent_topics: list[str]) -> dict:
+    """统一校验宿主 Agent 或千问生成的英文主题。"""
+    try:
+        return validate_topic_response(response_text, recent_topics)
+    except Exception as exc:
+        raise _map_error(exc) from exc
 
 
 def _map_error(exc: Exception) -> LanguageLearningError:

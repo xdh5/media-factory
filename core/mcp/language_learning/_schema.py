@@ -39,6 +39,44 @@ PUBLISH_CONFIG_SCHEMA = {
     "additionalProperties": False,
 }
 
+PRODUCTION_CONFIG_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "learning_modes": LEARNING_MODES_SCHEMA,
+        "voices": VOICES_SCHEMA,
+        "language_pause": {"type": "number", "minimum": 0},
+        "word_pause": {"type": "number", "minimum": 0},
+        "video_formats": {"type": "array", "items": {"type": "string"}},
+        "publish_config": PUBLISH_CONFIG_SCHEMA,
+        "subject_generation_max_attempts": {"type": "integer", "minimum": 1},
+        "model_retry_attempts": {"type": "integer", "minimum": 1},
+        "publish_targets": {"type": "array", "items": {"type": "string"}},
+        "publish_hour_beijing": {"type": "integer", "minimum": 0, "maximum": 23},
+    },
+    "required": ["learning_modes", "voices", "language_pause", "word_pause", "video_formats", "publish_config"],
+    "additionalProperties": False,
+}
+TOPIC_GENERATION_PROMPT_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "system_prompt": {"type": "string", "minLength": 1},
+        "user_prompt": {"type": "string", "minLength": 1},
+    },
+    "required": ["system_prompt", "user_prompt"],
+    "additionalProperties": False,
+}
+PUBLISH_SCHEDULE_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "run_id": {"type": "string", "pattern": r"^run-\d{8}$"},
+        "publish_date": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+        "publish_at": {"type": "string", "minLength": 1},
+        "targets": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["run_id", "publish_date", "publish_at", "targets"],
+    "additionalProperties": False,
+}
+
 GET_TOPICS_INPUT_SCHEMA = {
     "type": "object",
     "properties": {},
