@@ -96,7 +96,7 @@ def daily_production_preflight(
 
 def restore_finance_image_library(library_line: str) -> Path:
     """恢复指定财经图库；本地已有文件时跳过 R2。"""
-    from core.tools.generate_image._restore_library import restore_image_library
+    from core.tools.generate_image import restore_image_library
 
     library = restore_image_library(library_line)
     print(f"财经图库已就绪：line={library_line} path={library}", flush=True)

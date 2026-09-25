@@ -2,11 +2,22 @@
 
 编排入口：`python -m core.mcp.finance`。
 
+生产参数以 `finance_get_production_config` 返回值为唯一标准；Agent 与 GitHub Runner 共用，禁止在各自入口复制。
+
 财经线是唯一的文章成片线（原心灵鸡汤线已并入删除）；财经 Skill 提供原稿整理规则等业务参数，标题标签与分镜 Prompt 在 `core/mcp/finance/prompts/`。完整流程见 `.agents/skills/finance/SKILL.md`。
 
 ## 工具编排
 
 ```
+finance_get_production_config
+finance_get_automation_plan(publish_date)
+  └─ 每个计划发布日期目标为 2 条，返回尚缺少的 content_part（1 / 2）
+finance_get_source_hook_prompt / finance_validate_source_hook_response
+finance_get_article_prompt(source_text, source_hook)
+finance_get_article_generation_prompt / finance_validate_article_response
+finance_get_topic_generation_prompt / finance_validate_topic_response
+finance_get_metadata_generation_prompt / finance_validate_metadata_response
+finance_get_stock_video_selection_prompt / finance_validate_stock_video_selection_response
 finance_get_source_stats
 └─ cloudflare_data.get_douyin_research_script_stats
    └─ 只读统计原稿总数、可用数、有效占用数和已使用数

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import warnings
+from copy import deepcopy
 from pathlib import Path
 
 os.environ.setdefault("DASHSCOPE_BUSINESS_LINE", "finance")
@@ -38,13 +39,22 @@ from core.mcp._task_runner import poll_task as runner_poll_task
 from core.mcp._task_runner import submit_task as runner_submit_task
 
 from ._constants import (
+    AUTOMATION_DAILY_OUTPUT_COUNT,
+    DEFAULT_PRODUCTION_CONFIG,
     MCP_ID,
     SOURCE_COLLECTION_CODE,
     SOURCE_RESERVATION_MINUTES,
     TOPIC_DEDUPLICATION_DAYS,
+    normalize_publish_date,
 )
 from ._errors import ConfirmationRequiredError, FinanceError, TaskNotFoundError, WorkflowStepError
 from .tools import (
+    build_article_generation_prompt,
+    build_article_prompt,
+    build_metadata_generation_prompt,
+    build_source_hook_prompt,
+    build_stock_video_selection_prompt,
+    build_topic_prompt,
     build_metadata_prompt,
     commit_existing_qwen_shot_images,
     download_selected_videos,
@@ -56,6 +66,11 @@ from .tools import (
     save_draft,
     save_source_usage,
     upload_finance_assets_to_r2,
+    validate_article_response,
+    validate_metadata_response,
+    validate_source_hook_response,
+    validate_stock_video_selection_response,
+    validate_topic_response,
 )
 from .tools.save_draft import load_draft
 
@@ -83,15 +98,15 @@ def _map_error(exc: Exception) -> FinanceError:
 mcp = FastMCP(
     "media-factory-finance",
     instructions=(
-        "财经短视频编排 MCP。业务 Prompt、素材方案、TTS、BGM、片头等以财经 Skill 为准，"
-        "Agent 必须按 Skill 传参。"
+        "财经短视频编排 MCP。素材方案、TTS、BGM、片头等生产参数以 finance_get_production_config 为唯一标准，"
+        "Agent 与 GitHub Runner 都必须先读取并复用。"
         "交互式生产前必须先向用户确认北京时间计划发布日期 publish_date；日期不明确时禁止选稿、创建 run、生产或落库。"
         "第一步必须从抖音研究数据库选择未使用的原稿，禁止自行从零写正文；"
         "正文执行三类必做改动（品牌替换、连载指涉改写、错别字修正）之外允许措辞级改写，保留大结构与信息量并按语义断行；"
         "保存稿件成功后必须把数据库来源标记为已使用。"
         "查询稿件余量必须使用只读的 finance_get_source_stats，不得用选稿工具代替统计。"
-        "镜头素材有三类并列策略，必须在 finance_start_storyboard 用 material_strategy 明确指定："
-        "image_library（存量图库选图，GitHub Action 固定使用）、"
+        "镜头素材有三类并列策略，默认值由 finance_get_production_config 返回："
+        "image_library（存量图库选图）、"
         "qwen_reference（用户参考图 + 千问逐镜头生图）、"
         "stock_video（Pexels/Pixabay/Coverr 正版实拍视频 + 片头写实图）。"
         "稿件生成后直接制作视频；成品完成后展示成片并等待确认再发布。"
@@ -99,6 +114,104 @@ mcp = FastMCP(
         "禁止绕过 MCP 运行本地脚本。"
     ),
 )
+
+
+@mcp.tool()
+def finance_get_production_config() -> dict:
+    """返回财经生产唯一标准配置，供 Agent 与 GitHub Runner 共用。"""
+    return deepcopy(DEFAULT_PRODUCTION_CONFIG)
+
+
+@mcp.tool()
+def finance_get_automation_plan(publish_date: str) -> dict:
+    """按计划发布日期返回 GitHub 财经待生产分片；每天目标数量由 MCP 统一维护。"""
+    try:
+        normalized_date = normalize_publish_date(publish_date)
+        records = list_production_outputs(publish_date=normalized_date, business_line=MCP_ID)
+        existing_parts = {
+            int(item.get("content_part") or 1)
+            for item in records
+            if 1 <= int(item.get("content_part") or 1) <= AUTOMATION_DAILY_OUTPUT_COUNT
+        }
+        pending_parts = [
+            part
+            for part in range(1, AUTOMATION_DAILY_OUTPUT_COUNT + 1)
+            if part not in existing_parts
+        ]
+        return {
+            "publish_date": normalized_date,
+            "should_generate": bool(pending_parts),
+            "output_count": len(records),
+            "desired_output_count": AUTOMATION_DAILY_OUTPUT_COUNT,
+            "pending_content_parts": pending_parts,
+            "skip_reason": "" if pending_parts else f"该计划发布日期已有 {len(existing_parts)} 条财经成片记录，已达到每日目标",
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_get_source_hook_prompt(source_text: str, feedback: str = "") -> dict:
+    try:
+        return build_source_hook_prompt(source_text, feedback)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_validate_source_hook_response(source_text: str, response_text: str) -> dict:
+    try:
+        return validate_source_hook_response(source_text, response_text)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_get_article_generation_prompt(article_prompt: str, source_text: str, source_hook: str, feedback: str = "", previous_response: str = "") -> dict:
+    try:
+        return build_article_generation_prompt(article_prompt, source_text, source_hook, feedback, previous_response)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_validate_article_response(source_text: str, source_hook: str, response_text: str) -> dict:
+    try:
+        return validate_article_response(source_text, source_hook, response_text)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_get_topic_generation_prompt(article: str, recent_topics: list[str], requested_topic: str = "", feedback: str = "") -> dict:
+    try:
+        return build_topic_prompt(article, recent_topics, requested_topic, feedback)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_validate_topic_response(response_text: str, recent_topics: list[str]) -> dict:
+    try:
+        return validate_topic_response(response_text, recent_topics)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_get_metadata_generation_prompt(article: str, feedback: str = "") -> dict:
+    try:
+        return build_metadata_generation_prompt(article, feedback)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_validate_metadata_response(response_text: str) -> dict:
+    try:
+        return validate_metadata_response(response_text)
+    except Exception as exc:
+        raise _map_error(exc) from exc
 
 
 @mcp.tool()
@@ -176,6 +289,15 @@ def finance_get_topics() -> dict:
             "deduplication_days": TOPIC_DEDUPLICATION_DAYS,
             "recent_topics": [item["topic"] for item in recent],
         }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_get_article_prompt(source_text: str, source_hook: str) -> dict:
+    """返回正文整理 Prompt；Agent 与 GitHub Runner 必须按原样使用。"""
+    try:
+        return build_article_prompt(source_text, source_hook)
     except Exception as exc:
         raise _map_error(exc) from exc
 
@@ -411,6 +533,24 @@ def finance_start_video_search(
             fn=_work,
         )
         return {**started, "poll_tool": "finance_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_get_stock_video_selection_prompt(context_path: str, feedback: str = "") -> dict:
+    """返回 Agent 与 GitHub Runner 共用的正版视频候选选择 Prompt。"""
+    try:
+        return build_stock_video_selection_prompt(context_path, feedback)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_validate_stock_video_selection_response(context_path: str, response_text: str) -> dict:
+    """统一解析并校验 Agent 或千问返回的正版视频选择结果。"""
+    try:
+        return validate_stock_video_selection_response(context_path, response_text)
     except Exception as exc:
         raise _map_error(exc) from exc
 

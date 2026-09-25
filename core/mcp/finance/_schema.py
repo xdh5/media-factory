@@ -1,5 +1,71 @@
 """财经 MCP 输入输出 Schema。"""
 
+FINANCE_PRODUCTION_CONFIG_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "material_strategy": {"type": "string", "enum": ["image_library", "qwen_reference", "stock_video"]},
+        "tts_config": {"type": "object"},
+        "video_config": {"type": "object"},
+        "production_config": {"type": "object"},
+        "runner_retry_config": {"type": "object"},
+    },
+    "required": ["material_strategy", "tts_config", "video_config", "production_config", "runner_retry_config"],
+    "additionalProperties": False,
+}
+FINANCE_ARTICLE_PROMPT_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "source_text": {"type": "string", "minLength": 1},
+        "source_hook": {"type": "string", "minLength": 1},
+    },
+    "required": ["source_text", "source_hook"],
+    "additionalProperties": False,
+}
+FINANCE_ARTICLE_PROMPT_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {"article_prompt": {"type": "string", "minLength": 1}},
+    "required": ["article_prompt"],
+    "additionalProperties": False,
+}
+FINANCE_MODEL_PROMPT_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "system_prompt": {"type": "string", "minLength": 1},
+        "user_prompt": {"type": "string", "minLength": 1},
+    },
+    "required": ["system_prompt", "user_prompt"],
+    "additionalProperties": False,
+}
+FINANCE_MODEL_RESPONSE_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {"response_text": {"type": "string", "minLength": 1}},
+    "required": ["response_text"],
+    "additionalProperties": True,
+}
+FINANCE_AUTOMATION_PLAN_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "publish_date": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+        "should_generate": {"type": "boolean"},
+        "output_count": {"type": "integer", "minimum": 0},
+        "desired_output_count": {"type": "integer", "minimum": 1},
+        "pending_content_parts": {
+            "type": "array",
+            "items": {"type": "integer", "minimum": 1},
+        },
+        "skip_reason": {"type": "string"},
+    },
+    "required": [
+        "publish_date",
+        "should_generate",
+        "output_count",
+        "desired_output_count",
+        "pending_content_parts",
+        "skip_reason",
+    ],
+    "additionalProperties": False,
+}
+
 TTS_CONFIG_SCHEMA = {
     "type": "object",
     "properties": {
@@ -193,6 +259,10 @@ FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
             "type": "string",
             "pattern": r"^\d{4}-\d{2}-\d{2}$",
             "description": "北京时间计划发布日期；run_id 将生成为 run-YYYYMMDD",
+        },
+        "intro_scene": {
+            "type": "string",
+            "description": "stock_video 片头写实图场景：人物身份、关键动作和环境细节",
         },
     },
     "required": [

@@ -3,6 +3,7 @@
 from .generate_qwen import generate_qwen_image
 from .generate_image import prepare_agent_image_tasks, save_agent_image_tasks, submit_agent_image_tasks
 from .pick_local import choose_finance_library_line, list_local_images
+from ._restore_library import restore_image_library
 from ._errors import ImageGenerationError, ImageLibraryEmptyError
 
 __all__ = [
@@ -12,6 +13,7 @@ __all__ = [
     "generate_qwen_image",
     "choose_finance_library_line",
     "list_local_images",
+    "restore_image_library",
     "ImageGenerationError",
     "ImageLibraryEmptyError",
 ]

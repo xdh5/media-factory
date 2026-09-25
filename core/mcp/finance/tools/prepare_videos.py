@@ -120,6 +120,7 @@ def prepare_video_searches(
             "提交 [{video_id, provider, id}]；只能选择当前 context 返回的候选。"
         ),
         "intro_image_prompt": _intro_image_prompt(draft),
+        "intro_image_size": VIDEO_SIZE,
         "context_path": context_path.resolve().as_posix(),
     }
     context_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -214,3 +215,71 @@ def download_selected_videos(context_path: str | Path, selections: list[dict], *
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest
+
+
+def build_stock_video_selection_prompt(context_path: str | Path, feedback: str = "") -> dict:
+    """基于搜索上下文返回宿主 Agent 与 Runner 共用的选视频 Prompt。"""
+    _, context = load_draft(context_path, "正版视频搜索上下文")
+    searches = context.get("searches")
+    if not isinstance(searches, list) or not searches:
+        raise WorkflowStepError("正版视频搜索上下文缺少 searches")
+    compact = []
+    for search in searches:
+        compact.append({
+            "video_id": search["video_id"],
+            "subtitle": search.get("subtitle"),
+            "query": search.get("query"),
+            "duration": search.get("duration"),
+            "candidates": [
+                {
+                    "provider": row.get("provider"),
+                    "id": row.get("id"),
+                    "title": row.get("title"),
+                    "duration": row.get("duration"),
+                    "width": row.get("width"),
+                    "height": row.get("height"),
+                    "preview_url": row.get("preview_url"),
+                }
+                for row in search.get("candidates") or []
+            ],
+        })
+    prompt = (
+        "为每个正文镜头选择语义最贴近、横屏构图最合适、时长足够的正版实拍候选视频。"
+        "必须检查可用预览画面；同一期尽量不重复素材；只能选择输入候选。\n"
+        f"搜索结果：{json.dumps(compact, ensure_ascii=False)}\n"
+        "只输出 JSON：{\"selections\":[{\"video_id\":\"shot-002\","
+        "\"provider\":\"pexels\",\"id\":\"123\"}]}，完整覆盖全部正文镜头。"
+    )
+    if feedback:
+        prompt += f"\n\n上一次校验失败：{feedback}"
+    return {"system_prompt": "你是财经视频正版实拍素材选择员，必须输出有效 JSON，不要输出 Markdown。", "user_prompt": prompt}
+
+
+def validate_stock_video_selection_response(context_path: str | Path, response_text: str) -> dict:
+    """解析模型选片结果并复用下载阶段的候选覆盖校验。"""
+    _, context = load_draft(context_path, "正版视频搜索上下文")
+    try:
+        payload = json.loads(str(response_text or "").strip().removeprefix("```json").removesuffix("```").strip())
+    except json.JSONDecodeError as exc:
+        raise WorkflowStepError(f"选视频结果不是有效 JSON：{exc}") from exc
+    selections = payload.get("selections") if isinstance(payload, dict) else None
+    if not isinstance(selections, list):
+        raise WorkflowStepError("选视频结果缺少 selections 数组")
+    expected = {str(item.get("video_id") or "") for item in context.get("searches") or []}
+    normalized = [
+        {
+            "video_id": str(item.get("video_id") or ""),
+            "provider": str(item.get("provider") or ""),
+            "id": str(item.get("id") or ""),
+        }
+        for item in selections
+        if isinstance(item, dict)
+    ]
+    if len(normalized) != len(expected) or {item["video_id"] for item in normalized} != expected:
+        raise WorkflowStepError("视频选择没有逐项完整覆盖全部正文镜头")
+    by_video_id = {str(item["video_id"]): item for item in context.get("searches") or []}
+    for item in normalized:
+        candidates = by_video_id[item["video_id"]].get("candidates") or []
+        if not any(str(row.get("provider") or "") == item["provider"] and str(row.get("id") or "") == item["id"] for row in candidates):
+            raise WorkflowStepError(f"镜头 {item['video_id']} 选择了不在候选列表中的素材")
+    return {"selections": normalized}

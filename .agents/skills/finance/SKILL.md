@@ -5,7 +5,7 @@ description: 使用项目财经 MCP 制作中文短视频（财经、心灵鸡�
 
 # 财经视频
 
-MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文、素材策略、TTS、BGM、片头、发布账号组与完整流程**；MCP 只负责编排。禁止绕过 MCP 或直接读写内部文件。
+MCP 入口：`python -m core.mcp.finance`。**Finance MCP 是 Prompt、素材策略、TTS、BGM、片头和生产参数的唯一真源**；本 Skill 只描述交互门禁与完整流程。禁止绕过 MCP 或直接读写内部文件。
 
 本线是唯一的文章成片线：**心灵鸡汤等非财经文章内容同样走这条线**，不再有独立业务线。内容类型由数据库原稿决定，制作流程完全一致。
 
@@ -17,7 +17,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 | 用途 | 位置 |
 | --- | --- |
-| 原稿整理（三类必做改动 + 措辞级改写，保留大结构与信息） | 本 Skill：`prompts/finance.md` |
+| 原稿整理（三类必做改动 + 措辞级改写，保留大结构与信息） | MCP：`finance_get_article_prompt` |
 | 标题标签 | MCP：`finance_get_metadata_prompt` |
 | 分镜 | MCP：`finance_start_storyboard` 返回的 `storyboard_prompt`（按素材策略给出 IMAGE 或 VIDEO 规则） |
 
@@ -27,7 +27,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 如果工具返回 `DOUYIN_SCRIPTS_EXHAUSTED`，说明所有稿件都已使用；必须向用户报告并停止制作，不得复用旧稿或自行写稿。如果返回 `DOUYIN_SCRIPTS_BUSY`，说明剩余稿件正在其他任务中制作，也必须停止本次制作。
 
-按返回的 `source.transcript` 识别原稿开头完整的黄金钩子，填入本 Skill 的 `prompts/finance.md`：
+按返回的 `source.transcript` 调用 `finance_get_source_hook_prompt`，宿主 Agent 按 Prompt 识别后必须调用 `finance_validate_source_hook_response`；再调用 `finance_get_article_prompt` 与 `finance_get_article_generation_prompt`，宿主 Agent 生成 JSON 后必须调用 `finance_validate_article_response`。禁止在 Agent 侧另写钩子、正文解析或校验规则。
 
 - `{{source_text}}`：`source.transcript` 原文
 - `{{source_hook}}`：原稿开头完整黄金钩子中**完成品牌替换后的版本**（该版本也是 `finance_save_draft` 要传的 `source_hook`）
@@ -48,13 +48,13 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 ### 素材策略（`finance_start_storyboard` 的 `material_strategy`）
 
-三类策略并列保留，**必须先问用户这期用哪一种**，再启动分镜（分镜规则随策略不同）：
+固定生产参数必须先调用 `finance_get_production_config` 从 Finance MCP 读取，MCP 是唯一真源，Agent 与 GitHub Action 禁止各自复制一份参数。三类策略并列保留，默认直接使用 MCP 返回的 `stock_video`；只有用户明确要求改用其他策略时才切换：
 
 | 取值 | 画面 | 适用 |
 | --- | --- | --- |
-| `image_library` | 存量图库选图 → 静态图慢推拉 | GitHub Action 固定使用；交互式需要省时间时也可用 |
-| `qwen_reference` | 用户参考图 + 千问逐镜头生图 | 交互式默认；需要统一画风时使用 |
-| `stock_video` | Pexels/Pixabay/Coverr 正版实拍视频 + 片头写实图 | 需要真实实拍画面上屏时使用 |
+| `image_library` | 存量图库选图 → 静态图慢推拉 | 交互式需要省时间时可用 |
+| `qwen_reference` | 用户参考图 + 千问逐镜头生图 | 用户明确需要统一画风时使用 |
+| `stock_video` | Pexels/Pixabay/Coverr 正版实拍视频 + 片头写实图 | Agent 与 GitHub Action 默认使用 |
 
 ### 镜头图（`image_config`，仅 `image_library` / `qwen_reference` 需要）
 
@@ -72,7 +72,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 - 选好后调用 `finance_submit_images`，`images` 传入 `[{image_id, image_path}]`
 - 同一期可重复使用同一张图；禁止宿主生图
 
-`qwen_reference`（交互式默认）：
+`qwen_reference`（用户明确指定时）：
 
 ```json
 {
@@ -92,14 +92,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 ### 实拍视频（`video_config`，仅 `stock_video` 需要）
 
-```json
-{
-  "orientation": "landscape",
-  "per_provider": 8,
-  "providers": ["pexels", "pixabay", "coverr"],
-  "soft_blur_sigma": 0.55
-}
-```
+完整参数直接使用 `finance_get_production_config.video_config`，Skill 不保留副本。
 
 - `soft_blur_sigma` 控制正文素材的白蒙版磨砂强度（`core/tools/soft_blur_video`），传 `0` 关闭；片头图与封面帧保持清晰。
 - 流程：`finance_start_video_search(draft_path, storyboard_text, video_config)` → 轮询 → Agent 选候选 → `finance_start_download_videos(context_path, selections)` → 轮询。
@@ -109,31 +102,13 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 ### TTS（`finance_start_storyboard` 的 `tts_config`）
 
-```json
-{
-  "voice": "fish:28df7fe4d3ec45f692af03d0a372805b",
-  "rate": "+10%",
-  "trim_trailing_silence": true
-}
-```
-
-> 语速绑定在音色上：`generate_tts_fish.FISH_VOICE_RATES` 里 `28df7fe4…` 固定 `+10%`，
-> 只要用这个音色就 +10%（行内显式写 `rate` 才会覆盖）。这里的 `rate` 只是兜底默认值，Agent 不用改。
+完整参数直接使用 `finance_get_production_config.tts_config`，Skill 不保留副本。
 
 ### 成片（`finance_start_finish_video` 的 `production_config`）
 
-```json
-{
-  "bgm_path": "static/bgm/easy-lemon-kevin-macleod.mp3",
-  "bgm_gain": 0.84,
-  "cover_frame_seconds": 0.03333333333333333,
-  "intro": "slide_in_shutter",
-  "shot_stickers": ["rec"],
-  "matrixmedia_account_group": "心灵鸡汤"
-}
-```
+完整参数直接使用 `finance_get_production_config.production_config`，Skill 不保留副本。
 
-- **BGM 固定使用 `easy-lemon-kevin-macleod.mp3`**，音量 `bgm_gain` 0.84；不得换曲或改混音参数。
+- BGM 文件与音量以 MCP 返回值为准，不得在 Agent 或 GitHub 入口覆盖。
 - **不要配置 `bgm_credit`**：音乐署名由用户自己补充，生产环节不得写入任何音乐署名。
 - 字幕样式、字幕位置、黄金钩子展示等视觉参数全部走 MCP 默认值（`core/tools/generate_final_video/_defaults.py`），Agent 不得在 `production_config` 里重复或覆盖。
 - 片头转场固定 `slide_in_shutter`，保留快门音效与 `rec` 贴纸。
@@ -147,7 +122,7 @@ MCP 入口：`python -m core.mcp.finance`。**本 Skill 提供 Prompt、范文�
 
 ## 确认门禁
 
-1. **素材策略**：开始制作前必须问清这期用 `image_library` / `qwen_reference` / `stock_video` 哪一种。
+1. **素材策略**：默认使用 `stock_video`，无需逐期确认；用户明确指定 `image_library` 或 `qwen_reference` 时按用户选择覆盖。
 2. **成片**：稿件生成后直接制作；`finance_start_finish_video` 完成后展示 `output/finance/run-YYYYMMDD/` 中的 `video_path`、标题、标签与发布文案；`YYYYMMDD` 必须是北京时间计划发布日期。未确认不得调用发布 MCP。本地 MCP 制作不得自动上传 R2；GitHub Workflow 产物才自动交付 R2。成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；查询某天是否有产物使用 `finance_get_production_outputs(publish_date)`。
 3. **清缓存**：发布结束后用户确认才调用 `finance_clear_run(run_id, confirmed=true)`。
 
@@ -178,19 +153,19 @@ SUB|L002|你以为涨薪就能存钱
 ### 第一阶段：稿件
 
 1. `finance_get_source_script`：选择并临时占用一条未使用的数据库原稿。
-2. 按本 Skill 的 `prompts/finance.md` 整理原稿：执行三类必做改动并做措辞级改写（保留大结构与全部信息），把作者与品牌替换为「财富研习岛」并按语义断行。
-3. 从正文提炼 `topic`；调用 `finance_get_metadata_prompt` 后写标题标签行。
+2. 调用 `finance_get_article_prompt` 获取统一 Prompt 并整理原稿：执行三类必做改动并做措辞级改写（保留大结构与全部信息），把作者与品牌替换为「财富研习岛」并按语义断行。
+3. 调用 `finance_get_topic_generation_prompt`，生成后交给 `finance_validate_topic_response`；再调用 `finance_get_metadata_generation_prompt`，生成后交给 `finance_validate_metadata_response`。禁止在 Agent 侧另写话题、标题、封面或片头场景校验规则。
 4. 用**长标题**按语义断成 1～3 行 `cover_lines`。封面不自动折行。
 5. 从长标题中选出 1～3 个真正承载点击理由的重点词，作为 `cover_highlights` 传入；每项必须原样出现在 `title` 中。封面重点词使用 `#F2A623` 金黄色，其他文字使用白色，统一加 6px 黑色描边。
 6. 先确定北京时间计划发布日期 `publish_date`（`YYYY-MM-DD`，不得早于当天）；`finance_save_draft` 除原参数外传入 `publish_date`、`source_aweme_id`、`source_reservation_token`、`source_hook`、`cover_highlights`，`stock_video` 策略还要传 `intro_scene`（片头写实图场景描述）。MCP 创建 `output/finance/run-YYYYMMDD/`；日期只表示计划发布日，不包含具体时间。保存成功后 MCP 自动将数据库原稿标记为已使用，直接进入制作。
 
 ### 第二阶段：制作与发布
 
-1. 先和用户确认素材策略，再 `finance_start_storyboard(draft_path, tts_config=…, material_strategy=…)` → `finance_poll_task(task_path)` 直至 `done=true`，取 `result` 作为分镜上下文。
+1. 调用 `finance_get_production_config` 读取默认素材策略和参数；用户明确覆盖时仅覆盖素材策略，再 `finance_start_storyboard(draft_path, tts_config=…, material_strategy=…)` → `finance_poll_task(task_path)` 直至 `done=true`，取 `result` 作为分镜上下文。
 2. 按 `result.storyboard_prompt` 写完整分镜文本（素材行 + 每句一条纯文本 `SUB` 行，见上文「字幕与片头钩子」）。
 3. 按策略准备素材：
    - `image_library` / `qwen_reference`：`finance_prepare_images` → （生图策略）`finance_start_generate_images` + 轮询 / （图库策略）Agent 选图后 `finance_submit_images`；
-   - `stock_video`：`finance_start_video_search` + 轮询 → Agent 选候选 → `finance_start_download_videos` + 轮询；同时按 `intro_image_prompt` 生成片头写实图。
+   - `stock_video`：`finance_start_video_search` + 轮询 → `finance_get_stock_video_selection_prompt` → 宿主 Agent 选候选 → `finance_validate_stock_video_selection_response` → `finance_start_download_videos` + 轮询；同时按 MCP 返回的 `intro_image_prompt` 由宿主 Agent 生成片头写实图。
 4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`、素材清单路径（`material_manifest_path`），`stock_video` 策略另传 `intro_image_path`。配音直接用 `prepare_storyboard` 的 `tts_path`。
    - 交互式生产必须由宿主 Agent 判断重点句、每段 1～2 行语义断行及每行 1～2 个标红重点词，并通过 `production_config.emphasis_lines.groups` 传入；禁止让 MCP 在交互式生产中自行调用文本模型。
    - 每组可用 `sentence_text` 传入完整句子原文，由工具精确匹配对应字幕句；也可使用工具返回的 `sentence` 编号。不要猜编号。
@@ -203,7 +178,7 @@ SUB|L002|你以为涨薪就能存钱
 
 ### 生产入口
 
-- GitHub Action：`python -m ops.github_actions finance`（固定 `material_strategy=image_library`、`finance` 存量图库、产物自动上传 R2，不发布平台）。
+- GitHub Action：`python -m ops.github_actions finance`（读取 Finance MCP 的统一配置，默认使用 `stock_video`，产物自动上传 R2，不发布平台）。每周六批量处理下周周一至周日，每个计划发布日期生产 2 条财经成片，分别使用 `content_part=1` 和 `content_part=2`；已有分片会在预检时跳过，只补齐缺失分片。
 - 交互式：`python -m core.mcp.finance`（本地制作，保留本地产物，发布需用户确认）。
 
 ### 后台任务轮询
@@ -217,6 +192,14 @@ SUB|L002|你以为涨薪就能存钱
 
 | 工具 | 作用 |
 | --- | --- |
+| `finance_get_production_config` | 返回 Agent 与 GitHub Runner 共用的默认素材策略、TTS、视频搜索和成片参数 |
+| `finance_get_automation_plan` | 返回指定日期的 GitHub 财经生产预检结果 |
+| `finance_get_source_hook_prompt` / `finance_validate_source_hook_response` | 共用黄金钩子识别 Prompt 与校验 |
+| `finance_get_article_prompt` | 返回 Agent 与 GitHub Runner 共用的正文整理 Prompt |
+| `finance_get_article_generation_prompt` / `finance_validate_article_response` | 共用正文模型输出协议与校验 |
+| `finance_get_topic_generation_prompt` / `finance_validate_topic_response` | 共用话题生成与去重校验 |
+| `finance_get_metadata_generation_prompt` / `finance_validate_metadata_response` | 共用标题、标签、封面和片头场景生成与校验 |
+| `finance_get_stock_video_selection_prompt` / `finance_validate_stock_video_selection_response` | 共用正版视频候选选择 Prompt 与校验 |
 | `finance_get_source_stats` | 只读统计原稿总数、可用数、有效占用数和已使用数；不会占用稿件 |
 | `finance_get_production_outputs` | 按北京时间计划发布日期查询成片及本地/R2位置 |
 | `finance_get_source_script` | 选择并临时占用未使用的数据库原稿；全部用完时报错 |

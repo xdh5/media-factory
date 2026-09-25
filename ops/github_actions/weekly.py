@@ -1,8 +1,4 @@
-"""按计划发布日期串行生产语言并发布语言。
-
-心灵鸡汤线路已并入财经业务线（原 psychology_quiz 线删除），中韩语言之外的视频
-不再进入每周 Workflow，财经走独立的手动/交互入口。
-"""
+"""按计划发布日期串行生产财经，再生产并发布语言。"""
 
 from __future__ import annotations
 
@@ -15,6 +11,8 @@ from ._shared import (
     PROJECT_ROOT,
     daily_production_preflight,
 )
+from .finance import run as run_finance
+from ._mcp import ProjectMCP
 from .language_learning import (
     generate_cards,
     generate_videos,
@@ -58,7 +56,47 @@ async def run_day(
 ) -> dict:
     work_dir = PROJECT_ROOT / "cache" / "github_actions" / cache_scope / publish_date
     work_dir.mkdir(parents=True, exist_ok=True)
-    results: dict = {"publish_date": publish_date, "language": {}}
+    results: dict = {"publish_date": publish_date, "finance": {}, "language": {}}
+
+    async with ProjectMCP("core.mcp.finance", PROJECT_ROOT) as finance_mcp:
+        finance_preflight = await finance_mcp.call(
+            "finance_get_automation_plan",
+            {"publish_date": publish_date},
+        )
+    if finance_preflight["should_generate"]:
+        os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"
+        produced, failed = [], []
+        generated_topics: list[str] = []
+        for content_part in finance_preflight["pending_content_parts"]:
+            try:
+                print(f"[{publish_date}] 开始财经生产 part={content_part}", flush=True)
+                finance_result = await run_finance(
+                    publish_date=publish_date,
+                    content_part=int(content_part),
+                    additional_recent_topics=generated_topics,
+                )
+                generated_topics.append(str(finance_result["manifest"]["topic"]))
+                produced.append({
+                    "content_part": int(content_part),
+                    "run_id": str(finance_result["manifest"]["run_id"]),
+                })
+            except Exception as exc:
+                failed.append({"content_part": int(content_part), "error": str(exc)})
+        success = not failed
+        detail = "" if success else "; ".join(
+            f"part={item['content_part']}: {item['error']}" for item in failed
+        )
+        notify_business_result("财经生产", success, run_url, detail)
+        results["finance"] = {
+            "status": "produced" if success else ("partially_produced" if produced else "produce_failed"),
+            "produced": produced,
+            "failed": failed,
+        }
+    else:
+        results["finance"] = {
+            "status": "skipped",
+            "reason": finance_preflight["skip_reason"],
+        }
 
     lang_preflight = daily_production_preflight("language_learning", publish_date)
     if not lang_preflight["should_generate"] and not lang_preflight["should_resume_publish"]:

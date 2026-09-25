@@ -190,6 +190,7 @@ def prepare_storyboard(draft_path: str | Path, *, tts_config: dict, material_str
         "material_strategy": strategy,
         "draft_path": str(resolved_draft),
         "storyboard_prompt": prompt,
+        "storyboard_system_prompt": "你是严格的视频分镜导演，只输出 Prompt 规定的素材行和 SUB 行。",
         "timeline": tts_result["timeline"],
         "tts_path": tts_result["output_path"],
         "tts_duration": tts_result["total_duration"],

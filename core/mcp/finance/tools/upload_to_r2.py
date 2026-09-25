@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 from pathlib import Path
 
 from core.tools.cloudflare_data import commit_production_outputs
@@ -29,16 +30,30 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
     r2_dir = run_id if content_part <= 1 else f"{run_id}-part{content_part}"
     video_path = Path(str(manifest.get("video_path") or "")).resolve()
     cover_path = Path(str(manifest.get("cover_path") or "")).resolve()
-    video = upload_public_file(
-        video_path,
-        f"runs/{MCP_ID}/{r2_dir}/{video_path.name}",
-        content_type="video/mp4",
+    asset_fields = (
+        "video_path",
+        "cover_path",
+        "title_path",
+        "short_title_path",
+        "publish_copy_path",
+        "attribution_comment_path",
     )
-    cover = upload_public_file(
-        cover_path,
-        f"runs/{MCP_ID}/{r2_dir}/{cover_path.name}",
-        content_type="image/png" if cover_path.suffix.lower() == ".png" else "image/jpeg",
-    )
+    uploaded_assets: dict[str, dict] = {}
+    for field in asset_fields:
+        value = str(manifest.get(field) or "").strip()
+        if not value:
+            continue
+        asset_path = Path(value).resolve()
+        if not asset_path.is_file():
+            raise WorkflowStepError(f"财经发布清单中的资产不存在：{field}={asset_path}")
+        content_type = mimetypes.guess_type(asset_path.name)[0] or "application/octet-stream"
+        uploaded_assets[field] = upload_public_file(
+            asset_path,
+            f"runs/{MCP_ID}/{r2_dir}/{asset_path.name}",
+            content_type=content_type,
+        )
+    video = uploaded_assets["video_path"]
+    cover = uploaded_assets["cover_path"]
     manifest["video_url"] = video["url"]
     manifest["video_r2_key"] = video["key"]
     manifest["cover_url"] = cover["url"]
@@ -79,6 +94,6 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
         "manifest_url": remote["url"],
         "video_url": video["url"],
         "cover_url": cover["url"],
-        "uploaded": [video, cover, remote],
+        "uploaded": [*uploaded_assets.values(), remote],
         "production_outputs": production_outputs,
     }

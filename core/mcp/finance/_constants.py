@@ -17,6 +17,7 @@ VIDEO_SIZE = "1920x1080"
 VIDEO_RADIO = "16:9"
 MATRIXMEDIA_AI_CREATIVE_STATEMENT = "ai_generated"
 CONTENT_KIND = "finance"
+AUTOMATION_DAILY_OUTPUT_COUNT = 2
 
 # 正文在三类必做改动（品牌替换、连载指涉改写、错别字修正）之外允许措辞级改写，
 # 但大结构与信息量必须与原稿一致；
@@ -24,7 +25,7 @@ CONTENT_KIND = "finance"
 ARTICLE_MAX_LINE_LENGTH = 36
 
 # 素材策略：三类并列的镜头素材来源，由用户在制作时指定。
-MATERIAL_IMAGE_LIBRARY = "image_library"      # 存量图库选图（GitHub Action 固定使用）
+MATERIAL_IMAGE_LIBRARY = "image_library"      # 存量图库选图
 MATERIAL_QWEN_REFERENCE = "qwen_reference"    # 用户参考图 + 千问逐镜头生图
 MATERIAL_STOCK_VIDEO = "stock_video"          # Pexels/Pixabay/Coverr 正版实拍视频
 MATERIAL_STRATEGIES = (
@@ -34,8 +35,42 @@ MATERIAL_STRATEGIES = (
 )
 IMAGE_MATERIAL_STRATEGIES = (MATERIAL_IMAGE_LIBRARY, MATERIAL_QWEN_REFERENCE)
 
+# Finance MCP 是生产参数的唯一真源；Agent 与 GitHub Runner 均通过
+# finance_get_production_config 获取，禁止在各自入口复制参数。
+DEFAULT_PRODUCTION_CONFIG = {
+    "material_strategy": MATERIAL_STOCK_VIDEO,
+    "tts_config": {
+        "voice": "fish:28df7fe4d3ec45f692af03d0a372805b",
+        "rate": "+10%",
+        "trim_trailing_silence": True,
+    },
+    "video_config": {
+        "orientation": "landscape",
+        "per_provider": 8,
+        "providers": ["pexels", "pixabay", "coverr"],
+        "soft_blur_sigma": 0.55,
+    },
+    "production_config": {
+        "bgm_path": "static/bgm/easy-lemon-kevin-macleod.mp3",
+        "bgm_gain": 0.672,
+        "cover_frame_seconds": 0.03333333333333333,
+        "intro": "slide_in_shutter",
+        "shot_stickers": ["rec"],
+        "matrixmedia_account_group": "心灵鸡汤",
+    },
+    "runner_retry_config": {
+        "source_hook": 3,
+        "article": 5,
+        "topic": 3,
+        "metadata": 3,
+        "storyboard": 3,
+        "stock_video_selection": 3,
+    },
+}
+
 _ROOT = Path(__file__).resolve().parent
 METADATA_PROMPT_PATH = _ROOT / "prompts" / "metadata.md"
+ARTICLE_PROMPT_PATH = _ROOT / "prompts" / "article.md"
 SHOT_IMAGE_RULES_PATH = _ROOT / "prompts" / "shot_image_rules.md"
 STOCK_VIDEO_RULES_PATH = _ROOT / "prompts" / "stock_video_rules.md"
 

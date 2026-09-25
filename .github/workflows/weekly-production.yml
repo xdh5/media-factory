@@ -42,7 +42,7 @@ jobs:
         run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START"
 
   produce-day:
-    name: 生产并发布 ${{ matrix.publish_date }}
+    name: 生产2条财经及生产发布语言 ${{ matrix.publish_date }}
     needs: plan
     strategy:
       matrix:
@@ -95,7 +95,7 @@ jobs:
         shell: bash
         run: |
           for name in \
-            DASHSCOPE_API_KEY_LANGUAGE \
+            DASHSCOPE_API_KEY_FINANCE DASHSCOPE_API_KEY_LANGUAGE \
             CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN \
             R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL \
             PEXELS_API_KEY PIXABAY_API_KEY COVERR_API_KEY \
@@ -103,7 +103,7 @@ jobs:
             test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
           done
 
-      - name: 生产语言并发布语言
+      - name: 生产2条财经及生产发布语言
         env:
           PUBLISH_DATE: ${{ matrix.publish_date }}
         run: >-

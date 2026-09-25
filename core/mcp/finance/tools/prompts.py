@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .._constants import (
+    ARTICLE_PROMPT_PATH,
     IMAGE_MATERIAL_STRATEGIES,
     MATERIAL_STRATEGIES,
     METADATA_PROMPT_PATH,
@@ -29,6 +30,23 @@ def render_template(template: str, **values: object) -> str:
 
 def build_metadata_prompt() -> dict:
     return {"metadata_prompt": read_prompt(METADATA_PROMPT_PATH)}
+
+
+def build_article_prompt(source_text: str, source_hook: str) -> dict:
+    """返回已注入数据库原稿和黄金钩子的正文整理 Prompt。"""
+    source = str(source_text or "").strip()
+    hook = str(source_hook or "").strip()
+    if not source:
+        raise WorkflowStepError("source_text 不能为空")
+    if not hook or not source.startswith(hook):
+        raise WorkflowStepError("source_hook 必须是 source_text 开头的连续原文")
+    return {
+        "article_prompt": render_template(
+            read_prompt(ARTICLE_PROMPT_PATH),
+            source_text=source,
+            source_hook=hook,
+        )
+    }
 
 
 def rules_path_for_material(material_strategy: str) -> tuple[Path, str]:

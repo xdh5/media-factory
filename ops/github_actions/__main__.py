@@ -180,7 +180,7 @@ def main() -> None:
     if arguments.workflow in {"daily_day", "weekly_day"}:
         failed = any(
             str(payload.get(name, {}).get("status", "")).endswith("failed")
-            for name in ("language",)
+            for name in ("finance", "language")
         )
         if failed:
             raise SystemExit("当日生产或发布失败，请查看上方业务结果")
