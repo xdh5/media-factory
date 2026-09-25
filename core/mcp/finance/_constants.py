@@ -23,6 +23,8 @@ AUTOMATION_DAILY_OUTPUT_COUNT = 2
 # 但大结构与信息量必须与原稿一致；
 # 每行上限约两行字幕容量（显示层再按词边界均衡换行），只挡超长行。
 ARTICLE_MAX_LINE_LENGTH = 36
+# 单次正文改写交给模型的原稿片段上限。钩子单独作为首片段处理，避免与后文任务互相干扰。
+ARTICLE_CHUNK_MAX_SOURCE_LENGTH = 280
 
 # 素材策略：三类并列的镜头素材来源，由用户在制作时指定。
 MATERIAL_IMAGE_LIBRARY = "image_library"      # 存量图库选图

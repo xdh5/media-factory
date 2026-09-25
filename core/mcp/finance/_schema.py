@@ -42,6 +42,37 @@ FINANCE_MODEL_RESPONSE_INPUT_SCHEMA = {
     "required": ["response_text"],
     "additionalProperties": True,
 }
+FINANCE_ARTICLE_CHUNK_PLAN_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "chunks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {"type": "integer", "minimum": 1},
+                    "source_text": {"type": "string", "minLength": 1},
+                    "is_hook": {"type": "boolean"},
+                },
+                "required": ["index", "source_text", "is_hook"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["chunks"],
+    "additionalProperties": False,
+}
+FINANCE_ARTICLE_CHUNK_RESPONSE_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "article": {"type": "string", "minLength": 1},
+        "replacements": {"type": "array", "items": {"type": "object"}},
+        "corrections": {"type": "array", "items": {"type": "object"}},
+    },
+    "required": ["article", "replacements", "corrections"],
+    "additionalProperties": False,
+}
 FINANCE_AUTOMATION_PLAN_OUTPUT_SCHEMA = {
     "type": "object",
     "properties": {

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 
-from .._constants import ARTICLE_MAX_LINE_LENGTH, TOPIC_DEDUPLICATION_DAYS
+from .._constants import ARTICLE_CHUNK_MAX_SOURCE_LENGTH, ARTICLE_MAX_LINE_LENGTH, TOPIC_DEDUPLICATION_DAYS
 from .._errors import WorkflowStepError
 from .parse_metadata import parse_metadata
 from .prompts import build_metadata_prompt
@@ -93,6 +93,90 @@ def build_article_generation_prompt(article_prompt: str, source_text: str, sourc
     }
 
 
+def plan_article_chunks(source_text: str, source_hook: str) -> dict:
+    """把正文拆成钩子和多个语义片段，供模型逐段处理。"""
+    source = str(source_text or "").strip()
+    hook = str(source_hook or "").strip()
+    if not source or not hook or not source.startswith(hook):
+        raise WorkflowStepError("source_text 与 source_hook 必须非空，且钩子必须位于原稿开头")
+    remaining = source[len(hook):].strip()
+    chunks = [{"index": 1, "source_text": hook, "is_hook": True}]
+    if not remaining:
+        return {"chunks": chunks}
+    units = [item.strip() for item in re.findall(r"[^。！？；\n]+[。！？；]?", remaining) if item.strip()]
+    buffer = ""
+    for unit in units:
+        if buffer and len(buffer) + len(unit) > ARTICLE_CHUNK_MAX_SOURCE_LENGTH:
+            chunks.append({"index": len(chunks) + 1, "source_text": buffer, "is_hook": False})
+            buffer = unit
+        else:
+            buffer += unit
+    if buffer:
+        chunks.append({"index": len(chunks) + 1, "source_text": buffer, "is_hook": False})
+    return {"chunks": chunks}
+
+
+def build_article_chunk_generation_prompt(
+    source_chunk: str,
+    source_hook: str = "",
+    feedback: str = "",
+    previous_response: str = "",
+) -> dict:
+    """构建单个正文片段的生成 Prompt，避免整篇任务超载。"""
+    chunk = str(source_chunk or "").strip()
+    hook = str(source_hook or "").strip()
+    if not chunk:
+        raise WorkflowStepError("source_chunk 不能为空")
+    hook_rule = (
+        "这是首段钩子。article 必须以处理后的钩子原字原标点原顺序开头；"
+        "钩子只允许品牌替换和明确错别字修正，不得措辞改写。\n"
+        f"原始钩子：{hook}\n"
+        if hook else ""
+    )
+    prompt = (
+        "只处理下面这一段原稿，不要输出前后段落。保留全部事实、数字、例子和顺序；"
+        "在品牌替换、连载指涉改写和明确错别字修正之外，允许措辞级改写。"
+        f"按语义断行，每行含标点不得超过 {ARTICLE_MAX_LINE_LENGTH} 字。\n"
+        "只输出 JSON：{\"article\":\"断行后的本段正文\","
+        f"\"replacements\":[{{\"from\":\"原品牌\",\"to\":\"{BRAND_NAME}\"}}],"
+        "\"corrections\":[{\"from\":\"原稿错字\",\"to\":\"正确文字\"}]}。"
+        "replacements 和 corrections 仅列出本段实际修改。\n"
+        f"{hook_rule}\n当前原稿片段：\n{chunk}"
+    )
+    if feedback:
+        prompt += f"\n\n上一次本段校验失败：{feedback}\n上一版：\n{previous_response}"
+    return {
+        "system_prompt": "你是中文短视频编辑，必须输出有效 JSON，不要输出 Markdown。",
+        "user_prompt": prompt,
+    }
+
+
+def validate_article_chunk_response(source_chunk: str, source_hook: str, response_text: str) -> dict:
+    """校验单个正文片段，让失败只重试该片段。"""
+    payload = _json_payload(response_text)
+    replacements = _pairs(payload.get("replacements"), default_target=BRAND_NAME)
+    corrections = _pairs(payload.get("corrections"))
+    if any(_bare(target) != _bare(BRAND_NAME) for _, target in replacements):
+        raise WorkflowStepError(f"所有品牌只能替换为「{BRAND_NAME}」")
+    article = str(payload.get("article") or "").strip()
+    if not article:
+        raise WorkflowStepError("本段 article 不能为空")
+    processed_hook = _replace(_replace(source_hook, replacements), corrections)
+    if source_hook and not _bare(article).startswith(_bare(processed_hook)):
+        raise WorkflowStepError("首段必须以完成品牌替换和错字修正后的黄金钩子原样开头")
+    long_lines = [(index, len(line.strip())) for index, line in enumerate(article.splitlines(), 1) if len(line.strip()) > ARTICLE_MAX_LINE_LENGTH]
+    if long_lines:
+        detail = "、".join(f"第{index}行 {size}字" for index, size in long_lines)
+        raise WorkflowStepError(f"本段存在超过 {ARTICLE_MAX_LINE_LENGTH} 字的行：{detail}")
+    source_size = len(_bare(source_chunk))
+    ratio = len(_bare(article)) / source_size if source_size else 0
+    if not ARTICLE_LENGTH_RATIO_MIN <= ratio <= ARTICLE_LENGTH_RATIO_MAX:
+        raise WorkflowStepError(
+            f"本段长度是原稿的 {ratio:.2f} 倍，必须在 {ARTICLE_LENGTH_RATIO_MIN}～{ARTICLE_LENGTH_RATIO_MAX} 之间"
+        )
+    return {"article": article, "replacements": payload.get("replacements") or [], "corrections": payload.get("corrections") or []}
+
+
 def validate_article_response(source_text: str, source_hook: str, response_text: str) -> dict:
     payload = _json_payload(response_text)
     replacements = _pairs(payload.get("replacements"), default_target=BRAND_NAME)
@@ -106,7 +190,8 @@ def validate_article_response(source_text: str, source_hook: str, response_text:
         raise WorkflowStepError("正文必须以完成品牌替换和错字修正后的黄金钩子原样开头")
     long_lines = [(index, len(line.strip())) for index, line in enumerate(article.splitlines(), 1) if len(line.strip()) > ARTICLE_MAX_LINE_LENGTH]
     if long_lines:
-        raise WorkflowStepError(f"正文存在超过 {ARTICLE_MAX_LINE_LENGTH} 字的行", {"long_lines": long_lines})
+        detail = "、".join(f"第{index}行 {size}字" for index, size in long_lines)
+        raise WorkflowStepError(f"正文存在超过 {ARTICLE_MAX_LINE_LENGTH} 字的行：{detail}", {"long_lines": long_lines})
     source_size = len(_bare(source_text))
     ratio = len(_bare(article)) / source_size if source_size else 0
     if not ARTICLE_LENGTH_RATIO_MIN <= ratio <= ARTICLE_LENGTH_RATIO_MAX:
@@ -159,4 +244,3 @@ def validate_metadata_response(response_text: str) -> dict:
     if not intro_scene:
         raise WorkflowStepError("stock_video 需要非空 intro_scene")
     return {**metadata, "cover_lines": lines, "cover_highlights": highlights, "intro_scene": intro_scene}
-

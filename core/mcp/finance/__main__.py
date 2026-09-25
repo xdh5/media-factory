@@ -50,11 +50,13 @@ from ._constants import (
 from ._errors import ConfirmationRequiredError, FinanceError, TaskNotFoundError, WorkflowStepError
 from .tools import (
     build_article_generation_prompt,
+    build_article_chunk_generation_prompt,
     build_article_prompt,
     build_metadata_generation_prompt,
     build_source_hook_prompt,
     build_stock_video_selection_prompt,
     build_topic_prompt,
+    plan_article_chunks,
     build_metadata_prompt,
     commit_existing_qwen_shot_images,
     download_selected_videos,
@@ -67,6 +69,7 @@ from .tools import (
     save_source_usage,
     upload_finance_assets_to_r2,
     validate_article_response,
+    validate_article_chunk_response,
     validate_metadata_response,
     validate_source_hook_response,
     validate_stock_video_selection_response,
@@ -170,6 +173,33 @@ def finance_validate_source_hook_response(source_text: str, response_text: str) 
 def finance_get_article_generation_prompt(article_prompt: str, source_text: str, source_hook: str, feedback: str = "", previous_response: str = "") -> dict:
     try:
         return build_article_generation_prompt(article_prompt, source_text, source_hook, feedback, previous_response)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_get_article_chunk_plan(source_text: str, source_hook: str) -> dict:
+    """按钩子和语义短句拆分财经正文，供 Runner 逐段生成。"""
+    try:
+        return plan_article_chunks(source_text, source_hook)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_get_article_chunk_generation_prompt(source_chunk: str, source_hook: str = "", feedback: str = "", previous_response: str = "") -> dict:
+    """返回单个财经正文片段的模型 Prompt。"""
+    try:
+        return build_article_chunk_generation_prompt(source_chunk, source_hook, feedback, previous_response)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def finance_validate_article_chunk_response(source_chunk: str, source_hook: str = "", response_text: str = "") -> dict:
+    """校验单个财经正文片段；失败时只需重试当前片段。"""
+    try:
+        return validate_article_chunk_response(source_chunk, source_hook, response_text)
     except Exception as exc:
         raise _map_error(exc) from exc
 

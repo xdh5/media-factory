@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 from core.tools.generate_image import generate_qwen_image
@@ -33,22 +34,46 @@ async def _source_hook(mcp, source_text, attempts):
 
 
 async def _article(mcp, source_text, source_hook, attempts):
-    base = (await mcp.call("finance_get_article_prompt", {"source_text": source_text, "source_hook": source_hook}))["article_prompt"]
-    feedback, previous = "", ""
-    for _ in range(attempts):
-        prompt = await mcp.call("finance_get_article_generation_prompt", {
-            "article_prompt": base, "source_text": source_text, "source_hook": source_hook,
-            "feedback": feedback, "previous_response": previous,
-        })
-        previous = qwen(prompt["system_prompt"], prompt["user_prompt"], json_output=True, max_tokens=12000)["text"]
-        try:
-            result = await mcp.call("finance_validate_article_response", {
-                "source_text": source_text, "source_hook": source_hook, "response_text": previous,
+    plan = await mcp.call("finance_get_article_chunk_plan", {
+        "source_text": source_text, "source_hook": source_hook,
+    })
+    articles, replacements, corrections = [], [], []
+    for chunk in plan["chunks"]:
+        feedback, previous = "", ""
+        chunk_index = int(chunk["index"])
+        chunk_text = str(chunk["source_text"])
+        chunk_hook = source_hook if bool(chunk["is_hook"]) else ""
+        for _ in range(attempts):
+            prompt = await mcp.call("finance_get_article_chunk_generation_prompt", {
+                "source_chunk": chunk_text,
+                "source_hook": chunk_hook,
+                "feedback": feedback,
+                "previous_response": previous,
             })
-            return str(result["article"]), str(result["source_hook"])
-        except MCPCallError as exc:
-            feedback = str(exc)
-    raise RuntimeError(f"财经正文连续 {attempts} 次不合格：{feedback}")
+            previous = qwen(prompt["system_prompt"], prompt["user_prompt"], json_output=True, max_tokens=3000)["text"]
+            try:
+                result = await mcp.call("finance_validate_article_chunk_response", {
+                    "source_chunk": chunk_text,
+                    "source_hook": chunk_hook,
+                    "response_text": previous,
+                })
+                articles.append(str(result["article"]))
+                replacements.extend(result.get("replacements") or [])
+                corrections.extend(result.get("corrections") or [])
+                break
+            except MCPCallError as exc:
+                feedback = str(exc)
+        else:
+            raise RuntimeError(f"财经正文第 {chunk_index} 段连续 {attempts} 次不合格：{feedback}")
+    response = json.dumps({
+        "article": "\n".join(articles),
+        "replacements": replacements,
+        "corrections": corrections,
+    }, ensure_ascii=False)
+    result = await mcp.call("finance_validate_article_response", {
+        "source_text": source_text, "source_hook": source_hook, "response_text": response,
+    })
+    return str(result["article"]), str(result["source_hook"])
 
 
 async def _topic(mcp, article, recent_topics, requested_topic, attempts):

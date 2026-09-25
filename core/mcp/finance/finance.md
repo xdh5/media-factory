@@ -14,7 +14,12 @@ finance_get_automation_plan(publish_date)
   └─ 每个计划发布日期目标为 2 条，返回尚缺少的 content_part（1 / 2）
 finance_get_source_hook_prompt / finance_validate_source_hook_response
 finance_get_article_prompt(source_text, source_hook)
-finance_get_article_generation_prompt / finance_validate_article_response
+finance_get_article_chunk_plan
+  └─ 首段钩子与后续语义短句拆成多个小任务
+finance_get_article_chunk_generation_prompt / finance_validate_article_chunk_response
+  └─ Runner 逐段生成与校验，失败只重试当前段
+finance_validate_article_response
+  └─ 合并后执行全文校验
 finance_get_topic_generation_prompt / finance_validate_topic_response
 finance_get_metadata_generation_prompt / finance_validate_metadata_response
 finance_get_stock_video_selection_prompt / finance_validate_stock_video_selection_response

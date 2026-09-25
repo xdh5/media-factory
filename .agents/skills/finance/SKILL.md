@@ -40,7 +40,7 @@ MCP 入口：`python -m core.mcp.finance`。**Finance MCP 是 Prompt、素材策
   3. **修正错别字**：只修正答案明确的错别字、同音错字和明显转写错误，不改变原意；拿不准时保留原词。
 - **在三类改动之外允许措辞级改写**：逐句换说法、调整句式和用词，避免和原稿逐字雷同；但句子顺序、段落划分与论证逻辑必须与原稿一致，每个观点、数字、例子的信息都必须保留，不得压缩、扩写、增删观点或重排段落，正文长度与原稿基本相当。
 - **黄金钩子保持原样**：钩子只做品牌替换和明确错别字修正，不做措辞改写；正文必须以处理后的钩子原字原标点原顺序开头，钩子之后才开始改写。
-- 断行：按语义切成口语短句，每句单独一行，单行全部字符（含所有标点）不超过 36 字；不得把一个词或固定搭配拆到两行。
+- 断行：按语义切成口语短句，每句单独一行，单行全部字符（含所有标点）不超过 36 字；不得把一个词或固定搭配拆到两行。GitHub Runner 必须先调用 `finance_get_article_chunk_plan`，逐段调用 Prompt 与校验 Tool；任何片段失败只重试该片段，合并后仍须调用全文校验。
 - 句与句之间换行，不要用逗号连两句完整话；顿号列举写在同一句里。
 - `finance_save_draft` 必须传回 `source.aweme_id`、`reservation.reservation_token` 和 `source_hook`；保存成功后 MCP 自动将数据库来源标记为已使用，下次不再选择。
 
@@ -196,7 +196,9 @@ SUB|L002|你以为涨薪就能存钱
 | `finance_get_automation_plan` | 返回指定日期的 GitHub 财经生产预检结果 |
 | `finance_get_source_hook_prompt` / `finance_validate_source_hook_response` | 共用黄金钩子识别 Prompt 与校验 |
 | `finance_get_article_prompt` | 返回 Agent 与 GitHub Runner 共用的正文整理 Prompt |
-| `finance_get_article_generation_prompt` / `finance_validate_article_response` | 共用正文模型输出协议与校验 |
+| `finance_get_article_chunk_plan` | 按钩子和语义短句拆分正文小任务 |
+| `finance_get_article_chunk_generation_prompt` / `finance_validate_article_chunk_response` | 共用单段正文模型输出协议与校验，失败只重试该段 |
+| `finance_validate_article_response` | 合并全部片段后的全文校验 |
 | `finance_get_topic_generation_prompt` / `finance_validate_topic_response` | 共用话题生成与去重校验 |
 | `finance_get_metadata_generation_prompt` / `finance_validate_metadata_response` | 共用标题、标签、封面和片头场景生成与校验 |
 | `finance_get_stock_video_selection_prompt` / `finance_validate_stock_video_selection_response` | 共用正版视频候选选择 Prompt 与校验 |
