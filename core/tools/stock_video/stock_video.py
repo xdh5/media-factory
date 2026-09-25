@@ -104,6 +104,10 @@ def _best_variant(variants: list[dict], orientation: str) -> dict | None:
     ]
     if not valid:
         return None
+    # 成片统一规范化到 1920x1080，选最接近 Full HD 的版本即可，
+    # 避免为 4K 原片付出 10 倍下载体积（2026-09-23：163MB 原片拖垮整条生产线）。
+    target_pixels = 1920 * 1080
+
     def score(row: dict) -> tuple[int, int]:
         width, height = int(row.get("width") or 0), int(row.get("height") or 0)
         matches = (
@@ -111,7 +115,7 @@ def _best_variant(variants: list[dict], orientation: str) -> dict | None:
             or (orientation == "portrait" and height > width)
             or (orientation == "square" and abs(width - height) <= max(width, height) * 0.15)
         )
-        return (1 if matches else 0, min(width * height, 3840 * 2160))
+        return (1 if matches else 0, -abs(width * height - target_pixels))
     return max(valid, key=score)
 
 
@@ -304,8 +308,39 @@ def _allowed_download_url(provider: str, url: str) -> bool:
     )
 
 
+def _curl_download(provider: str, url: str, temporary: Path) -> str:
+    """用 curl 下载（urlopen 在代理环境下会出现 socket 超时不生效的假活连接）。
+
+    --speed-limit/--speed-time 组合在"连接假活、几乎无数据"时主动掐断，
+    --max-time 给整个下载设总上限；返回 curl 看到的最终跳转 URL。
+    """
+    command = [
+        "curl", "-L", "--fail", "--silent", "--show-error",
+        "--connect-timeout", str(DEFAULT_TIMEOUT_SECONDS),
+        "--max-time", "600",
+        "--speed-limit", "10240", "--speed-time", "30",
+        "--user-agent", "media-factory/1.0",
+        "--output", str(temporary),
+        "--write-out", "%{url_effective}",
+        url,
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=660)
+    if result.returncode != 0:
+        raise StockVideoDownloadError(
+            f"curl 下载视频素材失败（exit {result.returncode}）：{result.stderr.strip()[:300]}",
+            {"provider": provider},
+        )
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not lines:
+        raise StockVideoDownloadError("curl 未返回最终跳转地址", {"provider": provider})
+    return lines[-1]
+
+
 def download_stock_video(candidate: dict, output_path: str | Path) -> dict:
-    """下载已选择的官方 API 候选视频到本地，不接受任意网址。"""
+    """下载已选择的官方 API 候选视频到本地，不接受任意网址。
+
+    目标文件已存在且非空时直接跳过（重跑幂等，不重复下载）。
+    """
     provider = str(candidate.get("provider") or "").strip()
     url = str(candidate.get("download_url") or "").strip()
     if provider not in PROVIDER_PRIORITY or not _allowed_download_url(provider, url):
@@ -313,43 +348,50 @@ def download_stock_video(candidate: dict, output_path: str | Path) -> dict:
     destination = Path(output_path).resolve()
     if destination.suffix.lower() != ".mp4":
         raise StockVideoDownloadError("output_path 必须使用 .mp4 扩展名")
+    if destination.is_file() and destination.stat().st_size > 0:
+        return {
+            "output_path": str(destination),
+            "bytes": destination.stat().st_size,
+            "candidate": candidate,
+            "skipped_existing": True,
+        }
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(destination.suffix + ".part")
-    request = Request(url, headers={"User-Agent": "media-factory/1.0"})
-    try:
-        with urlopen(request, timeout=DEFAULT_TIMEOUT_SECONDS) as response, temporary.open("wb") as stream:
-            final_url = response.geturl()
+    last_error: StockVideoDownloadError | None = None
+    for attempt in range(2):
+        try:
+            final_url = _curl_download(provider, url, temporary)
             if not _allowed_download_url(provider, final_url):
                 raise StockVideoDownloadError(
                     "视频下载跳转到了不受支持的域名",
                     {"provider": provider, "final_url": final_url},
                 )
-            length = int(response.headers.get("Content-Length") or 0)
+            length = temporary.stat().st_size if temporary.is_file() else 0
+            if length <= 0:
+                raise StockVideoDownloadError("下载内容为空", {"provider": provider})
             if length > MAX_DOWNLOAD_BYTES:
                 raise StockVideoDownloadError("视频素材超过300MB限制", {"content_length": length})
-            total = 0
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > MAX_DOWNLOAD_BYTES:
-                    raise StockVideoDownloadError("视频素材下载超过300MB限制")
-                stream.write(chunk)
-        os.replace(temporary, destination)
-    except StockVideoDownloadError:
-        if temporary.exists():
-            temporary.unlink()
-        raise
-    except (HTTPError, URLError, TimeoutError, OSError) as exc:
-        if temporary.exists():
-            temporary.unlink()
-        raise StockVideoDownloadError(f"下载视频素材失败：{exc}", {"provider": provider}) from exc
-    return {
-        "output_path": str(destination),
-        "bytes": destination.stat().st_size,
-        "candidate": candidate,
-    }
+            os.replace(temporary, destination)
+            return {
+                "output_path": str(destination),
+                "bytes": destination.stat().st_size,
+                "candidate": candidate,
+            }
+        except StockVideoDownloadError as exc:
+            if temporary.exists():
+                temporary.unlink()
+            last_error = exc
+            if attempt == 0:
+                time.sleep(3)
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            if temporary.exists():
+                temporary.unlink()
+            last_error = StockVideoDownloadError(
+                f"下载视频素材失败：{exc}", {"provider": provider}
+            )
+            if attempt == 0:
+                time.sleep(3)
+    raise last_error
 
 
 def prepare_stock_clip(
