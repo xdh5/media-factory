@@ -10,9 +10,8 @@ INGEST_INPUT_SCHEMA = {
         },
         "collection_name": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 100,
-            "description": "写入数据库的中文分类名",
+            "const": "财经",
+            "description": "写入数据库的分类名，目前仅支持“财经”",
         },
     },
     "required": ["share_text", "collection_name"],

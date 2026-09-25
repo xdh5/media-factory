@@ -30,7 +30,7 @@ def _map_error(exc: Exception) -> Exception:
 mcp = FastMCP(
     "media-factory-douyin-research",
     instructions=(
-        "抖音链接下载、转写和分类入库 MCP。用户只需提供抖音分享链接或分享文字以及中文分类名。"
+        "抖音链接下载、转写和财经分类入库 MCP。用户只需提供抖音分享链接或分享文字，分类名固定为“财经”。"
         "必须调用 douyin_research_start_ingest 启动后台任务，再用返回的 task_path 调用 "
         "douyin_research_poll_task，直到 done=true；不得重复启动同一链接。"
         "流程只编排 core.tools.download、core.tools.transcribe 和 Cloudflare D1 写入，禁止调用 MediaCrawler 或浏览器搜索。"

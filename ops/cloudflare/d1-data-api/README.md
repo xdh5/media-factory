@@ -22,7 +22,7 @@
 
 抖音研究 MCP 接收用户提供的抖音链接和分类，完成下载、转写后调用 `POST /v1/douyin-research/commit`。作品内容只存一份，内容分类和来源标识记录在 `douyin_research_discoveries`；链接直投的来源标识固定为 `direct_link`。
 
-财经 MCP 通过 `POST /v1/douyin-research/scripts/reserve` 从“财经”分类选择未使用原稿并临时占用，保存改编稿后调用 `POST /v1/douyin-research/scripts/used` 标记为已使用。占用默认两小时后自动过期；全部稿件已使用时接口返回 `DOUYIN_SCRIPTS_EXHAUSTED`，禁止回退到重复稿件。
+财经 MCP 通过 `POST /v1/douyin-research/scripts/reserve` 从“财经”分类随机选择未使用原稿并临时占用，保存改编稿后调用 `POST /v1/douyin-research/scripts/used` 标记为已使用。占用默认两小时后自动过期；全部稿件已使用时接口返回 `DOUYIN_SCRIPTS_EXHAUSTED`，禁止回退到重复稿件。
 
 可通过 `GET /v1/douyin-research/scripts/stats?collection_code=finance&workflow=finance&reservation_minutes=120` 只读查询稿件总数、可用数、有效占用数和已使用数；过期占用计入可用数，查询不会创建或更新占用记录。
 

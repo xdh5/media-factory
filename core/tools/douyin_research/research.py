@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 from core.tools.cloudflare_data import CloudflareDataError, commit_douyin_research
@@ -19,8 +18,7 @@ def _collection_code(collection_name: str) -> str:
     known = COLLECTION_CODE_BY_NAME.get(collection_name)
     if known:
         return known
-    digest = hashlib.sha256(collection_name.encode("utf-8")).hexdigest()[:12]
-    return f"category-{digest}"
+    raise IngestError("分类名称仅支持“财经”，请将 collection_name 设置为“财经”")
 
 
 def ingest_link(

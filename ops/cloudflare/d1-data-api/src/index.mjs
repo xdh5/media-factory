@@ -1051,7 +1051,7 @@ async function reserveDouyinResearchScript(request, env) {
        SELECT 1 FROM douyin_research_script_usage u
        WHERE u.aweme_id = c.aweme_id AND u.workflow = ?
      )
-     ORDER BY c.created_at ASC, c.aweme_id ASC
+     ORDER BY RANDOM()
      LIMIT 20`,
   ).bind(collectionCode, workflow).all();
 

@@ -5,11 +5,11 @@ description: 使用项目抖音研究 MCP 把用户提供的抖音链接下载�
 
 # 抖音链接入库
 
-用户只需提供抖音分享链接或分享文字，以及一个中文分类名。提供这两个参数即表示授权下载、转写并写入该分类，无需再次确认。
+用户只需提供抖音分享链接或分享文字；当前唯一分类为“财经”。用户要求保存即表示授权下载、转写并写入财经分类，无需再次确认。
 
 只通过 `douyin_research` MCP 完成业务流程：
 
-1. 调用 `douyin_research_start_ingest`，原样传入 `share_text` 和 `collection_name`。
+1. 调用 `douyin_research_start_ingest`，原样传入 `share_text`，并固定传入 `collection_name="财经"`。
 2. 使用返回的 `task_path` 调用 `douyin_research_poll_task`，直到 `done=true`；不得为同一请求重复启动任务。
 3. 成功后向用户展示转写文本、分类和入库结果。
 
