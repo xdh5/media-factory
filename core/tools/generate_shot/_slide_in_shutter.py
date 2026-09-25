@@ -111,6 +111,30 @@ def _expand_chains(flash_end: float, expand_end: float) -> list[str]:
     ]
 
 
+def _intro_camera_motion(motion: dict | None, duration: float, expand_end: float) -> dict | None:
+    """把分镜运镜折算成片头快门后的慢速运镜。
+
+    分镜给的 zoom/pan 参数按整镜时长设计；片头动画占掉开头 expand_end 秒后，
+    若把整个位移塞进剩余时间（首镜头很短时只剩不到 1 秒），快门后会出现
+    突兀的急速放大。按每秒速率等比折算目标值，保持分镜设计的运镜速度。
+    """
+    if not motion or duration <= 0 or expand_end <= 0:
+        return motion
+    factor = max(0.0, (duration - expand_end) / duration)
+    if factor >= 1.0:
+        return motion
+    adjusted = dict(motion)
+    for target, origin, fallback in (
+        ("zoom_to", "zoom_from", 1.0),
+        ("pan_to_x", "pan_from_x", 0.5),
+        ("pan_to_y", "pan_from_y", 0.5),
+    ):
+        origin_value = float(motion.get(origin, fallback))
+        target_value = float(motion.get(target, origin_value))
+        adjusted[target] = origin_value + (target_value - origin_value) * factor
+    return adjusted
+
+
 def slide_in_shutter(
     image_path: str | Path,
     output_path: str | Path,
@@ -138,9 +162,10 @@ def slide_in_shutter(
     remaining = max(0.0, duration - intro_duration)
     flash_end = min(duration, SHUTTER_START_SECONDS + FLASH_SECONDS)
     expand_end = min(duration, flash_end + PHOTO_EXPAND_SECONDS)
+    camera_motion = _intro_camera_motion(motion, duration, expand_end)
     camera = (
-        _motion_filter(motion, duration, OUTPUT_WIDTH, OUTPUT_HEIGHT, start_delay=expand_end)
-        if motion else _static_filter(OUTPUT_WIDTH, OUTPUT_HEIGHT)
+        _motion_filter(camera_motion, duration, OUTPUT_WIDTH, OUTPUT_HEIGHT, start_delay=expand_end)
+        if camera_motion else _static_filter(OUTPUT_WIDTH, OUTPUT_HEIGHT)
     )
     ffmpeg = _executable("ffmpeg")
     chains = [

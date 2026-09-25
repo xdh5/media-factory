@@ -65,7 +65,7 @@ def mix_body(
     bgm_start_seconds: float | None = None,
     bgm_gain: float | None = None,
 ) -> dict:
-    """画面烧字幕/贴纸/封面（如有）并重编码；叠 TTS 与可选 BGM、片头音效。原片无音轨。"""
+    """画面烧字幕/贴纸/封面（如有）并重编码；叠 TTS 与可选 BGM、提示音。"""
     video = _validate_file(video_path, "video_path")
     tts = _validate_file(tts_path, "tts_path")
     bgm = _validate_file(bgm_path, "bgm_path") if bgm_path else None
@@ -148,7 +148,7 @@ def mix_body(
             if not font_directory.is_dir():
                 raise InvalidParameterError("fontsdir", f"字体目录不存在：{font_directory}")
             subtitle_filter += f":fontsdir='{_filter_path(font_directory)}'"
-        video_chains.append(f"[0:v]{subtitle_filter}[subtitled]")
+        video_chains.append(f"[{current}]{subtitle_filter}[subtitled]")
         current = "subtitled"
     for index, path in enumerate(extra_ass):
         input_label = current

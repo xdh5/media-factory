@@ -32,6 +32,17 @@ GENERATE_FINAL_VIDEO_INPUT_SCHEMA = {
         },
         "subtitle_style": SUBTITLE_STYLE_SCHEMA,
         "subtitle_position": SUBTITLE_POSITION_SCHEMA,
+        "secondary_subtitles": {
+            "type": "object",
+            "description": "中文字幕下方的英文翻译字幕层（默认开启，字号=中文字号×0.4）",
+            "properties": {
+                "enabled": {"type": "boolean"},
+                "font_size_ratio": {"type": "number", "minimum": 0.1, "maximum": 1},
+                "style": {"type": "object"},
+                "position": {"type": "object"},
+            },
+            "additionalProperties": False,
+        },
         "extra_ass_paths": {"type": "array", "items": {"type": "string"}, "description": "附加 ASS 画面图层路径"},
         "normalize_composed": {
             "type": "boolean",
