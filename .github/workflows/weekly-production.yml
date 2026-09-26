@@ -42,7 +42,7 @@ jobs:
         run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START"
 
   produce-day:
-    name: 生产2条财经及语言 ${{ matrix.publish_date }}
+    name: 生产财经及语言 ${{ matrix.publish_date }}
     needs: plan
     strategy:
       matrix:
@@ -92,7 +92,7 @@ jobs:
             test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
           done
 
-      - name: 生产2条财经及语言并交付 R2
+      - name: 生产财经及语言并交付 R2
         env:
           PUBLISH_DATE: ${{ matrix.publish_date }}
         run: >-

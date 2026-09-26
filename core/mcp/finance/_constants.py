@@ -17,7 +17,7 @@ VIDEO_SIZE = "1920x1080"
 VIDEO_RADIO = "16:9"
 MATRIXMEDIA_AI_CREATIVE_STATEMENT = "ai_generated"
 CONTENT_KIND = "finance"
-AUTOMATION_DAILY_OUTPUT_COUNT = 2
+AUTOMATION_DAILY_OUTPUT_COUNT = 1
 
 # 正文在三类必做改动（品牌替换、连载指涉改写、错别字修正）之外允许措辞级改写，
 # 但大结构与信息量必须与原稿一致；

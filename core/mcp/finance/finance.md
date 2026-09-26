@@ -11,7 +11,7 @@
 ```
 finance_get_production_config
 finance_get_automation_plan(publish_date)
-  └─ 每个计划发布日期目标为 2 条，返回尚缺少的 content_part（1 / 2）
+  └─ 每个计划发布日期目标为 1 条，返回尚缺少的 content_part（1）
 finance_get_source_hook_prompt / finance_validate_source_hook_response
 finance_get_article_prompt(source_text, source_hook)
 finance_get_article_chunk_plan

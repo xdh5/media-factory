@@ -178,7 +178,7 @@ SUB|L002|你以为涨薪就能存钱
 
 ### 生产入口
 
-- GitHub Action：`python -m ops.github_actions finance`（读取 Finance MCP 的统一配置，默认使用 `stock_video`，产物自动上传 R2，不发布平台）。每周六批量处理下周周一至周日，每个计划发布日期生产 2 条财经成片，分别使用 `content_part=1` 和 `content_part=2`；已有分片会在预检时跳过，只补齐缺失分片。
+- GitHub Action：`python -m ops.github_actions finance`（读取 Finance MCP 的统一配置，默认使用 `stock_video`，产物自动上传 R2，不发布平台）。每周六批量处理下周周一至周日，每个计划发布日期生产 1 条财经成片，使用 `content_part=1`；已有成片会在预检时跳过。
 - 交互式：`python -m core.mcp.finance`（本地制作，保留本地产物，发布需用户确认）。
 
 ### 后台任务轮询
