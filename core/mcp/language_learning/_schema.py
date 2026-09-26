@@ -122,6 +122,43 @@ BUILD_VOCABULARY_PROMPT_INPUT_SCHEMA = {
     "required": ["topic", "learning_modes"],
     "additionalProperties": False,
 }
+PREPARE_PACK_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "topic": {"type": "string", "pattern": r"^[A-Za-z]+$", "maxLength": 200},
+    },
+    "required": ["topic"],
+    "additionalProperties": False,
+}
+VALIDATE_PACK_WORDS_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "pack_id": {"type": "string", "pattern": r"^language-pack-[a-f0-9]{32}$"},
+        "topic": {"type": "string", "pattern": r"^[A-Za-z]+$", "maxLength": 200},
+        "response_text": {"type": "string", "minLength": 1, "maxLength": 20000},
+    },
+    "required": ["pack_id", "topic", "response_text"],
+    "additionalProperties": False,
+}
+COMMIT_PACK_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "pack_id": {"type": "string", "pattern": r"^language-pack-[a-f0-9]{32}$"},
+        "topic": {"type": "string", "pattern": r"^[A-Za-z]+$", "maxLength": 200},
+        "words": {"type": "object"},
+        "subject_sheet_path": {"type": "string", "minLength": 1},
+    },
+    "required": ["pack_id", "topic", "words", "subject_sheet_path"],
+    "additionalProperties": False,
+}
+CLAIM_PACK_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "publish_date": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+    },
+    "required": ["publish_date"],
+    "additionalProperties": False,
+}
 GET_VISUAL_VALIDATION_PROMPT_INPUT_SCHEMA = {
     "type": "object",
     "properties": {},

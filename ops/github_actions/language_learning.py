@@ -174,25 +174,29 @@ async def generate_cards(
     run_id = str(state["run_id"])
     words = dict(state["words"])
     pack_urls = list(state.get("pack_image_urls") or [])
-    if len(pack_urls) != 10:
-        raise RuntimeError("GitHub 语言生产只能使用已验收的 10 张词包主体图")
+    if len(pack_urls) != 1:
+        raise RuntimeError("GitHub 语言生产只能使用一张已验收的十元素透明主题图")
     pack_root = Path(diagnostics_dir).resolve().parent / "pack-subjects" / run_id
-    subject_paths = []
-    for index, url in enumerate(pack_urls, 1):
-        destination = pack_root / f"{index:02d}.png"
-        key = unquote(urlparse(str(url)).path).lstrip("/")
-        download_public_file(key, destination)
-        subject_paths.append(str(destination))
+    subject_sheet_path = pack_root / "subject-sheet.png"
+    key = unquote(urlparse(str(pack_urls[0])).path).lstrip("/")
+    download_public_file(key, subject_sheet_path)
     card_dirs = {}
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+        layout = await _visual_layout(mcp, str(subject_sheet_path), [])
+        validation = await mcp.call("language_learning_validate_subject_sheet", {
+            "subject_sheet_path": str(subject_sheet_path), "visual_layout": layout, "run_id": run_id,
+        })
+        if validation.get("valid") is not True:
+            raise RuntimeError(f"词包主题图裁切失败：{'；'.join(validation.get('issues') or [])}")
         for mode in learning_modes:
-            started = await mcp.call("language_learning_start_compose_pack_cards", {
-                "subject_image_paths": subject_paths, "words": words[mode], "learning_mode": mode,
+            started = await mcp.call("language_learning_start_compose_cards", {
+                "subject_sheet_path": str(subject_sheet_path), "words": words[mode], "learning_mode": mode,
                 "topic_english": words["_topic_english"], "run_id": run_id,
             })
             cards = await mcp.poll("language_learning_poll_task", started["task_path"])
             card_dirs[mode] = cards["output_dir"]
-    state["subject_image_paths"] = subject_paths
+    state["subject_sheet_path"] = str(subject_sheet_path)
+    state["subject_sheet_validation"] = validation
     state["card_dirs"] = card_dirs
     _write_state(state_path, state)
     return state

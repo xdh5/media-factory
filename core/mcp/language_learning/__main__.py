@@ -443,39 +443,29 @@ def language_learning_validate_pack_words(pack_id: str, topic: str, response_tex
         english = [str(item.get("english") or "").strip() for item in words["en-zh"]]
         if len([word for word in english if word.casefold() not in recent]) < MINIMUM_NEW_WORDS:
             raise LanguageLearningError(f"词包至少需要 {MINIMUM_NEW_WORDS} 个最近 {WORD_HISTORY_DAYS} 天未使用的新词")
-        image_tasks = [
-            {
-                "image_index": index,
-                "english": word,
-                "prompt": (
-                    f"为英语单词“{word}”生成一张单独的精致全彩插画 PNG。"
-                    "必须是真实 Alpha 透明背景，主体完整居中、边缘干净，无投影、无光晕、无文字、无数字、无水印。"
-                    "动作词用清晰的单人小场景表达，形容词用一眼可懂的日常物体或人物状态表达。"
-                ),
-            }
-            for index, word in enumerate(english, 1)
-        ]
-        return {"pack_id": pack_id, "topic": topic, "words": words, "word_count": len(english), "image_tasks": image_tasks}
+        word_list = "；".join(f"{index}. {word}" for index, word in enumerate(english, 1))
+        subject_sheet_prompt = (
+            f"围绕主题“{topic}”生成一张包含以下十个主体的精致全彩插画 PNG：{word_list}。"
+            "必须严格按上排从左到右五个、下排从左到右五个排列；整张图片必须是真实 Alpha 透明背景，"
+            "每个主体完整、彼此不重叠、边缘干净，无投影、无光晕、无文字、无数字、无水印。"
+        )
+        return {"pack_id": pack_id, "topic": topic, "words": words, "word_count": len(english), "subject_sheet_prompt": subject_sheet_prompt}
     except Exception as exc:
         raise _map_error(exc) from exc
 
 
 @mcp.tool()
-def language_learning_commit_pack(pack_id: str, topic: str, words: dict, image_paths: list[str]) -> dict:
-    """上传 Agent 生成的十张透明主体图，并把可复用词包写入 D1。"""
+def language_learning_commit_pack(pack_id: str, topic: str, words: dict, subject_sheet_path: str) -> dict:
+    """上传 Agent 生成的一张十元素透明主题图，并把可复用词包写入 D1。"""
     try:
         if not re.fullmatch(r"language-pack-[a-f0-9]{32}", str(pack_id or "")):
             raise LanguageLearningError("pack_id 格式不正确")
         if not isinstance(words, dict) or any(len(words.get(mode) or []) != 10 for mode in ("en-zh", "en-ko")):
             raise LanguageLearningError("words 必须包含 en-zh 与 en-ko 两套各 10 个单词")
-        if len(image_paths) != 10:
-            raise LanguageLearningError("image_paths 必须正好提供 10 张 Agent 生成的透明 PNG")
-        urls = []
-        for index, value in enumerate(image_paths, 1):
-            path = Path(value).resolve()
-            if not path.is_file() or path.suffix.lower() != ".png":
-                raise LanguageLearningError(f"第 {index} 张词包图片必须是存在的 PNG：{path}")
-            urls.append(upload_public_file(path, f"language-learning-packs/{pack_id}/{index:02d}.png", content_type="image/png")["url"])
+        path = Path(subject_sheet_path).resolve()
+        if not path.is_file() or path.suffix.lower() != ".png":
+            raise LanguageLearningError(f"subject_sheet_path 必须是存在的透明 PNG：{path}")
+        urls = [upload_public_file(path, f"language-learning-packs/{pack_id}/subject-sheet.png", content_type="image/png")["url"]]
         pack = commit_language_learning_pack({"pack_id": pack_id, "topic": topic, "words": words, "image_urls": urls})
         return {"pack": pack, "next_tool": "language_learning_claim_pack"}
     except Exception as exc:

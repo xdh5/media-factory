@@ -76,6 +76,12 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 
 无论单独生成韩语还是同时生成中英、韩英，韩语罗马音都必须与韩文音节逐一对应，并使用英文半角连字符 `-` 分隔；解析器必须硬校验，不能只依赖 Prompt。
 
+### 可复用预制词包
+
+任意宿主 Agent 要提前补充词包时，必须调用 `language_learning_prepare_pack(topic)`，按返回的 `vocabulary_prompt` 生成词表后调用 `language_learning_validate_pack_words`。该工具会返回唯一的 `subject_sheet_prompt`：Agent 只生成**一张**按上五下五排列、含十个主体的真实 Alpha 透明 PNG，不能拆成十张图，也不能使用纯色背景抠图。随后调用 `language_learning_commit_pack(pack_id, topic, words, subject_sheet_path)` 上传并写入词包库。
+
+GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现成词包，下载该主题图后复用 MCP 的视觉定位、透明图校验和裁切，再拼卡出片；不会再次生成词表或图片。没有已验收词包时，GitHub 生产应明确失败，不能静默降级为重新生图。
+
 ## 确认门禁
 
 1. **成片**：本地制作完成后展示 `output/language_learning/run-YYYYMMDD/` 中的成片路径、标题、标签与账号组；`YYYYMMDD` 必须是北京时间计划发布日期。未确认不得调用发布 MCP。本地制作不得在成片阶段自动上传 R2；仅 GitHub Workflow 生产完成后自动交付 R2，本地只有在用户确认发布且目标平台需要公网视频地址时才上传发布资产。本地成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；GitHub Workflow 只在 R2 交付成功后以 `source=github_workflow` 写入。查询某天产物使用 `language_learning_get_production_outputs(publish_date)`。
@@ -119,6 +125,8 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 | `language_learning_occupy_topic` | 占坑并创建 run |
 | `language_learning_build_vocabulary_prompt` | 返回包含最近词库的词表 Prompt |
 | `language_learning_parse_vocabulary_response` | 解析词表、校验至少一半新词，发布前不写历史 |
+| `language_learning_prepare_pack` / `language_learning_validate_pack_words` | 为可复用词包返回词表 Prompt，并校验词表及返回一张十元素透明主题图 Prompt |
+| `language_learning_commit_pack` / `language_learning_claim_pack` | 上传一张主题图写入词包库，或由 GitHub 按日期领取一个词包 |
 | `language_learning_prepare_images` | 注册主体图任务 |
 | `language_learning_save_images` | 写入已生成图 |
 | `language_learning_submit_images` | 提交主体图（同步，勿用） |
