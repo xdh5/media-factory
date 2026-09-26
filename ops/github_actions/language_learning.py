@@ -188,6 +188,24 @@ async def generate_cards(
         })
         if validation.get("valid") is not True:
             raise RuntimeError(f"词包主题图裁切失败：{'；'.join(validation.get('issues') or [])}")
+        sheet_prompt = await mcp.call("language_learning_get_sheet_validation_prompt")
+        target_words = "、".join(str(item.get("english") or "").strip() for item in words["en-zh"])
+        sheet_prompt = {
+            **sheet_prompt,
+            "user_prompt": (
+                f"{sheet_prompt['user_prompt']}\n\n"
+                f"本期禁止直接写入画面的目标英语词为：{target_words}。"
+                "其他与这些目标词无关的自然场景文字允许存在，不能仅因它们存在而判定 text 失败。"
+            ),
+        }
+        sheet_review = _inspect_background_removed_sheet(
+            str(validation["background_removed_sheet_path"]), sheet_prompt, [],
+        )
+        review = await mcp.call("language_learning_review_subject_sheet", {
+            "subject_sheet_path": str(subject_sheet_path), "review": sheet_review, "run_id": run_id,
+        })
+        if review.get("approved") is not True:
+            raise RuntimeError(f"词包主题图整图验收失败：{'；'.join(review.get('validation_issues') or [])}")
         for mode in learning_modes:
             started = await mcp.call("language_learning_start_compose_cards", {
                 "subject_sheet_path": str(subject_sheet_path), "words": words[mode], "learning_mode": mode,
@@ -196,7 +214,7 @@ async def generate_cards(
             cards = await mcp.poll("language_learning_poll_task", started["task_path"])
             card_dirs[mode] = cards["output_dir"]
     state["subject_sheet_path"] = str(subject_sheet_path)
-    state["subject_sheet_validation"] = validation
+    state["subject_sheet_validation"] = {**validation, "review": sheet_review}
     state["card_dirs"] = card_dirs
     _write_state(state_path, state)
     return state

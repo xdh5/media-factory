@@ -447,7 +447,9 @@ def language_learning_validate_pack_words(pack_id: str, topic: str, response_tex
         subject_sheet_prompt = (
             f"围绕主题“{topic}”生成一张包含以下十个主体的精致全彩插画 PNG：{word_list}。"
             "必须严格按上排从左到右五个、下排从左到右五个排列；整张图片必须是真实 Alpha 透明背景，"
-            "每个主体完整、彼此不重叠、边缘干净，无投影、无光晕、无文字、无数字、无水印。"
+            "每个主体完整、彼此不重叠、边缘干净，无投影、无光晕、无水印。"
+            "严禁把上述十个英语原词或其中文、韩文翻译作为标签、标题或画面文字直接写入图片；"
+            "场景中与目标词无关的自然招牌、路标或包装文字可以保留。"
         )
         return {"pack_id": pack_id, "topic": topic, "words": words, "word_count": len(english), "subject_sheet_prompt": subject_sheet_prompt}
     except Exception as exc:
