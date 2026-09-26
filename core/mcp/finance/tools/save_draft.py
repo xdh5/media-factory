@@ -85,6 +85,7 @@ def save_draft(
     cover_highlights: list[str] | None = None,
     intro_scene: str = "",
     content_part: int = 1,
+    db_source_hook: str = "",
 ) -> dict:
     normalized_topic = str(topic or "").strip()
     normalized_article = str(article or "").strip()
@@ -95,6 +96,9 @@ def save_draft(
     normalized_source_aweme_id = str(source_aweme_id or "").strip()
     normalized_source_token = str(source_reservation_token or "").strip()
     normalized_source_hook = str(source_hook or "").strip()
+    # 数据库逐字钩子：mark_used 用它校验 transcript_corrected 的逐字前缀。
+    # 处理后的钩子（source_hook）含品牌替换/错字修正时两者不同；缺省回退为处理后钩子。
+    normalized_db_hook = str(db_source_hook or "").strip()
     if not normalized_source_aweme_id.isdigit():
         raise WorkflowStepError("source_aweme_id 必须是有效的抖音作品 ID")
     if not normalized_source_token:
@@ -143,6 +147,11 @@ def save_draft(
         if normalized_source_token != str(existing.get("source_reservation_token") or "").strip():
             raise WorkflowStepError("修改已有稿件时必须沿用原来源稿件的占用令牌")
         normalized_intro_scene = normalized_intro_scene or str(existing.get("intro_scene") or "").strip()
+        if not normalized_db_hook:
+            normalized_db_hook = (
+                str(existing.get("db_source_hook") or "").strip()
+                or str(existing.get("source_hook") or "").strip()
+            )
         record = {"id": int(existing["topic_record_id"]), "topic": normalized_topic}
         run_id = str(existing["run_id"])
         content_part = int(existing.get("content_part") or 1)
@@ -182,6 +191,7 @@ def save_draft(
         "source_aweme_id": normalized_source_aweme_id,
         "source_reservation_token": normalized_source_token,
         "source_hook": normalized_source_hook,
+        "db_source_hook": normalized_db_hook or normalized_source_hook,
         "source_database_status": str(existing.get("source_database_status") or "reserved") if draft_path is not None else "reserved",
         "article": normalized_article,
         "intro_scene": normalized_intro_scene,

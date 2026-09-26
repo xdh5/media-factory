@@ -162,7 +162,8 @@ async def run(
         draft = await mcp.call("finance_save_draft", {
             "topic": topic, "article": article, "source_aweme_id": str(source["aweme_id"]),
             "source_reservation_token": str(reservation["reservation_token"]),
-            "source_hook": processed_hook, "publish_date": publish_date,
+            "source_hook": processed_hook, "db_source_hook": hook,
+            "publish_date": publish_date,
             "content_part": content_part, **metadata,
         })
 

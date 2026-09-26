@@ -31,6 +31,7 @@ MCP 入口：`python -m core.mcp.finance`。**Finance MCP 是 Prompt、素材策
 
 - `{{source_text}}`：`source.transcript` 原文
 - `{{source_hook}}`：原稿开头完整黄金钩子中**完成品牌替换后的版本**（该版本也是 `finance_save_draft` 要传的 `source_hook`）
+- `{{db_source_hook}}`：`finance_validate_source_hook_response` 返回的**数据库原稿逐字钩子**（未做任何改动）。钩子内做过品牌替换或错字修正时，`finance_save_draft` 必须同时传 `db_source_hook`（数据库 mark_used 按它做逐字前缀校验，传处理后的钩子会报「黄金钩子不是数据库原稿的原样开头」）；钩子未做任何改动时两个值相同，可不传
 
 整理必须满足（交互式与 GitHub Action 统一执行同一套规则）：
 
@@ -42,7 +43,7 @@ MCP 入口：`python -m core.mcp.finance`。**Finance MCP 是 Prompt、素材策
 - **黄金钩子保持原样**：钩子只做品牌替换和明确错别字修正，不做措辞改写；正文必须以处理后的钩子原字原标点原顺序开头，钩子之后才开始改写。
 - 断行：按语义切成口语短句，每句单独一行，单行全部字符（含所有标点）不超过 36 字；不得把一个词或固定搭配拆到两行。GitHub Runner 必须先调用 `finance_get_article_chunk_plan`，逐段调用 Prompt 与校验 Tool；任何片段失败只重试该片段，合并后仍须调用全文校验。
 - 句与句之间换行，不要用逗号连两句完整话；顿号列举写在同一句里。
-- `finance_save_draft` 必须传回 `source.aweme_id`、`reservation.reservation_token` 和 `source_hook`；保存成功后 MCP 自动将数据库来源标记为已使用，下次不再选择。
+- `finance_save_draft` 必须传回 `source.aweme_id`、`reservation.reservation_token` 和 `source_hook`；钩子内做过品牌替换或错字修正时还必须传 `db_source_hook`（`finance_validate_source_hook_response` 的原样返回值）。保存成功后 MCP 自动将数据库来源标记为已使用，下次不再选择。
 
 ## 固定参数（调用 MCP 时必须按此传）
 

@@ -286,6 +286,10 @@ FINANCE_SAVE_DRAFT_INPUT_SCHEMA = {
             "minLength": 1,
             "description": "原稿开头黄金钩子完成品牌替换后的版本；钩子不做措辞改写，正文开头忽略空白后必须原样匹配；可按语义换行，每行不超过36字",
         },
+        "db_source_hook": {
+            "type": "string",
+            "description": "数据库原稿开头未经改动的逐字钩子（来源 finance_validate_source_hook_response）；mark_used 数据库校验用；缺省时回退为 source_hook",
+        },
         "publish_date": {
             "type": "string",
             "pattern": r"^\d{4}-\d{2}-\d{2}$",

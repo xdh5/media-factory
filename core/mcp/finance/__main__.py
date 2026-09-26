@@ -357,11 +357,14 @@ def finance_save_draft(
     cover_highlights: list[str] | None = None,
     intro_scene: str = "",
     content_part: int = 1,
+    db_source_hook: str = "",
 ) -> dict:
     """保存完成三类必做改动与措辞级改写的稿件，随后把来源稿件标记为已使用。
 
     同一天制作第二条时传 content_part=2：缓存与产物目录独立（run-YYYYMMDD-part2），
     D1 落库使用 content_part 区分，run_id 仍为 run-YYYYMMDD。
+    db_source_hook：数据库原稿开头未经改动的逐字钩子（mark_used 校验用）；
+    处理后的 source_hook 含品牌替换/错字修正时与原稿不同，必须另外传原样钩子。
     """
     try:
         if draft_path is None:
@@ -388,13 +391,14 @@ def finance_save_draft(
             cover_highlights,
             intro_scene,
             content_part,
+            db_source_hook,
         )
         usage = mark_douyin_research_script_used(
             aweme_id=str(draft["source_aweme_id"]),
             workflow=MCP_ID,
             reservation_token=str(draft["source_reservation_token"]),
             run_id=str(draft["run_id"]),
-            source_hook=str(draft["source_hook"]),
+            source_hook=str(draft["db_source_hook"]),
         )
         return save_source_usage(str(draft["draft_path"]), usage)
     except Exception as exc:
