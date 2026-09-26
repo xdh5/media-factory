@@ -443,7 +443,19 @@ def language_learning_validate_pack_words(pack_id: str, topic: str, response_tex
         english = [str(item.get("english") or "").strip() for item in words["en-zh"]]
         if len([word for word in english if word.casefold() not in recent]) < MINIMUM_NEW_WORDS:
             raise LanguageLearningError(f"词包至少需要 {MINIMUM_NEW_WORDS} 个最近 {WORD_HISTORY_DAYS} 天未使用的新词")
-        return {"pack_id": pack_id, "topic": topic, "words": words, "word_count": len(english)}
+        image_tasks = [
+            {
+                "image_index": index,
+                "english": word,
+                "prompt": (
+                    f"为英语单词“{word}”生成一张单独的精致全彩插画 PNG。"
+                    "必须是真实 Alpha 透明背景，主体完整居中、边缘干净，无投影、无光晕、无文字、无数字、无水印。"
+                    "动作词用清晰的单人小场景表达，形容词用一眼可懂的日常物体或人物状态表达。"
+                ),
+            }
+            for index, word in enumerate(english, 1)
+        ]
+        return {"pack_id": pack_id, "topic": topic, "words": words, "word_count": len(english), "image_tasks": image_tasks}
     except Exception as exc:
         raise _map_error(exc) from exc
 
