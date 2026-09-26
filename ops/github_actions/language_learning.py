@@ -6,6 +6,7 @@ import json
 import re
 import shutil
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from ._mcp import MCPCallError, ProjectMCP
 from core.tools.r2_storage import download_public_file
@@ -105,52 +106,22 @@ async def generate_words(
     state_path: str | Path,
     publish_date: str = "",
 ) -> dict:
-    """第一段：选题、创建生产目录并生成通过校验的双语词表。"""
+    """第一段：从已验收词包库存领取主题与双语词表。"""
     if not str(publish_date or "").strip():
         raise ValueError("GitHub 语言生产必须明确传入 publish_date")
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
-        config = await mcp.call("language_learning_get_production_config", {"learning_modes": modes or None})
-        learning_modes = list(config["learning_modes"])
-        topics = await mcp.call("language_learning_get_topics")
-        topic = await _choose_topic(mcp, topics.get("recent_topics") or [], requested_topic, int(config["model_retry_attempts"]))
-        occupied = await mcp.call(
-            "language_learning_occupy_topic",
-            {"topic": topic, "learning_modes": learning_modes, "publish_date": publish_date},
-        )
-        run_id = occupied["run_id"]
-        prompt = await mcp.call(
-            "language_learning_build_vocabulary_prompt",
-            {"topic": topic, "learning_modes": learning_modes},
-        )
-        last_error = None
-        for _ in range(int(config["model_retry_attempts"])):
-            response_text = qwen(
-                prompt["system_prompt"],
-                prompt["user_prompt"],
-                max_tokens=2500,
-            )["text"]
-            try:
-                words = await mcp.call(
-                    "language_learning_parse_vocabulary_response",
-                    {
-                        "response_text": response_text,
-                        "learning_modes": learning_modes,
-                        "topic": topic,
-                        "run_id": run_id,
-                    },
-                )
-                break
-            except MCPCallError as exc:
-                last_error = exc
-                prompt["user_prompt"] += f"\n\n上一次词表校验失败，必须换词并修正：{exc}"
-        else:
-            raise RuntimeError(f"语言词表连续三次不合格：{last_error}")
+        claimed = await mcp.call("language_learning_claim_pack", {"publish_date": publish_date})
+        pack = dict(claimed["pack"])
+        topic, words, run_id = str(pack["topic"]), dict(pack["words"]), str(claimed["run_id"])
+        learning_modes = list(modes or ["en-zh", "en-ko"])
     state = {
         "topic": topic,
         "learning_modes": learning_modes,
         "publish_date": publish_date,
         "run_id": run_id,
         "words": words,
+        "pack_id": pack["pack_id"],
+        "pack_image_urls": list(pack["image_urls"]),
     }
     _write_state(state_path, state)
     return state
@@ -196,12 +167,36 @@ async def generate_cards(
     state_path: str | Path,
     diagnostics_dir: str | Path = "cache/github_actions/language-learning-diagnostics",
 ) -> dict:
-    """第二段：生成主体图、定位抠图，并对整张去背景主题图做一次性视觉验收。"""
+    """第二段：下载已验收的十张透明主体图，直接拼卡。"""
     state = _read_state(state_path)
     topic = str(state["topic"])
     learning_modes = list(state["learning_modes"])
     run_id = str(state["run_id"])
     words = dict(state["words"])
+    pack_urls = list(state.get("pack_image_urls") or [])
+    if len(pack_urls) != 10:
+        raise RuntimeError("GitHub 语言生产只能使用已验收的 10 张词包主体图")
+    pack_root = Path(diagnostics_dir).resolve().parent / "pack-subjects" / run_id
+    subject_paths = []
+    for index, url in enumerate(pack_urls, 1):
+        destination = pack_root / f"{index:02d}.png"
+        key = unquote(urlparse(str(url)).path).lstrip("/")
+        download_public_file(key, destination)
+        subject_paths.append(str(destination))
+    card_dirs = {}
+    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+        for mode in learning_modes:
+            started = await mcp.call("language_learning_start_compose_pack_cards", {
+                "subject_image_paths": subject_paths, "words": words[mode], "learning_mode": mode,
+                "topic_english": words["_topic_english"], "run_id": run_id,
+            })
+            cards = await mcp.poll("language_learning_poll_task", started["task_path"])
+            card_dirs[mode] = cards["output_dir"]
+    state["subject_image_paths"] = subject_paths
+    state["card_dirs"] = card_dirs
+    _write_state(state_path, state)
+    return state
+
     diagnostic_root = Path(diagnostics_dir).resolve()
     diagnostic_payload = {
         "workflow": "language_learning",
@@ -500,13 +495,15 @@ async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> di
             },
         )
         manifest = await mcp.poll("language_learning_poll_task", started["task_path"])
-    manifest["subject_sheet_validation"] = dict(state["subject_sheet_validation"])
+    manifest["subject_sheet_validation"] = dict(state.get("subject_sheet_validation") or {"source": "prebuilt_pack"})
     destination = Path(handoff_dir).resolve()
     files_dir = destination / "files"
     files_dir.mkdir(parents=True, exist_ok=True)
-    subject_sheet_source = Path(str(state["subject_sheet_path"])).resolve()
-    subject_sheet_target = files_dir / f"subject-sheet{subject_sheet_source.suffix.lower() or '.png'}"
-    shutil.copy2(subject_sheet_source, subject_sheet_target)
+    subject_sheet_target = None
+    if state.get("subject_sheet_path"):
+        subject_sheet_source = Path(str(state["subject_sheet_path"])).resolve()
+        subject_sheet_target = files_dir / f"subject-sheet{subject_sheet_source.suffix.lower() or '.png'}"
+        shutil.copy2(subject_sheet_source, subject_sheet_target)
     video_files = []
     for source_value in [path for video in manifest["videos"] for path in video["output_paths"]]:
         source = Path(source_value).resolve()
@@ -525,7 +522,7 @@ async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> di
         "publish_date": str(state.get("publish_date") or ""),
         "topic": topic,
         "learning_modes": learning_modes,
-        "subject_sheet_file": str(subject_sheet_target.relative_to(destination)),
+        "subject_sheet_file": str(subject_sheet_target.relative_to(destination)) if subject_sheet_target else "",
         "video_files": video_files,
         "metadata_file": metadata_file,
         "manifest": manifest,
@@ -539,7 +536,7 @@ async def upload_handoff(handoff_dir: str | Path) -> dict:
     destination = Path(handoff_dir).resolve()
     handoff = _read_state(destination / "handoff.json")
     video_paths = [destination / value for value in handoff["video_files"]]
-    subject_sheet_path = destination / handoff["subject_sheet_file"]
+    subject_sheet_path = destination / handoff["subject_sheet_file"] if handoff.get("subject_sheet_file") else None
     metadata_path = destination / handoff["metadata_file"] if handoff.get("metadata_file") else None
     manifest = dict(handoff["manifest"])
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
@@ -548,7 +545,7 @@ async def upload_handoff(handoff_dir: str | Path) -> dict:
             {
                 "manifest_path": manifest["manifest_path"],
                 "run_id": str(handoff["run_id"]),
-                "subject_sheet_path": str(subject_sheet_path),
+                "subject_sheet_path": str(subject_sheet_path) if subject_sheet_path else None,
                 "learning_modes": list(handoff["learning_modes"]),
             },
         )

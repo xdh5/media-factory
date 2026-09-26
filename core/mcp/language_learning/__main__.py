@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import uuid
 import warnings
 from copy import deepcopy
 from datetime import datetime
@@ -23,6 +24,8 @@ from core.tools.clear_cache import ConfirmationRequiredError as ClearCacheConfir
 from core.tools.clear_cache import clear_run
 from core.tools.cloudflare_data import (
     CloudflareDataError,
+    claim_language_learning_pack,
+    commit_language_learning_pack,
     commit_publication_records,
     list_production_outputs,
     list_publication_records,
@@ -34,7 +37,7 @@ from core.tools.generate_image import (
     save_agent_image_tasks,
     submit_agent_image_tasks,
 )
-from core.tools.r2_storage import R2StorageError
+from core.tools.r2_storage import R2StorageError, upload_public_file
 from core.tools.topic_dedup import TopicDedupError, get_topic
 
 from core.mcp._task_runner import TaskNotFoundError as RunnerTaskNotFoundError
@@ -67,6 +70,7 @@ from .tools import (
     build_visual_validation_prompt,
     build_vocabulary_prompt,
     compose_fixed_cards,
+    compose_fixed_cards_from_subjects,
     create_vocabulary_videos,
     list_recent_words,
     parse_vocabulary_response,
@@ -413,6 +417,73 @@ def language_learning_parse_vocabulary_response(
 
 
 @mcp.tool()
+def language_learning_prepare_pack(topic: str) -> dict:
+    """返回预制词包的双语词表 Prompt；供任意宿主 Agent 生成后提交。"""
+    try:
+        return {
+            "pack_id": f"language-pack-{uuid.uuid4().hex}",
+            "topic": topic,
+            "learning_modes": ["en-zh", "en-ko"],
+            "vocabulary_prompt": build_vocabulary_prompt(topic, ["en-zh", "en-ko"], list_recent_words()),
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def language_learning_validate_pack_words(pack_id: str, topic: str, response_text: str) -> dict:
+    """解析并校验预制词包的十个双语单词，不创建生产 run。"""
+    try:
+        if not re.fullmatch(r"language-pack-[a-f0-9]{32}", str(pack_id or "")):
+            raise LanguageLearningError("pack_id 格式不正确，请使用 prepare_pack 返回的值")
+        words = parse_vocabulary_response(response_text, ["en-zh", "en-ko"])
+        if str(words.get("_topic_english") or "").casefold() != str(topic or "").strip().casefold():
+            raise LanguageLearningError("词包英文主题必须与 topic 完全一致")
+        recent = {str(word).casefold() for word in list_recent_words()}
+        english = [str(item.get("english") or "").strip() for item in words["en-zh"]]
+        if len([word for word in english if word.casefold() not in recent]) < MINIMUM_NEW_WORDS:
+            raise LanguageLearningError(f"词包至少需要 {MINIMUM_NEW_WORDS} 个最近 {WORD_HISTORY_DAYS} 天未使用的新词")
+        return {"pack_id": pack_id, "topic": topic, "words": words, "word_count": len(english)}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def language_learning_commit_pack(pack_id: str, topic: str, words: dict, image_paths: list[str]) -> dict:
+    """上传 Agent 生成的十张透明主体图，并把可复用词包写入 D1。"""
+    try:
+        if not re.fullmatch(r"language-pack-[a-f0-9]{32}", str(pack_id or "")):
+            raise LanguageLearningError("pack_id 格式不正确")
+        if not isinstance(words, dict) or any(len(words.get(mode) or []) != 10 for mode in ("en-zh", "en-ko")):
+            raise LanguageLearningError("words 必须包含 en-zh 与 en-ko 两套各 10 个单词")
+        if len(image_paths) != 10:
+            raise LanguageLearningError("image_paths 必须正好提供 10 张 Agent 生成的透明 PNG")
+        urls = []
+        for index, value in enumerate(image_paths, 1):
+            path = Path(value).resolve()
+            if not path.is_file() or path.suffix.lower() != ".png":
+                raise LanguageLearningError(f"第 {index} 张词包图片必须是存在的 PNG：{path}")
+            urls.append(upload_public_file(path, f"language-learning-packs/{pack_id}/{index:02d}.png", content_type="image/png")["url"])
+        pack = commit_language_learning_pack({"pack_id": pack_id, "topic": topic, "words": words, "image_urls": urls})
+        return {"pack": pack, "next_tool": "language_learning_claim_pack"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def language_learning_claim_pack(publish_date: str) -> dict:
+    """为 GitHub 生产领取一个已验收词包；不生成图片、不执行去背景。"""
+    try:
+        run_id = production_run_id(publish_date)
+        pack = claim_language_learning_pack(run_id=run_id, publish_date=publish_date)
+        cache_root, output_root = production_dirs(run_id)
+        cache_root.mkdir(parents=True, exist_ok=True); output_root.mkdir(parents=True, exist_ok=True)
+        return {"run_id": run_id, "publish_date": publish_date, "cache_dir": str(cache_root), "output_dir": str(output_root), "pack": pack}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
 def language_learning_prepare_images(
     topic: str,
     words: list[dict],
@@ -644,6 +715,22 @@ def language_learning_start_compose_cards(
             step=f"compose_cards:{learning_mode}",
             fn=_work,
         )
+        return {**started, "poll_tool": "language_learning_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def language_learning_start_compose_pack_cards(
+    subject_image_paths: list[str], words: list[dict], learning_mode: str, topic_english: str, run_id: str,
+) -> dict:
+    """使用预制词包的十张透明主体图拼卡，完全跳过去背景步骤。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+        def _work(progress=None) -> dict:
+            if progress is not None: progress(f"开始使用词包拼卡 {learning_mode}")
+            return compose_fixed_cards_from_subjects(subject_image_paths, words, learning_mode, topic_english, cache_root / "cards" / learning_mode)
+        started = runner_submit_task(cache_dir=cache_root, run_id=run_id, step=f"compose_pack_cards:{learning_mode}", fn=_work)
         return {**started, "poll_tool": "language_learning_poll_task"}
     except Exception as exc:
         raise _map_error(exc) from exc

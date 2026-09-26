@@ -601,3 +601,45 @@ def compose_fixed_cards(
             card.convert("RGB").save(path, format="PNG", optimize=True)
             card_paths.append(str(path))
     return {"output_dir": str(output), "card_paths": card_paths, "word_count": len(rows), "learning_mode": learning_mode}
+
+
+def compose_fixed_cards_from_subjects(
+    subject_paths: list[str | Path], words: list[dict], learning_mode: str, topic_english: str, output_dir: str | Path,
+) -> dict:
+    """直接使用十张透明主体图拼卡，不执行整图定位或去背景。"""
+    if len(subject_paths) != WORDS_PER_TASK:
+        raise CardCompositionError(f"预制词包必须提供 {WORDS_PER_TASK} 张主体图")
+    if learning_mode not in _LAYOUTS:
+        raise CardCompositionError("不支持的固定模板语言方向")
+    topic = re.sub(r"\s+", " ", str(topic_english or "").strip()).upper()
+    if not topic:
+        raise CardCompositionError("固定模板需要英文主题标题")
+    rows, layout = _words(words), _LAYOUTS[learning_mode]
+    subjects = []
+    for index, value in enumerate(subject_paths, 1):
+        path = Path(value).resolve()
+        if not path.is_file():
+            raise CardCompositionError(f"第 {index} 张预制主体图不存在：{path}")
+        with Image.open(path) as source:
+            subject = ImageOps.exif_transpose(source).convert("RGBA")
+            alpha = subject.getchannel("A")
+            if alpha.getextrema()[0] >= 255:
+                raise CardCompositionError(f"第 {index} 张预制主体图没有透明背景，不能用于词包")
+            subjects.append(subject.copy())
+    template_path = STATIC_ROOT / TEMPLATE_FILENAMES[learning_mode]
+    output = Path(output_dir).resolve(); output.mkdir(parents=True, exist_ok=True)
+    card_paths, used_names = [], set()
+    with Image.open(template_path) as source:
+        template = ImageOps.fit(ImageOps.exif_transpose(source).convert("RGB"), CARD_CANVAS_SIZE, method=Image.Resampling.LANCZOS)
+        for word, subject in zip(rows, subjects):
+            card = template.copy().convert("RGBA"); _paste_subject(card, subject, layout["box"]); draw = ImageDraw.Draw(card)
+            _draw(draw, f"{topic} {'IN KOREAN' if learning_mode == 'en-ko' else 'IN CHINESE'}", layout["topic"], "latin")
+            if learning_mode == "en-ko":
+                _draw_bilingual(draw, word["english"], word["chinese"], layout["english"]); _draw(draw, word["korean"], layout["target"], "korean")
+            else:
+                _draw(draw, word["english"].upper(), layout["english"], "latin"); _draw(draw, word["chinese"], layout["target"], "cjk")
+            _draw(draw, f"[{word['romanization']}]", layout["pronunciation"], "italic")
+            name = f"{safe_filename(word['english'])}.png"
+            if name in used_names: raise CardCompositionError(f"卡片文件名冲突，标题必须唯一：{name}")
+            used_names.add(name); path = output / name; card.convert("RGB").save(path, format="PNG", optimize=True); card_paths.append(str(path))
+    return {"output_dir": str(output), "card_paths": card_paths, "word_count": len(rows), "learning_mode": learning_mode}

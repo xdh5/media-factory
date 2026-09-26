@@ -110,6 +110,53 @@ function productionDate(value) {
   return result;
 }
 
+function languageLearningPack(value) {
+  if (!value || typeof value !== "object") throw new Error("词包必须是对象");
+  const packId = requiredText(value.pack_id, "pack_id", 100);
+  const topic = requiredText(value.topic, "topic", 200);
+  if (!/^[A-Za-z]+$/.test(topic)) throw new Error("topic 必须是不含空格的英文单词");
+  if (!value.words || typeof value.words !== "object") throw new Error("words 必须是词表对象");
+  for (const mode of ["en-zh", "en-ko"]) {
+    if (!Array.isArray(value.words[mode]) || value.words[mode].length !== 10) throw new Error(`words.${mode} 必须正好包含 10 个单词`);
+  }
+  if (!Array.isArray(value.image_urls) || value.image_urls.length !== 10) throw new Error("image_urls 必须正好包含 10 个图片地址");
+  const imageUrls = value.image_urls.map((item, index) => {
+    const url = requiredText(item, `image_urls[${index}]`, 2000);
+    if (!/^https:\/\//.test(url)) throw new Error(`image_urls[${index}] 必须是 https 地址`);
+    return url;
+  });
+  return { packId, topic, words: value.words, imageUrls };
+}
+
+function languageLearningPackRecord(row) {
+  return { ...row, words: JSON.parse(row.words_json || "{}"), image_urls: JSON.parse(row.image_urls_json || "[]"), words_json: undefined, image_urls_json: undefined };
+}
+
+async function commitLanguageLearningPack(request, env) {
+  const pack = languageLearningPack((await request.json()).pack);
+  const row = await env.DB.prepare(
+    `INSERT INTO language_learning_packs(pack_id, topic, words_json, image_urls_json, status) VALUES (?, ?, ?, ?, 'ready')
+     ON CONFLICT(pack_id) DO UPDATE SET topic = excluded.topic, words_json = excluded.words_json, image_urls_json = excluded.image_urls_json, status = 'ready', run_id = NULL, publish_date = NULL, claimed_at = NULL, updated_at = CURRENT_TIMESTAMP
+     WHERE language_learning_packs.status = 'ready' RETURNING *`,
+  ).bind(pack.packId, pack.topic, JSON.stringify(pack.words), JSON.stringify(pack.imageUrls)).first();
+  if (!row) return errorResponse("LANGUAGE_PACK_ALREADY_CLAIMED", "词包已经被 GitHub 领取，不能覆盖", 409, { pack_id: pack.packId });
+  return jsonResponse({ pack: languageLearningPackRecord(row) }, 201);
+}
+
+async function claimLanguageLearningPack(request, env) {
+  const body = await request.json();
+  const runId = requiredText(body.run_id, "run_id", 100);
+  const publishDate = productionDate(body.publish_date);
+  const selected = await env.DB.prepare("SELECT * FROM language_learning_packs WHERE status = 'ready' ORDER BY created_at, pack_id LIMIT 1").first();
+  if (!selected) return errorResponse("LANGUAGE_PACKS_EMPTY", "没有可用的已验收语言词包，请先让 Agent 生成并提交词包", 409);
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const claimed = await env.DB.prepare(
+    `UPDATE language_learning_packs SET status = 'claimed', run_id = ?, publish_date = ?, claimed_at = ?, updated_at = CURRENT_TIMESTAMP WHERE pack_id = ? AND status = 'ready' RETURNING *`,
+  ).bind(runId, publishDate, now, selected.pack_id).first();
+  if (!claimed) return errorResponse("LANGUAGE_PACK_CLAIM_CONFLICT", "词包刚被其他生产任务领取，请重试", 409);
+  return jsonResponse({ pack: languageLearningPackRecord(claimed) });
+}
+
 function cutoffTimestamp(days) {
   return new Date(Date.now() - days * 86400000).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
@@ -1300,6 +1347,8 @@ export default {
       if (request.method === "POST" && url.pathname === "/v1/publications/commit") return await commitPublication(request, env);
       if (request.method === "GET" && url.pathname === "/v1/words/recent") return await listRecentWords(request, env);
       if (request.method === "POST" && url.pathname === "/v1/words/validate-and-record") return await validateAndRecordWords(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/language-learning-packs/commit") return await commitLanguageLearningPack(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/language-learning-packs/claim") return await claimLanguageLearningPack(request, env);
       if (request.method === "GET" && url.pathname === "/v1/image-library") return await listImageLibrary(request, env);
       if (request.method === "GET" && url.pathname === "/v1/finance-generated-images") return await listFinanceGeneratedImages(request, env);
       if (request.method === "POST" && url.pathname === "/v1/finance-generated-images/commit") return await commitFinanceGeneratedImages(request, env);

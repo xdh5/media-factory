@@ -1,6 +1,6 @@
 """语言学习 MCP 内部编排模块。"""
 
-from .compose_fixed_cards import compose_fixed_cards, review_subject_sheet, validate_subject_sheet
+from .compose_fixed_cards import compose_fixed_cards, compose_fixed_cards_from_subjects, review_subject_sheet, validate_subject_sheet
 from .create_vocabulary_videos import create_vocabulary_videos
 from .publish_vocabulary_videos import (
     attach_publish_manifest,
@@ -29,6 +29,7 @@ __all__ = [
     "validate_topic_response",
     "build_database_word_entries",
     "compose_fixed_cards",
+    "compose_fixed_cards_from_subjects",
     "create_vocabulary_videos",
     "list_recent_words",
     "parse_vocabulary_response",
