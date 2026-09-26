@@ -1,9 +1,10 @@
 name: 每周六生产下周内容
 
 on:
-  schedule:
-    - cron: "0 12 * * 6"
-      timezone: Asia/Shanghai
+  # 停更中（2026-09-26）：定时触发已禁用，恢复更新时取消下面注释即可
+  # schedule:
+  #   - cron: "0 12 * * 6"
+  #     timezone: Asia/Shanghai
   workflow_dispatch:
     inputs:
       week_start:
