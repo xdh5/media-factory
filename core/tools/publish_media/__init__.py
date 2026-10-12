@@ -9,7 +9,7 @@ from ._errors import (
     PublishMediaError,
 )
 from .accounts import list_account_groups
-from .publisher import preview_publication, publish_local_outputs
+from .publisher import normalize_publish_timings, preview_publication, publish_local_outputs
 
 __all__ = [
     "DuplicatePublicationError",
@@ -19,6 +19,7 @@ __all__ = [
     "PublishContentNotFoundError",
     "PublishMediaError",
     "list_account_groups",
+    "normalize_publish_timings",
     "preview_publication",
     "publish_local_outputs",
 ]

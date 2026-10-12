@@ -419,58 +419,6 @@ UPLOAD_R2_INPUT_SCHEMA = {
     "required": ["manifest_path", "run_id"],
     "additionalProperties": False,
 }
-PUBLISH_VIDEOS_INPUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "manifest_path": {
-            "type": "string",
-            "minLength": 1,
-            "description": "本地发布清单路径，或 GitHub Action 上传的 R2 r2-manifest.json 公网地址",
-        },
-        "publish_confirmed": {"type": "boolean", "const": True},
-        "targets": {
-            "type": "array",
-            "items": {"type": "string", "enum": ["youtube", "tiktok", "instagram", "facebook"]},
-            "minItems": 1,
-            "uniqueItems": True,
-        },
-        "publish_at": {
-            "type": "string",
-            "minLength": 1,
-            "description": "YouTube、TikTok、Instagram、Facebook 定时发布时间，必须是带时区的 ISO 8601",
-        },
-        "publish_at_by_target": {
-            "type": "object",
-            "description": "按平台设置定时时间；值为 null 表示该平台立即发布",
-            "properties": {
-                "youtube": {"type": ["string", "null"]},
-                "tiktok": {"type": ["string", "null"]},
-                "instagram": {"type": ["string", "null"]},
-                "facebook": {"type": ["string", "null"]},
-            },
-            "additionalProperties": False,
-        },
-        "video_parts": {
-            "type": "array",
-            "items": {"type": "integer", "enum": [1, 2]},
-            "minItems": 1,
-            "uniqueItems": True,
-            "description": "只发布指定分段；当前用于 Instagram 和 Facebook",
-        },
-    },
-    "required": ["manifest_path", "publish_confirmed"],
-    "additionalProperties": False,
-}
-PUBLICATION_RECORDS_INPUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "publication_id": {"type": "string", "minLength": 1},
-        "run_id": {"type": "string", "minLength": 1},
-        "records": {"type": "array", "minItems": 1, "items": {"type": "object"}},
-    },
-    "required": ["publication_id", "run_id", "records"],
-    "additionalProperties": False,
-}
 PRODUCTION_OUTPUTS_QUERY_INPUT_SCHEMA = {
     "type": "object",
     "properties": {

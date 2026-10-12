@@ -53,6 +53,41 @@ def normalize_publish_timing(publish_mode: str, publish_at: str) -> tuple[str, s
     return scheduled.replace(microsecond=0).isoformat(), scheduled.astimezone(ZoneInfo(BEIJING_TIMEZONE)).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def normalize_publish_timings(
+    platforms: list[str],
+    publish_mode: str | None,
+    publish_at: str | None,
+    publish_at_by_platform: dict[str, str] | None,
+) -> dict[str, dict[str, str | None]]:
+    """解析各平台发布时间；映射值使用 now 表示立即发布，ISO 时间表示预约发布。"""
+    configured = {
+        str(platform).strip().casefold(): str(value or "").strip()
+        for platform, value in (publish_at_by_platform or {}).items()
+    }
+    unknown = set(configured) - set(platforms)
+    if unknown:
+        raise InvalidPublishRequestError(f"publish_at_by_platform 包含未选择的平台：{sorted(unknown)}")
+    timings: dict[str, dict[str, str | None]] = {}
+    for platform in platforms:
+        platform_value = configured.get(platform)
+        if platform_value:
+            mode = "immediate" if platform_value.casefold() == "now" else "scheduled"
+            effective_at, scheduled_cli = normalize_publish_timing(mode, platform_value)
+        else:
+            if not publish_mode or not publish_at:
+                raise InvalidPublishRequestError(
+                    f"平台 {platform} 没有发布时间；请传 publish_at_by_platform，或提供 publish_mode 与 publish_at"
+                )
+            mode = str(publish_mode).strip().casefold()
+            effective_at, scheduled_cli = normalize_publish_timing(mode, publish_at)
+        timings[platform] = {
+            "publish_mode": mode,
+            "publish_at": effective_at,
+            "scheduled_cli": scheduled_cli,
+        }
+    return timings
+
+
 def _content_key(title: str, platform: str, account_id: str, content_part: int) -> tuple:
     """生成与 D1 唯一索引一致的发布内容键。"""
     return (
@@ -195,15 +230,18 @@ def publish_local_outputs(
     publish_date: str,
     account_group: str,
     platforms: list[str],
-    publish_mode: str,
-    publish_at: str,
+    publish_mode: str | None,
+    publish_at: str | None,
     *,
     content_kind: str | None = None,
+    publish_at_by_platform: dict[str, str] | None = None,
     progress=None,
 ) -> dict:
-    effective_at, scheduled_cli = normalize_publish_timing(publish_mode, publish_at)
     preview = preview_publication(
         business_line, publish_date, account_group, platforms, content_kind=content_kind,
+    )
+    timings = normalize_publish_timings(
+        preview["platforms"], publish_mode, publish_at, publish_at_by_platform,
     )
     pending = [task for task in preview["tasks"] if not task["already_published"]]
     skipped = [
@@ -220,13 +258,18 @@ def publish_local_outputs(
     published = []
     for index, task in enumerate(pending, start=1):
         item, route = task["item"], task["route"]
+        timing = timings[str(route["platform"])]
         if progress:
             progress(f"正在发布 {index}/{len(pending)}：{route['platform']} - {item['title']}")
         connector = str(route["connector"])
         result = (
-            _publish_matrixmedia(item, route, scheduled_cli)
+            _publish_matrixmedia(item, route, timing["scheduled_cli"])
             if connector == "matrixmedia"
-            else _publish_official(item, route, None if publish_mode == "immediate" else effective_at)
+            else _publish_official(
+                item,
+                route,
+                None if timing["publish_mode"] == "immediate" else str(timing["publish_at"]),
+            )
         )
         external_id = str(result.get("video_id") or result.get("post_id") or result.get("id") or "")
         external_url = str(result.get("video_url") or result.get("platform_url") or result.get("url") or "")
@@ -239,9 +282,9 @@ def publish_local_outputs(
             "account_id": str(route["platform_account_id"]),
             "content_part": int(item.get("content_part") or 1),
             "title": str(item["title"]),
-            "publish_mode": publish_mode,
-            "publish_at": effective_at if publish_mode == "scheduled" else datetime.now(ZoneInfo(BEIJING_TIMEZONE)).replace(microsecond=0).isoformat(),
-            "status": "scheduled" if publish_mode == "scheduled" else "published",
+            "publish_mode": timing["publish_mode"],
+            "publish_at": timing["publish_at"],
+            "status": "scheduled" if timing["publish_mode"] == "scheduled" else "published",
             "external_id": external_id or None,
             "external_url": external_url or None,
         }
@@ -250,8 +293,13 @@ def publish_local_outputs(
     return {
         "business_line": business_line,
         "publish_date": preview["publish_date"],
-        "publish_mode": publish_mode,
-        "publish_at": effective_at,
+        "publish_mode": (
+            next(iter({str(item["publish_mode"]) for item in timings.values()}))
+            if len({str(item["publish_mode"]) for item in timings.values()}) == 1
+            else "per_platform"
+        ),
+        "publish_at": str(publish_at or "per_platform"),
+        "publish_timings": timings,
         "published": published,
         "skipped": skipped,
     }

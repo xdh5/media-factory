@@ -8,7 +8,6 @@ import re
 import uuid
 import warnings
 from copy import deepcopy
-from datetime import datetime
 from pathlib import Path
 
 os.environ.setdefault("DASHSCOPE_BUSINESS_LINE", "language_learning")
@@ -28,7 +27,6 @@ from ..infrastructure import (
     claim_language_learning_pack,
     clear_run,
     commit_language_learning_pack,
-    commit_publication_records,
     generate_qwen_image,
     get_topic,
     list_production_outputs,
@@ -42,7 +40,6 @@ from ..infrastructure import (
 )
 
 from ..config import (
-    BEIJING_TIMEZONE,
     DEFAULT_PRODUCTION_CONFIG,
     SUBJECT_CUTOUT_CACHE_DIR_NAME,
     SUBJECT_GENERATION_MAX_ATTEMPTS,
@@ -56,7 +53,6 @@ from ..config import (
     pack_cutout_cache_dir,
     production_dirs,
     normalize_publish_date,
-    publish_date_from_run_id,
     production_run_id,
 )
 from ..errors import ConfirmationRequiredError, LanguageLearningError, TaskNotFoundError
@@ -73,8 +69,6 @@ from ..services import (
     create_vocabulary_videos,
     list_recent_words,
     parse_vocabulary_response,
-    prepare_r2_publish_manifest,
-    publish_vocabulary_videos,
     require_transparent_subject_sheet,
     review_subject_sheet,
     upload_publish_assets_to_r2,
@@ -140,26 +134,6 @@ def language_learning_get_automation_plan(publish_date: str) -> dict:
         raise _map_error(exc) from exc
 
 
-def language_learning_get_publish_schedule(run_id: str) -> dict:
-    """按 MCP 配置返回自动发布目标和北京时间预约时间。"""
-    try:
-        publish_date = publish_date_from_run_id(run_id)
-        hour = int(DEFAULT_PRODUCTION_CONFIG["publish_hour_beijing"])
-        publish_at = datetime.fromisoformat(f"{publish_date}T{hour:02d}:00:00").replace(
-            tzinfo=BEIJING_TIMEZONE
-        )
-        if publish_at <= datetime.now(BEIJING_TIMEZONE):
-            raise LanguageLearningError("计划发布时间已经过去，禁止预约到过去")
-        return {
-            "run_id": run_id,
-            "publish_date": publish_date,
-            "publish_at": publish_at.isoformat(),
-            "targets": list(DEFAULT_PRODUCTION_CONFIG["publish_targets"]),
-        }
-    except Exception as exc:
-        raise _map_error(exc) from exc
-
-
 def language_learning_get_topic_generation_prompt(recent_topics: list[str], requested_topic: str = "", feedback: str = "") -> dict:
     """返回宿主 Agent 与 GitHub Runner 共用的主题生成 Prompt。"""
     try:
@@ -190,28 +164,6 @@ def _map_error(exc: Exception) -> LanguageLearningError:
     if isinstance(exc, CloudflareDataError):
         return LanguageLearningError(exc.message, exc.details)
     raise exc
-
-
-def language_learning_record_publications(
-    publication_id: str,
-    run_id: str,
-    records: list[dict],
-) -> dict:
-    """MatrixMedia 发布成功或预约成功后，按最终平台写入语言学习发布记录。"""
-    try:
-        normalized = [
-            {
-                **record,
-                "publication_id": publication_id,
-                "run_id": run_id,
-                "business_line": "language_learning",
-                "connector": "matrixmedia",
-            }
-            for record in records
-        ]
-        return commit_publication_records(normalized)
-    except Exception as exc:
-        raise _map_error(exc) from exc
 
 
 def language_learning_get_production_outputs(publish_date: str) -> dict:
@@ -874,50 +826,6 @@ def language_learning_start_upload_r2(
         raise _map_error(exc) from exc
 
 
-def language_learning_start_publish(
-    manifest_path: str,
-    publish_confirmed: bool,
-    run_id: str,
-    targets: list[str] | None = None,
-    publish_at: str | None = None,
-    publish_at_by_target: dict[str, str | None] | None = None,
-    video_parts: list[int] | None = None,
-) -> dict:
-    """启动中文官方平台发布；立即返回 task_path，用 language_learning_poll_task 轮询。"""
-    try:
-        cache_root, _ = production_dirs(run_id)
-
-        def _work(progress=None) -> dict:
-            if progress is not None:
-                progress("开始下载发布清单并发布中文平台")
-            resolved_manifest_path = manifest_path
-            if str(manifest_path).strip().startswith(("http://", "https://")):
-                resolved_manifest_path = prepare_r2_publish_manifest(
-                    manifest_path,
-                    run_id,
-                    cache_root,
-                )
-                if progress is not None:
-                    progress("发布清单已就绪，开始上传平台")
-            return publish_vocabulary_videos(
-                resolved_manifest_path,
-                publish_confirmed,
-                targets=targets,
-                publish_at=publish_at,
-                publish_at_by_target=publish_at_by_target,
-                video_parts=video_parts,
-                progress=progress,
-            )
-
-        started = runner_submit_task(
-            cache_dir=cache_root,
-            run_id=run_id,
-            step="publish",
-            fn=_work,
-        )
-        return {**started, "poll_tool": "language_learning_poll_task"}
-    except Exception as exc:
-        raise _map_error(exc) from exc
 def language_learning_poll_task(task_path: str) -> dict:
     """轮询后台任务。status=succeeded 时读 result；failed 时读 error 并停止制作。"""
     try:

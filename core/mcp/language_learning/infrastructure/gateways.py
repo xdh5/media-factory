@@ -9,7 +9,6 @@ from core.tools.cloudflare_data import (
     CloudflareDataError,
     claim_language_learning_pack,
     commit_language_learning_pack,
-    commit_publication_records,
     list_production_outputs,
     list_publication_records,
 )

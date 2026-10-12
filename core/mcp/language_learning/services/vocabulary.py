@@ -1,4 +1,4 @@
-"""读取 Cloudflare D1 单词历史并校验复用比例，发布清单携带待入库词表。"""
+"""读取 Cloudflare D1 单词历史、校验复用比例并生成产物入库词表。"""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def _word_entries(words_by_mode: dict) -> list[dict]:
 
 
 def build_database_word_entries(words_by_mode: dict) -> list[dict]:
-    """生成随发布清单传递、待用户点击发布后入库的单词数据。"""
+    """生成随成片交付清单传递、待产出成功后入库的单词数据。"""
     return [
         {
             "english": entry["english"],

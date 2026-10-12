@@ -49,12 +49,13 @@ MCP 入口：`python -m core.mcp.language_learning`。**语言学习 MCP 是 Pro
 **中文 `en-zh`**
 
 - YouTube 使用项目共用的 `YOUTUBE_OAUTH_CLIENT_ID`、`YOUTUBE_OAUTH_CLIENT_SECRET`，并使用 `.env` 里按频道隔离的 `LANGUAGE_LEARNING_YOUTUBE_*`（`youtube_account` 即账号前缀）
-- 多平台发布时间不一致时，给 `language_learning_start_publish` 传 `publish_at_by_target`，键为 `youtube`、`tiktok`、`instagram`、`facebook`，值为带时区的 ISO 8601；值为 `null` 表示立即发布。例如 YouTube、TikTok 在北京时间 16:00 发布而 Meta 立即发布：`{"youtube":"2026-08-24T16:00:00+08:00","tiktok":"2026-08-24T16:00:00+08:00","instagram":null,"facebook":null}`。四个平台同一时间时可继续使用兼容参数 `publish_at`。
+- 语言学习 MCP 只负责生产和产物交付，不调用任何平台发布接口。发布必须改用统一发布 MCP `python -m core.mcp.publishing`。
+- 多平台发布时间不一致时，给 `publishing_start_publish` 传 `publish_at_by_platform`；值为 `now` 表示立即发布，其他值必须是带时区的 ISO 8601。未单独配置的平台使用兼容参数 `publish_mode` 与 `publish_at`。
 - TikTok 通过 Zernio 发布中文成片，使用共用的 `ZERNIO_API_KEY` 与 `LANGUAGE_LEARNING_TIKTOK_*`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址
 - Instagram 通过 Zernio 发布中文成片，使用 Meta 专用的 `zernio_api_key_meta`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址。Zernio 只有一个健康 Instagram 账号时自动选择；连接多个账号时必须在 `.env` 配置 `LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID`。只发指定分段时，传 `targets=["instagram"]` 与 `video_parts=[1]` 或 `[2]`。
 - Facebook 通过 Zernio 发布中文成片，使用 Meta 专用的 `zernio_api_key_meta`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址。Zernio 只有一个健康 Facebook Page 时自动选择；连接多个 Page 时必须在 `.env` 配置 `LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID`。只发指定分段时，传 `targets=["facebook"]` 与 `video_parts=[1]` 或 `[2]`。
 - YouTube、TikTok、Instagram、Facebook 的作品描述都只传标签 hashtag；不得把 `short_title`、完整标题或其它文字放进描述。
-- 展示给用户看的账号组名为 `中文`；账号配置由 YouTube 与 Zernio 的环境变量提供，不再从 D1 读取发布账号组。官方平台发布成功或预约成功后由语言学习 MCP 自动写入发布记录。
+- 展示给用户看的账号组名为 `中文`；账号路由由统一发布 MCP 从 D1 账号组和当前授权账号中解析。平台发布成功或预约成功后由统一发布 MCP 自动写入发布记录。
 
 **韩语 `en-ko`**
 
@@ -63,7 +64,7 @@ MCP 入口：`python -m core.mcp.language_learning`。**语言学习 MCP 是 Pro
 - MatrixMedia 发布所有平台时必须传 `creativeStatement="ai_generated"`，给成片添加各平台对应的 AI 生成内容标记；不得省略或改为无标注。
 - MatrixMedia 发布时完整标题传 `title`（`韩语｜饺子的韩语怎么说？` 这种格式），作品描述只传标签 hashtag；不得把短标题、完整标题或其它文字放进描述。
 - 跳过掘金、番茄
-- MatrixMedia 返回成功或预约成功结果后，必须调用 `language_learning_record_publications`。最终平台按 `ks→kuaishou`、`dy→douyin`、`bjh→baijiahao`、`xhs→xiaohongshu`、`tt→toutiao`、`sph→wechat_channels` 映射；立即发布的 `publish_at` 写实际成功时间，预约发布写预约时间，均使用带时区的 ISO 8601。
+- MatrixMedia 与官方平台均由统一发布 MCP 调用；每个平台成功发布或预约后由统一发布 MCP 立即写入 `publication_records`。
 
 ## Prompt
 
@@ -102,7 +103,7 @@ GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现�
 7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**由十张实际透明切图重新排列成的整体验收图**，按返回 Prompt 一次性检查：主体数量是否为 10、边缘或结构有没有被切掉、是否误带相邻主体、文字、水印、全彩配色与材质质感、语义表达和透明边缘异常；全体单色染色、大片无层次纯色块、线稿图标、白色剪影、UI 符号或廉价塑料感必须按 `style` 判定失败。再调用 `language_learning_review_subject_sheet` 提交一条结论。切图不完整或误带相邻主体时先让 LLM 重新定位并切图；图片本身存在文字、水印、画风或透明边缘问题时才重新生成透明主题图。失败时 `failure_kind` 取 `background_edge` / `text` / `watermark` / `style` / `count` / `completeness` 之一。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对同一张切图验收图调用千问视觉执行同一个 MCP Prompt。
 8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
 9. `language_learning_start_create_videos`：传入 MCP 配置返回的 `voices`、`publish_config`、`language_pause`、`word_pause` 和 `video_formats`；倒计时音轨使用 MCP 默认值，不必传 `countdown_audio_path` → poll 至 `done=true`。
-10. 用户确认发布后：韩语原版与问答版一起交给 MatrixMedia；中文调用 `language_learning_start_publish`，原版两段和问答版一条一起发到 YouTube、TikTok、Instagram、Facebook。问答版标题与原版同一套格式，不得加 `guess` 或 `看图猜词`。目标平台需要公网视频地址时，才调用 `language_learning_start_upload_r2` 上传发布资产。发布 MCP 幂等写入正式话题与本期 10 个单词。
+10. 用户确认发布后：调用统一发布 MCP 的 `publishing_preview` 检查产物、账号路由和重复项，再调用 `publishing_start_publish`；中文传 `content_kind="en-zh"`，韩语传 `content_kind="en-ko"`，都会同时包含原版和问答版。目标平台需要公网视频地址时由统一发布 MCP 按需上传 R2。
 11. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询
@@ -118,7 +119,6 @@ GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现�
 | --- | --- |
 | `language_learning_get_production_config` | 返回 Agent 与 GitHub Runner 共用的全部固定生产和自动发布参数 |
 | `language_learning_get_automation_plan` | 返回每周生产与补齐发布的统一预检结果 |
-| `language_learning_get_publish_schedule` | 返回 MCP 统一维护的自动发布平台和北京时间预约时间 |
 | `language_learning_get_topic_generation_prompt` / `language_learning_validate_topic_response` | 共用主题生成 Prompt 与校验 |
 | `language_learning_get_topics` | 查已占用主题和最近 100 天单词 |
 | `language_learning_get_production_outputs` | 按北京时间计划发布日期查询语言学习成片并区分本地与 GitHub 来源 |
@@ -141,6 +141,5 @@ GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现�
 | `language_learning_create_videos` | 出片（同步，勿用） |
 | `language_learning_start_create_videos` | 启动出片后台任务 |
 | `language_learning_start_upload_r2` | 后台上传成片、主题图和发布清单到 R2 |
-| `language_learning_start_publish` | 后台发布中文 YouTube、TikTok、Instagram 或 Facebook，并写入内容历史 |
 | `language_learning_poll_task` | 轮询后台任务 |
 | `language_learning_clear_run` | 清本次目录 |

@@ -35,11 +35,16 @@ PUBLISH_START_INPUT_SCHEMA = {
         **PUBLISH_PREVIEW_INPUT_SCHEMA["properties"],
         "publish_mode": {"type": "string", "enum": list(PUBLISH_MODES)},
         "publish_at": {"type": "string", "minLength": 1},
+        "publish_at_by_platform": {
+            "type": ["object", "null"],
+            "additionalProperties": {"type": "string", "minLength": 1},
+            "description": "按平台设置发布时间；值为 now 时立即发布，否则必须是带时区的 ISO 8601 时间",
+        },
         "publish_confirmed": {"type": "boolean", "const": True},
     },
     "required": [
         "business_line", "publish_date", "account_group", "platforms",
-        "publish_mode", "publish_at", "publish_confirmed",
+        "publish_confirmed",
     ],
     "additionalProperties": False,
 }
@@ -49,7 +54,7 @@ PUBLISH_RESULT_SCHEMA = {
     "properties": {
         "business_line": {"type": "string", "enum": list(BUSINESS_LINES)},
         "publish_date": {"type": "string"},
-        "publish_mode": {"type": "string", "enum": list(PUBLISH_MODES)},
+        "publish_mode": {"type": "string", "enum": [*PUBLISH_MODES, "per_platform"]},
         "publish_at": {"type": "string"},
         "published": {"type": "array", "items": {"type": "object"}},
         "skipped": {"type": "array", "items": {"type": "object"}},

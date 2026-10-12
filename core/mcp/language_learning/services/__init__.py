@@ -4,8 +4,6 @@ from .subject_cards import approved_subject_cutout_paths, compose_fixed_cards, c
 from .videos import create_vocabulary_videos
 from .publishing import (
     attach_publish_manifest,
-    prepare_r2_publish_manifest,
-    publish_vocabulary_videos,
     upload_publish_assets_to_r2,
 )
 from .prompt_service import (
@@ -34,8 +32,6 @@ __all__ = [
     "create_vocabulary_videos",
     "list_recent_words",
     "parse_vocabulary_response",
-    "prepare_r2_publish_manifest",
-    "publish_vocabulary_videos",
     "require_transparent_subject_sheet",
     "review_subject_sheet",
     "upload_publish_assets_to_r2",

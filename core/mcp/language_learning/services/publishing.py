@@ -1,4 +1,4 @@
-"""语言学习成片发布：中文发官方平台，韩语由 MatrixMedia 发布到「韩语」。"""
+"""语言学习成片交付清单与 R2 产物登记。"""
 
 from __future__ import annotations
 
@@ -265,10 +265,9 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
     youtube_items = [*kept_youtube, *youtube_items]
     matrixmedia_items = [*kept_matrixmedia, *matrixmedia_items]
     items = [*youtube_items, *matrixmedia_items]
-    status = "awaiting_publish_confirmation"
+    status = "produced"
     manifest = {
         "status": status,
-        "confirmation_required": "publish",
         "topic": topic,
         "run_id": video_result.get("run_id"),
         "publish_date": video_result.get("publish_date"),
@@ -287,11 +286,11 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
             "entries": build_database_word_entries(words_by_mode),
         },
     }
+    manifest["database_commit_result"] = _commit_manifest_database(manifest)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return {
         **video_result,
         "status": status,
-        "confirmation_required": "publish",
         "manifest_path": str(manifest_path),
         "publish_items": youtube_items,
         "matrixmedia_items": matrixmedia_items,
@@ -601,7 +600,7 @@ def _pending_item_parts(
 
 
 def _commit_manifest_database(manifest: dict) -> dict:
-    """用户通过 MCP 触发发布后，幂等写入正式话题和十个单词。"""
+    """成片产出成功后，幂等写入正式话题和十个单词。"""
     payload = manifest.get("database_commit")
     if not isinstance(payload, dict):
         raise PublishError("发布清单缺少 database_commit，无法写入正式内容历史")

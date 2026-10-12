@@ -391,52 +391,51 @@ async def upload_handoff(handoff_dir: str | Path) -> dict:
     }
 
 async def schedule_publication(
-    manifest_url: str,
     run_id: str,
     *,
     targets: list[str] | None = None,
 ) -> dict:
-    """按语言学习 MCP 配置，把尚未发布的平台排到计划发布日期的指定北京时间。"""
-    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
-        schedule = await mcp.call("language_learning_get_publish_schedule", {"run_id": run_id})
-    publish_at = str(schedule["publish_at"])
+    """通过统一发布 MCP，把 GitHub/R2 成片排到计划发布日期北京时间 16:00。"""
+    run_date = str(run_id).removeprefix("run-")
+    if len(run_date) != 8 or not run_date.isdigit():
+        raise RuntimeError(f"语言学习 run_id 格式错误：{run_id}")
+    publish_date = f"{run_date[:4]}-{run_date[4:6]}-{run_date[6:]}"
+    publish_at = f"{publish_date}T16:00:00+08:00"
+    supported_targets = ["youtube", "tiktok", "instagram", "facebook"]
     selected_targets = [
         str(item).strip().casefold()
-        for item in (targets or schedule["targets"])
+        for item in (targets or supported_targets)
         if str(item).strip()
     ]
-    unknown = set(selected_targets) - set(schedule["targets"])
+    unknown = set(selected_targets) - set(supported_targets)
     if unknown:
         raise RuntimeError(f"不支持的语言学习发布平台：{', '.join(sorted(unknown))}")
     if not selected_targets:
         return {"success": True, "skipped": True, "reason": "该计划发布日期四个平台都已有发布记录"}
-    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+    async with ProjectMCP("core.mcp.publishing", PROJECT_ROOT) as mcp:
         started = await mcp.call(
-            "language_learning_start_publish",
+            "publishing_start_publish",
             {
-                "manifest_path": str(manifest_url),
+                "business_line": "language_learning",
+                "publish_date": publish_date,
+                "account_group": "中文",
+                "platforms": selected_targets,
                 "publish_confirmed": True,
-                "run_id": str(run_id),
-                "targets": selected_targets,
+                "content_kind": "en-zh",
+                "publish_mode": "scheduled",
                 "publish_at": publish_at,
             },
         )
-        result = await mcp.poll("language_learning_poll_task", started["task_path"])
-    _log_publish_batches(result.get("published") or [])
-    if result.get("success") is not True:
-        raise RuntimeError(f"四平台排期存在失败：{json.dumps(_publish_failure_payload(result), ensure_ascii=False)}")
+        result = await mcp.poll("publishing_poll_task", started["task_path"])
     completed_channels = {
-        str(item).strip().casefold()
-        for item in result.get("completed_targets") or []
-        if str(item).strip()
+        str(item.get("record", {}).get("platform") or "").strip().casefold()
+        for item in result.get("published") or []
     }
-    if not completed_channels:
-        completed_channels = {
-            str(item.get("channel") or "").strip().casefold()
-            for item in result.get("published") or []
-            if item.get("success") is True
-        }
+    completed_channels.update(
+        str(item.get("platform") or "").strip().casefold()
+        for item in result.get("skipped") or []
+    )
     missing_channels = set(selected_targets) - completed_channels
     if missing_channels:
         raise RuntimeError(f"四平台排期返回不完整，缺少：{', '.join(sorted(missing_channels))}")
-    return {"publish_at": publish_at, **result}
+    return {"publish_at": publish_at, "run_id": run_id, **result}

@@ -82,10 +82,11 @@ def publishing_start_publish(
     publish_date: str,
     account_group: str,
     platforms: list[str],
-    publish_mode: str,
-    publish_at: str,
     publish_confirmed: bool,
+    publish_mode: str | None = None,
+    publish_at: str | None = None,
     content_kind: str | None = None,
+    publish_at_by_platform: dict[str, str] | None = None,
 ) -> dict:
     """启动统一发布；立即发布用 publish_at=now，预约发布使用带时区的未来时间。"""
     try:
@@ -106,6 +107,7 @@ def publishing_start_publish(
                 publish_mode,
                 publish_at,
                 content_kind=content_kind,
+                publish_at_by_platform=publish_at_by_platform,
                 progress=progress,
             )
 

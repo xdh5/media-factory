@@ -39,7 +39,6 @@ def main() -> None:
     parser.add_argument("--handoff-dir", default="cache/github_actions/language-learning-handoff")
     parser.add_argument("--diagnostics-dir", default="cache/github_actions/language-learning-diagnostics")
     parser.add_argument("--source-run-id", default="")
-    parser.add_argument("--manifest-url", default="")
     parser.add_argument("--run-id", default="")
     parser.add_argument("--topic-value", default="")
     parser.add_argument("--subject-sheet-url", default="")
@@ -148,7 +147,7 @@ def main() -> None:
 
         targets = [item.strip() for item in arguments.targets.split(",") if item.strip()]
         payload = asyncio.run(
-            schedule_publication(arguments.manifest_url, arguments.run_id, targets=targets or None)
+            schedule_publication(arguments.run_id, targets=targets or None)
         )
     elif arguments.workflow == "daily_plan":
         from ._dates import resolve_publish_date

@@ -6,7 +6,6 @@
 
 language_learning_get_production_config
 language_learning_get_automation_plan
-language_learning_get_publish_schedule
 language_learning_get_topic_generation_prompt / language_learning_validate_topic_response
 
 TTS、发布账号组与完整流程见 `.agents/skills/learn_Chinese_and_Korean/SKILL.md`。Prompt 模板在 `prompts/`。
@@ -98,8 +97,7 @@ language_learning_start_upload_r2
 └─ services.publishing.upload_publish_assets_to_r2
    └─ 上传成片、主题图与发布清单
 
-language_learning_start_publish
-└─ 中文原版与问答版一起发布到 YouTube、TikTok、Instagram 或 Facebook，并幂等写入正式话题和十个单词
+平台发布不属于本 MCP；统一调用 `python -m core.mcp.publishing`。
 
 language_learning_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task
@@ -121,7 +119,7 @@ language_learning_clear_run
 | `services/vocabulary.py` | 最近 100 天词库、新词比例校验与历史记录 |
 | `services/subject_cards.py` | 透明校验、定位切图、切图验收图和单词卡渲染 |
 | `services/videos.py` | 卡片与双语 TTS 合成竖版成片 |
-| `services/publishing.py` | 发布清单、R2 上传和平台发布 |
+| `services/publishing.py` | 成片交付清单、产物登记和 R2 上传 |
 | `schemas/` | MCP 输入输出 Schema |
 | `errors/` | 领域错误与错误码 |
 | `config/` | 服务说明、生产参数、路径和技术常量 |
