@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .._constants import MINIMUM_NEW_WORDS, SUPPORTED_LEARNING_MODES, WORD_HISTORY_DAYS, WORDS_PER_TASK
-from .._errors import InvalidVocabularyError
+from ..config import MINIMUM_NEW_WORDS, SUPPORTED_LEARNING_MODES, WORD_HISTORY_DAYS, WORDS_PER_TASK
+from ..errors import InvalidVocabularyError
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
@@ -36,7 +36,7 @@ def build_visual_validation_prompt() -> dict:
 
 
 def build_sheet_validation_prompt() -> dict:
-    """返回宿主 Agent 检查整张去背景主题图所需的 Prompt。"""
+    """返回宿主 Agent 检查十张透明切图整体验收图所需的 Prompt。"""
     return {
         "system_prompt": _read_prompt("sheet-validation-system.md"),
         "user_prompt": _read_prompt("sheet-validation-user.md"),

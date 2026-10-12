@@ -1,42 +1,5 @@
-"""语言学习 MCP 内部编排模块。"""
+"""语言学习 MCP Tool 接口。"""
 
-from .compose_fixed_cards import compose_fixed_cards, compose_fixed_cards_from_subjects, review_subject_sheet, validate_subject_sheet
-from .create_vocabulary_videos import create_vocabulary_videos
-from .publish_vocabulary_videos import (
-    attach_publish_manifest,
-    prepare_r2_publish_manifest,
-    publish_vocabulary_videos,
-    upload_publish_assets_to_r2,
-)
-from .vocabulary_prompt import (
-    build_sheet_validation_prompt,
-    build_subject_sheet_prompt,
-    build_topic_prompt,
-    build_visual_validation_prompt,
-    build_vocabulary_prompt,
-    validate_topic_response,
-    parse_vocabulary_response,
-)
-from .vocabulary_history import build_database_word_entries, list_recent_words, validate_words
+from .registry import register_tools
 
-__all__ = [
-    "attach_publish_manifest",
-    "build_sheet_validation_prompt",
-    "build_subject_sheet_prompt",
-    "build_topic_prompt",
-    "build_visual_validation_prompt",
-    "build_vocabulary_prompt",
-    "validate_topic_response",
-    "build_database_word_entries",
-    "compose_fixed_cards",
-    "compose_fixed_cards_from_subjects",
-    "create_vocabulary_videos",
-    "list_recent_words",
-    "parse_vocabulary_response",
-    "prepare_r2_publish_manifest",
-    "publish_vocabulary_videos",
-    "review_subject_sheet",
-    "upload_publish_assets_to_r2",
-    "validate_words",
-    "validate_subject_sheet",
-]
+__all__ = ["register_tools"]

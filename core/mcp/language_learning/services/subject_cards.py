@@ -6,19 +6,16 @@ import re
 import unicodedata
 from collections import deque
 from pathlib import Path
-from statistics import median
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 
 from core.tools.generate_final_video import safe_filename
-from .._constants import (
+from ..config import (
     CARD_CANVAS_SIZE,
     CARD_GRID_COLUMNS,
     PROJECT_ROOT,
     STATIC_ROOT,
     SUBJECT_ALPHA_THRESHOLD,
-    SUBJECT_CHROMA_HIGH_DISTANCE,
-    SUBJECT_CHROMA_LOW_DISTANCE,
     SUBJECT_COMPONENT_MIN_RATIO,
     SUBJECT_CUTOUT_STRATEGY_VERSION,
     SUBJECT_GENERATION_MAX_ATTEMPTS,
@@ -26,7 +23,7 @@ from .._constants import (
     TEMPLATE_FILENAMES,
     WORDS_PER_TASK,
 )
-from .._errors import CardCompositionError
+from ..errors import CardCompositionError
 
 _FONT_DIR = PROJECT_ROOT / "static" / "font"
 _SYSTEM_FONTS = {
@@ -166,9 +163,9 @@ def _inspection_paths(cache_dir: Path) -> tuple[Path, Path]:
     return cache_dir / "inspection.json", cache_dir / "review-history.json"
 
 
-def _background_removed_sheet_path(cache_dir: Path) -> Path:
-    """返回整张去背景色主题图的缓存路径，供失败诊断复用。"""
-    return cache_dir / "subject-sheet-background-removed.png"
+def _cutout_review_sheet_path(cache_dir: Path) -> Path:
+    """返回十张切图的整体验收图路径。"""
+    return cache_dir / "subject-cutouts-review.png"
 
 
 def _load_cached_cutouts(cache_dir: Path, signature: str) -> list[Image.Image] | None:
@@ -231,16 +228,16 @@ def review_subject_sheet(
     cutout_cache_dir: str | Path,
     review: dict,
 ) -> dict:
-    """记录整张去背景主题图的视觉验收结论，未通过时禁止拼卡。"""
+    """记录十张透明切图的视觉验收结论，未通过时禁止拼卡。"""
     sheet_path = Path(subject_sheet_path).resolve()
     cache_dir = Path(cutout_cache_dir).resolve()
     signature = _sheet_signature(sheet_path)
     marker, cutout_paths = _cutout_cache_paths(cache_dir)
     if not marker.is_file() or marker.read_text(encoding="utf-8").strip() != signature:
-        raise CardCompositionError("当前主体图没有可检查的抠图缓存，请先调用主体图验收")
-    background_removed_path = _background_removed_sheet_path(cache_dir)
-    if not background_removed_path.is_file():
-        raise CardCompositionError("去背景后的完整主题图不存在，请先调用主体图验收")
+        raise CardCompositionError("当前主体图没有可检查的透明切图缓存，请先调用主体图验收")
+    review_sheet_path = _cutout_review_sheet_path(cache_dir)
+    if not review_sheet_path.is_file():
+        raise CardCompositionError("十张切图的整体验收图不存在，请先调用主体图验收")
     if not isinstance(review, dict):
         raise CardCompositionError("整图验收结果必须是对象")
     valid = review.get("valid")
@@ -263,7 +260,7 @@ def review_subject_sheet(
         "subject_count": review.get("subject_count"),
     }
     if any(not path.is_file() for path in cutout_paths):
-        raise CardCompositionError("十张抠图缓存不完整，请重新执行主体图验收")
+        raise CardCompositionError("十张透明切图缓存不完整，请重新执行主体图验收")
     inspection_path, history_path = _inspection_paths(cache_dir)
     if valid:
         inspection_path.write_text(
@@ -273,7 +270,7 @@ def review_subject_sheet(
         return {
             "approved": True,
             "review": normalized,
-            "background_removed_sheet_path": str(background_removed_path),
+            "cutout_review_sheet_path": str(review_sheet_path),
             "cutout_paths": [str(path) for path in cutout_paths],
             "next_tool": "language_learning_start_compose_cards",
         }
@@ -287,72 +284,54 @@ def review_subject_sheet(
         encoding="utf-8",
     )
     validation_issues = [f"[{failure_kind}] {issue}" if failure_kind else issue]
-    regeneration_instruction = (
-        "优先重新生成无白边、黑边、彩边或光晕的真实透明背景 PNG；透明输出失败时才用高反差纯色背景兜底"
-        if failure_kind == "background_edge"
-        else "按验收问题重新生成主题图"
+    action = "relocalize" if failure_kind == "completeness" else "regenerate"
+    correction_instruction = (
+        "重新定位主体并提交更保守的边界框，确保主体结构完整且不带入相邻主体"
+        if action == "relocalize"
+        else "重新生成带真实 Alpha 通道的透明 PNG，并修正验收指出的问题"
     )
     return {
         "approved": False,
         "review": normalized,
         "failed_rounds": failed_rounds,
-        "action": "regenerate",
+        "action": action,
         "validation_issues": validation_issues,
-        "regeneration_instruction": regeneration_instruction,
-        "next_tool": "language_learning_prepare_images",
+        "correction_instruction": correction_instruction,
+        "next_tool": (
+            "language_learning_validate_subject_sheet"
+            if action == "relocalize"
+            else "language_learning_prepare_images"
+        ),
     }
 
 
-def _estimate_background_rgb(sheet: Image.Image) -> tuple[int, int, int]:
-    """从画布四边估计宿主 Agent 识别的均匀纯色背景实际 RGB。"""
-    rgb = sheet.convert("RGB")
-    pixels = rgb.load()
-    stride = max(1, min(rgb.size) // 180)
-    samples: list[tuple[int, int, int]] = []
-    for x in range(0, rgb.width, stride):
-        samples.extend((pixels[x, 0], pixels[x, rgb.height - 1]))
-    for y in range(0, rgb.height, stride):
-        samples.extend((pixels[0, y], pixels[rgb.width - 1, y]))
-    if not samples:
-        raise CardCompositionError("无法从主体图画布边缘估计背景色")
-    return tuple(round(median(channel)) for channel in zip(*samples))
+def approved_subject_cutout_paths(
+    subject_sheet_path: str | Path,
+    cutout_cache_dir: str | Path,
+) -> list[str]:
+    """返回已通过整图验收的十张透明主体图路径。"""
+    sheet_path = Path(subject_sheet_path).resolve()
+    cache_dir = Path(cutout_cache_dir).resolve()
+    signature = _sheet_signature(sheet_path)
+    if _load_cached_cutouts(cache_dir, signature) is None:
+        raise CardCompositionError("预制词包主题图尚未完成切图和整图验收，不能提交词包")
+    _, paths = _cutout_cache_paths(cache_dir)
+    return [str(path.resolve()) for path in paths]
 
 
-def _remove_sheet_background(sheet: Image.Image) -> tuple[Image.Image, tuple[int, int, int] | None]:
-    """透明图直接保留 Alpha；只有不透明图片才删除纯色背景。"""
-    rgba = sheet.convert("RGBA")
-    alpha_minimum, _ = rgba.getchannel("A").getextrema()
-    if alpha_minimum < 250:
-        return rgba, None
-    rgb = sheet.convert("RGB")
-    background_rgb = _estimate_background_rgb(rgb)
-    background = Image.new("RGB", rgb.size, background_rgb)
-    red, green, blue = ImageChops.difference(rgb, background).split()
-    distance = ImageChops.lighter(ImageChops.lighter(red, green), blue)
-    spread = max(1, SUBJECT_CHROMA_HIGH_DISTANCE - SUBJECT_CHROMA_LOW_DISTANCE)
-    alpha = distance.point(
-        lambda value: 0
-        if value <= SUBJECT_CHROMA_LOW_DISTANCE
-        else 255
-        if value >= SUBJECT_CHROMA_HIGH_DISTANCE
-        else round((value - SUBJECT_CHROMA_LOW_DISTANCE) * 255 / spread)
-    )
-    rgb_bytes = rgb.tobytes()
-    alpha_bytes = alpha.tobytes()
-    clean_rgb = bytearray(rgb_bytes)
-    for pixel_index, alpha_value in enumerate(alpha_bytes):
-        if alpha_value <= 0 or alpha_value >= 255:
-            continue
-        base = pixel_index * 3
-        inverse_alpha = 255 - alpha_value
-        for channel_index, background_value in enumerate(background_rgb):
-            observed = rgb_bytes[base + channel_index]
-            foreground = (observed * 255 - background_value * inverse_alpha) / alpha_value
-            clean_rgb[base + channel_index] = max(0, min(255, round(foreground)))
-
-    transparent = Image.frombytes("RGB", rgb.size, bytes(clean_rgb)).convert("RGBA")
-    transparent.putalpha(alpha.filter(ImageFilter.MinFilter(5)))
-    return transparent, background_rgb
+def require_transparent_subject_sheet(subject_sheet_path: str | Path) -> None:
+    """确保预制词包原始主题图带有真实透明像素。"""
+    sheet_path = Path(subject_sheet_path).resolve()
+    sheet = _sheet(sheet_path)
+    alpha = sheet.getchannel("A")
+    histogram = alpha.histogram()
+    transparent_pixels = sum(histogram[: SUBJECT_ALPHA_THRESHOLD + 1])
+    transparent_ratio = transparent_pixels / (sheet.width * sheet.height)
+    if transparent_ratio < 0.05:
+        raise CardCompositionError(
+            "主体图必须带真实 Alpha 透明背景，且透明背景面积不能少于画布的 5%；"
+            "当前图片不符合要求，不能继续切图"
+        )
 
 
 def _validated_visual_layout(payload: dict) -> dict:
@@ -388,7 +367,6 @@ def _validated_visual_layout(payload: dict) -> dict:
         "top_count": CARD_GRID_COLUMNS,
         "bottom_count": CARD_GRID_COLUMNS,
         "has_text": False,
-        "background_color": "",
         "reason": str(payload.get("reason") or "").strip(),
         "boxes": boxes,
         "issues": issues,
@@ -399,13 +377,12 @@ def _validated_visual_layout(payload: dict) -> dict:
 def _detect_subjects(
     sheet: Image.Image,
     visual_boxes: list[list[int]],
-) -> tuple[list[Image.Image], list[dict], list[str], list[list[int]], tuple[int, int, int] | None]:
-    """优先使用原图透明通道；纯色兜底图先抠图，再按定位框裁主体。"""
+) -> tuple[list[Image.Image], list[dict], list[str], list[list[int]]]:
+    """按宿主 Agent 给出的定位框裁出十张透明主体图。"""
     issues: list[str] = []
     subjects: list[Image.Image] = []
     cells: list[dict] = []
     crop_boxes = visual_boxes
-    transparent_sheet, background_rgb = _remove_sheet_background(sheet)
     for index, crop_box in enumerate(crop_boxes, 1):
         box = (
             crop_box[0] * sheet.width // 1000,
@@ -413,7 +390,7 @@ def _detect_subjects(
             max(1, crop_box[2] * sheet.width // 1000),
             max(1, crop_box[3] * sheet.height // 1000),
         )
-        region = transparent_sheet.crop(box)
+        region = sheet.crop(box)
         local_bbox = _visible_mask(region).getbbox()
         if local_bbox is None:
             issue = f"第 {index} 个位置没有有效透明前景"
@@ -452,7 +429,29 @@ def _detect_subjects(
     if issues:
         for cell in cells:
             cell["valid"] = False
-    return subjects, cells, issues, crop_boxes, background_rgb
+    return subjects, cells, issues, crop_boxes
+
+
+def _build_cutout_review_sheet(subjects: list[Image.Image]) -> Image.Image:
+    """把十张实际切图排成透明验收图，供 LLM 检查是否切坏。"""
+    canvas = Image.new("RGBA", SUBJECT_SHEET_SIZE, (0, 0, 0, 0))
+    cell_width = SUBJECT_SHEET_SIZE[0] // CARD_GRID_COLUMNS
+    cell_height = SUBJECT_SHEET_SIZE[1] // 2
+    padding = 24
+    for index, subject in enumerate(subjects):
+        scale = min(
+            (cell_width - padding * 2) / subject.width,
+            (cell_height - padding * 2) / subject.height,
+        )
+        width = max(1, round(subject.width * scale))
+        height = max(1, round(subject.height * scale))
+        fitted = subject.resize((width, height), Image.Resampling.LANCZOS)
+        column = index % CARD_GRID_COLUMNS
+        row = index // CARD_GRID_COLUMNS
+        left = column * cell_width + (cell_width - width) // 2
+        top = row * cell_height + (cell_height - height) // 2
+        canvas.alpha_composite(fitted, (left, top))
+    return canvas
 
 
 def validate_subject_sheet(
@@ -460,40 +459,35 @@ def validate_subject_sheet(
     visual_layout: dict,
     cutout_cache_dir: str | Path | None = None,
 ) -> dict:
-    """使用宿主 Agent 的视觉结果验收，再由 Python 去背景并裁切。"""
+    """校验真实透明主题图，并按宿主 Agent 的定位结果裁切。"""
     sheet_path = Path(subject_sheet_path).resolve()
+    require_transparent_subject_sheet(sheet_path)
     sheet = _sheet(sheet_path)
     vision = _validated_visual_layout(visual_layout)
     issues = list(vision["issues"])
     subjects: list[Image.Image] = []
     cells: list[dict] = []
     crop_boxes: list[list[int]] = []
-    background_rgb: tuple[int, int, int] | None = None
     if not issues:
-        subjects, cells, crop_issues, crop_boxes, background_rgb = _detect_subjects(
+        subjects, cells, crop_issues, crop_boxes = _detect_subjects(
             sheet,
             vision["boxes"],
         )
         issues.extend(crop_issues)
     vision["crop_boxes"] = crop_boxes
     valid = not issues
-    background_removed_sheet_path = None
+    cutout_review_sheet_path = None
     cache_dir = Path(cutout_cache_dir).resolve() if cutout_cache_dir else None
-    if cache_dir:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        background_removed_sheet, saved_background_rgb = _remove_sheet_background(sheet)
-        background_rgb = background_rgb or saved_background_rgb
-        background_removed_sheet_path = _background_removed_sheet_path(cache_dir)
-        background_removed_sheet.save(background_removed_sheet_path, format="PNG")
-    vision["background_mode"] = "solid_color_fallback" if background_rgb else "transparent_alpha"
-    vision["background_rgb"] = list(background_rgb) if background_rgb else []
     if valid and cache_dir:
+        cache_dir.mkdir(parents=True, exist_ok=True)
         _save_cached_cutouts(
             cache_dir,
             _sheet_signature(sheet_path),
             subjects,
         )
         cutout_paths = [str(path) for path in _cutout_cache_paths(cache_dir)[1]]
+        cutout_review_sheet_path = _cutout_review_sheet_path(cache_dir)
+        _build_cutout_review_sheet(subjects).save(cutout_review_sheet_path, format="PNG")
     else:
         cutout_paths = []
     return {
@@ -505,10 +499,7 @@ def validate_subject_sheet(
         "top_count": vision["top_count"],
         "bottom_count": vision["bottom_count"],
         "has_text": vision["has_text"],
-        "background_removed": background_removed_sheet_path is not None,
-        "background_removed_sheet_path": (
-            str(background_removed_sheet_path) if background_removed_sheet_path else ""
-        ),
+        "cutout_review_sheet_path": str(cutout_review_sheet_path) if cutout_review_sheet_path else "",
         "cutout_paths": cutout_paths,
         "inspection_required": valid,
         "next_tool": "language_learning_review_subject_sheet" if valid else "language_learning_prepare_images",
@@ -523,7 +514,7 @@ def _extract_subjects(sheet: Image.Image, sheet_path: Path, cache_dir: Path | No
         cached = _load_cached_cutouts(cache_dir, signature)
         if cached is not None:
             return cached
-    raise CardCompositionError("主体抠图尚未通过整图视觉验收，不能制作卡片")
+    raise CardCompositionError("透明主体切图尚未通过整图视觉验收，不能制作卡片")
 
 
 def _paste_subject(card: Image.Image, subject: Image.Image, box: tuple[int, int, int, int]) -> None:
@@ -550,32 +541,31 @@ def _draw_bilingual(draw, english: str, chinese: str, spec: tuple[int, int, int]
     draw.text((left + draw.textlength(english, font=latin) + spec[2] * .45, spec[1]), chinese, font=cjk, fill="#111111", anchor="lm")
 
 
-def compose_fixed_cards(
-    subject_sheet_path: str | Path,
+def _compose_cards_with_subjects(
+    subjects: list[Image.Image],
     words: list[dict],
     learning_mode: str,
     topic_english: str,
     output_dir: str | Path,
-    cutout_cache_dir: str | Path | None = None,
 ) -> dict:
+    """使用同一套模板渲染直接制作与预制包的单词卡。"""
+    if len(subjects) != WORDS_PER_TASK:
+        raise CardCompositionError(f"固定模板必须正好使用 {WORDS_PER_TASK} 张主体图")
     if learning_mode not in _LAYOUTS:
         raise CardCompositionError("不支持的固定模板语言方向")
     topic = re.sub(r"\s+", " ", str(topic_english or "").strip()).upper()
     if not topic:
         raise CardCompositionError("固定模板需要英文主题标题")
+    rows, layout = _words(words), _LAYOUTS[learning_mode]
     template_path = STATIC_ROOT / TEMPLATE_FILENAMES[learning_mode]
     if not template_path.is_file():
         raise CardCompositionError(f"固定模板不存在：{template_path.name}")
-    sheet_path = Path(subject_sheet_path)
-    sheet, rows, layout = _sheet(sheet_path), _words(words), _LAYOUTS[learning_mode]
     output = Path(output_dir).resolve()
     if output.suffix.lower() == ".zip":
         raise CardCompositionError("output_dir 必须是卡片文件夹，不要再传 zip 路径")
     if output.exists() and not output.is_dir():
         raise CardCompositionError(f"output_dir 已存在且不是文件夹：{output}")
     output.mkdir(parents=True, exist_ok=True)
-    cache_dir = Path(cutout_cache_dir).resolve() if cutout_cache_dir else None
-    subjects = _extract_subjects(sheet, sheet_path, cache_dir)
     card_paths = []
     with Image.open(template_path) as source:
         template = ImageOps.fit(ImageOps.exif_transpose(source).convert("RGB"), CARD_CANVAS_SIZE, method=Image.Resampling.LANCZOS)
@@ -586,9 +576,11 @@ def compose_fixed_cards(
             draw = ImageDraw.Draw(card)
             _draw(draw, f"{topic} {'IN KOREAN' if learning_mode == 'en-ko' else 'IN CHINESE'}", layout["topic"], "latin")
             if learning_mode == "en-ko":
-                _draw_bilingual(draw, word["english"], word["chinese"], layout["english"]); _draw(draw, word["korean"], layout["target"], "korean")
+                _draw_bilingual(draw, word["english"], word["chinese"], layout["english"])
+                _draw(draw, word["korean"], layout["target"], "korean")
             else:
-                _draw(draw, word["english"].upper(), layout["english"], "latin"); _draw(draw, word["chinese"], layout["target"], "cjk")
+                _draw(draw, word["english"].upper(), layout["english"], "latin")
+                _draw(draw, word["chinese"], layout["target"], "cjk")
             _draw(draw, f"[{word['romanization']}]", layout["pronunciation"], "italic")
             try:
                 name = f"{safe_filename(word['english'])}.png"
@@ -603,18 +595,27 @@ def compose_fixed_cards(
     return {"output_dir": str(output), "card_paths": card_paths, "word_count": len(rows), "learning_mode": learning_mode}
 
 
+def compose_fixed_cards(
+    subject_sheet_path: str | Path,
+    words: list[dict],
+    learning_mode: str,
+    topic_english: str,
+    output_dir: str | Path,
+    cutout_cache_dir: str | Path | None = None,
+) -> dict:
+    sheet_path = Path(subject_sheet_path)
+    sheet = _sheet(sheet_path)
+    cache_dir = Path(cutout_cache_dir).resolve() if cutout_cache_dir else None
+    subjects = _extract_subjects(sheet, sheet_path, cache_dir)
+    return _compose_cards_with_subjects(subjects, words, learning_mode, topic_english, output_dir)
+
+
 def compose_fixed_cards_from_subjects(
     subject_paths: list[str | Path], words: list[dict], learning_mode: str, topic_english: str, output_dir: str | Path,
 ) -> dict:
-    """直接使用十张透明主体图拼卡，不执行整图定位或去背景。"""
+    """直接使用十张已验收透明主体图拼卡，不重复执行定位和切图。"""
     if len(subject_paths) != WORDS_PER_TASK:
         raise CardCompositionError(f"预制词包必须提供 {WORDS_PER_TASK} 张主体图")
-    if learning_mode not in _LAYOUTS:
-        raise CardCompositionError("不支持的固定模板语言方向")
-    topic = re.sub(r"\s+", " ", str(topic_english or "").strip()).upper()
-    if not topic:
-        raise CardCompositionError("固定模板需要英文主题标题")
-    rows, layout = _words(words), _LAYOUTS[learning_mode]
     subjects = []
     for index, value in enumerate(subject_paths, 1):
         path = Path(value).resolve()
@@ -626,20 +627,4 @@ def compose_fixed_cards_from_subjects(
             if alpha.getextrema()[0] >= 255:
                 raise CardCompositionError(f"第 {index} 张预制主体图没有透明背景，不能用于词包")
             subjects.append(subject.copy())
-    template_path = STATIC_ROOT / TEMPLATE_FILENAMES[learning_mode]
-    output = Path(output_dir).resolve(); output.mkdir(parents=True, exist_ok=True)
-    card_paths, used_names = [], set()
-    with Image.open(template_path) as source:
-        template = ImageOps.fit(ImageOps.exif_transpose(source).convert("RGB"), CARD_CANVAS_SIZE, method=Image.Resampling.LANCZOS)
-        for word, subject in zip(rows, subjects):
-            card = template.copy().convert("RGBA"); _paste_subject(card, subject, layout["box"]); draw = ImageDraw.Draw(card)
-            _draw(draw, f"{topic} {'IN KOREAN' if learning_mode == 'en-ko' else 'IN CHINESE'}", layout["topic"], "latin")
-            if learning_mode == "en-ko":
-                _draw_bilingual(draw, word["english"], word["chinese"], layout["english"]); _draw(draw, word["korean"], layout["target"], "korean")
-            else:
-                _draw(draw, word["english"].upper(), layout["english"], "latin"); _draw(draw, word["chinese"], layout["target"], "cjk")
-            _draw(draw, f"[{word['romanization']}]", layout["pronunciation"], "italic")
-            name = f"{safe_filename(word['english'])}.png"
-            if name in used_names: raise CardCompositionError(f"卡片文件名冲突，标题必须唯一：{name}")
-            used_names.add(name); path = output / name; card.convert("RGB").save(path, format="PNG", optimize=True); card_paths.append(str(path))
-    return {"output_dir": str(output), "card_paths": card_paths, "word_count": len(rows), "learning_mode": learning_mode}
+    return _compose_cards_with_subjects(subjects, words, learning_mode, topic_english, output_dir)

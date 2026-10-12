@@ -1,4 +1,4 @@
-"""语言学习 MCP 错误定义。"""
+"""语言学习 MCP 领域错误。"""
 
 
 class LanguageLearningError(Exception):

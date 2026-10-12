@@ -70,7 +70,7 @@ MCP 入口：`python -m core.mcp.language_learning`。**语言学习 MCP 是 Pro
 词表与主体图 Prompt 由 MCP 工具返回，不要自行改写模板结构：
 
 - `language_learning_build_vocabulary_prompt` → `user_prompt`
-- `language_learning_prepare_images` 内部根据词表生成主体图 Prompt；必须优先生成带真实 Alpha 通道的透明背景 PNG，只有当前生图能力无法生成透明图时才允许用与全部主体反差明显的单一纯色背景抠图兜底。主体必须是具有自然多色、材质细节和内部明暗的精致全彩插画，禁止单色染色、线稿图标、白色剪影、UI 符号和廉价塑料感；地点、服务、动作等词允许用紧凑小场景表达。主体外部禁止投影、光晕和杂色边缘。禁止把本期目标英语词或其翻译写进图中；与目标词无关的自然场景文字可以保留，仍禁止水印
+- `language_learning_prepare_images` 内部根据词表生成主体图 Prompt；必须生成带真实 Alpha 通道的透明背景 PNG。当前生图能力无法生成真实透明 PNG 时必须报错停止，禁止使用任何纯色背景兜底。主体必须是具有自然多色、材质细节和内部明暗的精致全彩插画，禁止单色染色、线稿图标、白色剪影、UI 符号和廉价塑料感；地点、服务、动作等词允许用紧凑小场景表达。主体外部禁止投影、光晕和杂色边缘。禁止把本期目标英语词或其翻译写进图中；与目标词无关的自然场景文字可以保留，仍禁止水印
 
 TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 天去重：每期 10 个英语单词中，至少 5 个必须未在最近 100 天使用。`build_vocabulary_prompt` 会把历史词库写进 `user_prompt`，`parse_vocabulary_response` 只校验、不写库；用户触发发布后才把话题与全部 10 个单词正式写入 D1。
 
@@ -78,9 +78,9 @@ TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 
 
 ### 可复用预制词包
 
-任意宿主 Agent 要提前补充词包时，必须调用 `language_learning_prepare_pack(topic)`，按返回的 `vocabulary_prompt` 生成词表后调用 `language_learning_validate_pack_words`。该工具会返回唯一的 `subject_sheet_prompt`：Agent 只生成**一张**按上五下五排列、含十个主体的真实 Alpha 透明 PNG，不能拆成十张图，也不能使用纯色背景抠图。随后调用 `language_learning_commit_pack(pack_id, topic, words, subject_sheet_path)` 上传并写入词包库。
+任意宿主 Agent 要提前补充词包时，必须调用 `language_learning_prepare_pack(topic)`，按返回的 `vocabulary_prompt` 生成词表后调用 `language_learning_validate_pack_words`。该工具会返回唯一的 `subject_sheet_prompt`：Agent 只生成**一张**按上五下五排列、含十个主体的真实 Alpha 透明 PNG，不能拆成十张图，也不能使用纯色背景。随后必须使用共用视觉 Prompt 提取十个主体框，调用 `language_learning_validate_pack_subject_sheet` 完成切图，再使用共用整图验收 Prompt 检查十张实际切图组成的验收图并调用 `language_learning_review_pack_subject_sheet`。只有验收通过后，才允许调用 `language_learning_commit_pack(pack_id, topic, words, subject_sheet_path)` 上传十张透明主体切图并写入词包库。
 
-GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现成词包，下载该主题图后复用 MCP 的视觉定位、透明图校验和裁切，再拼卡出片；不会再次生成词表或图片。没有已验收词包时，GitHub 生产应明确失败，不能静默降级为重新生图。
+GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现成词包，下载十张已验收透明主体切图后直接拼卡出片；不会再次生成词表、图片、定位框或执行首次视觉验收。没有已验收词包时，GitHub 生产应明确失败，不能静默降级为重新生图。
 
 ## 确认门禁
 
@@ -98,8 +98,8 @@ GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现�
 3. `language_learning_build_vocabulary_prompt(topic, learning_modes)` 获取包含最近 100 天词库的 Prompt，按原样生成纯文本词表；再调用 `language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)`，由 MCP 强制校验至少 5 个新词，但暂不写库。
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
 5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问兜底生图）→ `language_learning_poll_task`。MCP 不调用千问文本或视觉模型。
-6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 只提取按上排从左到右、下排从左到右排序的十个保守边界框，不检查文字、水印、画风、内容或主体完整性；调用 `language_learning_validate_subject_sheet` 后，透明图直接保留 Alpha 通道并裁出十张主体，纯色兜底图才执行自动抠图，统一保存 `subject-sheet-background-removed.png`。
-7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**整张透明处理后的完整主题图**（不是十张单独主体），按返回 Prompt 一次性检查：主体数量是否为 10、完整性、文字、水印、全彩配色与材质质感、语义表达、透明边缘残色；全体单色染色、大片无层次纯色块、线稿图标、白色剪影、UI 符号或廉价塑料感必须按 `style` 判定失败。再调用 `language_learning_review_subject_sheet` 提交一条结论。失败时 `failure_kind` 取 `background_edge` / `text` / `watermark` / `style` / `count` / `completeness` 之一。透明图出现杂色边缘时优先重新生成干净透明图；只有透明生成持续失败时才改用高反差单一纯色背景抠图兜底。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对整图调用千问视觉执行同一个 MCP Prompt。
+6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 只提取按上排从左到右、下排从左到右排序的十个保守边界框，不检查文字、水印、画风、内容或主体完整性；`language_learning_validate_subject_sheet` 会先硬校验真实 Alpha 透明通道，再按十个框裁出十张主体。缺少真实透明通道时立即报错，不得执行纯色去背景。
+7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**由十张实际透明切图重新排列成的整体验收图**，按返回 Prompt 一次性检查：主体数量是否为 10、边缘或结构有没有被切掉、是否误带相邻主体、文字、水印、全彩配色与材质质感、语义表达和透明边缘异常；全体单色染色、大片无层次纯色块、线稿图标、白色剪影、UI 符号或廉价塑料感必须按 `style` 判定失败。再调用 `language_learning_review_subject_sheet` 提交一条结论。切图不完整或误带相邻主体时先让 LLM 重新定位并切图；图片本身存在文字、水印、画风或透明边缘问题时才重新生成透明主题图。失败时 `failure_kind` 取 `background_edge` / `text` / `watermark` / `style` / `count` / `completeness` 之一。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对同一张切图验收图调用千问视觉执行同一个 MCP Prompt。
 8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
 9. `language_learning_start_create_videos`：传入 MCP 配置返回的 `voices`、`publish_config`、`language_pause`、`word_pause` 和 `video_formats`；倒计时音轨使用 MCP 默认值，不必传 `countdown_audio_path` → poll 至 `done=true`。
 10. 用户确认发布后：韩语原版与问答版一起交给 MatrixMedia；中文调用 `language_learning_start_publish`，原版两段和问答版一条一起发到 YouTube、TikTok、Instagram、Facebook。问答版标题与原版同一套格式，不得加 `guess` 或 `看图猜词`。目标平台需要公网视频地址时，才调用 `language_learning_start_upload_r2` 上传发布资产。发布 MCP 幂等写入正式话题与本期 10 个单词。
@@ -126,15 +126,16 @@ GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现�
 | `language_learning_build_vocabulary_prompt` | 返回包含最近词库的词表 Prompt |
 | `language_learning_parse_vocabulary_response` | 解析词表、校验至少一半新词，发布前不写历史 |
 | `language_learning_prepare_pack` / `language_learning_validate_pack_words` | 为可复用词包返回词表 Prompt，并校验词表及返回一张十元素透明主题图 Prompt |
+| `language_learning_validate_pack_subject_sheet` / `language_learning_review_pack_subject_sheet` | 复用直接制作的切图与整图视觉验收实现，验收通过后才允许提交词包 |
 | `language_learning_commit_pack` / `language_learning_claim_pack` | 上传一张主题图写入词包库，或由 GitHub 按日期领取一个词包 |
 | `language_learning_prepare_images` | 注册主体图任务 |
 | `language_learning_save_images` | 写入已生成图 |
 | `language_learning_submit_images` | 提交主体图（同步，勿用） |
 | `language_learning_start_submit_images` | 启动主体图提交（可选千问兜底生图） |
 | `language_learning_get_visual_validation_prompt` | 返回宿主 Agent 定位十个主体框的 Prompt |
-| `language_learning_get_sheet_validation_prompt` | 返回宿主 Agent 检查整张去背景主题图的 Prompt |
-| `language_learning_validate_subject_sheet` | 接收十个框、整图去背景并裁出十张抠图 |
-| `language_learning_review_subject_sheet` | 接收宿主 Agent 对整张去背景主题图的一条验收结论 |
+| `language_learning_get_sheet_validation_prompt` | 返回宿主 Agent 检查十张透明切图整体验收图的 Prompt |
+| `language_learning_validate_subject_sheet` | 硬校验真实透明通道并按十个框裁出十张透明主体图 |
+| `language_learning_review_subject_sheet` | 接收宿主 Agent 对十张透明切图整体验收图的一条结论 |
 | `language_learning_compose_cards` | 拼单词卡（同步，勿用） |
 | `language_learning_start_compose_cards` | 启动拼卡后台任务 |
 | `language_learning_create_videos` | 出片（同步，勿用） |

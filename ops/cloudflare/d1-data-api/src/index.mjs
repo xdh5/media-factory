@@ -119,7 +119,7 @@ function languageLearningPack(value) {
   for (const mode of ["en-zh", "en-ko"]) {
     if (!Array.isArray(value.words[mode]) || value.words[mode].length !== 10) throw new Error(`words.${mode} 必须正好包含 10 个单词`);
   }
-  if (!Array.isArray(value.image_urls) || value.image_urls.length !== 1) throw new Error("image_urls 必须只包含一张十元素透明主题图地址");
+  if (!Array.isArray(value.image_urls) || value.image_urls.length !== 10) throw new Error("image_urls 必须包含十张已验收透明主体图地址");
   const imageUrls = value.image_urls.map((item, index) => {
     const url = requiredText(item, `image_urls[${index}]`, 2000);
     if (!/^https:\/\//.test(url)) throw new Error(`image_urls[${index}] 必须是 https 地址`);
@@ -147,7 +147,7 @@ async function claimLanguageLearningPack(request, env) {
   const body = await request.json();
   const runId = requiredText(body.run_id, "run_id", 100);
   const publishDate = productionDate(body.publish_date);
-  const selected = await env.DB.prepare("SELECT * FROM language_learning_packs WHERE status = 'ready' ORDER BY created_at, pack_id LIMIT 1").first();
+  const selected = await env.DB.prepare("SELECT * FROM language_learning_packs WHERE status = 'ready' AND json_array_length(image_urls_json) = 10 ORDER BY created_at, pack_id LIMIT 1").first();
   if (!selected) return errorResponse("LANGUAGE_PACKS_EMPTY", "没有可用的已验收语言词包，请先让 Agent 生成并提交词包", 409);
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   const claimed = await env.DB.prepare(

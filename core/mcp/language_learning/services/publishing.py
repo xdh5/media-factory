@@ -15,7 +15,7 @@ from core.tools.r2_storage import download_public_file, upload_public_file
 from core.tools.cloudflare_data import commit_production_outputs, commit_publication_records, list_publication_records
 from core.tools.topic_dedup import commit as commit_topic
 
-from .._constants import (
+from ..config import (
     CHINESE_YOUTUBE_CHANNEL_ID,
     MATRIXMEDIA_AI_CREATIVE_STATEMENT,
     MINIMUM_NEW_WORDS,
@@ -29,8 +29,8 @@ from .._constants import (
     video_content_kind,
     video_production_id,
 )
-from .._errors import ConfirmationRequiredError, PublishError
-from .vocabulary_history import build_database_word_entries
+from ..errors import ConfirmationRequiredError, PublishError
+from .vocabulary import build_database_word_entries
 
 
 def build_video_title(

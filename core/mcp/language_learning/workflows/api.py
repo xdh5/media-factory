@@ -1,0 +1,934 @@
+"""语言学习 MCP 工具编排。"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import uuid
+import warnings
+from copy import deepcopy
+from datetime import datetime
+from pathlib import Path
+
+os.environ.setdefault("DASHSCOPE_BUSINESS_LINE", "language_learning")
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"Field 'lifespan' has an incomplete definition.*",
+)
+
+from ..infrastructure import (
+    ClearCacheConfirmationRequiredError,
+    CloudflareDataError,
+    ImageGenerationError,
+    R2StorageError,
+    RunnerTaskNotFoundError,
+    TopicDedupError,
+    claim_language_learning_pack,
+    clear_run,
+    commit_language_learning_pack,
+    commit_publication_records,
+    generate_qwen_image,
+    get_topic,
+    list_production_outputs,
+    list_publication_records,
+    prepare_agent_image_tasks,
+    runner_poll_task,
+    runner_submit_task,
+    save_agent_image_tasks,
+    submit_agent_image_tasks,
+    upload_public_file,
+)
+
+from ..config import (
+    BEIJING_TIMEZONE,
+    DEFAULT_PRODUCTION_CONFIG,
+    SUBJECT_CUTOUT_CACHE_DIR_NAME,
+    SUBJECT_GENERATION_MAX_ATTEMPTS,
+    SUBJECT_SHEET_IMAGE_ID,
+    SUBJECT_SHEET_RADIO,
+    SUBJECT_SHEET_SIZE_TEXT,
+    MINIMUM_NEW_WORDS,
+    TOPIC_DEDUPLICATION_DAYS,
+    WORD_HISTORY_DAYS,
+    WORKFLOW_ID,
+    pack_cutout_cache_dir,
+    production_dirs,
+    normalize_publish_date,
+    publish_date_from_run_id,
+    production_run_id,
+)
+from ..errors import ConfirmationRequiredError, LanguageLearningError, TaskNotFoundError
+from ..services import (
+    approved_subject_cutout_paths,
+    attach_publish_manifest,
+    build_sheet_validation_prompt,
+    build_subject_sheet_prompt,
+    build_topic_prompt,
+    build_visual_validation_prompt,
+    build_vocabulary_prompt,
+    compose_fixed_cards,
+    compose_fixed_cards_from_subjects,
+    create_vocabulary_videos,
+    list_recent_words,
+    parse_vocabulary_response,
+    prepare_r2_publish_manifest,
+    publish_vocabulary_videos,
+    require_transparent_subject_sheet,
+    review_subject_sheet,
+    upload_publish_assets_to_r2,
+    validate_subject_sheet,
+    validate_topic_response,
+    validate_words,
+)
+
+def language_learning_get_production_config(topic: str = "", learning_modes: list[str] | None = None) -> dict:
+    """返回 Agent 与 GitHub Runner 共用的语言学习固定生产参数。"""
+    config = deepcopy(DEFAULT_PRODUCTION_CONFIG)
+    modes = list(learning_modes or config["learning_modes"])
+    clean_topic = str(topic or "").strip()
+    publish_config = {}
+    if "en-zh" in modes:
+        publish_config["en-zh"] = {
+            "account_group": "中文",
+            "youtube_account": "language_learning",
+            "tags": ["#learnchinese", "#chinesevocabulary", "#mandarinchinese", "#dailychinese"],
+            "short_title": f"中文{clean_topic}怎么说",
+        }
+    if "en-ko" in modes:
+        publish_config["en-ko"] = {
+            "account_group": "韩语",
+            "tags": ["#学韩语", "#韩语单词", "#韩语入门", "#每日韩语"],
+            "short_title": "韩语单词怎么说",
+            "platforms": ["dy", "ks", "bjh", "xhs", "tt", "sph"],
+        }
+    config["learning_modes"] = modes
+    config["publish_config"] = publish_config
+    return config
+
+
+def language_learning_get_automation_plan(publish_date: str) -> dict:
+    """返回每周自动生产与补齐发布所需的统一预检结果。"""
+    try:
+        normalized_date = normalize_publish_date(publish_date)
+        outputs = list_production_outputs(publish_date=normalized_date, business_line=WORKFLOW_ID)
+        publications = list_publication_records(business_line=WORKFLOW_ID, publish_date=normalized_date)
+        github_outputs = [row for row in outputs if row.get("source") == "github_workflow" and row.get("r2_url")]
+        existing_run_id = str(github_outputs[0].get("run_id") or "") if github_outputs else ""
+        published = {
+            (str(row.get("title") or "").strip(), str(row.get("platform") or "").strip(), int(row.get("content_part") or 1))
+            for row in publications
+        }
+        publishable = [row for row in (github_outputs or outputs) if str(row.get("content_kind") or "") == "en-zh"]
+        targets = list(DEFAULT_PRODUCTION_CONFIG["publish_targets"])
+        pending = [
+            target for target in targets
+            if any((str(row.get("title") or "").strip(), target, int(row.get("content_part") or 1)) not in published for row in publishable)
+        ]
+        should_generate = not outputs and not publications
+        return {
+            "publish_date": normalized_date,
+            "should_generate": should_generate,
+            "should_resume_publish": not should_generate and bool(existing_run_id) and bool(pending),
+            "existing_run_id": existing_run_id,
+            "pending_targets": pending,
+            "publish_targets": targets,
+            "skip_reason": "" if should_generate else f"该计划发布日期已有 {len(outputs)} 条成片记录、{len(publications)} 条发布记录",
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_get_publish_schedule(run_id: str) -> dict:
+    """按 MCP 配置返回自动发布目标和北京时间预约时间。"""
+    try:
+        publish_date = publish_date_from_run_id(run_id)
+        hour = int(DEFAULT_PRODUCTION_CONFIG["publish_hour_beijing"])
+        publish_at = datetime.fromisoformat(f"{publish_date}T{hour:02d}:00:00").replace(
+            tzinfo=BEIJING_TIMEZONE
+        )
+        if publish_at <= datetime.now(BEIJING_TIMEZONE):
+            raise LanguageLearningError("计划发布时间已经过去，禁止预约到过去")
+        return {
+            "run_id": run_id,
+            "publish_date": publish_date,
+            "publish_at": publish_at.isoformat(),
+            "targets": list(DEFAULT_PRODUCTION_CONFIG["publish_targets"]),
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_get_topic_generation_prompt(recent_topics: list[str], requested_topic: str = "", feedback: str = "") -> dict:
+    """返回宿主 Agent 与 GitHub Runner 共用的主题生成 Prompt。"""
+    try:
+        return build_topic_prompt(recent_topics, requested_topic, feedback)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_validate_topic_response(response_text: str, recent_topics: list[str]) -> dict:
+    """统一校验宿主 Agent 或千问生成的英文主题。"""
+    try:
+        return validate_topic_response(response_text, recent_topics)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def _map_error(exc: Exception) -> LanguageLearningError:
+    if isinstance(exc, LanguageLearningError):
+        return exc
+    if isinstance(exc, ImageGenerationError):
+        return LanguageLearningError(exc.message, exc.details)
+    if isinstance(exc, TopicDedupError):
+        return LanguageLearningError(str(exc), exc.details)
+    if isinstance(exc, R2StorageError):
+        return LanguageLearningError(exc.message, exc.details)
+    if isinstance(exc, ClearCacheConfirmationRequiredError):
+        return ConfirmationRequiredError(str(exc))
+    if isinstance(exc, CloudflareDataError):
+        return LanguageLearningError(exc.message, exc.details)
+    raise exc
+
+
+def language_learning_record_publications(
+    publication_id: str,
+    run_id: str,
+    records: list[dict],
+) -> dict:
+    """MatrixMedia 发布成功或预约成功后，按最终平台写入语言学习发布记录。"""
+    try:
+        normalized = [
+            {
+                **record,
+                "publication_id": publication_id,
+                "run_id": run_id,
+                "business_line": "language_learning",
+                "connector": "matrixmedia",
+            }
+            for record in records
+        ]
+        return commit_publication_records(normalized)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_get_production_outputs(publish_date: str) -> dict:
+    """查询某个北京时间计划发布日期的语言学习成片。"""
+    try:
+        return {
+            "publish_date": publish_date,
+            "business_line": WORKFLOW_ID,
+            "records": list_production_outputs(
+                publish_date=publish_date,
+                business_line=WORKFLOW_ID,
+            ),
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def _run_qwen_fallback(context_path: str, failures: list, images: list) -> None:
+    """宿主无能力或单张失败三次后，才调用千问。"""
+    provided = {str(item.get("image_id") or "").strip() for item in images if isinstance(item, dict)}
+    context_file = Path(context_path).resolve()
+    context = json.loads(context_file.read_text(encoding="utf-8"))
+    tasks = {str(task.get("image_id") or ""): task for task in context.get("tasks") or []}
+    seen: set[str] = set()
+    for item in failures:
+        image_id = str(item["image_id"]).strip()
+        if image_id in seen:
+            raise LanguageLearningError(f"失败结果重复：{image_id}")
+        if image_id in provided:
+            raise LanguageLearningError(f"图片 {image_id} 不能同时提交成功路径和失败结果")
+        task = tasks[image_id]
+        attempts = item.get("attempts", 0)
+        if item.get("capability_unavailable") is not True and attempts < 3:
+            raise LanguageLearningError(f"图片 {image_id} 仅失败 {attempts} 次；必须尝试满 3 次才能走千问")
+        references = task.get("referenced_image_paths") or []
+        generate_qwen_image(
+            str(task.get("prompt") or ""),
+            task["output_path"],
+            size=str(task["size"]),
+            reference_image_paths=list(references) if isinstance(references, list) else [],
+            cache_signature=str(task.get("cache_signature") or "") or None,
+        )
+        seen.add(image_id)
+
+
+def language_learning_get_topics() -> dict:
+    """返回最近 30 天已占用主题。"""
+    try:
+        recent = get_topic(WORKFLOW_ID, TOPIC_DEDUPLICATION_DAYS)
+        recent_words = list_recent_words()
+        return {
+            "workflow": WORKFLOW_ID,
+            "deduplication_days": TOPIC_DEDUPLICATION_DAYS,
+            "recent_topics": [item["topic"] for item in recent],
+            "recent_words": recent_words,
+            "word_history_days": WORD_HISTORY_DAYS,
+            "minimum_new_words": MINIMUM_NEW_WORDS,
+            "supported_learning_modes": ["en-zh", "en-ko"],
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_occupy_topic(
+    topic: str,
+    learning_modes: list[str],
+    publish_date: str,
+    redo_existing_run: bool = False,
+) -> dict:
+    """按北京时间计划发布日期创建生产目录；正式话题仅在发布后写入 D1。"""
+    modes = [str(item).strip() for item in learning_modes if str(item).strip()]
+    if not modes:
+        raise LanguageLearningError("learning_modes 不能为空")
+    clean_topic = str(topic or "").strip()
+    if re.fullmatch(r"[A-Za-z]+", clean_topic) is None:
+        raise LanguageLearningError("语言学习 topic 必须是一个不含空格的英文单词")
+    try:
+        run_id = production_run_id(publish_date)
+    except ValueError as exc:
+        raise LanguageLearningError(str(exc)) from exc
+    recent = get_topic(WORKFLOW_ID, TOPIC_DEDUPLICATION_DAYS)
+    is_recent = clean_topic.casefold() in {
+        str(item.get("topic") or "").strip().casefold() for item in recent
+    }
+    if is_recent and not redo_existing_run:
+        raise LanguageLearningError(f"语言学习 topic 最近 {TOPIC_DEDUPLICATION_DAYS} 天已经发布：{clean_topic}")
+    if redo_existing_run:
+        existing = list_production_outputs(
+            publish_date=str(publish_date).strip(),
+            business_line=WORKFLOW_ID,
+        )
+        if not any(str(item.get("run_id") or "") == run_id for item in existing):
+            raise LanguageLearningError(
+                f"找不到 {run_id} 的既有语言学习产物，不能使用 redo_existing_run"
+            )
+    record_id = int(run_id.removeprefix("run-"))
+    cache_root, output_root = production_dirs(run_id)
+    cache_root.mkdir(parents=True, exist_ok=True)
+    output_root.mkdir(parents=True, exist_ok=True)
+    return {
+        "topic": clean_topic,
+        "learning_modes": modes,
+        "topic_record_id": record_id,
+        "database_status": "pending_publish",
+        "publish_date": str(publish_date).strip(),
+        "run_id": run_id,
+        "cache_dir": str(cache_root),
+        "output_dir": str(output_root),
+        "redo_existing_run": bool(redo_existing_run),
+    }
+
+
+def language_learning_build_vocabulary_prompt(
+    topic: str,
+    learning_modes: list[str],
+) -> dict:
+    """返回词表生成 Prompt；Agent 按原样生成纯文本后交给 parse_vocabulary_response。"""
+    try:
+        return build_vocabulary_prompt(topic, learning_modes, list_recent_words())
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_get_visual_validation_prompt() -> dict:
+    """返回宿主 Agent 定位十个主体所需的 Prompt，不做内容质检。"""
+    try:
+        return build_visual_validation_prompt()
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_get_sheet_validation_prompt() -> dict:
+    """返回宿主 Agent 检查十张透明切图整体验收图所需的 Prompt。"""
+    try:
+        return build_sheet_validation_prompt()
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_parse_vocabulary_response(
+    response_text: str,
+    learning_modes: list[str],
+    topic: str,
+    run_id: str,
+    redo_existing_run: bool = False,
+) -> dict:
+    """严格解析词表并校验最近 100 天新词比例；发布时才记录单词。"""
+    try:
+        parsed = parse_vocabulary_response(response_text, learning_modes)
+        if str(parsed.get("_topic_english") or "").casefold() != str(topic).strip().casefold():
+            raise LanguageLearningError("词表英文主题必须与本次单词 TOPIC 完全一致")
+        if redo_existing_run:
+            raw_date = str(run_id).removeprefix("run-")
+            publish_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+            existing = list_production_outputs(
+                publish_date=publish_date,
+                business_line=WORKFLOW_ID,
+            )
+            if not any(str(item.get("run_id") or "") == run_id for item in existing):
+                raise LanguageLearningError(
+                    f"找不到 {run_id} 的既有语言学习产物，不能复用旧词表"
+                )
+            history = {"status": "reused_existing_words", "run_id": run_id}
+        else:
+            history = validate_words(
+                run_id=run_id,
+                topic=topic,
+                words_by_mode=parsed,
+            )
+        return {**parsed, "word_history": history}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_prepare_pack(topic: str) -> dict:
+    """返回预制词包的双语词表 Prompt；供任意宿主 Agent 生成后提交。"""
+    try:
+        return {
+            "pack_id": f"language-pack-{uuid.uuid4().hex}",
+            "topic": topic,
+            "learning_modes": ["en-zh", "en-ko"],
+            "vocabulary_prompt": build_vocabulary_prompt(topic, ["en-zh", "en-ko"], list_recent_words()),
+        }
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_validate_pack_words(pack_id: str, topic: str, response_text: str) -> dict:
+    """解析并校验预制词包的十个双语单词，不创建生产 run。"""
+    try:
+        if not re.fullmatch(r"language-pack-[a-f0-9]{32}", str(pack_id or "")):
+            raise LanguageLearningError("pack_id 格式不正确，请使用 prepare_pack 返回的值")
+        words = parse_vocabulary_response(response_text, ["en-zh", "en-ko"])
+        if str(words.get("_topic_english") or "").casefold() != str(topic or "").strip().casefold():
+            raise LanguageLearningError("词包英文主题必须与 topic 完全一致")
+        recent = {str(word).casefold() for word in list_recent_words()}
+        english = [str(item.get("english") or "").strip() for item in words["en-zh"]]
+        if len([word for word in english if word.casefold() not in recent]) < MINIMUM_NEW_WORDS:
+            raise LanguageLearningError(f"词包至少需要 {MINIMUM_NEW_WORDS} 个最近 {WORD_HISTORY_DAYS} 天未使用的新词")
+        word_list = "；".join(f"{index}. {word}" for index, word in enumerate(english, 1))
+        subject_sheet_prompt = (
+            f"围绕主题“{topic}”生成一张包含以下十个主体的精致全彩插画 PNG：{word_list}。"
+            "必须严格按上排从左到右五个、下排从左到右五个排列；整张图片必须是真实 Alpha 透明背景，"
+            "每个主体完整、彼此不重叠、边缘干净，无投影、无光晕、无水印。"
+            "严禁把上述十个英语原词或其中文、韩文翻译作为标签、标题或画面文字直接写入图片；"
+            "场景中与目标词无关的自然招牌、路标或包装文字可以保留。"
+        )
+        return {"pack_id": pack_id, "topic": topic, "words": words, "word_count": len(english), "subject_sheet_prompt": subject_sheet_prompt}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_validate_pack_subject_sheet(
+    pack_id: str,
+    subject_sheet_path: str,
+    visual_layout: dict,
+) -> dict:
+    """定位并裁切预制词包主题图，复用直接制作的主体图校验实现。"""
+    try:
+        if not re.fullmatch(r"language-pack-[a-f0-9]{32}", str(pack_id or "")):
+            raise LanguageLearningError("pack_id 格式不正确，请使用 prepare_pack 返回的值")
+        require_transparent_subject_sheet(subject_sheet_path)
+        result = validate_subject_sheet(
+            subject_sheet_path,
+            visual_layout,
+            pack_cutout_cache_dir(pack_id),
+        )
+        result["next_tool"] = (
+            "language_learning_review_pack_subject_sheet"
+            if result.get("valid") is True
+            else "language_learning_validate_pack_subject_sheet"
+        )
+        return result
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_review_pack_subject_sheet(
+    pack_id: str,
+    subject_sheet_path: str,
+    review: dict,
+) -> dict:
+    """提交预制词包整图验收结论；通过后才允许提交词包。"""
+    try:
+        if not re.fullmatch(r"language-pack-[a-f0-9]{32}", str(pack_id or "")):
+            raise LanguageLearningError("pack_id 格式不正确，请使用 prepare_pack 返回的值")
+        result = review_subject_sheet(
+            subject_sheet_path,
+            pack_cutout_cache_dir(pack_id),
+            review,
+        )
+        if result.get("approved") is True:
+            result["next_tool"] = "language_learning_commit_pack"
+        else:
+            result["next_tool"] = "language_learning_validate_pack_subject_sheet"
+        return result
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_commit_pack(pack_id: str, topic: str, words: dict, subject_sheet_path: str) -> dict:
+    """上传已切图并通过整图验收的十张透明主体图，将可复用词包写入 D1。"""
+    try:
+        if not re.fullmatch(r"language-pack-[a-f0-9]{32}", str(pack_id or "")):
+            raise LanguageLearningError("pack_id 格式不正确")
+        if not isinstance(words, dict) or any(len(words.get(mode) or []) != 10 for mode in ("en-zh", "en-ko")):
+            raise LanguageLearningError("words 必须包含 en-zh 与 en-ko 两套各 10 个单词")
+        path = Path(subject_sheet_path).resolve()
+        if not path.is_file() or path.suffix.lower() != ".png":
+            raise LanguageLearningError(f"subject_sheet_path 必须是存在的透明 PNG：{path}")
+        require_transparent_subject_sheet(path)
+        cutout_paths = approved_subject_cutout_paths(path, pack_cutout_cache_dir(pack_id))
+        urls = [
+            upload_public_file(
+                cutout_path,
+                f"language-learning-packs/{pack_id}/subjects/{index:02d}.png",
+                content_type="image/png",
+            )["url"]
+            for index, cutout_path in enumerate(cutout_paths, 1)
+        ]
+        pack = commit_language_learning_pack({"pack_id": pack_id, "topic": topic, "words": words, "image_urls": urls})
+        return {"pack": pack, "next_tool": "language_learning_claim_pack"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_claim_pack(publish_date: str) -> dict:
+    """为 GitHub 生产领取一个包含十张已验收透明主体图的词包。"""
+    try:
+        run_id = production_run_id(publish_date)
+        pack = claim_language_learning_pack(run_id=run_id, publish_date=publish_date)
+        cache_root, output_root = production_dirs(run_id)
+        cache_root.mkdir(parents=True, exist_ok=True); output_root.mkdir(parents=True, exist_ok=True)
+        return {"run_id": run_id, "publish_date": publish_date, "cache_dir": str(cache_root), "output_dir": str(output_root), "pack": pack}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_prepare_images(
+    topic: str,
+    words: list[dict],
+    run_id: str,
+    force_images: bool = False,
+    generation_attempt: int = 1,
+    validation_issues: list[str] | None = None,
+) -> dict:
+    """注册主体图生图任务（core.tools.generate_image）。"""
+    try:
+        sheet = build_subject_sheet_prompt(topic, words)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+    prompt = str(sheet.get("subject_sheet_prompt") or "").strip()
+    if not prompt:
+        raise LanguageLearningError("主体图 Prompt 生成失败")
+    if generation_attempt < 1 or generation_attempt > SUBJECT_GENERATION_MAX_ATTEMPTS:
+        raise LanguageLearningError(
+            f"generation_attempt 必须是 1 到 {SUBJECT_GENERATION_MAX_ATTEMPTS}"
+        )
+    previous_issues = [str(item).strip() for item in validation_issues or [] if str(item).strip()]
+    if previous_issues:
+        has_background_edge = any(
+            keyword in issue.casefold()
+            for issue in previous_issues
+            for keyword in ("background_edge", "背景色", "色边", "描边", "光晕", "毛边")
+        )
+        retry_instruction = (
+            "上一张图的透明边缘存在杂色。必须重新生成带真实 Alpha 通道的干净透明背景 PNG，"
+            "禁止主体轮廓出现白边、黑边、彩边或光晕"
+            if has_background_edge
+            else "上一张图未通过整图视觉验收，必须修正"
+        )
+        prompt += (
+            f"\n\n这是第 {generation_attempt} 次生成。{retry_instruction}：\n- "
+            + "\n- ".join(previous_issues)
+        )
+    cache_root, _ = production_dirs(run_id)
+    try:
+        return prepare_agent_image_tasks(
+            [{"image_id": SUBJECT_SHEET_IMAGE_ID, "kind": "image", "prompt": prompt}],
+            None,
+            SUBJECT_SHEET_RADIO,
+            SUBJECT_SHEET_SIZE_TEXT,
+            cache_root / "agent-images",
+            force_images=force_images,
+            metadata={
+                "workflow": WORKFLOW_ID,
+                "topic": topic,
+                "run_id": run_id,
+                "generation_attempt": generation_attempt,
+            },
+        )
+    except ImageGenerationError as exc:
+        raise LanguageLearningError(exc.message, exc.details) from exc
+
+
+def language_learning_save_images(context_path: str, images: list[dict]) -> dict:
+    """写入已生成的主体图（core.tools.generate_image）。"""
+    try:
+        return save_agent_image_tasks(context_path, images)
+    except ImageGenerationError as exc:
+        raise LanguageLearningError(exc.message, exc.details) from exc
+
+
+def language_learning_submit_images(
+    context_path: str,
+    images: list[dict],
+    failures: list[dict] | None = None,
+) -> dict:
+    """提交主体图；若需千问兜底，优先使用 start_submit_images + poll_task。"""
+    try:
+        if failures:
+            _run_qwen_fallback(context_path, failures, images or [])
+        result = submit_agent_image_tasks(context_path, images or [])
+    except ImageGenerationError as exc:
+        raise LanguageLearningError(exc.message, exc.details) from exc
+    subject_sheet_path = (result.get("images") or {}).get(SUBJECT_SHEET_IMAGE_ID)
+    if not subject_sheet_path:
+        raise LanguageLearningError(f"提交结果里缺少主体图 {SUBJECT_SHEET_IMAGE_ID}")
+    return {
+        **result,
+        "subject_sheet_path": subject_sheet_path,
+        "validation_required": True,
+        "next_tool": "language_learning_validate_subject_sheet",
+    }
+
+
+def _submit_images_worker(
+    context_path: str,
+    images: list[dict],
+    failures: list[dict] | None,
+) -> dict:
+    if failures:
+        _run_qwen_fallback(context_path, failures, images or [])
+    result = submit_agent_image_tasks(context_path, images or [])
+    subject_sheet_path = (result.get("images") or {}).get(SUBJECT_SHEET_IMAGE_ID)
+    if not subject_sheet_path:
+        raise LanguageLearningError(f"提交结果里缺少主体图 {SUBJECT_SHEET_IMAGE_ID}")
+    return {
+        **result,
+        "subject_sheet_path": subject_sheet_path,
+        "validation_required": True,
+        "next_tool": "language_learning_validate_subject_sheet",
+    }
+
+
+def language_learning_start_submit_images(
+    context_path: str,
+    images: list[dict],
+    run_id: str,
+    failures: list[dict] | None = None,
+    generation_attempt: int = 1,
+) -> dict:
+    """启动主体图提交（含可选千问兜底）；立即返回 task_path，用 language_learning_poll_task 轮询。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+        if generation_attempt < 1 or generation_attempt > SUBJECT_GENERATION_MAX_ATTEMPTS:
+            raise LanguageLearningError(
+                f"generation_attempt 必须是 1 到 {SUBJECT_GENERATION_MAX_ATTEMPTS}"
+            )
+
+        def _work(progress=None) -> dict:
+            if progress is not None:
+                progress("开始千问兜底生图")
+            return _submit_images_worker(
+                context_path,
+                images,
+                failures,
+            )
+
+        started = runner_submit_task(
+            cache_dir=cache_root,
+            run_id=run_id,
+            step=f"submit_images:{generation_attempt}",
+            fn=_work,
+        )
+        return {**started, "poll_tool": "language_learning_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_validate_subject_sheet(
+    subject_sheet_path: str,
+    visual_layout: dict,
+    run_id: str,
+) -> dict:
+    """硬校验真实透明主题图，并按宿主 Agent 提交的十个主体框裁图。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+        return validate_subject_sheet(
+            subject_sheet_path,
+            visual_layout,
+            cache_root / SUBJECT_CUTOUT_CACHE_DIR_NAME,
+        )
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_review_subject_sheet(
+    subject_sheet_path: str,
+    review: dict,
+    run_id: str,
+) -> dict:
+    """接收宿主 Agent 对十张透明切图整体验收图的结论；未通过时禁止拼卡。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+        return review_subject_sheet(
+            subject_sheet_path,
+            cache_root / SUBJECT_CUTOUT_CACHE_DIR_NAME,
+            review,
+        )
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_compose_cards(
+    subject_sheet_path: str,
+    words: list[dict],
+    learning_mode: str,
+    topic_english: str,
+    run_id: str,
+) -> dict:
+    """拼单词卡（同步）。优先使用 language_learning_start_compose_cards + poll_task。"""
+    cache_root, _ = production_dirs(run_id)
+    return compose_fixed_cards(
+        subject_sheet_path,
+        words,
+        learning_mode,
+        topic_english,
+        cache_root / "cards" / learning_mode,
+        cutout_cache_dir=cache_root / SUBJECT_CUTOUT_CACHE_DIR_NAME,
+    )
+
+
+def language_learning_start_compose_cards(
+    subject_sheet_path: str,
+    words: list[dict],
+    learning_mode: str,
+    topic_english: str,
+    run_id: str,
+) -> dict:
+    """启动单词卡合成；立即返回 task_path，用 language_learning_poll_task 轮询。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+
+        def _work(progress=None) -> dict:
+            if progress is not None:
+                progress(f"开始拼卡 {learning_mode}")
+            return compose_fixed_cards(
+                subject_sheet_path,
+                words,
+                learning_mode,
+                topic_english,
+                cache_root / "cards" / learning_mode,
+                cutout_cache_dir=cache_root / SUBJECT_CUTOUT_CACHE_DIR_NAME,
+            )
+
+        started = runner_submit_task(
+            cache_dir=cache_root,
+            run_id=run_id,
+            step=f"compose_cards:{learning_mode}",
+            fn=_work,
+        )
+        return {**started, "poll_tool": "language_learning_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_start_compose_pack_cards(
+    subject_image_paths: list[str], words: list[dict], learning_mode: str, topic_english: str, run_id: str,
+) -> dict:
+    """使用预制词包的十张已验收透明主体图拼卡，不重复定位和切图。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+        def _work(progress=None) -> dict:
+            if progress is not None: progress(f"开始使用词包拼卡 {learning_mode}")
+            return compose_fixed_cards_from_subjects(subject_image_paths, words, learning_mode, topic_english, cache_root / "cards" / learning_mode)
+        started = runner_submit_task(cache_dir=cache_root, run_id=run_id, step=f"compose_pack_cards:{learning_mode}", fn=_work)
+        return {**started, "poll_tool": "language_learning_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_create_videos(
+    card_dirs: dict[str, str],
+    words_by_mode: dict,
+    run_id: str,
+    voices: dict[str, str],
+    publish_config: dict[str, dict],
+    topic: str = "",
+    language_pause: float = 0.3,
+    word_pause: float = 0.3,
+    production_source: str = "local_mcp",
+    video_formats: list[str] | None = None,
+    countdown_audio_path: str | None = None,
+    record_production_outputs: bool = True,
+    question_voices: dict[str, str] | None = None,
+) -> dict:
+    """TTS + 出片（同步，易超时）。优先使用 language_learning_start_create_videos + poll_task。"""
+    try:
+        result = create_vocabulary_videos(
+            card_dirs,
+            words_by_mode,
+            run_id,
+            topic,
+            language_pause,
+            word_pause,
+            production_source,
+            video_formats,
+            countdown_audio_path,
+            record_production_outputs,
+            voices=voices,
+            question_voices=question_voices,
+            hashtags_by_mode={
+                mode: list(config.get("tags") or [])
+                for mode, config in publish_config.items()
+                if isinstance(config, dict)
+            },
+        )
+        return attach_publish_manifest(result, words_by_mode, publish_config)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_start_create_videos(
+    card_dirs: dict[str, str],
+    words_by_mode: dict,
+    run_id: str,
+    voices: dict[str, str],
+    publish_config: dict[str, dict],
+    topic: str = "",
+    language_pause: float = 0.3,
+    word_pause: float = 0.3,
+    production_source: str = "local_mcp",
+    video_formats: list[str] | None = None,
+    countdown_audio_path: str | None = None,
+    record_production_outputs: bool = True,
+    question_voices: dict[str, str] | None = None,
+) -> dict:
+    """启动 TTS + 出片；立即返回 task_path，用 language_learning_poll_task 轮询至 done=true。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+
+        def _work(progress=None) -> dict:
+            if progress is not None:
+                progress("开始 TTS 与出片")
+            result = create_vocabulary_videos(
+                card_dirs,
+                words_by_mode,
+                run_id,
+                topic,
+                language_pause,
+                word_pause,
+                production_source,
+                video_formats,
+                countdown_audio_path,
+                record_production_outputs,
+                voices=voices,
+                question_voices=question_voices,
+                hashtags_by_mode={
+                    mode: list(config.get("tags") or [])
+                    for mode, config in publish_config.items()
+                    if isinstance(config, dict)
+                },
+                progress=progress,
+            )
+            return attach_publish_manifest(result, words_by_mode, publish_config)
+
+        started = runner_submit_task(
+            cache_dir=cache_root,
+            run_id=run_id,
+            step="create_videos",
+            fn=_work,
+        )
+        return {**started, "poll_tool": "language_learning_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_start_upload_r2(
+    manifest_path: str,
+    run_id: str,
+    subject_sheet_path: str | None = None,
+    learning_modes: list[str] | None = None,
+) -> dict:
+    """启动语言成片、主题图和发布清单上传 R2。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+
+        def _work() -> dict:
+            return upload_publish_assets_to_r2(manifest_path, subject_sheet_path, learning_modes)
+
+        started = runner_submit_task(
+            cache_dir=cache_root,
+            run_id=run_id,
+            step="upload_r2",
+            fn=_work,
+        )
+        return {**started, "poll_tool": "language_learning_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+def language_learning_start_publish(
+    manifest_path: str,
+    publish_confirmed: bool,
+    run_id: str,
+    targets: list[str] | None = None,
+    publish_at: str | None = None,
+    publish_at_by_target: dict[str, str | None] | None = None,
+    video_parts: list[int] | None = None,
+) -> dict:
+    """启动中文官方平台发布；立即返回 task_path，用 language_learning_poll_task 轮询。"""
+    try:
+        cache_root, _ = production_dirs(run_id)
+
+        def _work(progress=None) -> dict:
+            if progress is not None:
+                progress("开始下载发布清单并发布中文平台")
+            resolved_manifest_path = manifest_path
+            if str(manifest_path).strip().startswith(("http://", "https://")):
+                resolved_manifest_path = prepare_r2_publish_manifest(
+                    manifest_path,
+                    run_id,
+                    cache_root,
+                )
+                if progress is not None:
+                    progress("发布清单已就绪，开始上传平台")
+            return publish_vocabulary_videos(
+                resolved_manifest_path,
+                publish_confirmed,
+                targets=targets,
+                publish_at=publish_at,
+                publish_at_by_target=publish_at_by_target,
+                video_parts=video_parts,
+                progress=progress,
+            )
+
+        started = runner_submit_task(
+            cache_dir=cache_root,
+            run_id=run_id,
+            step="publish",
+            fn=_work,
+        )
+        return {**started, "poll_tool": "language_learning_poll_task"}
+    except Exception as exc:
+        raise _map_error(exc) from exc
+def language_learning_poll_task(task_path: str) -> dict:
+    """轮询后台任务。status=succeeded 时读 result；failed 时读 error 并停止制作。"""
+    try:
+        return runner_poll_task(task_path=task_path)
+    except RunnerTaskNotFoundError as exc:
+        raise TaskNotFoundError(str(exc), {"task_path": task_path}) from exc
+
+
+def language_learning_clear_run(run_id: str, confirmed: bool) -> dict:
+    """清本次生产目录（core.tools.clear_cache）。"""
+    try:
+        return clear_run(WORKFLOW_ID, run_id, confirmed=confirmed)
+    except ClearCacheConfirmationRequiredError as exc:
+        raise ConfirmationRequiredError(str(exc)) from exc

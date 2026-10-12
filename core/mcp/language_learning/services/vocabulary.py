@@ -8,13 +8,13 @@ import unicodedata
 
 from core.tools.cloudflare_data import CloudflareDataError, list_recent_words as cloudflare_list_recent_words
 
-from .._constants import (
+from ..config import (
     MINIMUM_NEW_WORDS,
     SUPPORTED_LEARNING_MODES,
     WORD_HISTORY_DAYS,
     WORDS_PER_TASK,
 )
-from .._errors import VocabularyHistoryError, VocabularyReuseError
+from ..errors import VocabularyHistoryError, VocabularyReuseError
 
 
 def _normalize_word(value: str) -> str:

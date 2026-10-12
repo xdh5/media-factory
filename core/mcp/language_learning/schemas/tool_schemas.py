@@ -1,6 +1,6 @@
 """语言学习 MCP 工具的输入输出 Schema。"""
 
-from ._constants import SUPPORTED_LEARNING_MODES
+from ..config import SUPPORTED_LEARNING_MODES
 
 LEARNING_MODES_SCHEMA = {"type": "array", "minItems": 1, "maxItems": 2, "uniqueItems": True, "items": {"type": "string", "enum": list(SUPPORTED_LEARNING_MODES)}}
 WORD_SCHEMA = {"type": "object", "properties": {"english": {"type": "string", "minLength": 1}, "chinese": {"type": "string", "minLength": 1}, "korean": {"type": "string", "minLength": 1}, "romanization": {"type": "string", "minLength": 1}}, "required": ["english", "chinese", "korean", "romanization"], "additionalProperties": False}
@@ -140,6 +140,26 @@ VALIDATE_PACK_WORDS_INPUT_SCHEMA = {
     "required": ["pack_id", "topic", "response_text"],
     "additionalProperties": False,
 }
+VALIDATE_PACK_SUBJECT_SHEET_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "pack_id": {"type": "string", "pattern": r"^language-pack-[a-f0-9]{32}$"},
+        "subject_sheet_path": {"type": "string", "minLength": 1},
+        "visual_layout": {"type": "object"},
+    },
+    "required": ["pack_id", "subject_sheet_path", "visual_layout"],
+    "additionalProperties": False,
+}
+REVIEW_PACK_SUBJECT_SHEET_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "pack_id": {"type": "string", "pattern": r"^language-pack-[a-f0-9]{32}$"},
+        "subject_sheet_path": {"type": "string", "minLength": 1},
+        "review": {"type": "object"},
+    },
+    "required": ["pack_id", "subject_sheet_path", "review"],
+    "additionalProperties": False,
+}
 COMMIT_PACK_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -228,7 +248,6 @@ VISUAL_LAYOUT_SCHEMA = {
         "top_count": {"type": "integer", "minimum": 0},
         "bottom_count": {"type": "integer", "minimum": 0},
         "has_text": {"type": "boolean"},
-        "background_color": {"type": "string", "minLength": 1},
         "reason": {"type": "string"},
         "boxes": {
             "type": "array",
@@ -314,14 +333,13 @@ SUBJECT_SHEET_VALIDATION_SCHEMA = {
         "top_count": {"type": "integer", "minimum": 0},
         "bottom_count": {"type": "integer", "minimum": 0},
         "has_text": {"type": "boolean"},
-        "background_removed": {"type": "boolean"},
-        "background_removed_sheet_path": {"type": "string"},
+        "cutout_review_sheet_path": {"type": "string"},
         "cutout_paths": {"type": "array", "items": {"type": "string"}},
         "inspection_required": {"type": "boolean"},
         "next_tool": {"type": "string"},
         "vision": {"type": "object", "additionalProperties": True},
     },
-    "required": ["valid", "max_attempts", "issues", "cells", "detected_count", "top_count", "bottom_count", "has_text", "background_removed", "background_removed_sheet_path", "cutout_paths", "inspection_required", "next_tool", "vision"],
+    "required": ["valid", "max_attempts", "issues", "cells", "detected_count", "top_count", "bottom_count", "has_text", "cutout_review_sheet_path", "cutout_paths", "inspection_required", "next_tool", "vision"],
     "additionalProperties": False,
 }
 COMPOSE_CARDS_INPUT_SCHEMA = {

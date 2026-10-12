@@ -14,7 +14,6 @@ from core.tools.r2_storage import download_public_file
 from ._shared import (
     PROJECT_ROOT,
     qwen,
-    qwen_vision,
     upload_diagnostic_files,
     write_summary,
 )
@@ -121,240 +120,44 @@ async def generate_words(
         "run_id": run_id,
         "words": words,
         "pack_id": pack["pack_id"],
-        "pack_image_urls": list(pack["image_urls"]),
+        "pack_subject_urls": list(pack["image_urls"]),
     }
     _write_state(state_path, state)
     return state
-
-
-def _write_diagnostics(diagnostics_dir: Path, payload: dict) -> None:
-    diagnostics_dir.mkdir(parents=True, exist_ok=True)
-    (diagnostics_dir / "diagnostics.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
-
-async def _visual_layout(mcp: ProjectMCP, subject_sheet_path: str, feedback: list[str]) -> dict:
-    """只让千问视觉提取抠图所需的十个坐标，不承担内容质检。"""
-    prompt = await mcp.call("language_learning_get_visual_validation_prompt")
-    user_prompt = str(prompt["user_prompt"])
-    if feedback:
-        user_prompt += "\n\n上一次坐标不可用，请重新观察原图并给出更保守、更准确的完整十框：\n- " + "\n- ".join(feedback)
-    return qwen_vision(subject_sheet_path, str(prompt["system_prompt"]), user_prompt)
-
-
-def _inspect_background_removed_sheet(path: str, prompt: dict, feedback: list[str]) -> dict:
-    user_prompt = str(prompt["user_prompt"])
-    if feedback:
-        user_prompt += "\n\n上一次整图验收失败，必须修正：\n- " + "\n- ".join(feedback)
-    result = qwen_vision(path, str(prompt["system_prompt"]), user_prompt)
-    valid = result.get("valid")
-    if not isinstance(valid, bool):
-        raise RuntimeError("千问没有正确判断整图验收结果")
-    failure_kind = str(result.get("failure_kind") or "").strip().casefold()
-    if not valid and not failure_kind:
-        failure_kind = "completeness"
-    return {
-        "valid": valid,
-        "failure_kind": "" if valid else failure_kind,
-        "issue": str(result.get("issue") or "").strip(),
-        "subject_count": result.get("subject_count"),
-    }
 
 
 async def generate_cards(
     state_path: str | Path,
     diagnostics_dir: str | Path = "cache/github_actions/language-learning-diagnostics",
 ) -> dict:
-    """第二段：下载已验收的十张透明主体图，直接拼卡。"""
+    """第二段：下载预制包中已验收的十张透明主体图，直接拼卡。"""
     state = _read_state(state_path)
-    topic = str(state["topic"])
     learning_modes = list(state["learning_modes"])
     run_id = str(state["run_id"])
     words = dict(state["words"])
-    pack_urls = list(state.get("pack_image_urls") or [])
-    if len(pack_urls) != 1:
-        raise RuntimeError("GitHub 语言生产只能使用一张已验收的十元素透明主题图")
+    pack_urls = list(state.get("pack_subject_urls") or [])
+    if len(pack_urls) != 10:
+        raise RuntimeError("GitHub 语言生产必须使用十张已验收透明主体图")
     pack_root = Path(diagnostics_dir).resolve().parent / "pack-subjects" / run_id
-    subject_sheet_path = pack_root / "subject-sheet.png"
-    key = unquote(urlparse(str(pack_urls[0])).path).lstrip("/")
-    download_public_file(key, subject_sheet_path)
+    subject_paths = []
+    for index, url in enumerate(pack_urls, 1):
+        subject_path = pack_root / f"{index:02d}.png"
+        key = unquote(urlparse(str(url)).path).lstrip("/")
+        download_public_file(key, subject_path)
+        subject_paths.append(str(subject_path))
     card_dirs = {}
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
-        layout = await _visual_layout(mcp, str(subject_sheet_path), [])
-        validation = await mcp.call("language_learning_validate_subject_sheet", {
-            "subject_sheet_path": str(subject_sheet_path), "visual_layout": layout, "run_id": run_id,
-        })
-        if validation.get("valid") is not True:
-            raise RuntimeError(f"词包主题图裁切失败：{'；'.join(validation.get('issues') or [])}")
-        sheet_prompt = await mcp.call("language_learning_get_sheet_validation_prompt")
-        target_words = "、".join(str(item.get("english") or "").strip() for item in words["en-zh"])
-        sheet_prompt = {
-            **sheet_prompt,
-            "user_prompt": (
-                f"{sheet_prompt['user_prompt']}\n\n"
-                f"本期禁止直接写入画面的目标英语词为：{target_words}。"
-                "其他与这些目标词无关的自然场景文字允许存在，不能仅因它们存在而判定 text 失败。"
-            ),
-        }
-        sheet_review = _inspect_background_removed_sheet(
-            str(validation["background_removed_sheet_path"]), sheet_prompt, [],
-        )
-        review = await mcp.call("language_learning_review_subject_sheet", {
-            "subject_sheet_path": str(subject_sheet_path), "review": sheet_review, "run_id": run_id,
-        })
-        if review.get("approved") is not True:
-            raise RuntimeError(f"词包主题图整图验收失败：{'；'.join(review.get('validation_issues') or [])}")
         for mode in learning_modes:
-            started = await mcp.call("language_learning_start_compose_cards", {
-                "subject_sheet_path": str(subject_sheet_path), "words": words[mode], "learning_mode": mode,
+            started = await mcp.call("language_learning_start_compose_pack_cards", {
+                "subject_image_paths": subject_paths, "words": words[mode], "learning_mode": mode,
                 "topic_english": words["_topic_english"], "run_id": run_id,
             })
             cards = await mcp.poll("language_learning_poll_task", started["task_path"])
             card_dirs[mode] = cards["output_dir"]
-    state["subject_sheet_path"] = str(subject_sheet_path)
-    state["subject_sheet_validation"] = {**validation, "review": sheet_review}
+    state["subject_image_paths"] = subject_paths
     state["card_dirs"] = card_dirs
     _write_state(state_path, state)
     return state
-
-    diagnostic_root = Path(diagnostics_dir).resolve()
-    diagnostic_payload = {
-        "workflow": "language_learning",
-        "run_id": run_id,
-        "topic": topic,
-        "status": "running",
-        "attempts": [],
-    }
-    _write_diagnostics(diagnostic_root, diagnostic_payload)
-    approved_validation = None
-    submitted = None
-    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
-        config = await mcp.call("language_learning_get_production_config", {
-            "topic": topic, "learning_modes": learning_modes,
-        })
-        primary_words = words.get("en-zh") or words.get("en-ko")
-        sheet_prompt = await mcp.call("language_learning_get_sheet_validation_prompt")
-        generation_issues: list[str] = []
-        max_attempts = int(config["subject_generation_max_attempts"])
-        for generation_attempt in range(1, max_attempts + 1):
-            prepared = await mcp.call(
-                "language_learning_prepare_images",
-                {
-                    "topic": topic,
-                    "words": primary_words,
-                    "run_id": run_id,
-                    "force_images": generation_attempt > 1,
-                    "generation_attempt": generation_attempt,
-                    "validation_issues": generation_issues,
-                },
-            )
-            started = await mcp.call(
-                "language_learning_start_submit_images",
-                {
-                    "context_path": prepared["context_path"],
-                    "images": [],
-                    "run_id": run_id,
-                    "generation_attempt": generation_attempt,
-                    "failures": [{
-                        "image_id": "subject-sheet",
-                        "attempts": 0,
-                        "capability_unavailable": True,
-                        "errors": ["GitHub Runner 无宿主生图能力，使用项目千问兜底"],
-                    }],
-                },
-            )
-            submitted = await mcp.poll("language_learning_poll_task", started["task_path"])
-            visual_feedback: list[str] = []
-            generation_issues = []
-            for visual_round in range(1, 3):
-                layout = await _visual_layout(mcp, submitted["subject_sheet_path"], visual_feedback)
-                validation = await mcp.call(
-                    "language_learning_validate_subject_sheet",
-                    {
-                        "subject_sheet_path": submitted["subject_sheet_path"],
-                        "visual_layout": layout,
-                        "run_id": run_id,
-                    },
-                )
-                if validation.get("valid") is not True:
-                    visual_feedback = [str(item) for item in validation.get("issues") or []]
-                    continue
-                background_removed_path = str(validation.get("background_removed_sheet_path") or "").strip()
-                if not background_removed_path:
-                    visual_feedback = ["Python 未生成去背景后的完整主题图"]
-                    continue
-                sheet_review = _inspect_background_removed_sheet(
-                    background_removed_path,
-                    sheet_prompt,
-                    visual_feedback,
-                )
-                review = await mcp.call(
-                    "language_learning_review_subject_sheet",
-                    {
-                        "subject_sheet_path": submitted["subject_sheet_path"],
-                        "review": sheet_review,
-                        "run_id": run_id,
-                    },
-                )
-                if review.get("approved") is True:
-                    approved_validation = {**validation, "review": sheet_review, "visual_round": visual_round}
-                    break
-                visual_feedback = list(review.get("validation_issues") or [])
-                if review.get("action") == "regenerate":
-                    generation_issues = visual_feedback
-                    break
-            if approved_validation is not None:
-                break
-            if not generation_issues:
-                generation_issues = visual_feedback or ["视觉验收未通过"]
-            background_removed_path = str(
-                (validation or {}).get("background_removed_sheet_path") or ""
-            ).strip()
-            if not background_removed_path:
-                raise RuntimeError("主体图验收失败，但没有生成可上传的去背景色主题图")
-            source = Path(background_removed_path).resolve()
-            if not source.is_file():
-                raise RuntimeError(f"去背景色主题图不存在，无法保存失败诊断：{source}")
-            failed_image = diagnostic_root / f"subject-sheet-attempt-{generation_attempt}{source.suffix.lower() or '.png'}"
-            shutil.copy2(source, failed_image)
-            diagnostic_payload["attempts"].append({
-                "generation_attempt": generation_attempt,
-                "file": failed_image.name,
-                "source_stage": "background_removed",
-                "issues": generation_issues,
-            })
-            diagnostic_payload["status"] = "retrying"
-            _write_diagnostics(diagnostic_root, diagnostic_payload)
-        else:
-            diagnostic_payload["status"] = "failed"
-            _write_diagnostics(diagnostic_root, diagnostic_payload)
-            details = "；".join(generation_issues) or "没有返回具体视觉错误"
-            raise RuntimeError(f"原始主题图连续 {max_attempts} 次未通过检查：{details}")
-        card_dirs = {}
-        for mode in learning_modes:
-            started = await mcp.call(
-                "language_learning_start_compose_cards",
-                {
-                    "subject_sheet_path": submitted["subject_sheet_path"],
-                    "words": words[mode],
-                    "learning_mode": mode,
-                    "topic_english": words["_topic_english"],
-                    "run_id": run_id,
-                },
-            )
-            cards = await mcp.poll("language_learning_poll_task", started["task_path"])
-            card_dirs[mode] = cards["output_dir"]
-    state["subject_sheet_path"] = submitted["subject_sheet_path"]
-    state["subject_sheet_validation"] = {**approved_validation, "generation_attempt": generation_attempt}
-    state["card_dirs"] = card_dirs
-    diagnostic_payload["status"] = "succeeded"
-    _write_diagnostics(diagnostic_root, diagnostic_payload)
-    _write_state(state_path, state)
-    return state
-
-
 def _source_words(manifest: dict) -> dict:
     """从旧成片清单恢复中英、韩英两套原始词表。"""
     by_mode = {str(item.get("learning_mode") or ""): item for item in manifest.get("videos") or []}
@@ -421,7 +224,7 @@ async def recompose_cards_from_r2(
             },
         )
         if validation.get("valid") is not True:
-            raise RuntimeError(f"旧主题图重新抠图失败：{'；'.join(validation.get('issues') or [])}")
+            raise RuntimeError(f"旧透明主题图重新切图失败：{'；'.join(validation.get('issues') or [])}")
         approved_review = source_review if source_review.get("valid") is True else {
             "valid": True,
             "failure_kind": "",
@@ -471,7 +274,7 @@ async def recompose_cards_from_r2(
 
 
 def upload_failed_subject_sheets(diagnostics_dir: str | Path) -> dict:
-    """上传被视觉验收拒绝的去背景色主题图；没有失败图时跳过。"""
+    """上传被视觉验收拒绝的透明切图验收图；没有失败图时跳过。"""
     root = Path(diagnostics_dir).resolve()
     metadata_path = root / "diagnostics.json"
     if not metadata_path.is_file():
@@ -480,11 +283,11 @@ def upload_failed_subject_sheets(diagnostics_dir: str | Path) -> dict:
     paths = [root / str(item["file"]) for item in metadata.get("attempts") or []]
     paths = [path for path in paths if path.is_file()]
     if not paths:
-        return {"status": "skipped", "reason": "本次任务没有校验失败的去背景色主题图"}
+        return {"status": "skipped", "reason": "本次任务没有校验失败的透明切图验收图"}
     result = upload_diagnostic_files("language_learning", str(metadata["run_id"]), paths, metadata)
     write_summary(
-        "语言学习失败去背景色主题图已上传 R2",
-        [("主题", str(metadata["topic"])), ("失败图片数", str(len(paths))), ("图片阶段", "去背景色后"), ("保留时间", "1 天"), ("R2 诊断清单", str(result["manifest"]["url"]))],
+        "语言学习失败透明切图验收图已上传 R2",
+        [("主题", str(metadata["topic"])), ("失败图片数", str(len(paths))), ("图片阶段", "透明切图后"), ("保留时间", "1 天"), ("R2 诊断清单", str(result["manifest"]["url"]))],
     )
     return {"status": "uploaded", "r2": result}
 

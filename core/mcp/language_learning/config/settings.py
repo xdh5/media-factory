@@ -1,4 +1,4 @@
-"""语言学习 MCP 技术常量（TTS、发布等业务参数见 SKILL）。"""
+"""语言学习 MCP 配置与技术常量。"""
 
 import os
 from datetime import date, datetime
@@ -25,8 +25,6 @@ SUBJECT_SHEET_RADIO = "16:9"
 SUBJECT_SHEET_SIZE_TEXT = f"{SUBJECT_SHEET_WIDTH}x{SUBJECT_SHEET_HEIGHT}"
 SUBJECT_SHEET_IMAGE_ID = "subject-sheet"
 SUBJECT_ALPHA_THRESHOLD = 16
-SUBJECT_CHROMA_LOW_DISTANCE = 18
-SUBJECT_CHROMA_HIGH_DISTANCE = 64
 SUBJECT_CUTOUT_CACHE_DIR_NAME = "subject-cutouts"
 SUBJECT_CUTOUT_STRATEGY_VERSION = "transparent-first-host-agent-boxes-v18"
 SUBJECT_COMPONENT_MIN_RATIO = 0.03
@@ -58,7 +56,7 @@ DEFAULT_PRODUCTION_CONFIG = {
     "publish_hour_beijing": 16,
 }
 
-_ROOT = Path(__file__).resolve().parent
+_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _project_root() -> Path:
@@ -111,6 +109,12 @@ def production_dirs(run_id: str) -> tuple[Path, Path]:
     """本次生产目录：(cache_dir, output_dir)。"""
     rid = str(run_id).strip()
     return PROJECT_CACHE_ROOT / WORKFLOW_ID / rid, PROJECT_OUTPUT_ROOT / WORKFLOW_ID / rid
+
+
+def pack_cutout_cache_dir(pack_id: str) -> Path:
+    """返回预制词包的主体切图验收缓存目录。"""
+    value = str(pack_id or "").strip()
+    return PROJECT_CACHE_ROOT / WORKFLOW_ID / "packs" / value / SUBJECT_CUTOUT_CACHE_DIR_NAME
 
 
 # 卡片模板仍在本包 static/；倒计时音效统一放项目根 static/sfx/

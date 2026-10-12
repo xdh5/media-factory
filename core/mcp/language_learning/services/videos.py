@@ -13,7 +13,7 @@ from core.tools.generate_final_video import generate_final_video, safe_filename
 from core.tools.generate_sticker import generate_sticker
 from core.tools.generate_tts import generate_tts
 
-from .._constants import (
+from ..config import (
     CARD_CANVAS_SIZE,
     COUNTDOWN_AUDIO_PATH,
     DEFAULT_VIDEO_FORMATS,
@@ -26,8 +26,8 @@ from .._constants import (
     video_content_kind,
     video_production_id,
 )
-from .._errors import VocabularyVideoError
-from .publish_vocabulary_videos import build_video_title, strip_quiz_title_suffix
+from ..errors import VocabularyVideoError
+from .publishing import build_video_title, strip_quiz_title_suffix
 
 VIDEO_SIZE = f"{CARD_CANVAS_SIZE[0]}x{CARD_CANVAS_SIZE[1]}"
 QUIZ_VIDEO_FPS = 30

@@ -16,26 +16,44 @@ TTS、发布账号组与完整流程见 `.agents/skills/learn_Chinese_and_Korean
 ```
 language_learning_get_topics
 └─ topic_dedup.get_topic
-└─ tools.vocabulary_history.list_recent_words（最近 100 天）
+└─ services.vocabulary.list_recent_words（最近 100 天）
 
 language_learning_occupy_topic(topic, learning_modes, publish_date)
 └─ 查重后创建 cache/output 目录，返回按计划发布日期生成的 run_id；暂不写 D1
 └─ 重做 D1 已存在的同一期时可显式传 redo_existing_run=true；普通生产保持关闭
 
 language_learning_build_vocabulary_prompt(topic, learning_modes)
-└─ tools.vocabulary_prompt.build_vocabulary_prompt
-└─ tools.vocabulary_history.list_recent_words
+└─ services.prompt_service.build_vocabulary_prompt
+└─ services.vocabulary.list_recent_words
    └─ prompts/vocabulary-user.md
 
 [Agent 按 user_prompt 写词表]
 
 language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)
-└─ tools.vocabulary_prompt.parse_vocabulary_response
-└─ tools.vocabulary_history.validate_words
+└─ services.prompt_service.parse_vocabulary_response
+└─ services.vocabulary.validate_words
    └─ 格式校验后要求 10 个单词中至少 5 个不在最近 100 天词库；暂不写 D1
 
+预制词包路径：
+language_learning_prepare_pack / language_learning_validate_pack_words
+└─ 复用同一套词表 Prompt、解析器和最近 100 天重复规则
+
+[宿主 Agent 生成一张真实 Alpha 透明主题图，并按共用视觉 Prompt 提交十个主体框]
+
+language_learning_validate_pack_subject_sheet
+└─ 复用 services.subject_cards.validate_subject_sheet 完成定位和十张主体切图
+
+language_learning_review_pack_subject_sheet
+└─ 复用整图视觉验收；未通过时禁止提交词包
+
+language_learning_commit_pack
+└─ 只上传通过验收的十张透明主体切图并写入 D1
+
+language_learning_claim_pack / language_learning_start_compose_pack_cards
+└─ GitHub Action 领取十张已验收切图后直接拼卡，不再执行首次切图和视觉验收
+
 language_learning_prepare_images
-└─ tools.vocabulary_prompt.build_subject_sheet_prompt
+└─ services.prompt_service.build_subject_sheet_prompt
    └─ prompts/subject-sheet.md
    └─ generate_image.prepare_agent_image_tasks
 
@@ -54,18 +72,18 @@ language_learning_get_visual_validation_prompt
 [宿主 Agent 按 Prompt 提交十个主体框，不做内容质检]
 
 language_learning_validate_subject_sheet
-└─ tools.compose_fixed_cards.validate_subject_sheet
-   └─ 原生透明图直接保留 Alpha；纯色兜底图才自动抠图；保存完整透明图并输出十张主体
+└─ services.subject_cards.validate_subject_sheet
+   └─ 硬校验真实 Alpha 透明通道；按十个框输出十张透明主体和一张切图整体验收图
 
-[宿主 Agent 打开整张透明处理后的完整主题图做一次性验收]
-  └─ 先调用 language_learning_get_sheet_validation_prompt，检查数量、完整性、文字、水印、画风和背景残色
+[宿主 Agent 打开十张实际切图组成的整体验收图做一次性验收]
+  └─ 先调用 language_learning_get_sheet_validation_prompt，检查数量、切图完整性、文字、水印、画风和透明边缘
 
 language_learning_review_subject_sheet
-└─ 发现透明边缘杂色时优先重做透明图；透明生成失败时才换高反差纯色背景兜底
+└─ 缺少真实透明通道或切图验收失败时重做透明图，不允许纯色背景兜底
 └─ 未全部通过时禁止拼卡
 
 language_learning_compose_cards
-└─ tools.compose_fixed_cards.compose_fixed_cards  （同步）
+└─ services.subject_cards.compose_fixed_cards  （同步）
 
 language_learning_start_compose_cards
 └─ core.mcp._task_runner.submit_task
@@ -73,11 +91,11 @@ language_learning_start_compose_cards
 language_learning_create_videos / language_learning_start_create_videos
 └─ 默认同时生成 standard 原版分段和 quiz 倒计时问答版
 └─ 问答版倒计时音轨默认 static/sfx/countdown.mp3
-└─ tools.create_vocabulary_videos.create_vocabulary_videos
-└─ tools.publish_vocabulary_videos.attach_publish_manifest
+└─ services.videos.create_vocabulary_videos
+└─ services.publishing.attach_publish_manifest
 
 language_learning_start_upload_r2
-└─ tools.publish_vocabulary_videos.upload_publish_assets_to_r2
+└─ services.publishing.upload_publish_assets_to_r2
    └─ 上传成片、主题图与发布清单
 
 language_learning_start_publish
@@ -90,19 +108,29 @@ language_learning_clear_run
 └─ clear_cache.clear_run
 ```
 
-## 内部模块
+## 工程分层
 
 | 文件 | 职责 |
 | --- | --- |
-| `tools/vocabulary_prompt.py` | 词表 / 主体图 Prompt 生成与词表解析 |
-| `tools/vocabulary_history.py` | 最近 100 天词库、新词比例校验与历史记录 |
-| `tools/compose_fixed_cards.py` | 接收宿主 Agent 主体框，优先使用原生透明通道、纯色时再抠图，并经整图验收后贴到固定模板单词卡 |
-| `tools/create_vocabulary_videos.py` | 卡片 + 双语 TTS → 竖版成片 |
-| `tools/publish_vocabulary_videos.py` | 写发布清单、上传 R2，并通过 MCP 发布 YouTube、TikTok、Instagram 或 Facebook |
+| `__main__.py` | stdio 启动入口 |
+| `server.py` | 创建 FastMCP 并注册 Tools |
+| `tools/` | Tool 接口注册，不放业务实现 |
+| `prompts/` | 词表、透明主题图、定位和切图验收 Prompt |
+| `workflows/` | 共用查询、直接制作、预制包、成片、发布和后台任务编排 |
+| `services/prompt_service.py` | 词表与主题图 Prompt 生成、词表解析 |
+| `services/vocabulary.py` | 最近 100 天词库、新词比例校验与历史记录 |
+| `services/subject_cards.py` | 透明校验、定位切图、切图验收图和单词卡渲染 |
+| `services/videos.py` | 卡片与双语 TTS 合成竖版成片 |
+| `services/publishing.py` | 发布清单、R2 上传和平台发布 |
+| `schemas/` | MCP 输入输出 Schema |
+| `errors/` | 领域错误与错误码 |
+| `config/` | 服务说明、生产参数、路径和技术常量 |
+| `infrastructure/` | D1、R2、生图和后台任务适配入口 |
 
 ## 目录
 
 - 缓存：`cache/language_learning/{run_id}/`
+- 预制词包验收缓存：`cache/language_learning/packs/{pack_id}/subject-cutouts/`
 - 成片：`output/language_learning/run-YYYYMMDD/`，日期为北京时间计划发布日期
 - 产物记录：本地成片成功后写入 `source=local_mcp`；GitHub 在 R2 交付成功后写入 `source=github_workflow`；`language_learning_get_production_outputs(publish_date)` 可按日期查询
 - 话题与单词历史：通过 `CLOUDFLARE_DATA_API_URL` 指向的鉴权 Worker 访问 Cloudflare D1
