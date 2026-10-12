@@ -420,7 +420,6 @@ async def schedule_publication(
                 "publish_date": publish_date,
                 "account_group": "中文",
                 "platforms": selected_targets,
-                "publish_confirmed": True,
                 "content_kind": "en-zh",
                 "publish_mode": "scheduled",
                 "publish_at": publish_at,

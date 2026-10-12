@@ -59,7 +59,7 @@ MCP 入口：`python -m core.mcp.language_learning`。**语言学习 MCP 是 Pro
 
 **韩语 `en-ko`**
 
-- 本地生产完成后保留本地产物，不自动上传 R2；只有 GitHub Workflow 或已确认发布的平台需要公网视频地址时才调用 `language_learning_start_upload_r2`
+- 本地生产完成后保留本地产物，不自动上传 R2；只有 GitHub Workflow 交付时才调用 `language_learning_start_upload_r2`，发布所需公网地址由统一发布 MCP 按需处理
 - 发布服务器 MatrixMedia 使用账号组 `韩语`，账号配置由发布环境提供，不再从 D1 读取发布账号组。
 - MatrixMedia 发布所有平台时必须传 `creativeStatement="ai_generated"`，给成片添加各平台对应的 AI 生成内容标记；不得省略或改为无标注。
 - MatrixMedia 发布时完整标题传 `title`（`韩语｜饺子的韩语怎么说？` 这种格式），作品描述只传标签 hashtag；不得把短标题、完整标题或其它文字放进描述。
@@ -85,7 +85,7 @@ GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现�
 
 ## 确认门禁
 
-1. **成片**：本地制作完成后展示 `output/language_learning/run-YYYYMMDD/` 中的成片路径、标题、标签与账号组；`YYYYMMDD` 必须是北京时间计划发布日期。未确认不得调用发布 MCP。本地制作不得在成片阶段自动上传 R2；仅 GitHub Workflow 生产完成后自动交付 R2，本地只有在用户确认发布且目标平台需要公网视频地址时才上传发布资产。本地成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；GitHub Workflow 只在 R2 交付成功后以 `source=github_workflow` 写入。查询某天产物使用 `language_learning_get_production_outputs(publish_date)`。
+1. **成片**：本地制作完成后展示 `output/language_learning/run-YYYYMMDD/` 中的成片路径、标题、标签与账号组；`YYYYMMDD` 必须是北京时间计划发布日期。本地制作不得在成片阶段自动上传 R2；仅 GitHub Workflow 生产完成后自动交付 R2，发布所需公网地址由统一发布 MCP 按需处理。本地成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；GitHub Workflow 只在 R2 交付成功后以 `source=github_workflow` 写入。查询某天产物使用 `language_learning_get_production_outputs(publish_date)`。
 2. **清缓存**：发布结束后用户确认才调用 `language_learning_clear_run(run_id, confirmed=true)`。
 
 `weekly-production` 每周六北京时间 12:00 串行生产下周周一至周日内容，只生产并交付 R2，禁止自动发布语言视频。单独的手动发布 Workflow 按数据库预检结果最多重试 3 次；YouTube 使用官方 API，完整上传或预约并返回 `video_id` 才记为成功，抛错或缺少 `video_id` 记为失败。TikTok、Facebook、Instagram 调用 Zernio；Zernio 请求成功并返回 `post_id` 与成功或预约状态后，立即把标题、发布时间、平台、账号、分段及外部 ID 写入现有 `publication_records`，请求失败则不写入。手动发布 Workflow 只复用 GitHub 已交付 R2 的中文成片，手动 MCP 制作仍执行上述成片确认门禁。生产 Workflow 不清缓存。原每日生产命令保留但不再配置定时调度。
@@ -103,7 +103,7 @@ GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现�
 7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**由十张实际透明切图重新排列成的整体验收图**，按返回 Prompt 一次性检查：主体数量是否为 10、边缘或结构有没有被切掉、是否误带相邻主体、文字、水印、全彩配色与材质质感、语义表达和透明边缘异常；全体单色染色、大片无层次纯色块、线稿图标、白色剪影、UI 符号或廉价塑料感必须按 `style` 判定失败。再调用 `language_learning_review_subject_sheet` 提交一条结论。切图不完整或误带相邻主体时先让 LLM 重新定位并切图；图片本身存在文字、水印、画风或透明边缘问题时才重新生成透明主题图。失败时 `failure_kind` 取 `background_edge` / `text` / `watermark` / `style` / `count` / `completeness` 之一。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对同一张切图验收图调用千问视觉执行同一个 MCP Prompt。
 8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
 9. `language_learning_start_create_videos`：传入 MCP 配置返回的 `voices`、`publish_config`、`language_pause`、`word_pause` 和 `video_formats`；倒计时音轨使用 MCP 默认值，不必传 `countdown_audio_path` → poll 至 `done=true`。
-10. 用户确认发布后：调用统一发布 MCP 的 `publishing_preview` 检查产物、账号路由和重复项，再调用 `publishing_start_publish`；中文传 `content_kind="en-zh"`，韩语传 `content_kind="en-ko"`，都会同时包含原版和问答版。目标平台需要公网视频地址时由统一发布 MCP 按需上传 R2。
+10. 发布时先调用统一发布 MCP 的 `publishing_preview` 检查产物、账号路由和重复项，再直接调用 `publishing_start_publish`；中文传 `content_kind="en-zh"`，韩语传 `content_kind="en-ko"`，都会同时包含原版和问答版。目标平台需要公网视频地址时由统一发布 MCP 按需上传 R2。
 11. 展示发布结果后，确认清缓存。
 
 ### 后台任务轮询

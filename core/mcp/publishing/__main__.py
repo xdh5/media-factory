@@ -82,7 +82,6 @@ def publishing_start_publish(
     publish_date: str,
     account_group: str,
     platforms: list[str],
-    publish_confirmed: bool,
     publish_mode: str | None = None,
     publish_at: str | None = None,
     content_kind: str | None = None,
@@ -90,8 +89,6 @@ def publishing_start_publish(
 ) -> dict:
     """启动统一发布；立即发布用 publish_at=now，预约发布使用带时区的未来时间。"""
     try:
-        if publish_confirmed is not True:
-            raise PublishingRequestError("发布属于外部写操作，publish_confirmed 必须为 true")
         date_text = str(publish_date or "").strip()
         if not date_text:
             raise PublishingRequestError("publish_date 不能为空；必须先向用户确认要发布哪一天的产物")

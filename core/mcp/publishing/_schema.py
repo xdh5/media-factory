@@ -35,11 +35,9 @@ PUBLISH_START_INPUT_SCHEMA = {
             "additionalProperties": {"type": "string", "minLength": 1},
             "description": "按平台设置发布时间；值为 now 时立即发布，否则必须是带时区的 ISO 8601 时间",
         },
-        "publish_confirmed": {"type": "boolean", "const": True},
     },
     "required": [
         "business_line", "publish_date", "account_group", "platforms",
-        "publish_confirmed",
     ],
     "additionalProperties": False,
 }
