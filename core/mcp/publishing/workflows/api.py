@@ -64,7 +64,7 @@ def publishing_start_matrixmedia_login(
     timeout_seconds: int = 900,
     force: bool = True,
 ) -> dict:
-    """为抖音、快手或视频号启动 MatrixMedia 扫码登录，并返回二维码图片路径。"""
+    """为抖音、快手、头条或视频号启动 MatrixMedia 扫码登录，并返回二维码图片路径。"""
     try:
         return start_matrixmedia_login(
             business_line,

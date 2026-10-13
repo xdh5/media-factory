@@ -281,10 +281,15 @@ def start_matrixmedia_login(
 ) -> dict:
     """启动 MatrixMedia 扫码登录并等待二维码文件就绪。"""
     normalized = str(platform or "").strip().casefold()
-    aliases = {"douyin": "douyin", "dy": "douyin", "kuaishou": "kuaishou", "ks": "kuaishou", "wechat_channels": "wechat_channels", "sph": "wechat_channels"}
+    aliases = {
+        "douyin": "douyin", "dy": "douyin",
+        "kuaishou": "kuaishou", "ks": "kuaishou",
+        "toutiao": "toutiao", "tt": "toutiao",
+        "wechat_channels": "wechat_channels", "sph": "wechat_channels",
+    }
     normalized = aliases.get(normalized, normalized)
-    if normalized not in {"douyin", "kuaishou", "wechat_channels"}:
-        raise PublishAccountGroupError("扫码登录只支持抖音、快手和视频号", {"platform": platform})
+    if normalized not in {"douyin", "kuaishou", "toutiao", "wechat_channels"}:
+        raise PublishAccountGroupError("扫码登录只支持抖音、快手、头条和视频号", {"platform": platform})
     target = _matrixmedia_login_target(business_line, account_group, normalized)
     login_id = uuid.uuid4().hex
     qr_path = Path(tempfile.gettempdir()) / f"matrixmedia-login-{login_id}.png"

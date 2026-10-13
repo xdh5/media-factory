@@ -24,7 +24,7 @@ python -m core.mcp.publishing
 
 - `publishing_list_account_groups`：列数据库账号组，并尽量附带 MatrixMedia 本机登录账号。
 - `publishing_preview`：只读查看产物、路由和重复项。
-- `publishing_start_matrixmedia_login`：抖音、快手或视频号登录失效时启动扫码，并返回二维码图片路径。
+- `publishing_start_matrixmedia_login`：抖音、快手、头条或视频号登录失效时启动扫码，并返回二维码图片路径。
 - `publishing_matrixmedia_login_status`：轮询扫码结果；等待中继续返回二维码，成功后重新预检或发布。
 - `publishing_start_publish`：启动后台发布任务。
 - `publishing_poll_task`：轮询后台任务。
