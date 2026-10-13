@@ -2,7 +2,6 @@
 
 from .assemble_finance_video import finish_finance_video
 from .agent_tasks import (
-    build_article_generation_prompt,
     build_article_chunk_generation_prompt,
     build_metadata_generation_prompt,
     build_source_hook_prompt,
@@ -30,7 +29,6 @@ from .upload_to_r2 import upload_finance_assets_to_r2
 
 __all__ = [
     "build_article_prompt",
-    "build_article_generation_prompt",
     "build_article_chunk_generation_prompt",
     "build_metadata_generation_prompt",
     "build_metadata_prompt",

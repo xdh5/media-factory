@@ -72,27 +72,6 @@ def validate_source_hook_response(source_text: str, response_text: str) -> dict:
     return {"source_hook": hook}
 
 
-def build_article_generation_prompt(article_prompt: str, source_text: str, source_hook: str, feedback: str = "", previous_response: str = "") -> dict:
-    rule = (
-        "\n\n本轮只改写内容，不负责字幕断句。只输出 JSON：{\"article\":\"改写后的完整正文\","
-        f"\"replacements\":[{{\"from\":\"原品牌\",\"to\":\"{BRAND_NAME}\"}}],"
-        "\"corrections\":[{\"from\":\"原稿错字\",\"to\":\"正确文字\"}]}。"
-        "replacements 和 corrections 必须完整列出实际修改；措辞改写不用逐条报告。"
-        "正文长度须为原稿的 "
-        f"{ARTICLE_LENGTH_RATIO_MIN}～{ARTICLE_LENGTH_RATIO_MAX} 倍。"
-    )
-    prompt = str(article_prompt or "").strip() + rule
-    if feedback:
-        prompt += (
-            f"\n\n上一次校验失败：{feedback}\n请在上一版基础上定向修订。"
-            f"\n原稿：\n{source_text}\n黄金钩子：\n{source_hook}\n上一版：\n{previous_response}"
-        )
-    return {
-        "system_prompt": "你是中文短视频编辑，必须输出有效 JSON，不要输出 Markdown。",
-        "user_prompt": prompt,
-    }
-
-
 def plan_article_chunks(source_text: str, source_hook: str) -> dict:
     """把正文拆成钩子和多个语义片段，供模型逐段处理。"""
     source = str(source_text or "").strip()

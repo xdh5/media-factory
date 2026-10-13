@@ -2,7 +2,7 @@
 
 from .subject_cards import approved_subject_cutout_paths, compose_fixed_cards, compose_fixed_cards_from_subjects, require_transparent_subject_sheet, review_subject_sheet, validate_subject_sheet
 from .videos import create_vocabulary_videos
-from .publishing import (
+from .delivery import (
     attach_publish_manifest,
     upload_publish_assets_to_r2,
 )

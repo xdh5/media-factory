@@ -27,7 +27,7 @@ from ..config import (
     video_production_id,
 )
 from ..errors import VocabularyVideoError
-from .publishing import build_video_title, strip_quiz_title_suffix
+from .delivery import build_video_title, strip_quiz_title_suffix
 
 VIDEO_SIZE = f"{CARD_CANVAS_SIZE[0]}x{CARD_CANVAS_SIZE[1]}"
 QUIZ_VIDEO_FPS = 30

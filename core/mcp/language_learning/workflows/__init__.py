@@ -1,19 +1,71 @@
-"""语言学习 MCP 工作流公开入口。"""
+"""语言学习 MCP 工作流与工具清单。"""
 
-from .common import COMMON_TOOLS
-from .direct import DIRECT_TOOLS
-from .media import MEDIA_TOOLS
-from .packs import PACK_TOOLS
-from .publishing import PUBLISHING_TOOLS
-from .runtime import RUNTIME_TOOLS
+from .api import (
+    language_learning_get_production_config,
+    language_learning_get_automation_plan,
+    language_learning_get_topic_generation_prompt,
+    language_learning_validate_topic_response,
+    language_learning_get_production_outputs,
+    language_learning_get_topics,
+    language_learning_occupy_topic,
+    language_learning_build_vocabulary_prompt,
+    language_learning_get_visual_validation_prompt,
+    language_learning_get_sheet_validation_prompt,
+    language_learning_parse_vocabulary_response,
+    language_learning_prepare_images,
+    language_learning_save_images,
+    language_learning_submit_images,
+    language_learning_start_submit_images,
+    language_learning_validate_subject_sheet,
+    language_learning_review_subject_sheet,
+    language_learning_compose_cards,
+    language_learning_start_compose_cards,
+    language_learning_prepare_pack,
+    language_learning_validate_pack_words,
+    language_learning_validate_pack_subject_sheet,
+    language_learning_review_pack_subject_sheet,
+    language_learning_commit_pack,
+    language_learning_claim_pack,
+    language_learning_start_compose_pack_cards,
+    language_learning_create_videos,
+    language_learning_start_create_videos,
+    language_learning_start_upload_r2,
+    language_learning_poll_task,
+    language_learning_clear_run,
+)
 
 ALL_TOOLS = (
-    *COMMON_TOOLS,
-    *DIRECT_TOOLS,
-    *PACK_TOOLS,
-    *MEDIA_TOOLS,
-    *PUBLISHING_TOOLS,
-    *RUNTIME_TOOLS,
+    language_learning_get_production_config,
+    language_learning_get_automation_plan,
+    language_learning_get_topic_generation_prompt,
+    language_learning_validate_topic_response,
+    language_learning_get_production_outputs,
+    language_learning_get_topics,
+    language_learning_occupy_topic,
+    language_learning_build_vocabulary_prompt,
+    language_learning_get_visual_validation_prompt,
+    language_learning_get_sheet_validation_prompt,
+    language_learning_parse_vocabulary_response,
+    language_learning_prepare_images,
+    language_learning_save_images,
+    language_learning_submit_images,
+    language_learning_start_submit_images,
+    language_learning_validate_subject_sheet,
+    language_learning_review_subject_sheet,
+    language_learning_compose_cards,
+    language_learning_start_compose_cards,
+    language_learning_prepare_pack,
+    language_learning_validate_pack_words,
+    language_learning_validate_pack_subject_sheet,
+    language_learning_review_pack_subject_sheet,
+    language_learning_commit_pack,
+    language_learning_claim_pack,
+    language_learning_start_compose_pack_cards,
+    language_learning_create_videos,
+    language_learning_start_create_videos,
+    language_learning_start_upload_r2,
+    language_learning_poll_task,
+    language_learning_clear_run,
 )
 
 __all__ = ["ALL_TOOLS"]

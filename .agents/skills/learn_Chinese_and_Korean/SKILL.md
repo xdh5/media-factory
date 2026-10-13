@@ -42,29 +42,9 @@ MCP 入口：`python -m core.mcp.language_learning`。**语言学习 MCP 是 Pro
 - 仅原版分段超过 1 段时在末尾加 ` 1/2`、` 2/2`
 - **作品描述只发 hashtag，不得加入短标题、完整标题或其它正文**，例如 `#学韩语 #韩语单词 #韩语入门 #每日韩语`
 
-### 发布配置（`language_learning_start_create_videos` 的 `publish_config`）
+### 成片交付配置
 
-完整配置使用 MCP 返回的 `publish_config`，以下仅描述平台行为，不维护参数副本。
-
-**中文 `en-zh`**
-
-- YouTube 使用项目共用的 `YOUTUBE_OAUTH_CLIENT_ID`、`YOUTUBE_OAUTH_CLIENT_SECRET`，并使用 `.env` 里按频道隔离的 `LANGUAGE_LEARNING_YOUTUBE_*`（`youtube_account` 即账号前缀）
-- 语言学习 MCP 只负责生产和产物交付，不调用任何平台发布接口。发布必须改用统一发布 MCP `python -m core.mcp.publishing`。
-- 多平台发布时间不一致时，给 `publishing_start_publish` 传 `publish_at_by_platform`；值为 `now` 表示立即发布，其他值必须是带时区的 ISO 8601。未单独配置的平台使用兼容参数 `publish_mode` 与 `publish_at`。
-- TikTok 通过 Zernio 发布中文成片，使用共用的 `ZERNIO_API_KEY` 与 `LANGUAGE_LEARNING_TIKTOK_*`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址
-- Instagram 通过 Zernio 发布中文成片，使用 Meta 专用的 `zernio_api_key_meta`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址。Zernio 只有一个健康 Instagram 账号时自动选择；连接多个账号时必须在 `.env` 配置 `LANGUAGE_LEARNING_INSTAGRAM_ACCOUNT_ID`。只发指定分段时，传 `targets=["instagram"]` 与 `video_parts=[1]` 或 `[2]`。
-- Facebook 通过 Zernio 发布中文成片，使用 Meta 专用的 `zernio_api_key_meta`；本地发布前按需上传该发布资产，GitHub Workflow 使用已经交付 R2 的地址。Zernio 只有一个健康 Facebook Page 时自动选择；连接多个 Page 时必须在 `.env` 配置 `LANGUAGE_LEARNING_FACEBOOK_ACCOUNT_ID`。只发指定分段时，传 `targets=["facebook"]` 与 `video_parts=[1]` 或 `[2]`。
-- YouTube、TikTok、Instagram、Facebook 的作品描述都只传标签 hashtag；不得把 `short_title`、完整标题或其它文字放进描述。
-- 展示给用户看的账号组名为 `中文`；账号路由由统一发布 MCP 从 D1 账号组和当前授权账号中解析。平台发布成功或预约成功后由统一发布 MCP 自动写入发布记录。
-
-**韩语 `en-ko`**
-
-- 本地生产完成后保留本地产物，不自动上传 R2；只有 GitHub Workflow 交付时才调用 `language_learning_start_upload_r2`，发布所需公网地址由统一发布 MCP 按需处理
-- 发布服务器 MatrixMedia 使用账号组 `韩语`，账号配置由发布环境提供，不再从 D1 读取发布账号组。
-- MatrixMedia 发布所有平台时必须传 `creativeStatement="ai_generated"`，给成片添加各平台对应的 AI 生成内容标记；不得省略或改为无标注。
-- MatrixMedia 发布时完整标题传 `title`（`韩语｜饺子的韩语怎么说？` 这种格式），作品描述只传标签 hashtag；不得把短标题、完整标题或其它文字放进描述。
-- 跳过掘金、番茄
-- MatrixMedia 与官方平台均由统一发布 MCP 调用；每个平台成功发布或预约后由统一发布 MCP 立即写入 `publication_records`。
+制作时原样传入 MCP 返回的 `publish_config`，其中仅包含标签和短标题。语言 MCP 只登记生产产物；账号组、平台、排期、登录和发布记录由统一发布 MCP 负责。
 
 ## Prompt
 
@@ -88,7 +68,7 @@ GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现�
 1. **成片**：本地制作完成后展示 `output/language_learning/run-YYYYMMDD/` 中的成片路径、标题、标签与账号组；`YYYYMMDD` 必须是北京时间计划发布日期。本地制作不得在成片阶段自动上传 R2；仅 GitHub Workflow 生产完成后自动交付 R2，发布所需公网地址由统一发布 MCP 按需处理。本地成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；GitHub Workflow 只在 R2 交付成功后以 `source=github_workflow` 写入。查询某天产物使用 `language_learning_get_production_outputs(publish_date)`。
 2. **清缓存**：发布结束后用户确认才调用 `language_learning_clear_run(run_id, confirmed=true)`。
 
-`weekly-production` 每周六北京时间 12:00 串行生产下周周一至周日内容，只生产并交付 R2，禁止自动发布语言视频。单独的手动发布 Workflow 按数据库预检结果最多重试 3 次；YouTube 使用官方 API，完整上传或预约并返回 `video_id` 才记为成功，抛错或缺少 `video_id` 记为失败。TikTok、Facebook、Instagram 调用 Zernio；Zernio 请求成功并返回 `post_id` 与成功或预约状态后，立即把标题、发布时间、平台、账号、分段及外部 ID 写入现有 `publication_records`，请求失败则不写入。手动发布 Workflow 只复用 GitHub 已交付 R2 的中文成片，手动 MCP 制作仍执行上述成片确认门禁。生产 Workflow 不清缓存。原每日生产命令保留但不再配置定时调度。
+`weekly-production` 每周六北京时间 12:00 串行生产下周周一至周日内容，只生产并交付 R2，禁止自动发布语言视频。单独的手动发布 Workflow 按数据库预检结果最多重试 3 次；YouTube 使用官方 API，完整上传或预约并返回 `video_id` 才记为成功，抛错或缺少 `video_id` 记为失败。TikTok、Facebook、Instagram 调用 Zernio；Zernio 请求成功并返回 `post_id` 与成功或预约状态后，立即把标题、发布时间、平台、账号、分段及外部 ID 写入现有 `publication_records`，请求失败则不写入。手动发布 Workflow 只复用 GitHub 已交付 R2 的中文成片，手动 MCP 制作仍执行上述成片确认门禁。生产 Workflow 不清缓存。自动生产仅保留每周入口。
 
 词表、主体图、卡片、出片中间步骤不逐项确认。
 

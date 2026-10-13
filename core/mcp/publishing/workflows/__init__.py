@@ -1,10 +1,21 @@
-"""统一发布 MCP 工作流公开入口。"""
+"""统一发布 MCP 工作流与工具清单。"""
 
-from .accounts import ACCOUNT_TOOLS
-from .login import LOGIN_TOOLS
-from .publish import PUBLISH_TOOLS
-from .runtime import RUNTIME_TOOLS
+from .api import (
+    publishing_list_account_groups,
+    publishing_preview,
+    publishing_start_matrixmedia_login,
+    publishing_matrixmedia_login_status,
+    publishing_start_publish,
+    publishing_poll_task,
+)
 
-ALL_TOOLS = (*ACCOUNT_TOOLS, *LOGIN_TOOLS, *PUBLISH_TOOLS, *RUNTIME_TOOLS)
+ALL_TOOLS = (
+    publishing_list_account_groups,
+    publishing_preview,
+    publishing_start_matrixmedia_login,
+    publishing_matrixmedia_login_status,
+    publishing_start_publish,
+    publishing_poll_task,
+)
 
 __all__ = ["ALL_TOOLS"]

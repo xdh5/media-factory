@@ -27,7 +27,7 @@ MCP 入口：`python -m core.mcp.finance`。**Finance MCP 是 Prompt、素材策
 
 如果工具返回 `DOUYIN_SCRIPTS_EXHAUSTED`，说明所有稿件都已使用；必须向用户报告并停止制作，不得复用旧稿或自行写稿。如果返回 `DOUYIN_SCRIPTS_BUSY`，说明剩余稿件正在其他任务中制作，也必须停止本次制作。
 
-按返回的 `source.transcript` 调用 `finance_get_source_hook_prompt`，宿主 Agent 按 Prompt 识别后必须调用 `finance_validate_source_hook_response`；再调用 `finance_get_article_prompt` 与 `finance_get_article_generation_prompt`，宿主 Agent 生成 JSON 后必须调用 `finance_validate_article_response`。禁止在 Agent 侧另写钩子、正文解析或校验规则。
+按返回的 `source.transcript` 调用钩子 Prompt 与校验工具；再调用 `finance_get_article_chunk_plan`，逐段调用改写 Prompt 与校验工具，每段通过后单独断句并校验，合并后调用 `finance_validate_article_response`。禁止在 Agent 侧另写钩子、正文解析或校验规则。
 
 - `{{source_text}}`：`source.transcript` 原文
 - `{{source_hook}}`：原稿开头完整黄金钩子中**完成品牌替换后的版本**（该版本也是 `finance_save_draft` 要传的 `source_hook`）

@@ -24,8 +24,6 @@ def main() -> None:
             "language_learning_videos",
             "language_learning_r2",
             "language_learning_publish",
-            "daily_plan",
-            "daily_day",
             "weekly_plan",
             "weekly_day",
             "publish_notify",
@@ -128,15 +126,6 @@ def main() -> None:
         payload = asyncio.run(
             schedule_publication(arguments.run_id, targets=targets or None)
         )
-    elif arguments.workflow == "daily_plan":
-        from ._dates import resolve_publish_date
-
-        publish_date = resolve_publish_date(arguments.publish_date, default_days_ahead=1)
-        payload = {"publish_date": publish_date}
-        output_path = os.getenv("GITHUB_OUTPUT", "").strip()
-        if output_path:
-            with Path(output_path).open("a", encoding="utf-8") as stream:
-                stream.write(f"publish_date={publish_date}\n")
     elif arguments.workflow == "weekly_plan":
         from ._dates import compute_next_week_dates
 
@@ -146,7 +135,7 @@ def main() -> None:
         if output_path:
             with Path(output_path).open("a", encoding="utf-8") as stream:
                 stream.write(f"dates_json={json.dumps(dates, ensure_ascii=False)}\n")
-    elif arguments.workflow in {"daily_day", "weekly_day"}:
+    elif arguments.workflow == "weekly_day":
         from .weekly import run_day
 
         run_url = os.getenv("GITHUB_RUN_URL", "").strip()
@@ -161,7 +150,7 @@ def main() -> None:
             str(arguments.skipped).strip().casefold() in {"1", "true", "yes"},
         )
     print(json.dumps(payload, ensure_ascii=False))
-    if arguments.workflow in {"daily_day", "weekly_day"}:
+    if arguments.workflow == "weekly_day":
         failed = any(
             str(payload.get(name, {}).get("status", "")).endswith("failed")
             for name in ("finance", "language")
