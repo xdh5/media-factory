@@ -1,4 +1,4 @@
-"""统一发布 MCP 错误。"""
+"""统一发布 MCP 领域错误。"""
 
 
 class PublishingError(Exception):

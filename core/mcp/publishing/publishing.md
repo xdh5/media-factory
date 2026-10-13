@@ -28,3 +28,19 @@ python -m core.mcp.publishing
 - `publishing_matrixmedia_login_status`：轮询扫码结果；等待中继续返回二维码，成功后重新预检或发布。
 - `publishing_start_publish`：启动后台发布任务。
 - `publishing_poll_task`：轮询后台任务。
+
+## 工程分层
+
+| 目录或文件 | 职责 |
+| --- | --- |
+| `__main__.py` | stdio 启动入口，不承载业务逻辑 |
+| `server.py` | 创建 FastMCP 并注册工具 |
+| `tools/` | MCP Tool 注册层 |
+| `workflows/` | 账号预检、扫码登录、发布和后台任务编排 |
+| `schemas/` | MCP 输入输出 Schema |
+| `errors/` | MCP 领域错误与错误映射 |
+| `config/` | 服务说明、缓存路径和 MCP 标识 |
+| `infrastructure/` | 后台任务、D1 与通用发布服务适配入口 |
+| `core/tools/publish_media/` | 可脱离 MCP 复用的账号路由、产物恢复和平台发布服务 |
+
+当前没有独立只读 Resource 和可复用 Prompt，因此不创建空的 `resources/`、`prompts/` 目录。业务服务已经由 `core/tools/publish_media/` 提供，不在 MCP 内复制一套 `services/`。

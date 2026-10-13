@@ -1,4 +1,4 @@
-"""统一发布 MCP Schema。"""
+"""统一发布 MCP 输入输出 Schema。"""
 
 BUSINESS_LINES = ["finance", "language_learning"]
 
