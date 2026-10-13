@@ -725,8 +725,22 @@ function runDate(runId, fallback) {
 async function dashboardRecords(request, env) {
   const url = new URL(request.url);
   const selectedDate = String(url.searchParams.get("date") || "").trim();
+  const rangeFrom = String(url.searchParams.get("from") || "").trim();
+  const rangeTo = String(url.searchParams.get("to") || "").trim();
   if (selectedDate) productionDate(selectedDate);
-  const outputStatement = selectedDate
+  if (rangeFrom || rangeTo) {
+    productionDate(rangeFrom);
+    productionDate(rangeTo);
+    if (rangeFrom > rangeTo) throw new Error("from 不能晚于 to");
+  }
+  const outputStatement = rangeFrom
+    ? env.DB.prepare(
+      `SELECT production_id, run_id, publish_date, business_line, content_kind,
+              content_part, title, hashtags, source, local_path, r2_url, r2_expires_at
+       FROM production_outputs WHERE publish_date >= ? AND publish_date <= ?
+       ORDER BY publish_date, business_line, content_kind, content_part`,
+    ).bind(rangeFrom, rangeTo)
+    : selectedDate
     ? env.DB.prepare(
       `SELECT production_id, run_id, publish_date, business_line, content_kind,
               content_part, title, hashtags, source, local_path, r2_url, r2_expires_at
@@ -739,7 +753,15 @@ async function dashboardRecords(request, env) {
        FROM production_outputs ORDER BY publish_date DESC, business_line, content_kind, content_part
        LIMIT 1000`,
     );
-  const publicationStatement = selectedDate
+  const publicationStatement = rangeFrom
+    ? env.DB.prepare(
+      `SELECT publication_id, run_id, business_line, platform, content_part, title,
+              publish_mode, publish_at, status, external_url
+       FROM publication_records
+       WHERE substr(publish_at, 1, 10) >= ? AND substr(publish_at, 1, 10) <= ?
+       ORDER BY publish_at, business_line, title, content_part, platform`,
+    ).bind(rangeFrom, rangeTo)
+    : selectedDate
     ? env.DB.prepare(
       `SELECT publication_id, run_id, business_line, platform, content_part, title,
               publish_mode, publish_at, status, external_url

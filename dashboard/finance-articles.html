@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="查看财经视频可用、占用和已使用的预制来源文章。">
     <title>财经文章｜媒体发布日历</title>
-    <link rel="stylesheet" href="./styles.css?v=20261013-10">
+    <link rel="stylesheet" href="./styles.css?v=20261013-12">
   </head>
   <body data-page="finance-articles">
     <div class="ambient ambient-one"></div>
@@ -36,8 +36,8 @@
         <label>
           <span>使用状态</span>
           <select id="statusFilter">
+            <option value="ready" selected>未使用</option>
             <option value="">全部状态</option>
-            <option value="ready">可用</option>
             <option value="reserved">已占用</option>
             <option value="used">已使用</option>
           </select>
@@ -48,6 +48,6 @@
       <section id="inventoryResults" class="inventory-results" aria-label="财经文章列表"></section>
     </main>
 
-    <script src="./inventory.js?v=20261013-10" defer></script>
+    <script src="./inventory.js?v=20261013-12" defer></script>
   </body>
 </html>

@@ -187,6 +187,7 @@ h2 { font-size: 2rem; }
 .summary-card strong { font-size: 1.75rem; letter-spacing: -.04em; }
 .summary-card span { color: var(--muted); font-size: .78rem; font-weight: 750; }
 .inventory-results { display: grid; gap: 16px; }
+.lazy-sentinel { height: 24px; }
 .inventory-toolbar { justify-content: flex-start; }
 .inventory-toolbar label:first-child { flex: 1; }
 .inventory-toolbar input { width: 100%; }

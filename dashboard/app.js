@@ -76,11 +76,49 @@ function downloadOutput(url) {
   form.remove();
 }
 
+function beijingDate(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function parseDate(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function weekRange(dateValue) {
+  const date = parseDate(dateValue);
+  const weekday = date.getUTCDay();
+  const monday = new Date(date);
+  monday.setUTCDate(date.getUTCDate() + (weekday === 0 ? -6 : 1 - weekday));
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  return { from: formatDate(monday), to: formatDate(sunday) };
+}
+
+function defaultWeekRange(today = beijingDate()) {
+  const weekday = parseDate(today).getUTCDay();
+  if (weekday === 6 || weekday === 0) {
+    const nextMonday = new Date(parseDate(today));
+    nextMonday.setUTCDate(nextMonday.getUTCDate() + (weekday === 6 ? 2 : 1));
+    return weekRange(formatDate(nextMonday));
+  }
+  return weekRange(today);
+}
+
 function render(data) {
   results.replaceChildren();
   const dates = Array.isArray(data.dates) ? data.dates : [];
   if (!dates.length) {
-    results.append(element("div", "empty", "这个日期还没有产物或发布记录。"));
+    results.append(element("div", "empty", data.emptyMessage || "还没有产物或发布记录。"));
     return;
   }
   for (const day of dates) {
@@ -156,17 +194,19 @@ function render(data) {
   }
 }
 
-async function loadRecords(date = "") {
+async function loadRecords(range = null) {
   status.textContent = "正在读取 Cloudflare 数据…";
   queryButton.disabled = true;
   allButton.disabled = true;
   try {
-    const query = date ? `?date=${encodeURIComponent(date)}` : "";
+    const query = range ? `?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}` : "";
     const response = await fetch(`${API_BASE_URL}/v1/dashboard/records${query}`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message || "读取失败");
+    if (range) payload.dates?.sort((left, right) => left.date.localeCompare(right.date));
+    payload.emptyMessage = range ? "这一周还没有产物或发布记录。" : "还没有产物或发布记录。";
     render(payload);
-    status.textContent = date ? `已显示 ${date} 的记录。` : "已显示数据库中的全部日期。";
+    status.textContent = range ? `已显示 ${range.from} 至 ${range.to} 的记录。` : "已显示数据库中的全部日期。";
     return true;
   } catch (error) {
     status.textContent = `读取失败：${error.message}`;
@@ -177,16 +217,19 @@ async function loadRecords(date = "") {
   }
 }
 
-queryButton.addEventListener("click", () => loadRecords(dateInput.value));
+queryButton.addEventListener("click", () => {
+  if (!dateInput.value) {
+    status.textContent = "请先选择这一周中的任意日期。";
+    return;
+  }
+  loadRecords(weekRange(dateInput.value));
+});
 allButton.addEventListener("click", () => {
   dateInput.value = "";
   loadRecords();
 });
-dateInput.value = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Shanghai",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-}).format(new Date());
-
-loadRecords();
+const openingWeek = defaultWeekRange();
+const today = beijingDate();
+const weekday = parseDate(today).getUTCDay();
+dateInput.value = weekday === 6 || weekday === 0 ? openingWeek.from : today;
+loadRecords(openingWeek);
