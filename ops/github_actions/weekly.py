@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from ._dates import compute_next_week_dates
 from ._shared import (
@@ -37,6 +39,17 @@ async def run_day(
     *,
     cache_scope: str = "daily",
 ) -> dict:
+    planned_date = date.fromisoformat(publish_date)
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    if planned_date < today:
+        reason = f"计划发布日期 {publish_date} 早于北京时间当天 {today.isoformat()}，正常跳过"
+        print(f"[{publish_date}] {reason}", flush=True)
+        return {
+            "publish_date": publish_date,
+            "finance": {"status": "skipped", "reason": reason},
+            "language": {"status": "skipped", "reason": reason},
+        }
+
     work_dir = PROJECT_ROOT / "cache" / "github_actions" / cache_scope / publish_date
     work_dir.mkdir(parents=True, exist_ok=True)
     results: dict = {"publish_date": publish_date, "finance": {}, "language": {}}
