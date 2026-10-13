@@ -15,8 +15,10 @@ from core.tools.cloudflare_data import CloudflareDataError
 from core.tools.publish_media import (
     PublishMediaError,
     list_account_groups,
+    matrixmedia_login_status,
     preview_publication,
     publish_local_outputs,
+    start_matrixmedia_login,
 )
 
 from ._constants import CACHE_ROOT
@@ -41,6 +43,8 @@ mcp = FastMCP(
         "预约发布必须传 scheduled + 带时区的未来 ISO 8601 时间。"
         "只允许读取 production_outputs 中已经落库且本地文件存在的 local_mcp 成片；"
         "发布前必须查 publication_records 去重，成功或预约成功后逐条写回数据库。"
+        "抖音、快手或视频号登录失效时，调用 publishing_start_matrixmedia_login 返回二维码给用户，"
+        "再用 publishing_matrixmedia_login_status 轮询扫码结果。"
         "耗时发布必须调用 publishing_start_publish，再用 publishing_poll_task 轮询。"
     ),
 )
@@ -72,6 +76,36 @@ def publishing_preview(
             platforms,
             content_kind=content_kind,
         )
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def publishing_start_matrixmedia_login(
+    business_line: str,
+    account_group: str,
+    platform: str,
+    timeout_seconds: int = 900,
+    force: bool = True,
+) -> dict:
+    """为抖音、快手或视频号启动 MatrixMedia 扫码登录，并返回二维码图片路径。"""
+    try:
+        return start_matrixmedia_login(
+            business_line,
+            account_group,
+            platform,
+            timeout_seconds=timeout_seconds,
+            force=force,
+        )
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def publishing_matrixmedia_login_status(login_id: str) -> dict:
+    """轮询扫码结果；waiting_scan 时继续向用户展示 qr_path，success 后重新发布。"""
+    try:
+        return matrixmedia_login_status(login_id)
     except Exception as exc:
         raise _map_error(exc) from exc
 

@@ -60,3 +60,26 @@ PUBLISH_RESULT_SCHEMA = {
     "required": ["business_line", "publish_date", "publish_mode", "publish_at", "published", "skipped"],
     "additionalProperties": True,
 }
+
+MATRIXMEDIA_LOGIN_START_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "business_line": {"type": "string", "enum": list(BUSINESS_LINES)},
+        "account_group": {"type": "string", "minLength": 1},
+        "platform": {
+            "type": "string",
+            "enum": ["douyin", "dy", "kuaishou", "ks", "wechat_channels", "sph"],
+        },
+        "timeout_seconds": {"type": "integer", "minimum": 30, "default": 900},
+        "force": {"type": "boolean", "default": True},
+    },
+    "required": ["business_line", "account_group", "platform"],
+    "additionalProperties": False,
+}
+
+MATRIXMEDIA_LOGIN_STATUS_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {"login_id": {"type": "string", "minLength": 1}},
+    "required": ["login_id"],
+    "additionalProperties": False,
+}

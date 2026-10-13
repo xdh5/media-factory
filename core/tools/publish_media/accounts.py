@@ -7,6 +7,10 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+import threading
+import time
+import uuid
 from pathlib import Path
 
 from core.tools.cloudflare_data import list_publishing_account_groups
@@ -24,6 +28,9 @@ from ._constants import (
     PROJECT_ROOT,
 )
 from ._errors import MatrixMediaCommandError, PublishAccountGroupError
+
+
+_LOGIN_SESSIONS: dict[str, dict] = {}
 
 
 def _matrixmedia_command() -> tuple[list[str], Path]:
@@ -173,6 +180,181 @@ def list_matrixmedia_accounts() -> list[dict]:
     return accounts
 
 
+def list_matrixmedia_login_states() -> list[dict]:
+    """返回 MatrixMedia 对 Cookie 的实时检查结果，包含已失效账号。"""
+    payload = run_matrixmedia_cli(["accounts", "--json"])
+    rows = payload if isinstance(payload, list) else payload.get("accounts", [])
+    states = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        raw_platform = str(item.get("pt") or item.get("platform") or "").strip()
+        platform = MATRIXMEDIA_CODE_PLATFORMS.get(raw_platform, raw_platform)
+        account_ref = str(item.get("phone") or item.get("account_group") or item.get("group") or "").strip()
+        if platform not in MATRIXMEDIA_PLATFORM_CODES or not account_ref:
+            continue
+        logged_in = item.get("loggedIn") is True
+        states.append({
+            "platform": platform,
+            "account_ref": account_ref,
+            "logged_in": logged_in,
+            "reason": str(item.get("reason") or "") if not logged_in else "",
+            "expire_at": item.get("expireAt"),
+            "login_required": not logged_in,
+            "login_tool": "publishing_start_matrixmedia_login" if not logged_in else None,
+        })
+    return states
+
+
+def _matrixmedia_login_target(business_line: str, account_group: str, platform: str) -> dict:
+    """从数据库账号组解析 MatrixMedia 扫码登录目标，不依赖当前登录态。"""
+    database = _database_groups(business_line)
+    selected = next((item for item in database if str(item["name"]) == account_group), None)
+    if selected is None:
+        raise PublishAccountGroupError(
+            f"找不到数据库账号组“{account_group}”",
+            {"business_line": business_line, "account_group": account_group},
+        )
+    matches = [
+        item for item in selected["members"]
+        if str(item.get("platform") or "") == platform
+        and str(item.get("connector") or "") == "matrixmedia"
+    ]
+    if len(matches) != 1:
+        raise PublishAccountGroupError(
+            f"账号组“{account_group}”没有唯一的 {platform} MatrixMedia 账号",
+            {"account_group": account_group, "platform": platform, "matches": len(matches)},
+        )
+    account_ref = str(matches[0].get("account_ref") or "").strip()
+    if not account_ref:
+        raise PublishAccountGroupError(
+            f"账号组“{account_group}”的 {platform} 账号缺少 account_ref",
+            {"account_group": account_group, "platform": platform},
+        )
+    return {"platform": platform, "account_ref": account_ref}
+
+
+def _drain_login_stderr(session: dict) -> None:
+    stream = session["process"].stderr
+    if stream is None:
+        return
+    for line in stream:
+        session["stderr"] = (session["stderr"] + line)[-4000:]
+
+
+def _login_payload(session: dict) -> dict:
+    process = session["process"]
+    exit_code = process.poll()
+    qr_path = Path(session["qr_path"])
+    if exit_code == 0:
+        status = "success"
+        message = "扫码登录成功，可以重新执行发布预检或发布"
+    elif exit_code is not None:
+        status = "failed"
+        message = session["stderr"].strip()[-800:] or f"MatrixMedia 登录进程退出码 {exit_code}"
+    elif qr_path.is_file() and qr_path.stat().st_size >= 80:
+        status = "waiting_scan"
+        message = "请把二维码图片展示给用户扫码，然后调用 publishing_matrixmedia_login_status"
+    else:
+        status = "starting"
+        message = "正在打开登录页并提取二维码"
+    return {
+        "status": status,
+        "login_id": session["login_id"],
+        "business_line": session["business_line"],
+        "account_group": session["account_group"],
+        "platform": session["platform"],
+        "account_ref": session["account_ref"],
+        "qr_path": str(qr_path) if qr_path.is_file() else None,
+        "message": message,
+        "exit_code": exit_code,
+    }
+
+
+def start_matrixmedia_login(
+    business_line: str,
+    account_group: str,
+    platform: str,
+    *,
+    timeout_seconds: int = 900,
+    force: bool = True,
+) -> dict:
+    """启动 MatrixMedia 扫码登录并等待二维码文件就绪。"""
+    normalized = str(platform or "").strip().casefold()
+    aliases = {"douyin": "douyin", "dy": "douyin", "kuaishou": "kuaishou", "ks": "kuaishou", "wechat_channels": "wechat_channels", "sph": "wechat_channels"}
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in {"douyin", "kuaishou", "wechat_channels"}:
+        raise PublishAccountGroupError("扫码登录只支持抖音、快手和视频号", {"platform": platform})
+    target = _matrixmedia_login_target(business_line, account_group, normalized)
+    login_id = uuid.uuid4().hex
+    qr_path = Path(tempfile.gettempdir()) / f"matrixmedia-login-{login_id}.png"
+    prefix, cwd = _matrixmedia_command()
+    command = [
+        *prefix,
+        "login",
+        "-p",
+        MATRIXMEDIA_PLATFORM_CODES[normalized],
+        "--phone",
+        target["account_ref"],
+        "--save-qr-png",
+        str(qr_path),
+        "--timeout-sec",
+        str(max(30, int(timeout_seconds))),
+    ]
+    if force:
+        command.append("--force")
+    env = dict(os.environ)
+    env.pop("ELECTRON_RUN_AS_NODE", None)
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as exc:
+        raise MatrixMediaCommandError(
+            f"启动 MatrixMedia 扫码登录失败：{exc}",
+            {"platform": normalized, "account_ref": target["account_ref"]},
+        ) from exc
+    session = {
+        "login_id": login_id,
+        "business_line": business_line,
+        "account_group": account_group,
+        "platform": normalized,
+        "account_ref": target["account_ref"],
+        "qr_path": str(qr_path),
+        "process": process,
+        "stderr": "",
+    }
+    _LOGIN_SESSIONS[login_id] = session
+    threading.Thread(target=_drain_login_stderr, args=(session,), daemon=True).start()
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        payload = _login_payload(session)
+        if payload["status"] != "starting":
+            return payload
+        time.sleep(0.4)
+    process.terminate()
+    _LOGIN_SESSIONS.pop(login_id, None)
+    raise MatrixMediaCommandError("90 秒内没有提取到登录二维码", {"platform": normalized, "account_ref": target["account_ref"]})
+
+
+def matrixmedia_login_status(login_id: str) -> dict:
+    """查询扫码登录结果；等待中继续返回最新二维码路径。"""
+    session = _LOGIN_SESSIONS.get(str(login_id or "").strip())
+    if session is None:
+        raise MatrixMediaCommandError("找不到扫码登录会话，请重新启动登录", {"login_id": login_id})
+    payload = _login_payload(session)
+    if payload["status"] in {"success", "failed"}:
+        _LOGIN_SESSIONS.pop(session["login_id"], None)
+    return payload
+
+
 def _database_groups(business_line: str | None = None) -> list[dict]:
     payload = list_publishing_account_groups(business_line=business_line)
     members_by_group: dict[str, list[dict]] = {}
@@ -191,8 +373,10 @@ def list_account_groups(business_line: str | None = None) -> dict:
     matrix_error = None
     try:
         matrix_accounts = list_matrixmedia_accounts()
+        matrix_login_states = list_matrixmedia_login_states()
     except MatrixMediaCommandError as exc:
         matrix_accounts = []
+        matrix_login_states = []
         matrix_error = str(exc)
     for group in groups:
         live = [item for item in matrix_accounts if item["account_ref"] == group["name"]]
@@ -207,7 +391,11 @@ def list_account_groups(business_line: str | None = None) -> dict:
             "members": [],
             "matrixmedia_accounts": [item for item in matrix_accounts if item["account_ref"] == name],
         })
-    return {"groups": groups, "matrixmedia_error": matrix_error}
+    return {
+        "groups": groups,
+        "matrixmedia_login_states": matrix_login_states,
+        "matrixmedia_error": matrix_error,
+    }
 
 
 def _official_members(member: dict) -> list[dict]:
@@ -305,8 +493,23 @@ def resolve_account_group(account_group: str, business_line: str, platforms: lis
         )
     missing = sorted(requested - {str(item["platform"]) for item in routes})
     if missing:
+        login_required = [
+            {
+                "platform": str(member["platform"]),
+                "account_ref": str(member.get("account_ref") or ""),
+                "login_tool": "publishing_start_matrixmedia_login",
+            }
+            for member in (selected.get("members") or [])
+            if str(member.get("platform") or "") in missing
+            and str(member.get("connector") or "") == "matrixmedia"
+        ]
         raise PublishAccountGroupError(
             f"账号组“{account_group}”缺少这些平台的可用账号：{', '.join(missing)}",
-            {"account_group": account_group, "missing_platforms": missing},
+            {
+                "account_group": account_group,
+                "missing_platforms": missing,
+                "login_required": login_required,
+                "next_step": "对 login_required 逐项调用 publishing_start_matrixmedia_login，并把 qr_path 图片展示给用户",
+            },
         )
     return routes
