@@ -75,6 +75,14 @@ from .tools import (
     validate_topic_response,
 )
 from .tools.save_draft import load_draft
+from .tools.agent_tasks import (
+    build_article_linebreak_prompt,
+    validate_article_linebreak_response,
+    build_visual_metadata_prompt,
+    validate_visual_metadata_response,
+)
+
+
 
 
 def _map_error(exc: Exception) -> FinanceError:
@@ -122,6 +130,30 @@ mcp = FastMCP(
 def finance_get_production_config() -> dict:
     """返回财经生产唯一标准配置，供 Agent 与 GitHub Runner 共用。"""
     return deepcopy(DEFAULT_PRODUCTION_CONFIG)
+
+
+@mcp.tool()
+def finance_get_article_linebreak_prompt(article: str, feedback: str = "") -> dict:
+    """返回只插入换行的独立断句任务。"""
+    return build_article_linebreak_prompt(article, feedback)
+
+
+@mcp.tool()
+def finance_validate_article_linebreak_response(article: str, response_text: str) -> dict:
+    """硬校验断句没有改动已确定正文。"""
+    return validate_article_linebreak_response(article, response_text)
+
+
+@mcp.tool()
+def finance_get_visual_metadata_prompt(article: str, title: str, feedback: str = "") -> dict:
+    """根据确定标题生成封面排版与片头场景。"""
+    return build_visual_metadata_prompt(article, title, feedback)
+
+
+@mcp.tool()
+def finance_validate_visual_metadata_response(title: str, response_text: str) -> dict:
+    """校验视觉元数据及标题逐字一致性。"""
+    return validate_visual_metadata_response(title, response_text)
 
 
 @mcp.tool()
@@ -186,10 +218,10 @@ def finance_get_article_chunk_plan(source_text: str, source_hook: str) -> dict:
 
 
 @mcp.tool()
-def finance_get_article_chunk_generation_prompt(source_chunk: str, source_hook: str = "", feedback: str = "", previous_response: str = "") -> dict:
+def finance_get_article_chunk_generation_prompt(source_chunk: str, source_hook: str = "", feedback: str = "", previous_response: str = "", source_text: str = "", previous_chunk: str = "", next_chunk: str = "", brand_replacements: list[dict] | None = None) -> dict:
     """返回单个财经正文片段的模型 Prompt。"""
     try:
-        return build_article_chunk_generation_prompt(source_chunk, source_hook, feedback, previous_response)
+        return build_article_chunk_generation_prompt(source_chunk, source_hook, feedback, previous_response, source_text, previous_chunk, next_chunk, brand_replacements)
     except Exception as exc:
         raise _map_error(exc) from exc
 

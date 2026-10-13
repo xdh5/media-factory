@@ -49,6 +49,10 @@ async def _article(mcp, source_text, source_hook, attempts):
                 "source_hook": chunk_hook,
                 "feedback": feedback,
                 "previous_response": previous,
+                "source_text": source_text,
+                "previous_chunk": plan["chunks"][chunk_index - 2]["source_text"] if chunk_index > 1 else "",
+                "next_chunk": plan["chunks"][chunk_index]["source_text"] if chunk_index < len(plan["chunks"]) else "",
+                "brand_replacements": replacements,
             })
             previous = qwen(prompt["system_prompt"], prompt["user_prompt"], json_output=True, max_tokens=3000)["text"]
             try:
@@ -57,7 +61,13 @@ async def _article(mcp, source_text, source_hook, attempts):
                     "source_hook": chunk_hook,
                     "response_text": previous,
                 })
-                articles.append(str(result["article"]))
+                rewritten = str(result["article"])
+                linebroken, _ = await _generate_checked(
+                    mcp, "finance_get_article_linebreak_prompt", "finance_validate_article_linebreak_response",
+                    {"article": rewritten}, {"article": rewritten},
+                    attempts=attempts, max_tokens=3000, json_output=True,
+                )
+                articles.append(str(linebroken["article"]))
                 replacements.extend(result.get("replacements") or [])
                 corrections.extend(result.get("corrections") or [])
                 break
@@ -90,7 +100,12 @@ async def _metadata(mcp, article, attempts):
         mcp, "finance_get_metadata_generation_prompt", "finance_validate_metadata_response",
         {"article": article}, {}, attempts=attempts, max_tokens=800, json_output=True,
     )
-    return result
+    visual, _ = await _generate_checked(
+        mcp, "finance_get_visual_metadata_prompt", "finance_validate_visual_metadata_response",
+        {"article": article, "title": result["title"]}, {"title": result["title"]},
+        attempts=attempts, max_tokens=800, json_output=True,
+    )
+    return {**result, **visual}
 
 
 async def _storyboard(mcp, draft, config, attempts):

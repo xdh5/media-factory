@@ -74,11 +74,11 @@ def validate_source_hook_response(source_text: str, response_text: str) -> dict:
 
 def build_article_generation_prompt(article_prompt: str, source_text: str, source_hook: str, feedback: str = "", previous_response: str = "") -> dict:
     rule = (
-        "\n\n只输出 JSON：{\"article\":\"断行后的完整正文\","
+        "\n\n本轮只改写内容，不负责字幕断句。只输出 JSON：{\"article\":\"改写后的完整正文\","
         f"\"replacements\":[{{\"from\":\"原品牌\",\"to\":\"{BRAND_NAME}\"}}],"
         "\"corrections\":[{\"from\":\"原稿错字\",\"to\":\"正确文字\"}]}。"
         "replacements 和 corrections 必须完整列出实际修改；措辞改写不用逐条报告。"
-        f"每行不得超过 {ARTICLE_MAX_LINE_LENGTH} 字，正文长度须为原稿的 "
+        "正文长度须为原稿的 "
         f"{ARTICLE_LENGTH_RATIO_MIN}～{ARTICLE_LENGTH_RATIO_MAX} 倍。"
     )
     prompt = str(article_prompt or "").strip() + rule
@@ -121,6 +121,10 @@ def build_article_chunk_generation_prompt(
     source_hook: str = "",
     feedback: str = "",
     previous_response: str = "",
+    source_text: str = "",
+    previous_chunk: str = "",
+    next_chunk: str = "",
+    brand_replacements: list[dict] | None = None,
 ) -> dict:
     """构建单个正文片段的生成 Prompt，避免整篇任务超载。"""
     chunk = str(source_chunk or "").strip()
@@ -136,12 +140,15 @@ def build_article_chunk_generation_prompt(
     prompt = (
         "只处理下面这一段原稿，不要输出前后段落。保留全部事实、数字、例子和顺序；"
         "在品牌替换、连载指涉改写和明确错别字修正之外，允许措辞级改写。"
-        f"按语义断行，每行含标点不得超过 {ARTICLE_MAX_LINE_LENGTH} 字。\n"
-        "只输出 JSON：{\"article\":\"断行后的本段正文\","
+        "本轮只改写内容，不负责字幕断句或行长限制。\n"
+        "只输出 JSON：{\"article\":\"改写后的本段正文\","
         f"\"replacements\":[{{\"from\":\"原品牌\",\"to\":\"{BRAND_NAME}\"}}],"
         "\"corrections\":[{\"from\":\"原稿错字\",\"to\":\"正确文字\"}]}。"
         "replacements 和 corrections 仅列出本段实际修改。\n"
-        f"{hook_rule}\n当前原稿片段：\n{chunk}"
+        f"{hook_rule}\n全文背景（只供理解）：\n{source_text}\n"
+        f"前一原稿段（不输出）：\n{previous_chunk}\n后一原稿段（不输出）：\n{next_chunk}\n"
+        f"已确定品牌替换表：{json.dumps(brand_replacements or [], ensure_ascii=False)}\n"
+        f"当前原稿片段（只输出本段）：\n{chunk}"
     )
     if feedback:
         prompt += f"\n\n上一次本段校验失败：{feedback}\n上一版：\n{previous_response}"
@@ -164,10 +171,6 @@ def validate_article_chunk_response(source_chunk: str, source_hook: str, respons
     processed_hook = _replace(_replace(source_hook, replacements), corrections)
     if source_hook and not _bare(article).startswith(_bare(processed_hook)):
         raise WorkflowStepError("首段必须以完成品牌替换和错字修正后的黄金钩子原样开头")
-    long_lines = [(index, len(line.strip())) for index, line in enumerate(article.splitlines(), 1) if len(line.strip()) > ARTICLE_MAX_LINE_LENGTH]
-    if long_lines:
-        detail = "、".join(f"第{index}行 {size}字" for index, size in long_lines)
-        raise WorkflowStepError(f"本段存在超过 {ARTICLE_MAX_LINE_LENGTH} 字的行：{detail}")
     source_size = len(_bare(source_chunk))
     ratio = len(_bare(article)) / source_size if source_size else 0
     if not ARTICLE_LENGTH_RATIO_MIN <= ratio <= ARTICLE_LENGTH_RATIO_MAX:
@@ -223,24 +226,57 @@ def validate_topic_response(response_text: str, recent_topics: list[str]) -> dic
 
 
 def build_metadata_generation_prompt(article: str, feedback: str = "") -> dict:
-    base = build_metadata_prompt()["metadata_prompt"]
     prompt = (
-        f"{base}\n\n正文：\n{article}\n\n"
-        "只输出 JSON：{\"metadata\":\"长标题|短标题|标签一|标签二|标签三|标签四\","
-        "\"cover_lines\":[\"封面第一行\"],\"cover_highlights\":[\"重点词\"],"
-        "\"intro_scene\":\"人物身份 + 关键动作 + 环境细节\"}。"
+        build_metadata_prompt()["metadata_prompt"] + "\n\n正文：\n" + article
+        + '\n只输出 JSON：{"metadata":"长标题|短标题|标签一|标签二|标签三|标签四"}。'
     )
     if feedback:
-        prompt += f"\n\n上一次校验失败：{feedback}"
-    return {"system_prompt": "你是短视频标题编辑，必须输出有效 JSON，不要输出 Markdown。", "user_prompt": prompt}
+        prompt += "\n上次失败：" + feedback
+    return {"system_prompt": "你是中文短视频标题编辑，只输出有效 JSON。", "user_prompt": prompt}
 
 
 def validate_metadata_response(response_text: str) -> dict:
+    return parse_metadata(str(_json_payload(response_text).get("metadata") or ""))
+
+
+def build_visual_metadata_prompt(article: str, title: str, feedback: str = "") -> dict:
+    prompt = (
+        "根据已确定的标题和正文生成视觉元数据，不得改写标题。"
+        "把标题按语义断成一至三行，选一至三个标题原文中的连续重点词，"
+        "并写片头写实场景（人物身份、动作、环境）。"
+        '\n只输出 JSON：{"cover_lines":["第一行"],"cover_highlights":["重点词"],"intro_scene":"场景描述"}。'
+        f"\n确定标题：{title}\n正文：{article}\n上次失败：{feedback}"
+    )
+    return {"system_prompt": "你是短视频视觉编辑，只输出有效 JSON。", "user_prompt": prompt}
+
+
+def validate_visual_metadata_response(title: str, response_text: str) -> dict:
     payload = _json_payload(response_text)
-    metadata = parse_metadata(str(payload.get("metadata") or ""))
     lines = _cover_lines(payload.get("cover_lines"))
-    highlights = _cover_highlights(metadata["title"], payload.get("cover_highlights"))
-    intro_scene = str(payload.get("intro_scene") or "").strip()
-    if not intro_scene:
-        raise WorkflowStepError("stock_video 需要非空 intro_scene")
-    return {**metadata, "cover_lines": lines, "cover_highlights": highlights, "intro_scene": intro_scene}
+    if "".join(lines) != title:
+        raise WorkflowStepError("封面各行拼接必须与确定标题逐字一致，包括标点")
+    highlights = _cover_highlights(title, payload.get("cover_highlights"))
+    scene = str(payload.get("intro_scene") or "").strip()
+    if not scene:
+        raise WorkflowStepError("intro_scene 不能为空")
+    return {"cover_lines": lines, "cover_highlights": highlights, "intro_scene": scene}
+
+
+def build_article_linebreak_prompt(article: str, feedback: str = "") -> dict:
+    prompt = (
+        f"只为下面已确定的正文插入换行，按语义断成口语短句，每行含标点最多 {ARTICLE_MAX_LINE_LENGTH} 字。"
+        "不得增删或修改任何字符、空格、数字和标点，不得拆开词语或固定搭配。"
+        '\n只输出 JSON：{"article":"插入换行后的正文"}。'
+        f"\n正文：\n{article}\n上次失败：{feedback}"
+    )
+    return {"system_prompt": "你是字幕断句编辑，只输出有效 JSON。", "user_prompt": prompt}
+
+
+def validate_article_linebreak_response(article: str, response_text: str) -> dict:
+    result = str(_json_payload(response_text).get("article") or "")
+    original = str(article).replace("\r", "").replace("\n", "")
+    if result.replace("\r", "").replace("\n", "") != original:
+        raise WorkflowStepError("断句只能插入换行，不得修改正文字符、空格、数字或标点")
+    if any(len(line) > ARTICLE_MAX_LINE_LENGTH for line in result.splitlines()):
+        raise WorkflowStepError(f"断句后每行不得超过 {ARTICLE_MAX_LINE_LENGTH} 字")
+    return {"article": result}
