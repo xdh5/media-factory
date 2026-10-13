@@ -1,4 +1,4 @@
-"""把财经成片、封面和发布清单上传到 Cloudflare R2。"""
+"""把财经成片、封面和生产清单上传到 Cloudflare R2。"""
 
 from __future__ import annotations
 
@@ -17,14 +17,14 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
     """上传财经发布资产，并把公网地址写回本地和远端清单。"""
     path = Path(manifest_path).resolve()
     if not path.is_file():
-        raise WorkflowStepError(f"财经发布清单不存在：{path}")
+        raise WorkflowStepError(f"财经生产清单不存在：{path}")
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise WorkflowStepError(f"读取财经发布清单失败：{path}。{exc}") from exc
+        raise WorkflowStepError(f"读取财经生产清单失败：{path}。{exc}") from exc
     run_id = str(manifest.get("run_id") or "").strip()
     if not run_id:
-        raise WorkflowStepError("财经发布清单缺少 run_id")
+        raise WorkflowStepError("财经生产清单缺少 run_id")
     content_part = int(manifest.get("content_part") or 1)
     # part 1 沿用历史 R2 路径；part 2 起加 -partN 后缀，避免同日多条互相覆盖。
     r2_dir = run_id if content_part <= 1 else f"{run_id}-part{content_part}"
@@ -45,7 +45,7 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
             continue
         asset_path = Path(value).resolve()
         if not asset_path.is_file():
-            raise WorkflowStepError(f"财经发布清单中的资产不存在：{field}={asset_path}")
+            raise WorkflowStepError(f"财经生产清单中的资产不存在：{field}={asset_path}")
         content_type = mimetypes.guess_type(asset_path.name)[0] or "application/octet-stream"
         uploaded_assets[field] = upload_public_file(
             asset_path,

@@ -182,7 +182,7 @@ def save_draft(
         "run_id": run_id,
         "content_part": content_part,
         "topic_record_id": record["id"],
-        "database_status": "pending_publish",
+        "database_status": "pending_production",
         "publish_date": (
             str(existing.get("publish_date") or publish_date).strip()
             if draft_path is not None

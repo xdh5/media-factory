@@ -20,7 +20,6 @@ from core.tools.clear_cache import ConfirmationRequiredError as ClearCacheConfir
 from core.tools.clear_cache import clear_run
 from core.tools.cloudflare_data import (
     CloudflareDataError,
-    commit_publication_records,
     get_douyin_research_script_stats,
     list_production_outputs,
     mark_douyin_research_script_used,
@@ -106,13 +105,13 @@ mcp = FastMCP(
         "交互式生产前必须先向用户确认北京时间计划发布日期 publish_date；日期不明确时禁止选稿、创建 run、生产或落库。"
         "第一步必须从抖音研究数据库选择未使用的原稿，禁止自行从零写正文；"
         "正文执行三类必做改动（品牌替换、连载指涉改写、错别字修正）之外允许措辞级改写，保留大结构与信息量并按语义断行；"
-        "保存稿件成功后必须把数据库来源标记为已使用。"
+        "保存稿件后来源保持临时占用，只有成片成功后才能标记为已使用。"
         "查询稿件余量必须使用只读的 finance_get_source_stats，不得用选稿工具代替统计。"
         "镜头素材有三类并列策略，默认值由 finance_get_production_config 返回："
         "image_library（存量图库选图）、"
         "qwen_reference（用户参考图 + 千问逐镜头生图）、"
         "stock_video（Pexels/Pixabay/Coverr 正版实拍视频 + 片头写实图）。"
-        "稿件生成后直接制作视频；成品完成后展示成片并等待确认再发布。"
+        "稿件生成后直接制作视频；成品完成后只登记生产产物，发布统一交给 publishing MCP。"
         "耗时步骤（TTS、素材、成片合成）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
         "禁止绕过 MCP 运行本地脚本。"
     ),
@@ -258,29 +257,6 @@ def finance_get_source_stats() -> dict:
 
 
 @mcp.tool()
-def finance_record_publications(
-    publication_id: str,
-    run_id: str,
-    records: list[dict],
-) -> dict:
-    """MatrixMedia 发布成功或预约成功后，按最终平台写入财经发布记录。"""
-    try:
-        normalized = [
-            {
-                **record,
-                "publication_id": publication_id,
-                "run_id": run_id,
-                "business_line": "finance",
-                "connector": "matrixmedia",
-            }
-            for record in records
-        ]
-        return commit_publication_records(normalized)
-    except Exception as exc:
-        raise _map_error(exc) from exc
-
-
-@mcp.tool()
 def finance_get_production_outputs(publish_date: str) -> dict:
     """查询某个北京时间计划发布日期的财经成片。"""
     try:
@@ -359,7 +335,7 @@ def finance_save_draft(
     content_part: int = 1,
     db_source_hook: str = "",
 ) -> dict:
-    """保存完成三类必做改动与措辞级改写的稿件，随后把来源稿件标记为已使用。
+    """保存完成三类必做改动与措辞级改写的稿件，来源稿件继续保持临时占用。
 
     同一天制作第二条时传 content_part=2：缓存与产物目录独立（run-YYYYMMDD-part2），
     D1 落库使用 content_part 区分，run_id 仍为 run-YYYYMMDD。
@@ -393,14 +369,7 @@ def finance_save_draft(
             content_part,
             db_source_hook,
         )
-        usage = mark_douyin_research_script_used(
-            aweme_id=str(draft["source_aweme_id"]),
-            workflow=MCP_ID,
-            reservation_token=str(draft["source_reservation_token"]),
-            run_id=str(draft["run_id"]),
-            source_hook=str(draft["db_source_hook"]),
-        )
-        return save_source_usage(str(draft["draft_path"]), usage)
+        return draft
     except Exception as exc:
         raise _map_error(exc) from exc
 
@@ -613,6 +582,26 @@ def finance_start_download_videos(context_path: str, selections: list[dict]) -> 
         raise _map_error(exc) from exc
 
 
+def _finish_video_and_commit_source_usage(
+    draft_path: str,
+    **kwargs,
+) -> dict:
+    """成片成功后才把占用中的数据库原稿标记为已使用。"""
+    result = finish_finance_video(draft_path, **kwargs)
+    _, draft = load_draft(draft_path, "财经稿件")
+    if str(draft.get("source_database_status") or "") != "used":
+        usage = mark_douyin_research_script_used(
+            aweme_id=str(draft["source_aweme_id"]),
+            workflow=MCP_ID,
+            reservation_token=str(draft["source_reservation_token"]),
+            run_id=str(draft["run_id"]),
+            source_hook=str(draft["db_source_hook"]),
+        )
+        save_source_usage(draft_path, usage)
+        result["source_usage"] = usage
+    return result
+
+
 @mcp.tool()
 def finance_finish_video(
     draft_path: str,
@@ -630,7 +619,7 @@ def finance_finish_video(
     stock_video 策略必须同时传 intro_image_path 指向片头写实图。
     """
     try:
-        return finish_finance_video(
+        return _finish_video_and_commit_source_usage(
             draft_path,
             material_manifest_path=material_manifest_path or image_manifest_path,
             production_config=production_config,
@@ -664,7 +653,7 @@ def finance_start_finish_video(
         run_id = str(draft["run_id"])
 
         def _work(progress=None) -> dict:
-            return finish_finance_video(
+            return _finish_video_and_commit_source_usage(
                 draft_path,
                 material_manifest_path=material_manifest,
                 production_config=production_config,
@@ -688,7 +677,7 @@ def finance_start_finish_video(
 
 @mcp.tool()
 def finance_start_upload_r2(manifest_path: str, run_id: str) -> dict:
-    """启动财经成片、封面和发布清单上传 R2。"""
+    """启动财经成片、封面和生产清单上传 R2。"""
     try:
         cache_dir = Path(manifest_path).resolve().parent
 

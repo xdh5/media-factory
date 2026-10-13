@@ -62,7 +62,6 @@ from core.tools.stock_video import prepare_stock_clip
 from .._constants import (
     CONTENT_KIND,
     MATERIAL_STOCK_VIDEO,
-    MATRIXMEDIA_AI_CREATIVE_STATEMENT,
     MCP_ID,
     STORYBOARD_TEXT_FILE_NAME,
     TOPIC_DEDUPLICATION_DAYS,
@@ -150,13 +149,10 @@ def _positive_int(value, field: str) -> int:
 def _production_config(config: dict) -> dict:
     bgm_path = str(config.get("bgm_path") or "").strip()
     intro = str(config.get("intro") or "").strip()
-    account_group = str(config.get("matrixmedia_account_group") or "").strip()
     if not bgm_path:
         raise WorkflowStepError("production_config.bgm_path 不能为空")
     if not intro:
         raise WorkflowStepError("production_config.intro 不能为空")
-    if not account_group:
-        raise WorkflowStepError("production_config.matrixmedia_account_group 不能为空")
     try:
         cover_frame_seconds = float(config.get("cover_frame_seconds"))
     except (TypeError, ValueError) as exc:
@@ -288,7 +284,6 @@ def _production_config(config: dict) -> dict:
         "subtitle_style": subtitle_style,
         "secondary_subtitles": secondary_settings,
         "emphasis_lines": emphasis_settings,
-        "matrixmedia_account_group": account_group,
         "hook_lines": hook_lines,
         "hook_subtitle_position": hook_subtitle_position,
         "hook_title_text": str(config.get("hook_title_text") or "").strip(),
@@ -1170,8 +1165,7 @@ def finish_finance_video(
 
     created_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     manifest = {
-        "status": "awaiting_publish_confirmation",
-        "confirmation_required": "publish",
+        "status": "produced",
         "line": MCP_ID,
         "content_kind": content_kind,
         "material_strategy": material_strategy,
@@ -1189,13 +1183,10 @@ def finish_finance_video(
         "output_dir": str(output_root),
         "title_path": str(title_path),
         "short_title_path": str(short_title_path),
-        "publish_bt2": metadata["short_title"],
         "publish_copy": publish_copy,
         "publish_copy_path": str(publish_copy_path),
         "attribution_comment_path": attribution_comment_path,
         "stock_video_attributions": list(material_manifest.get("attributions") or []),
-        "matrixmedia_account_group": settings["matrixmedia_account_group"],
-        "creativeStatement": MATRIXMEDIA_AI_CREATIVE_STATEMENT,
         "created_at": created_at,
         "publish_date": publish_date,
         "production_source": production_source,

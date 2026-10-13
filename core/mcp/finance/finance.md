@@ -41,8 +41,7 @@ finance_save_draft(...)
 └─ topic_dedup.get_topic 查重；暂不写 D1
 └─ tools.save_draft.save_draft
    └─ tools.parse_metadata.parse_metadata
-└─ cloudflare_data.mark_douyin_research_script_used
-   └─ 保存成功后将来源原稿标记为已使用
+└─ 来源原稿保持临时占用，暂不标记已使用
 
 finance_get_topics
 └─ topic_dedup.get_topic
@@ -86,12 +85,10 @@ finance_start_finish_video(..., production_config, material_manifest_path, intro
       └─ generate_shot.generate_shot_from_intro（片头动画 + 快门音效）
       └─ 黄金钩子图层：字幕位置覆盖 + generate_subtitles 按行生成 hook-title-N.ass（字魂群英体 165px，按标点断行，单行红字黑边 / 多行首行黄黑边其余红白边，\pos 堆叠）
       └─ generate_final_video
+      └─ 成片成功后 cloudflare_data.mark_douyin_research_script_used
 
 finance_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task
-
-finance_record_publications
-└─ cloudflare_data.commit_publication_records
 
 finance_clear_run
 └─ clear_cache.clear_run
@@ -110,7 +107,7 @@ finance_clear_run
 | `tools/generate_qwen_shot_images.py` | 逐镜头千问生图并登记独立生成图库 |
 | `tools/prepare_videos.py` | 正版实拍视频搜索、下载、规范化与磨砂 |
 | `tools/assemble_finance_video.py` | 封面、片头、钩子图层与最终合成 |
-| `tools/upload_to_r2.py` | 上传成片、封面和发布清单到 R2 |
+| `tools/upload_to_r2.py` | 上传成片、封面和生产清单到 R2 |
 
 ## 目录
 
@@ -118,6 +115,6 @@ finance_clear_run
 - 成片：`output/finance/run-YYYYMMDD/`，日期为北京时间计划发布日期
 - 产物记录：成片成功后自动写入 D1 `production_outputs`
 - 千问生成图库：`data/image_library_finance/{连续编号}.png`
-- 来源稿件：抖音研究数据库；占用两小时后自动过期，保存稿件成功后永久标记为已使用
+- 来源稿件：抖音研究数据库；保存草稿后继续临时占用，成片成功后才永久标记为已使用
 - 素材来源清单：实拍视频策略会写出 `output/finance/{run_id}/attribution-comment.txt`
 - 图片记录：独立 D1 表 `finance_generated_images`

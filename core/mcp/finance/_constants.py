@@ -15,7 +15,6 @@ TASKS_DIR_NAME = "tasks"
 TOPIC_DEDUPLICATION_DAYS = 30
 VIDEO_SIZE = "1920x1080"
 VIDEO_RADIO = "16:9"
-MATRIXMEDIA_AI_CREATIVE_STATEMENT = "ai_generated"
 CONTENT_KIND = "finance"
 AUTOMATION_DAILY_OUTPUT_COUNT = 1
 
@@ -58,7 +57,6 @@ DEFAULT_PRODUCTION_CONFIG = {
         "cover_frame_seconds": 0.03333333333333333,
         "intro": "slide_in_shutter",
         "shot_stickers": ["rec"],
-        "matrixmedia_account_group": "心灵鸡汤",
     },
     "runner_retry_config": {
         "source_hook": 3,
