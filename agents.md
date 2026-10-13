@@ -5,6 +5,11 @@
 1. 只使用 Docker 构建，不得使用本机的 `npm`、Vite 或 Python 重新构建。
 2. 兼容旧数据、备份旧数据时需要和用户确认是否需要备份
 
+## Cloudflare Worker
+1. 修改 `ops/cloudflare/d1-data-api` 的源码、迁移或 `wrangler.jsonc` 后，必须在同一轮重新部署，不能只提交代码。
+2. 在该目录执行 `npx wrangler deploy`。新增迁移时，先执行 `npx wrangler d1 migrations apply media-factory --remote`，再部署。
+3. 部署成功并确认版本号后，本次修改才算完成。
+
 ## Git 提交规范
 1. 提交信息必须以变更类型前缀开头，格式为 `<类型>: <中文说明>`。
 2. 新增功能使用 `add:`，修复问题使用 `fix:`，仅修改文档使用 `docs:`，代码重构使用 `refactor:`，构建或维护类改动使用 `chore:`。
