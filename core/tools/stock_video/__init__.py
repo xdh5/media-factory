@@ -7,12 +7,13 @@ from ._errors import (
     StockVideoRenderError,
     StockVideoRequestError,
 )
-from .stock_video import download_stock_video, prepare_stock_clip, search_stock_videos
+from .stock_video import download_stock_video, prepare_stock_clip, search_stock_videos, select_stock_candidates
 
 __all__ = [
     "download_stock_video",
     "prepare_stock_clip",
     "search_stock_videos",
+    "select_stock_candidates",
     "StockVideoError",
     "StockVideoConfigurationError",
     "StockVideoRequestError",

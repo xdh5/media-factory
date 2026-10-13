@@ -15,9 +15,9 @@ from core.tools.generate_emphasis_lines import generate_emphasis_lines
 from core.tools.generate_subtitles._constants import SUBTITLE_DEFAULT_FONT_SIZE
 
 from ._bilingual import translate_cue_texts
-from ._compose_shots import compose_shots
+from ._compose_shots import compose_shots, _hash_file
 from ._mix_body import mix_body
-from ._errors import InvalidParameterError
+from ._errors import InvalidParameterError, MediaProbeError
 from ._ffmpeg import _encode_video_args, _executable, _probe, _run
 from ._size import parse_size
 
@@ -325,6 +325,7 @@ def generate_final_video(
     """先拼无音镜头，再一次叠配音、BGM、字幕、贴纸和封面。"""
     if not isinstance(shots, list) or not shots:
         raise InvalidParameterError("shots", "shots 必须是至少一个镜头")
+    started = time.monotonic()
     cache_root = Path(cache_dir).resolve()
     cache_root.mkdir(parents=True, exist_ok=True)
     destination = Path(output_path).resolve()
@@ -341,6 +342,7 @@ def generate_final_video(
         progress=progress,
     )
     body_video_path = composed["output_path"]
+    compose_seconds = time.monotonic() - started
     if normalize_composed:
         body_video_path, normalize_cache_hit = _normalize_composed_video(
             composed["output_path"], cache_root / "composed-normalized.mp4"
@@ -352,6 +354,7 @@ def generate_final_video(
                 else "已完成镜头时间戳规范化"
             )
     width, height = parse_size(size)
+    normalize_seconds = time.monotonic() - started - compose_seconds
     cues = _subtitle_cues(shots, composed["shots"])
     emphasis_result = _emphasis_lines_ass(
         cues, emphasis_lines, cache_root, width, height, progress
@@ -384,9 +387,7 @@ def generate_final_video(
     )
     if secondary_path:
         extra_ass.append(secondary_path)
-    body = mix_body(
-        body_video_path,
-        destination,
+    mix_settings = dict(
         tts_path=tts_path,
         bgm_path=None if bgm_path is None else (str(bgm_path).strip() or None),
         ass_path=ass_path,
@@ -399,9 +400,48 @@ def generate_final_video(
         bgm_start_seconds=bgm_start_seconds,
         bgm_gain=bgm_gain,
     )
+    # 成片已编码但后续登记失败时，重试只重做登记；输入或样式变化才重新烧字幕。
+    files = [Path(body_video_path), Path(tts_path), *map(Path, extra_ass)]
+    files += [Path(value) for value in (bgm_path, cover_path, ass_path) if value]
+    files += [Path(item["path"]) for item in opening_sfx_items]
+    files += [Path(item.get("path") or item["output_path"]) for item in overlays]
+    files += sorted(Path(__file__).parent.glob("*.py"))
+    fonts = [{"path": str(path), "size": path.stat().st_size, "mtime_ns": path.stat().st_mtime_ns}
+             for path in sorted(Path(fontsdir).rglob("*")) if path.is_file()] if fontsdir else []
+    signature = hashlib.sha256(json.dumps({"files": [_hash_file(path) for path in files],
+                                          "fonts": fonts, "settings": mix_settings},
+                                         sort_keys=True, default=str).encode()).hexdigest()
+    final_metadata = cache_root / "final-render.json"
+    body = None
+    cache_hit = False
+    mix_started = time.monotonic()
+    if final_metadata.is_file() and destination.is_file():
+        try:
+            cached = json.loads(final_metadata.read_text(encoding="utf-8"))
+            stat = destination.stat()
+            if (cached.get("signature") == signature and cached.get("bytes") == stat.st_size
+                    and cached.get("mtime_ns") == stat.st_mtime_ns):
+                body = {"output_path": str(destination), "duration": _probe(destination)["duration"]}
+                cache_hit = True
+                if progress:
+                    progress("已复用最终成片，跳过重复烧字幕和编码")
+        except (OSError, ValueError, MediaProbeError):
+            pass
+    if body is None:
+        body = mix_body(body_video_path, destination, **mix_settings)
+        stat = destination.stat()
+        temporary_metadata = final_metadata.with_suffix(".json.tmp")
+        temporary_metadata.write_text(json.dumps({"signature": signature, "bytes": stat.st_size,
+                                                  "mtime_ns": stat.st_mtime_ns}), encoding="utf-8")
+        temporary_metadata.replace(final_metadata)
     return {
         "output_path": body["output_path"],
         "duration": body["duration"],
         "body_duration": composed["duration"],
         "shot_count": composed["shot_count"],
+        "cache_hit": cache_hit,
+        "timings": {"compose_seconds": round(compose_seconds, 3),
+                    "normalize_seconds": round(normalize_seconds, 3),
+                    "mix_seconds": round(time.monotonic() - mix_started, 3),
+                    "total_seconds": round(time.monotonic() - started, 3)},
     }

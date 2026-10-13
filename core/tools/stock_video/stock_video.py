@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import time
+import tempfile
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
@@ -65,7 +66,13 @@ def _read_search_cache(path: Path) -> list[dict] | None:
 
 def _write_search_cache(path: Path, candidates: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(candidates, ensure_ascii=False, indent=2), encoding="utf-8")
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as handle:
+        temporary = Path(handle.name)
+        handle.write(json.dumps(candidates, ensure_ascii=False, indent=2))
+    try:
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 load_dotenv()
 
@@ -235,6 +242,22 @@ def _search_coverr(query: str, orientation: str, limit: int, api_key: str) -> li
     return results
 
 
+def select_stock_candidates(candidates: list[dict], duration: float, width: int, height: int, *, max_clips: int = 2) -> list[dict]:
+    """按候选顺序取首个可用素材；不足时取首个能补足的第二段。"""
+    valid = [row for row in candidates if int(row.get("width") or 0) >= width
+             and int(row.get("height") or 0) >= height and float(row.get("duration") or 0) > 0]
+    for index, first in enumerate(valid):
+        if float(first["duration"]) >= duration:
+            return [first]
+        if max_clips > 1:
+            for second in valid[index + 1:]:
+                if (first.get("provider"), first.get("id")) == (second.get("provider"), second.get("id")):
+                    continue
+                if float(first["duration"]) + float(second["duration"]) >= duration:
+                    return [first, second]
+    return []
+
+
 def search_stock_videos(
     query: str,
     *,
@@ -244,6 +267,7 @@ def search_stock_videos(
     min_duration: float = 0,
     min_width: int = 0,
     min_height: int = 0,
+    max_clips: int = 1,
 ) -> dict:
     """按 Pexels → Pixabay → Coverr 顺序搜索，上一站无结果或失败才使用下一站。"""
     normalized_query = str(query or "").strip()
@@ -290,7 +314,7 @@ def search_stock_videos(
         })
         candidates = [
             row for row in candidates
-            if float(row.get("duration") or 0) >= min_duration
+            if float(row.get("duration") or 0) > 0
             and int(row.get("width") or 0) >= min_width
             and int(row.get("height") or 0) >= min_height
             and (
@@ -299,7 +323,7 @@ def search_stock_videos(
                 or (orientation == "square" and abs(int(row.get("width") or 0) - int(row.get("height") or 0)) <= max(int(row.get("width") or 0), int(row.get("height") or 0)) * 0.15)
             )
         ]
-        if candidates:
+        if select_stock_candidates(candidates, min_duration, min_width, min_height, max_clips=max_clips):
             return {
                 "query": normalized_query,
                 "orientation": orientation,
@@ -409,18 +433,27 @@ def download_stock_video(candidate: dict, output_path: str | Path) -> dict:
 
 
 def prepare_stock_clip(
-    source_path: str | Path,
+    source_path: str | Path | list[str | Path],
     output_path: str | Path,
     duration: float,
     *,
     size: str = "1920x1080",
     frame_path: str | Path | None = None,
+    soft_blur_sigma: float = 0,
 ) -> dict:
-    """循环、裁切并静音规范化素材，使镜头时长与配音严格一致。"""
-    source = Path(source_path).resolve()
+    """最多两段素材一次编码完成裁切、拼接与磨砂，按签名复用已完成镜头。"""
+    from core.tools.soft_blur_video._constants import (
+        SOFT_BLUR_CONTRAST, SOFT_BLUR_SATURATION, SOFT_BLUR_WHITE_ALPHA,
+    )
+    from core.tools.soft_blur_video.soft_blur_video import _frost_filter
+
+    sources = [Path(value).resolve() for value in (source_path if isinstance(source_path, list) else [source_path])]
+    if not 1 <= len(sources) <= 2:
+        raise StockVideoRenderError("每个镜头必须使用一到两段素材")
     destination = Path(output_path).resolve()
-    if not source.is_file():
-        raise StockVideoRenderError(f"源视频不存在：{source}")
+    for source in sources:
+        if not source.is_file():
+            raise StockVideoRenderError(f"源视频不存在：{source}")
     try:
         width_text, height_text = str(size).lower().split("x", 1)
         width, height = int(width_text), int(height_text)
@@ -433,28 +466,69 @@ def prepare_stock_clip(
     if not ffmpeg:
         raise StockVideoRenderError("找不到 ffmpeg，请先安装或加入 PATH")
     destination.parent.mkdir(parents=True, exist_ok=True)
+    frame = Path(frame_path).resolve() if frame_path is not None else None
+    payload = {
+        "version": 2, "duration": seconds, "size": size, "sigma": soft_blur_sigma,
+        "contrast": SOFT_BLUR_CONTRAST, "saturation": SOFT_BLUR_SATURATION, "white_alpha": SOFT_BLUR_WHITE_ALPHA,
+        "sources": [{"path": str(path), "bytes": path.stat().st_size, "mtime_ns": path.stat().st_mtime_ns} for path in sources],
+    }
+    signature = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    metadata_path = destination.with_suffix(".clip.json")
+    cached = False
+    if destination.is_file() and metadata_path.is_file():
+        try:
+            record = json.loads(metadata_path.read_text(encoding="utf-8"))
+            stat = destination.stat()
+            cached = (record.get("signature") == signature and record.get("bytes") == stat.st_size
+                      and record.get("mtime_ns") == stat.st_mtime_ns)
+        except (OSError, ValueError):
+            pass
     filter_value = (
         f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-        f"crop={width}:{height},setsar=1,fps=30"
+        f"crop={width}:{height},setsar=1,fps=30,format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS"
     )
-    command = [
-        ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-stream_loop", "-1",
-        "-i", str(source), "-t", f"{seconds:.6f}", "-an", "-vf", filter_value,
-        "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart", str(destination),
-    ]
-    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if result.returncode != 0 or not destination.is_file():
-        raise StockVideoRenderError(
-            f"规范化视频素材失败：{result.stderr[-1000:]}",
-            {"source_path": str(source), "output_path": str(destination)},
-        )
+    frost = _frost_filter({"sigma": soft_blur_sigma, "contrast": SOFT_BLUR_CONTRAST,
+                          "saturation": SOFT_BLUR_SATURATION, "white_alpha": SOFT_BLUR_WHITE_ALPHA}) if soft_blur_sigma > 0 else "null"
+    if not cached:
+        with tempfile.TemporaryDirectory(prefix="stock-clip-", dir=destination.parent) as temporary:
+            output = Path(temporary) / "clip.mp4"
+            command = [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-filter_complex_threads", "2"]
+            for source in sources:
+                command += ["-threads", "2", "-t", f"{seconds:.6f}", "-i", str(source)]
+            chains = [f"[{index}:v]{filter_value}[v{index}]" for index in range(len(sources))]
+            joined = "".join(f"[v{index}]" for index in range(len(sources)))
+            chains.append(f"{joined}concat=n={len(sources)}:v=1:a=0,trim=duration={seconds:.6f},setpts=PTS-STARTPTS,split=2[clean][body]")
+            chains.append(f"[body]{frost}[out]")
+            command += ["-filter_complex", ";".join(chains), "-map", "[out]", "-an", "-t", f"{seconds:.6f}",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-threads", "2",
+                        "-pix_fmt", "yuv420p", "-r", "30", "-fps_mode", "cfr", "-video_track_timescale", "15360",
+                        "-movflags", "+faststart", str(output)]
+            if frame is not None:
+                frame.parent.mkdir(parents=True, exist_ok=True)
+                command += ["-map", "[clean]", "-frames:v", "1", str(Path(temporary) / "frame.png")]
+            else:
+                # 无封面输出时仍消费分流，避免悬空滤镜输出。
+                command += ["-map", "[clean]", "-frames:v", "1", "-f", "null", "-"]
+            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=max(600, seconds * 30))
+            if result.returncode != 0 or not output.is_file():
+                raise StockVideoRenderError(f"规范化视频素材失败：{result.stderr[-1500:]}")
+            probe = subprocess.run([shutil.which("ffprobe") or "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                                    "-of", "json", str(output)], capture_output=True, text=True, timeout=30)
+            available = float((json.loads(probe.stdout or "{}").get("format") or {}).get("duration") or 0)
+            if probe.returncode or abs(available - seconds) > 0.05:
+                raise StockVideoRenderError(f"素材实际时长不足或输出时长异常：目标 {seconds:.3f} 秒，实际 {available:.3f} 秒")
+            os.replace(output, destination)
+            if frame is not None:
+                os.replace(Path(temporary) / "frame.png", frame)
+        record_path = metadata_path.with_suffix(".json.tmp")
+        stat = destination.stat()
+        record_path.write_text(json.dumps({"signature": signature, "bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns}), encoding="utf-8")
+        os.replace(record_path, metadata_path)
     rendered_frame = None
-    if frame_path is not None:
-        frame = Path(frame_path).resolve()
+    if frame is not None and (not frame.is_file() or frame.stat().st_size == 0):
         frame.parent.mkdir(parents=True, exist_ok=True)
         frame_result = subprocess.run(
-            [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", "0.2", "-i", str(destination), "-frames:v", "1", str(frame)],
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(sources[0]), "-vf", filter_value, "-frames:v", "1", str(frame)],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -462,10 +536,12 @@ def prepare_stock_clip(
         )
         if frame_result.returncode != 0 or not frame.is_file():
             raise StockVideoRenderError(f"提取视频封面帧失败：{frame_result.stderr[-1000:]}")
+    if frame is not None:
         rendered_frame = str(frame)
     return {
         "output_path": str(destination),
         "frame_path": rendered_frame,
         "duration": seconds,
         "size": f"{width}x{height}",
+        "cache_hit": cached,
     }

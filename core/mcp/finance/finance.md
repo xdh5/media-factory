@@ -78,8 +78,8 @@ finance_start_video_search(draft_path, storyboard_text, video_config)
    └─ stock_video.search_stock_videos（Pexels → Pixabay → Coverr 兜底）
 finance_start_download_videos(context_path)
 └─ tools.prepare_videos.download_selected_videos
-   └─ stock_video.prepare_stock_clip 裁到镜头时长
-   └─ soft_blur_video.blur_video_segments 正文素材白蒙版磨砂
+   └─ stock_video.prepare_stock_clip 一次完成拼接、裁切、帧率规范化与磨砂
+   └─ 按素材与参数签名复用完成镜头；最多并发处理 3 个镜头
 
 finance_start_finish_video(..., production_config, material_manifest_path, intro_image_path?)
 └─ core.mcp._task_runner.submit_task
@@ -124,4 +124,6 @@ finance_clear_run
 - 素材来源清单：实拍视频策略会写出 `output/finance/{run_id}/attribution-comment.txt`
 - 图片记录：独立 D1 表 `finance_generated_images`
 
-正文素材按搜索顺序直接使用首个时长不短于镜头、宽高至少 1920×1080 的候选；当前站没有达标候选则搜索下一站，不再调用模型选片。全部站点无达标候选时报错。
+正文素材按搜索顺序选择宽高至少 1920×1080 的候选；单段不足时最多拼接两段，合计时长必须覆盖镜头。当前站无法满足时搜索下一站，不再调用模型选片。全部站点无法满足时报错。
+
+性能记录：素材清单的 elapsed_seconds 与 timings 记录总耗时、逐镜头下载耗时及缓存命中；成片清单的 performance 记录拼接、时间戳规范化、最终合成耗时与最终成片缓存命中。新镜头已统一为 30 帧，不再额外整片转码规范时间戳。相同输入的最终成片也按签名复用，后续登记失败重试不会重复烧字幕。

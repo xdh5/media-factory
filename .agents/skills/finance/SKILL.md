@@ -97,7 +97,7 @@ MCP 入口：`python -m core.mcp.finance`。**Finance MCP 是 Prompt、素材策
 
 - `soft_blur_sigma` 控制正文素材的白蒙版磨砂强度（`core/tools/soft_blur_video`），传 `0` 关闭；片头图与封面帧保持清晰。
 - 封面继续使用原有长标题断行、重点词、配色和描边；只把底图改为从本期下载的正文实拍视频帧中随机选择，禁止使用 AI 生成的片头图或固定背景图作为封面底图。
-- 流程：`finance_start_video_search(draft_path, storyboard_text, video_config)` → 轮询 → 自动取首个时长足够且尺寸达标的候选 → `finance_start_download_videos(context_path)` → 轮询。
+- 流程：`finance_start_video_search(draft_path, storyboard_text, video_config)` → 轮询 → 按顺序取尺寸达标的候选，单段不足时拼两段 → `finance_start_download_videos(context_path)` → 轮询。
 - 实拍策略自动从第一段正文的原始下载视频提取首帧，套用现有片头动画，无需生图或传入 `intro_image_path`。
 - 分镜第一个镜头是片头图 + 转场动画，正文从第二个镜头起使用实拍素材；分镜至少要有两个镜头。
 - 素材来源不烧进视频；成片会在 `output/finance/<run_id>/attribution-comment.txt` 保留来源页、作者和署名文案。
@@ -164,7 +164,7 @@ SUB|L002|你以为涨薪就能存钱
 2. 按 `result.storyboard_prompt` 写完整分镜文本（素材行 + 每句一条纯文本 `SUB` 行，见上文「字幕与片头钩子」）。
 3. 按策略准备素材：
    - `image_library` / `qwen_reference`：`finance_prepare_images` → （生图策略）`finance_start_generate_images` + 轮询 / （图库策略）Agent 选图后 `finance_submit_images`；
-   - `stock_video`：`finance_start_video_search` + 轮询 → 自动取首个时长足够且宽高至少 1920×1080 的候选 → `finance_start_download_videos` + 轮询；片头自动使用第一段原始实拍视频首帧。
+   - `stock_video`：`finance_start_video_search` + 轮询 → 按顺序取宽高至少 1920×1080 的候选，单段不足时拼两段 → `finance_start_download_videos` + 轮询；片头自动使用第一段原始实拍视频首帧。
 4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`、素材清单路径（`material_manifest_path`）；`stock_video` 策略自动提取原视频首帧作为片头图。配音直接用 `prepare_storyboard` 的 `tts_path`。成片成功后 MCP 才把来源稿件标记为已使用；合成失败时仍保持临时占用。
    - 交互式生产必须由宿主 Agent 判断重点句、每段 1～2 行语义断行及每行 1～2 个标红重点词，并通过 `production_config.emphasis_lines.groups` 传入；禁止让 MCP 在交互式生产中自行调用文本模型。
    - 每组可用 `sentence_text` 传入完整句子原文，由工具精确匹配对应字幕句；也可使用工具返回的 `sentence` 编号。不要猜编号。

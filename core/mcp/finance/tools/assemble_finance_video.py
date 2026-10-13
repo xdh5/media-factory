@@ -84,6 +84,9 @@ def _raw_source_hints(manifest: dict, cache_root: Path) -> dict[str, Path]:
     所以优先用 attribution 里的 provider + source_id 还原真实素材。
     """
     hints: dict[str, Path] = {}
+    for shot_id, sources in (manifest.get("raw_sources") or {}).items():
+        if sources and Path(sources[0]).is_file():
+            hints[shot_id] = Path(sources[0])
     for item in manifest.get("attributions") or []:
         if not isinstance(item, dict):
             continue
@@ -93,7 +96,7 @@ def _raw_source_hints(manifest: dict, cache_root: Path) -> dict[str, Path]:
         if not (shot_id and provider and source_id):
             continue
         candidate = cache_root / "stock-videos" / "raw" / f"{shot_id}-{provider}-{source_id}.mp4"
-        if candidate.is_file():
+        if candidate.is_file() and shot_id not in hints:
             hints[shot_id] = candidate
     return hints
 
@@ -103,6 +106,8 @@ def _ensure_clip_durations(
     cache_root: Path,
     progress=None,
     raw_hints: dict[str, Path] | None = None,
+    source_groups: dict | None = None,
+    soft_blur_sigma: float = 0,
 ) -> None:
     """片段时长与当前分镜不符时，从原始素材重裁。
 
@@ -132,11 +137,12 @@ def _ensure_clip_durations(
         if progress:
             progress(f"重裁镜头 {shot['id']}：{available:.2f}s -> {target:.2f}s")
         prepare_stock_clip(
-            raw_candidates[0],
+            (source_groups or {}).get(shot["id"]) or raw_candidates[0],
             clip,
             target,
             size=VIDEO_SIZE,
             frame_path=cache_root / "stock-videos" / "frames" / f"{shot['id']}.png",
+            soft_blur_sigma=soft_blur_sigma,
         )
 
 
@@ -918,7 +924,8 @@ def _apply_material(
         for shot in shots[1:]:
             shot["segment_path"] = str(Path(videos[shot["id"]]).resolve())
             shot["frame_path"] = str(Path(frames[shot["id"]]).resolve())
-        _ensure_clip_durations(shots[1:], cache_root, progress, _raw_source_hints(manifest, cache_root))
+        _ensure_clip_durations(shots[1:], cache_root, progress, _raw_source_hints(manifest, cache_root),
+                               manifest.get("raw_sources"), float(manifest.get("soft_blur_sigma") or 0))
         first_video_id = shots[1]["id"]
         raw_sources = _raw_source_hints(manifest, cache_root)
         first_video = raw_sources.get(first_video_id)
@@ -1139,7 +1146,7 @@ def finish_finance_video(
             secondary_subtitles=settings["secondary_subtitles"],
             emphasis_lines=settings["emphasis_lines"],
             extra_ass_paths=extra_ass_paths,
-            normalize_composed=stock_video,
+            normalize_composed=stock_video and not material_manifest.get("normalized_cfr"),
             progress=progress,
         )
     except Exception as extra:
@@ -1202,6 +1209,10 @@ def finish_finance_video(
         "publish_copy_path": str(publish_copy_path),
         "attribution_comment_path": attribution_comment_path,
         "stock_video_attributions": list(material_manifest.get("attributions") or []),
+        "performance": {"materials_seconds": material_manifest.get("elapsed_seconds"),
+                        "material_shots": material_manifest.get("timings"),
+                        "final_cache_hit": final_result.get("cache_hit"),
+                        "final_timings": final_result.get("timings")},
         "created_at": created_at,
         "publish_date": publish_date,
         "production_source": production_source,
