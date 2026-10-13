@@ -127,3 +127,5 @@ finance_clear_run
 正文素材按搜索顺序选择宽高至少 1920×1080 的候选；单段不足时最多拼接两段，合计时长必须覆盖镜头。当前站无法满足时搜索下一站，不再调用模型选片。全部站点无法满足时报错。
 
 性能记录：素材清单的 elapsed_seconds 与 timings 记录总耗时、逐镜头下载耗时及缓存命中；成片清单的 performance 记录拼接、时间戳规范化、最终合成耗时与最终成片缓存命中。新镜头已统一为 30 帧，不再额外整片转码规范时间戳。相同输入的最终成片也按签名复用，后续登记失败重试不会重复烧字幕。
+
+下载自动成片：finance_start_download_videos 默认 auto_finish=true，下载后在同一后台任务继续合成并登记产物，最终结果包含 video_path、成片 manifest_path、material_manifest_path、auto_finished=true。production_config 可省略，默认读取统一生产配置；production_source 默认 local_mcp，GitHub 必须传 github_workflow。自动流水线可由 MCP 生成重点句；独立合成仍要求宿主传重点句。仅需要素材时显式传 auto_finish=false。自动合成成功后禁止重复调用独立合成工具。

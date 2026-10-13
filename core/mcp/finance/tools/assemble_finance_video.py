@@ -998,6 +998,7 @@ def finish_finance_video(
     storyboard_text: str | None = None,
     force_shot_ids: list[str] | None = None,
     production_source: str = "local_mcp",
+    allow_auto_emphasis: bool = False,
     image_manifest_path: str | Path | None = None,
     progress=None,
 ) -> dict:
@@ -1018,6 +1019,7 @@ def finish_finance_video(
     emphasis_settings = settings.get("emphasis_lines") or {}
     if (
         production_source == "local_mcp"
+        and not allow_auto_emphasis
         and emphasis_settings.get("enabled", True)
         and emphasis_settings.get("groups") is None
     ):

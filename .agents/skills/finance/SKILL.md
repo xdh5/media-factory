@@ -164,9 +164,9 @@ SUB|L002|你以为涨薪就能存钱
 2. 按 `result.storyboard_prompt` 写完整分镜文本（素材行 + 每句一条纯文本 `SUB` 行，见上文「字幕与片头钩子」）。
 3. 按策略准备素材：
    - `image_library` / `qwen_reference`：`finance_prepare_images` → （生图策略）`finance_start_generate_images` + 轮询 / （图库策略）Agent 选图后 `finance_submit_images`；
-   - `stock_video`：`finance_start_video_search` + 轮询 → 按顺序取宽高至少 1920×1080 的候选，单段不足时拼两段 → `finance_start_download_videos` + 轮询；片头自动使用第一段原始实拍视频首帧。
-4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`、素材清单路径（`material_manifest_path`）；`stock_video` 策略自动提取原视频首帧作为片头图。配音直接用 `prepare_storyboard` 的 `tts_path`。成片成功后 MCP 才把来源稿件标记为已使用；合成失败时仍保持临时占用。
-   - 交互式生产必须由宿主 Agent 判断重点句、每段 1～2 行语义断行及每行 1～2 个标红重点词，并通过 `production_config.emphasis_lines.groups` 传入；禁止让 MCP 在交互式生产中自行调用文本模型。
+   - `stock_video`：`finance_start_video_search` + 轮询 → 按顺序取宽高至少 1920×1080 的候选，单段不足时拼两段 → `finance_start_download_videos` + 轮询至成片完成，直接取得 video_path；无需再次调用合成工具。片头自动使用第一段原始实拍视频首帧。
+4. 图库、生图策略或明确传入 auto_finish=false 时：`finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`、素材清单路径（`material_manifest_path`）；`stock_video` 策略自动提取原视频首帧作为片头图。配音直接用 `prepare_storyboard` 的 `tts_path`。成片成功后 MCP 才把来源稿件标记为已使用；合成失败时仍保持临时占用。
+   - 独立调用合成工具时，交互式生产必须由宿主 Agent 判断重点句、每段 1～2 行语义断行及每行 1～2 个标红重点词，并通过 `production_config.emphasis_lines.groups` 传入；下载工具默认自动接续合成；该自动流水线允许 MCP 生成重点句，宿主也可通过下载工具的 production_config.emphasis_lines.groups 传入已确定配置。
    - 每组可用 `sentence_text` 传入完整句子原文，由工具精确匹配对应字幕句；也可使用工具返回的 `sentence` 编号。不要猜编号。
    - 每个重点显示行必须至少有一个原文连续子串作为标红词；任何一行缺少重点词、拆开词语或拼回后不等于原文，工具都会拒绝该配置。
    - 重点字幕不触发任何提示音效；只保留字幕动画与标红效果。
@@ -218,8 +218,12 @@ SUB|L002|你以为涨薪就能存钱
 | `finance_save_images` | 写入已生成图（通常不用） |
 | `finance_submit_images` | 提交选图清单 |
 | `finance_start_video_search` | 实拍视频策略：逐镜头搜索 Pexels/Pixabay/Coverr 候选 |
-| `finance_start_download_videos` | 实拍视频策略：下载、规范化并按配置磨砂 |
+| `finance_start_download_videos` | 默认下载、规范化、磨砂后自动合成成片；auto_finish=false 时只准备素材 |
 | `finance_finish_video` | 合成成片（同步，易超时，勿用） |
 | `finance_start_finish_video` | 启动成片合成后台任务 |
 | `finance_start_upload_r2` | 后台上传成片、封面和生产清单到 R2 |
 | `finance_clear_run` | 清本次目录 |
+
+### 实拍下载自动成片
+
+finance_start_download_videos(context_path, production_config?) 默认 auto_finish=true，统一读取默认成片配置并使用同一个 task_path 执行下载和合成。必须轮询直到 done=true；中间出现「素材已就绪」并不代表任务完成。成功结果包含 video_path、manifest_path（最终成片清单）、material_manifest_path（素材清单）与 auto_finished=true。无需再调用 finance_start_finish_video。自动合成失败可重试下载工具，已完成镜头会复用缓存；也可用素材清单单独恢复合成。默认不上传 R2、不执行平台发布。

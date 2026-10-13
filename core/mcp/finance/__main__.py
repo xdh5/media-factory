@@ -109,6 +109,8 @@ mcp = FastMCP(
     instructions=(
         "财经短视频编排 MCP。素材方案、TTS、BGM、片头等生产参数以 finance_get_production_config 为唯一标准，"
         "Agent 与 GitHub Runner 都必须先读取并复用。"
+        "实拍素材调用 finance_start_download_videos 后默认自动合成，轮询同一任务至 done=true 后直接取得 video_path；"
+        "禁止在自动合成成功后再次调用合成工具；只有 auto_finish=false 时需要单独合成。"
         "交互式生产前必须先向用户确认北京时间计划发布日期 publish_date；日期不明确时禁止选稿、创建 run、生产或落库。"
         "第一步必须从抖音研究数据库选择未使用的原稿，禁止自行从零写正文；"
         "正文执行三类必做改动（品牌替换、连载指涉改写、错别字修正）之外允许措辞级改写，保留大结构与信息量并按语义断行；"
@@ -580,25 +582,58 @@ def finance_validate_stock_video_selection_response(context_path: str, response_
 
 
 @mcp.tool()
-def finance_start_download_videos(context_path: str, selections: list[dict] | None = None) -> dict:
-    """默认按顺序选尺寸达标的视频，时长不足时拼两段；并发处理并复用已完成镜头。"""
+def finance_start_download_videos(
+    context_path: str,
+    selections: list[dict] | None = None,
+    auto_finish: bool = True,
+    production_config: dict | None = None,
+    production_source: str = "local_mcp",
+) -> dict:
+    """后台下载并自动合成，轮询同一 task_path 至 done=true 获取 video_path。
+
+    默认读取统一成片配置；可传 production_config 覆盖配置（含重点句 groups）。
+    单段不足时拼两段，下载和合成均复用缓存。只有 auto_finish=false 时仅返回素材清单。
+    自动合成失败可重试本工具或调用 finance_start_finish_video，无需重复处理完成镜头。
+    本工具不上传 R2、不发布平台。
+    """
     try:
         resolved_context, context = load_draft(context_path, "正版视频搜索上下文")
         metadata = context.get("metadata")
         if not isinstance(metadata, dict):
             raise WorkflowStepError("正版视频搜索上下文缺少 metadata")
         _, draft = load_draft(str(metadata.get("draft_path") or ""), "财经稿件")
+        if production_source not in {"local_mcp", "github_workflow"}:
+            raise WorkflowStepError("production_source 必须是 local_mcp 或 github_workflow")
+        if production_config is not None and not isinstance(production_config, dict):
+            raise WorkflowStepError("production_config 必须是对象")
+        settings = deepcopy(DEFAULT_PRODUCTION_CONFIG["production_config"])
+        settings.update(deepcopy(production_config or {}))
 
         def _work(progress=None) -> dict:
-            return download_selected_videos(resolved_context, selections, progress=progress)
+            materials = download_selected_videos(resolved_context, selections, progress=progress)
+            if not auto_finish:
+                return materials
+            if progress:
+                progress("视频素材已就绪，正在自动合成最终成片")
+            result = _finish_video_and_commit_source_usage(
+                str(metadata["draft_path"]),
+                material_manifest_path=materials["manifest_path"],
+                production_config=settings,
+                allow_auto_emphasis=True,
+                storyboard_text=metadata.get("storyboard_text"),
+                production_source=production_source,
+                progress=progress,
+            )
+            return {**result, "material_manifest_path": materials["manifest_path"], "auto_finished": True}
 
         started = runner_submit_task(
             cache_dir=Path(str(draft["cache_dir"])),
             run_id=str(draft["run_id"]),
-            step="download_stock_videos",
+            step="download_and_finish_video" if auto_finish else "download_stock_videos",
             fn=_work,
         )
-        return {**started, "poll_tool": "finance_poll_task"}
+        return {**started, "poll_tool": "finance_poll_task", "auto_finish": auto_finish,
+                "completion_result": "video_path" if auto_finish else "manifest_path"}
     except Exception as exc:
         raise _map_error(exc) from exc
 

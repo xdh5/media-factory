@@ -168,12 +168,8 @@ async def run(
         storyboard, prepared = await _storyboard(mcp, draft, config, int(retries["storyboard"]))
         started = await mcp.call("finance_start_download_videos", {
             "context_path": prepared["context_path"],
-        })
-        materials = await mcp.poll("finance_poll_task", started["task_path"])
-        started = await mcp.call("finance_start_finish_video", {
-            "draft_path": draft["draft_path"], "material_manifest_path": materials["manifest_path"],
             "production_config": config["production_config"],
-            "storyboard_text": storyboard, "production_source": "github_workflow",
+            "production_source": "github_workflow",
         })
         manifest = await mcp.poll("finance_poll_task", started["task_path"])
         started = await mcp.call("finance_start_upload_r2", {
