@@ -13,12 +13,14 @@ from pathlib import Path
 from random import uniform
 
 import edge_tts
+import edge_tts.communicate as _edge_communicate
 
 from ._constants import (
     TTS_BETWEEN_SENTENCE_TRAILING_SECONDS,
     TTS_CONCURRENCY,
     TTS_CONNECT_TIMEOUT_SECONDS,
     TTS_DEFAULT_RATE,
+    TTS_EDGE_WSS_URL,
     TTS_ENDING_PADDING_SECONDS,
     TTS_MAX_ATTEMPTS,
     TTS_MIN_REQUEST_INTERVAL_SECONDS,
@@ -37,6 +39,9 @@ from ._errors import (
 from ._pipeline import parse_bool, parse_pause, synthesize_pipeline
 
 __all__ = ["generate_tts"]
+
+# 2026-10 起旧合成域名 403，覆写 edge-tts 的 WebSocket 端点（见 _constants.TTS_EDGE_WSS_URL）。
+_edge_communicate.WSS_URL = TTS_EDGE_WSS_URL
 
 
 TTS_RATE_PATTERN = re.compile(r"^[+-]\d+%$")

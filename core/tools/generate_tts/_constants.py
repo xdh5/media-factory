@@ -3,6 +3,16 @@
 # Edge TTS 默认原速；工作流如需加速由 generate_tts(rate=...) 传入，例如 "+20%"。
 TTS_DEFAULT_RATE = "+0%"
 
+# Edge TTS 合成端点（2026-10-13 更新）：
+# 2026-10 起旧域名 speech.platform.bing.com 对合成请求一律返回 403
+# （上游 issue rany2/edge-tts#490），微软新端点迁移到 api.msedgeservices.com，
+# 沿用同一 TrustedClientToken 作为 Ocp-Apim-Subscription-Key。
+# 语音列表仍走旧域名；edge-tts 7.2.8 尚未发版修复（PR #491），这里在导入后覆写。
+TTS_EDGE_WSS_URL = (
+    "wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1"
+    "?Ocp-Apim-Subscription-Key=6A5AA1D4EAFF4E9FB37E23D68491D6F4"
+)
+
 # Edge TTS 网络与重试策略。降低并发可减少批量台词触发服务端限流或空音频。
 TTS_CONCURRENCY = 3
 TTS_CONNECT_TIMEOUT_SECONDS = 15

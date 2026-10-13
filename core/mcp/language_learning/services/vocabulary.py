@@ -17,7 +17,8 @@ from ..config import (
 from ..errors import VocabularyHistoryError, VocabularyReuseError
 
 
-def _normalize_word(value: str) -> str:
+def normalize_english_word(value: str) -> str:
+    """归一化英语单词：NFKC + 大小写折叠 + 弯引号替换 + 空白折叠，与词库入库口径一致。"""
     normalized = unicodedata.normalize("NFKC", str(value or "")).casefold().replace("’", "'")
     return re.sub(r"\s+", " ", normalized).strip()
 
@@ -38,7 +39,7 @@ def _word_entries(words_by_mode: dict) -> list[dict]:
     for mode in SUPPORTED_LEARNING_MODES:
         for item in words_by_mode.get(mode) or []:
             english = str(item.get("english") or "").strip()
-            normalized = _normalize_word(english)
+            normalized = normalize_english_word(english)
             if not normalized:
                 raise VocabularyHistoryError(f"{mode} 词表存在空的英语单词")
             entry = entries.setdefault(
@@ -75,7 +76,7 @@ def validate_words(*, run_id: str, topic: str, words_by_mode: dict) -> dict:
         raise VocabularyHistoryError(f"run_id 格式不正确：{rid}")
     entries = _word_entries(words_by_mode)
     try:
-        recent = {_normalize_word(word) for word in cloudflare_list_recent_words(WORD_HISTORY_DAYS)}
+        recent = {normalize_english_word(word) for word in cloudflare_list_recent_words(WORD_HISTORY_DAYS)}
     except CloudflareDataError as exc:
         raise VocabularyHistoryError(
             f"读取 Cloudflare D1 单词历史失败：{exc.message}",

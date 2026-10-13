@@ -76,6 +76,7 @@ from ..services import (
     validate_topic_response,
     validate_words,
 )
+from ..services.vocabulary import normalize_english_word
 
 def language_learning_get_production_config(topic: str = "", learning_modes: list[str] | None = None) -> dict:
     """返回 Agent 与 GitHub Runner 共用的语言学习固定生产参数。"""
@@ -355,18 +356,11 @@ def language_learning_validate_pack_words(pack_id: str, topic: str, response_tex
         words = parse_vocabulary_response(response_text, ["en-zh", "en-ko"])
         if str(words.get("_topic_english") or "").casefold() != str(topic or "").strip().casefold():
             raise LanguageLearningError("词包英文主题必须与 topic 完全一致")
-        recent = {str(word).casefold() for word in list_recent_words()}
+        recent = {normalize_english_word(word) for word in list_recent_words()}
         english = [str(item.get("english") or "").strip() for item in words["en-zh"]]
-        if len([word for word in english if word.casefold() not in recent]) < MINIMUM_NEW_WORDS:
+        if len([word for word in english if normalize_english_word(word) not in recent]) < MINIMUM_NEW_WORDS:
             raise LanguageLearningError(f"词包至少需要 {MINIMUM_NEW_WORDS} 个最近 {WORD_HISTORY_DAYS} 天未使用的新词")
-        word_list = "；".join(f"{index}. {word}" for index, word in enumerate(english, 1))
-        subject_sheet_prompt = (
-            f"围绕主题“{topic}”生成一张包含以下十个主体的精致全彩插画 PNG：{word_list}。"
-            "必须严格按上排从左到右五个、下排从左到右五个排列；整张图片必须是真实 Alpha 透明背景，"
-            "每个主体完整、彼此不重叠、边缘干净，无投影、无光晕、无水印。"
-            "严禁把上述十个英语原词或其中文、韩文翻译作为标签、标题或画面文字直接写入图片；"
-            "场景中与目标词无关的自然招牌、路标或包装文字可以保留。"
-        )
+        subject_sheet_prompt = build_subject_sheet_prompt(topic, words["en-zh"])["subject_sheet_prompt"]
         return {"pack_id": pack_id, "topic": topic, "words": words, "word_count": len(english), "subject_sheet_prompt": subject_sheet_prompt}
     except Exception as exc:
         raise _map_error(exc) from exc

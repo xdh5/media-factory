@@ -17,6 +17,9 @@ env/
 .vscode/
 .workbuddy/
 
+# 本机 MCP 配置（含本机绝对路径）
+.mcp.json
+
 # 系统文件
 .DS_Store
 Thumbs.db
