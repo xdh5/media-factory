@@ -51,7 +51,7 @@ MCP 入口：`python -m core.mcp.language_learning`。**语言学习 MCP 是 Pro
 词表与主体图 Prompt 由 MCP 工具返回，不要自行改写模板结构：
 
 - `language_learning_build_vocabulary_prompt` → `user_prompt`
-- `language_learning_prepare_images` 内部根据词表生成主体图 Prompt；必须生成带真实 Alpha 通道的透明背景 PNG。当前生图能力无法生成真实透明 PNG 时必须报错停止，禁止使用任何纯色背景兜底。主体必须是具有自然多色、材质细节和内部明暗的精致全彩插画，禁止单色染色、线稿图标、白色剪影、UI 符号和廉价塑料感；地点、服务、动作等词允许用紧凑小场景表达。主体外部禁止投影、光晕和杂色边缘。禁止把本期目标英语词或其翻译写进图中；与目标词无关的自然场景文字可以保留，仍禁止水印
+- `language_learning_prepare_images` 内部根据词表生成主体图 Prompt；必须生成带真实 Alpha 通道的透明背景 PNG。当前生图能力无法生成真实透明 PNG 时必须报错停止，禁止使用任何纯色背景兜底。主体必须是具有自然多色、材质细节和内部明暗的精致全彩插画，禁止单色染色、线稿图标、白色剪影、UI 符号和廉价塑料感；地点、服务、动作等词允许用紧凑小场景表达。主体外部禁止投影。禁止把本期目标英语词或其翻译写进图中；与目标词无关的自然场景文字可以保留，仍禁止水印
 
 TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 天去重：每期 10 个英语单词中，至少 5 个必须未在最近 100 天使用。`build_vocabulary_prompt` 会把历史词库写进 `user_prompt`，`parse_vocabulary_response` 只校验、不写库；成片成功后把话题与全部 10 个单词正式写入 D1。
 
@@ -80,7 +80,7 @@ GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现�
 4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
 5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问兜底生图）→ `language_learning_poll_task`。MCP 不调用千问文本或视觉模型。
 6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 只提取按上排从左到右、下排从左到右排序的十个保守边界框，不检查文字、水印、画风、内容或主体完整性；`language_learning_validate_subject_sheet` 会先硬校验真实 Alpha 透明通道，再按十个框裁出十张主体。缺少真实透明通道时立即报错，不得执行纯色去背景。
-7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**由十张实际透明切图重新排列成的整体验收图**，按返回 Prompt 一次性检查：主体数量是否为 10、边缘或结构有没有被切掉、是否误带相邻主体、文字、水印、全彩配色与材质质感、语义表达和透明边缘异常；全体单色染色、大片无层次纯色块、线稿图标、白色剪影、UI 符号或廉价塑料感必须按 `style` 判定失败。再调用 `language_learning_review_subject_sheet` 提交一条结论。切图不完整或误带相邻主体时先让 LLM 重新定位并切图；图片本身存在文字、水印、画风或透明边缘问题时才重新生成透明主题图。失败时 `failure_kind` 取 `background_edge` / `text` / `watermark` / `style` / `count` / `completeness` 之一。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对同一张切图验收图调用千问视觉执行同一个 MCP Prompt。
+7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**由十张实际透明切图重新排列成的整体验收图**，按返回 Prompt 一次性检查：主体数量是否为 10、边缘或结构有没有被切掉、是否误带相邻主体、文字、水印、全彩配色与材质质感、语义表达；真实 Alpha 透明通道由工具硬校验，彩色杂边不影响验收通过，禁止将其归入任何失败类型；全体单色染色、大片无层次纯色块、线稿图标、白色剪影、UI 符号或廉价塑料感必须按 `style` 判定失败。再调用 `language_learning_review_subject_sheet` 提交一条结论。切图不完整或误带相邻主体时先让 LLM 重新定位并切图；图片本身存在文字、水印或画风问题时才重新生成透明主题图；彩色杂边不触发重新生成。失败时 `failure_kind` 取 `text` / `watermark` / `style` / `count` / `completeness` 之一。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对同一张切图验收图调用千问视觉执行同一个 MCP Prompt。
 8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
 9. `language_learning_start_create_videos`：传入 MCP 配置返回的 `voices`、`publish_config`、`language_pause`、`word_pause` 和 `video_formats`；倒计时音轨使用 MCP 默认值，不必传 `countdown_audio_path` → poll 至 `done=true`。
 10. 发布时先调用统一发布 MCP 的 `publishing_preview` 检查产物、账号路由和重复项，再直接调用 `publishing_start_publish`；中文传 `content_kind="en-zh"`，韩语传 `content_kind="en-ko"`，都会同时包含原版和问答版。目标平台需要公网视频地址时由统一发布 MCP 按需上传 R2。

@@ -474,16 +474,8 @@ def language_learning_prepare_images(
         )
     previous_issues = [str(item).strip() for item in validation_issues or [] if str(item).strip()]
     if previous_issues:
-        has_background_edge = any(
-            keyword in issue.casefold()
-            for issue in previous_issues
-            for keyword in ("background_edge", "背景色", "色边", "描边", "光晕", "毛边")
-        )
         retry_instruction = (
-            "上一张图的透明边缘存在杂色。必须重新生成带真实 Alpha 通道的干净透明背景 PNG，"
-            "禁止主体轮廓出现白边、黑边、彩边或光晕"
-            if has_background_edge
-            else "上一张图未通过整图视觉验收，必须修正"
+            "上一张图未通过整图视觉验收，必须修正"
         )
         prompt += (
             f"\n\n这是第 {generation_attempt} 次生成。{retry_instruction}：\n- "
