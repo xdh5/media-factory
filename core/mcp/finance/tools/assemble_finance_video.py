@@ -800,11 +800,15 @@ def _render_first_shot_cached(
         seed = "|".join([MCP_ID, shot["id"]] + [_hash_file(path) for path in pool])
         page_images = _pick_page_flip_images(pool, shot["image_path"], seed)
     metadata_path = segment_path.with_suffix(".json")
+    follow_video = ""
+    if len(shots) > 1:
+        follow_video = str(shots[1].get("segment_path") or "").strip()
     payload = {
-        "version": 4,
+        "version": 5,
         "intro": intro,
         "intro_renderer_version": INTRO_RENDERER_VERSION,
         "image_sha256": _hash_file(shot["image_path"]),
+        "follow_video_sha256": _hash_file(follow_video) if follow_video else "",
         "page_image_sha256": [_hash_file(path) for path in page_images],
         "sfx_sha256": _hash_file(sfx_path) if intro == "page_flip" and sfx_path and sfx_path.is_file() else None,
         "alert_sha256": _hash_file(SFX_ALERT_PATH) if intro == "slide_in_shutter" and SFX_ALERT_PATH.is_file() else None,
@@ -835,6 +839,7 @@ def _render_first_shot_cached(
             image_paths=page_images or None,
             sfx_path=sfx_path,
             motion=shot["motion"],
+            video_path=follow_video or None,
         )
     except ShotToolError as extra:
         raise WorkflowStepError(extra.message, extra.details) from extra

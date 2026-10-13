@@ -1,7 +1,10 @@
-"""开场动画：双向滑入 + 快门闪光，然后接同一镜的运镜，一次渲完。"""
+"""开场动画：双向滑入 + 快门闪光。实拍素材在快门结束后直接播放视频。"""
 
 from __future__ import annotations
 
+import json
+import math
+import subprocess
 from pathlib import Path
 
 from ._constants import (
@@ -135,14 +138,49 @@ def _intro_camera_motion(motion: dict | None, duration: float, expand_end: float
     return adjusted
 
 
+def _media_duration(path: Path) -> float:
+    ffprobe = _executable("ffprobe")
+    completed = subprocess.run(
+        [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+    try:
+        duration = float((json.loads(completed.stdout or "{}").get("format") or {}).get("duration") or 0)
+    except (TypeError, ValueError, json.JSONDecodeError) as extra:
+        raise InvalidParameterError("video_path", f"无法读取视频时长：{path}") from extra
+    if completed.returncode != 0 or duration <= 0:
+        raise InvalidParameterError("video_path", f"无法读取视频时长：{path}")
+    return duration
+
+
+def _tail_video_chain(duration: float, expand_end: float) -> str:
+    """快门展开结束后从视频第 0 帧开始播，不再对静图做缓慢放大。"""
+    return (
+        f"[1:v]scale={OUTPUT_WIDTH}:{OUTPUT_HEIGHT}:force_original_aspect_ratio=increase:flags=lanczos,"
+        f"crop={OUTPUT_WIDTH}:{OUTPUT_HEIGHT},setsar=1,fps={FPS}:eof_action=pass,"
+        f"tpad=start_mode=clone:start_duration={expand_end:.6f},"
+        f"trim=duration={duration:.6f},setpts=PTS-STARTPTS,format=rgba[normal_source]"
+    )
+
+
 def slide_in_shutter(
     image_path: str | Path,
     output_path: str | Path,
     *,
     duration: float,
     motion: dict | None = None,
+    video_path: str | Path | None = None,
 ) -> dict:
-    """片头动画与剩余运镜一次渲成无音 mp4。音效在成片时叠加。"""
+    """片头动画与快门后的画面一次渲成无音 mp4。音效在成片时叠加。
+
+    传入 video_path 时，拍照展开结束后直接播放该视频。
+    未传时仍用静图运镜，供图库和生图策略使用。
+    """
     image_path = Path(image_path)
     if not image_path.is_file():
         raise InvalidParameterError(
@@ -157,24 +195,40 @@ def slide_in_shutter(
         raise InvalidParameterError("duration", "必须传入大于 0 的 duration")
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    resolved_video = Path(video_path).resolve() if video_path else None
+    if resolved_video is not None and not resolved_video.is_file():
+        raise InvalidParameterError("video_path", f"输入视频不存在：{resolved_video}")
 
     intro_duration = min(TOTAL_SECONDS, duration)
     remaining = max(0.0, duration - intro_duration)
     flash_end = min(duration, SHUTTER_START_SECONDS + FLASH_SECONDS)
     expand_end = min(duration, flash_end + PHOTO_EXPAND_SECONDS)
-    camera_motion = _intro_camera_motion(motion, duration, expand_end)
-    camera = (
-        _motion_filter(camera_motion, duration, OUTPUT_WIDTH, OUTPUT_HEIGHT, start_delay=expand_end)
-        if camera_motion else _static_filter(OUTPUT_WIDTH, OUTPUT_HEIGHT)
-    )
     ffmpeg = _executable("ffmpeg")
-    chains = [
-        "[0:v]split=2[camera_source][intro_raw]",
-        f"[intro_raw]tpad=stop_mode=clone:stop_duration={duration:.6f}[intro_input]",
-        (
+    if resolved_video is not None and duration > expand_end:
+        tail_needed = max(0.05, duration - expand_end)
+        plays = max(1, math.ceil(tail_needed / _media_duration(resolved_video)))
+        normal_chain = _tail_video_chain(duration, expand_end)
+        video_input = ["-stream_loop", str(plays - 1), "-i", str(resolved_video)]
+    else:
+        camera_motion = _intro_camera_motion(motion, duration, expand_end)
+        camera = (
+            _motion_filter(camera_motion, duration, OUTPUT_WIDTH, OUTPUT_HEIGHT, start_delay=expand_end)
+            if camera_motion else _static_filter(OUTPUT_WIDTH, OUTPUT_HEIGHT)
+        )
+        normal_chain = (
             f"[camera_source]tpad=stop_mode=clone:stop_duration={duration:.6f},"
             f"{camera},trim=duration={duration:.6f},setpts=PTS-STARTPTS,format=rgba[normal_source]"
-        ),
+        )
+        video_input = []
+    intro_split = (
+        f"[0:v]tpad=stop_mode=clone:stop_duration={duration:.6f}[intro_input]"
+        if video_input
+        else "[0:v]split=2[camera_source][intro_raw];"
+        f"[intro_raw]tpad=stop_mode=clone:stop_duration={duration:.6f}[intro_input]"
+    )
+    chains = [
+        intro_split,
+        normal_chain,
         _build_filter("intro_input", duration),
         *_expand_chains(flash_end, expand_end),
         (
@@ -187,7 +241,8 @@ def slide_in_shutter(
         "-filter_complex_threads", "1",
         "-loop", "1", "-framerate", str(FPS),
         "-t", f"{duration:.6f}", "-i", str(image_path),
-        "-filter_complex", ";".join(chains),
+        *video_input,
+        "-filter_complex", ";".join(part for part in chains if part),
         "-map", "[video]", "-an",
         "-t", f"{duration:.6f}", "-r", str(FPS),
         *_encode_video_args(still_image=False),

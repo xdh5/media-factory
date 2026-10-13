@@ -35,6 +35,7 @@ def generate_shot_from_intro(
     image_paths: list[str | Path] | None = None,
     sfx_path: str | Path | None = None,
     motion: dict | None = None,
+    video_path: str | Path | None = None,
 ) -> dict:
     """渲染片头镜头：只出画面，不烧配音、字幕、贴纸或 BGM。"""
     kind = str(style or "").strip()
@@ -61,4 +62,5 @@ def generate_shot_from_intro(
         output_path,
         duration=duration,
         motion=motion,
+        video_path=video_path,
     )
