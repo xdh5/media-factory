@@ -827,6 +827,71 @@ async function dashboardRecords(request, env) {
   });
 }
 
+async function dashboardLanguagePacks(env) {
+  const result = await env.DB.prepare(
+    `SELECT pack_id, topic, words_json, image_urls_json, status,
+            run_id, publish_date, claimed_at, created_at, updated_at
+     FROM language_learning_packs
+     ORDER BY CASE status WHEN 'ready' THEN 0 ELSE 1 END, created_at DESC, pack_id`,
+  ).all();
+  const packs = (result.results || []).map((row) => ({
+    pack_id: row.pack_id,
+    topic: row.topic,
+    words: JSON.parse(row.words_json || "{}"),
+    image_urls: JSON.parse(row.image_urls_json || "[]"),
+    status: row.status,
+    run_id: row.run_id,
+    publish_date: row.publish_date,
+    claimed_at: row.claimed_at,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }));
+  return dashboardResponse({
+    packs,
+    summary: {
+      total: packs.length,
+      ready: packs.filter((item) => item.status === "ready").length,
+      claimed: packs.filter((item) => item.status === "claimed").length,
+    },
+  });
+}
+
+async function dashboardFinanceArticles(env) {
+  const result = await env.DB.prepare(
+    `SELECT c.aweme_id, c.author_name, c.caption, c.transcript_corrected AS article,
+            c.aweme_url, c.cover_url, c.created_at,
+            GROUP_CONCAT(DISTINCT d.search_keyword) AS search_keywords,
+            COALESCE(u.status, 'ready') AS status,
+            u.reserved_at, u.used_at, u.run_id
+     FROM douyin_research_contents c
+     JOIN douyin_research_discoveries d
+       ON d.aweme_id = c.aweme_id AND d.collection_code = 'finance'
+     LEFT JOIN douyin_research_script_usage u
+       ON u.aweme_id = c.aweme_id AND u.workflow = 'finance'
+     GROUP BY c.aweme_id
+     ORDER BY CASE COALESCE(u.status, 'ready')
+                WHEN 'ready' THEN 0 WHEN 'reserved' THEN 1 ELSE 2
+              END,
+              c.created_at DESC, c.aweme_id`,
+  ).all();
+  const articles = (result.results || []).map((row) => ({
+    ...row,
+    search_keywords: String(row.search_keywords || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  }));
+  return dashboardResponse({
+    articles,
+    summary: {
+      total: articles.length,
+      ready: articles.filter((item) => item.status === "ready").length,
+      reserved: articles.filter((item) => item.status === "reserved").length,
+      used: articles.filter((item) => item.status === "used").length,
+    },
+  });
+}
+
 async function dashboardDownload(request, env) {
   let fileUrl = "";
   if (request.method === "POST") {
@@ -1325,6 +1390,22 @@ export default {
         }
         console.error(error);
         return dashboardResponse({ error: { code: "D1_ERROR", message: "读取发布看板失败" } }, 500);
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/dashboard/language-packs") {
+      try {
+        return await dashboardLanguagePacks(env);
+      } catch (error) {
+        console.error(error);
+        return dashboardResponse({ error: { code: "D1_ERROR", message: "读取语言词包失败" } }, 500);
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/dashboard/finance-articles") {
+      try {
+        return await dashboardFinanceArticles(env);
+      } catch (error) {
+        console.error(error);
+        return dashboardResponse({ error: { code: "D1_ERROR", message: "读取财经文章失败" } }, 500);
       }
     }
     if (["GET", "POST"].includes(request.method) && url.pathname === "/v1/dashboard/download") {
