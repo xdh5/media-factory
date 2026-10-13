@@ -243,8 +243,8 @@ def build_visual_metadata_prompt(article: str, title: str, feedback: str = "") -
     prompt = (
         "根据已确定的标题和正文生成视觉元数据，不得改写标题。"
         "把标题按语义断成一至三行，选一至三个标题原文中的连续重点词，"
-        "并写片头写实场景（人物身份、动作、环境）。"
-        '\n只输出 JSON：{"cover_lines":["第一行"],"cover_highlights":["重点词"],"intro_scene":"场景描述"}。'
+        "片头素材由所选素材策略提供，本轮不生成片头场景。"
+        '\n只输出 JSON：{"cover_lines":["第一行"],"cover_highlights":["重点词"]}。'
         f"\n确定标题：{title}\n正文：{article}\n上次失败：{feedback}"
     )
     return {"system_prompt": "你是短视频视觉编辑，只输出有效 JSON。", "user_prompt": prompt}
@@ -256,10 +256,7 @@ def validate_visual_metadata_response(title: str, response_text: str) -> dict:
     if "".join(lines) != title:
         raise WorkflowStepError("封面各行拼接必须与确定标题逐字一致，包括标点")
     highlights = _cover_highlights(title, payload.get("cover_highlights"))
-    scene = str(payload.get("intro_scene") or "").strip()
-    if not scene:
-        raise WorkflowStepError("intro_scene 不能为空")
-    return {"cover_lines": lines, "cover_highlights": highlights, "intro_scene": scene}
+    return {"cover_lines": lines, "cover_highlights": highlights}
 
 
 def build_article_linebreak_prompt(article: str, feedback: str = "") -> dict:

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
-from core.tools.generate_image import generate_qwen_image
 
 from ._mcp import MCPCallError, ProjectMCP
 from ._shared import PROJECT_ROOT, qwen, write_summary
@@ -141,12 +139,6 @@ async def _video_selections(mcp, context_path, attempts):
     return list(result["selections"])
 
 
-def _intro_image(prompt, size, draft):
-    destination = Path(str(draft["cache_dir"])).resolve() / "stock-videos" / "intro-image.png"
-    signature = hashlib.sha256(str(prompt).encode("utf-8")).hexdigest()
-    return str(generate_qwen_image(str(prompt), destination, size=str(size), cache_signature=signature)["output_path"])
-
-
 async def run(
     requested_topic: str = "",
     publish_date: str = "",
@@ -188,10 +180,9 @@ async def run(
             "context_path": prepared["context_path"], "selections": selections,
         })
         materials = await mcp.poll("finance_poll_task", started["task_path"])
-        intro_path = _intro_image(prepared["intro_image_prompt"], prepared["intro_image_size"], draft)
         started = await mcp.call("finance_start_finish_video", {
             "draft_path": draft["draft_path"], "material_manifest_path": materials["manifest_path"],
-            "intro_image_path": intro_path, "production_config": config["production_config"],
+            "production_config": config["production_config"],
             "storyboard_text": storyboard, "production_source": "github_workflow",
         })
         manifest = await mcp.poll("finance_poll_task", started["task_path"])

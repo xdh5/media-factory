@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -916,14 +918,25 @@ def _apply_material(
             shot["segment_path"] = str(Path(videos[shot["id"]]).resolve())
             shot["frame_path"] = str(Path(frames[shot["id"]]).resolve())
         _ensure_clip_durations(shots[1:], cache_root, progress, _raw_source_hints(manifest, cache_root))
-        if not intro_image_path:
-            raise WorkflowStepError("实拍视频策略必须传 intro_image_path 指向片头写实图")
-        resolved_intro_image = Path(intro_image_path).resolve()
-        if not resolved_intro_image.is_file():
-            raise WorkflowStepError(f"片头写实图不存在：{resolved_intro_image}")
+        first_video_id = shots[1]["id"]
+        raw_sources = _raw_source_hints(manifest, cache_root)
+        first_video = raw_sources.get(first_video_id)
+        if first_video is None:
+            raise WorkflowStepError("第一段正文视频缺少原始下载素材，无法提取清晰片头首帧")
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            raise WorkflowStepError("找不到 ffmpeg，无法提取片头首帧")
+        resolved_intro_image = cache_root / "stock-videos" / "intro-first-frame.png"
+        extracted = subprocess.run(
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(first_video),
+             "-frames:v", "1", str(resolved_intro_image)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+        )
+        if extracted.returncode or not resolved_intro_image.is_file():
+            raise WorkflowStepError(f"提取原视频首帧失败：{extracted.stderr[-1500:]}")
         shots[0]["image_path"] = str(resolved_intro_image)
         shots[0]["frame_path"] = str(resolved_intro_image)
-        # 封面底图只允许来自本期下载的正文实拍视频帧，排除 AI 生成的片头图。
+        # 封面底图来自正文实拍视频帧，片头单独使用第一段原视频首帧。
         return True, [str(shot["frame_path"]) for shot in shots[1:]]
     images = manifest.get("images")
     expected_image_ids = {shot["id"] for shot in shots}

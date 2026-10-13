@@ -1,7 +1,7 @@
 """正版实拍视频素材策略：逐镜头搜索、选择、下载并规范化为与配音一致的镜头。
 
 这是财经线三类素材策略之一（与存量图库选图、参考图千问生图并列）。
-只有第一个镜头由宿主机生成的写实片头图承担，正文从第二个镜头开始使用实拍素材。
+第一个镜头使用第一段原始实拍视频首帧制作片头动画，正文从第二个镜头开始使用实拍素材。
 """
 
 from __future__ import annotations
@@ -26,20 +26,6 @@ from .save_draft import load_draft
 from .storyboard import parse_storyboard
 
 DEFAULT_SOFT_BLUR_SIGMA = 0.55
-
-
-def _intro_image_prompt(draft: dict) -> str:
-    scene = str(draft.get("intro_scene") or "").strip()
-    if not scene:
-        raise WorkflowStepError(
-            "稿件缺少 intro_scene，无法生成片头写实图 Prompt。"
-            "保存稿件时请从原稿提炼一句片头场景描述（人物身份 + 关键动作 + 环境细节）"
-        )
-    return (
-        "写实摄影风格，电影感自然光，16:9横屏，表现以下场景的关键瞬间："
-        f"{scene}。人物表情真实、有悬念感，环境细节生活化，"
-        "画面主体居中偏上，为底部字幕留出空间；禁止文字、字母、数字、水印、标志和拼贴。"
-    )
 
 
 def prepare_video_searches(
@@ -119,8 +105,6 @@ def prepare_video_searches(
             "宿主 Agent 根据字幕、检索词、预览图、标题和时长选择每个镜头的视频。"
             "提交 [{video_id, provider, id}]；只能选择当前 context 返回的候选。"
         ),
-        "intro_image_prompt": _intro_image_prompt(draft),
-        "intro_image_size": VIDEO_SIZE,
         "context_path": context_path.resolve().as_posix(),
     }
     context_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

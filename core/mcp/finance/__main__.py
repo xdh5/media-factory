@@ -118,7 +118,7 @@ mcp = FastMCP(
         "镜头素材有三类并列策略，默认值由 finance_get_production_config 返回："
         "image_library（存量图库选图）、"
         "qwen_reference（用户参考图 + 千问逐镜头生图）、"
-        "stock_video（Pexels/Pixabay/Coverr 正版实拍视频 + 片头写实图）。"
+        "stock_video（Pexels/Pixabay/Coverr 正版实拍视频 + 首帧片头动画）。"
         "稿件生成后直接制作视频；成品完成后只登记生产产物，发布统一交给 publishing MCP。"
         "耗时步骤（TTS、素材、成片合成）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。"
         "禁止绕过 MCP 运行本地脚本。"
@@ -648,7 +648,7 @@ def finance_finish_video(
     """合成成片（同步，易超时）。优先使用 finance_start_finish_video + poll_task。
 
     material_manifest_path 传选图清单或视频素材清单，按清单内容自动识别素材策略；
-    stock_video 策略必须同时传 intro_image_path 指向片头写实图。
+    stock_video 策略自动提取第一段已选原视频首帧制作片头动画。
     """
     try:
         return _finish_video_and_commit_source_usage(

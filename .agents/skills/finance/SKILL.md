@@ -55,7 +55,7 @@ MCP 入口：`python -m core.mcp.finance`。**Finance MCP 是 Prompt、素材策
 | --- | --- | --- |
 | `image_library` | 存量图库选图 → 静态图慢推拉 | 交互式需要省时间时可用 |
 | `qwen_reference` | 用户参考图 + 千问逐镜头生图 | 用户明确需要统一画风时使用 |
-| `stock_video` | Pexels/Pixabay/Coverr 正版实拍视频 + 片头写实图 | Agent 与 GitHub Action 默认使用 |
+| `stock_video` | Pexels/Pixabay/Coverr 正版实拍视频 + 首帧片头动画 | Agent 与 GitHub Action 默认使用 |
 
 ### 镜头图（`image_config`，仅 `image_library` / `qwen_reference` 需要）
 
@@ -98,7 +98,7 @@ MCP 入口：`python -m core.mcp.finance`。**Finance MCP 是 Prompt、素材策
 - `soft_blur_sigma` 控制正文素材的白蒙版磨砂强度（`core/tools/soft_blur_video`），传 `0` 关闭；片头图与封面帧保持清晰。
 - 封面继续使用原有长标题断行、重点词、配色和描边；只把底图改为从本期下载的正文实拍视频帧中随机选择，禁止使用 AI 生成的片头图或固定背景图作为封面底图。
 - 流程：`finance_start_video_search(draft_path, storyboard_text, video_config)` → 轮询 → Agent 选候选 → `finance_start_download_videos(context_path, selections)` → 轮询。
-- 搜索结果里的 `intro_image_prompt` 用来生成片头写实图（宿主 Agent 生图或 ImageGen 均可），成片时通过 `intro_image_path` 传入。
+- 实拍策略自动从第一段正文的原始下载视频提取首帧，套用现有片头动画，无需生图或传入 `intro_image_path`。
 - 分镜第一个镜头是片头图 + 转场动画，正文从第二个镜头起使用实拍素材；分镜至少要有两个镜头。
 - 素材来源不烧进视频；成片会在 `output/finance/<run_id>/attribution-comment.txt` 保留来源页、作者和署名文案。
 
@@ -164,8 +164,8 @@ SUB|L002|你以为涨薪就能存钱
 2. 按 `result.storyboard_prompt` 写完整分镜文本（素材行 + 每句一条纯文本 `SUB` 行，见上文「字幕与片头钩子」）。
 3. 按策略准备素材：
    - `image_library` / `qwen_reference`：`finance_prepare_images` → （生图策略）`finance_start_generate_images` + 轮询 / （图库策略）Agent 选图后 `finance_submit_images`；
-   - `stock_video`：`finance_start_video_search` + 轮询 → `finance_get_stock_video_selection_prompt` → 宿主 Agent 选候选 → `finance_validate_stock_video_selection_response` → `finance_start_download_videos` + 轮询；同时按 MCP 返回的 `intro_image_prompt` 由宿主 Agent 生成片头写实图。
-4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`、素材清单路径（`material_manifest_path`），`stock_video` 策略另传 `intro_image_path`。配音直接用 `prepare_storyboard` 的 `tts_path`。成片成功后 MCP 才把来源稿件标记为已使用；合成失败时仍保持临时占用。
+   - `stock_video`：`finance_start_video_search` + 轮询 → `finance_get_stock_video_selection_prompt` → 宿主 Agent 选候选 → `finance_validate_stock_video_selection_response` → `finance_start_download_videos` + 轮询；片头自动使用第一段原始实拍视频首帧。
+4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`、素材清单路径（`material_manifest_path`）；`stock_video` 策略自动提取原视频首帧作为片头图。配音直接用 `prepare_storyboard` 的 `tts_path`。成片成功后 MCP 才把来源稿件标记为已使用；合成失败时仍保持临时占用。
    - 交互式生产必须由宿主 Agent 判断重点句、每段 1～2 行语义断行及每行 1～2 个标红重点词，并通过 `production_config.emphasis_lines.groups` 传入；禁止让 MCP 在交互式生产中自行调用文本模型。
    - 每组可用 `sentence_text` 传入完整句子原文，由工具精确匹配对应字幕句；也可使用工具返回的 `sentence` 编号。不要猜编号。
    - 每个重点显示行必须至少有一个原文连续子串作为标红词；任何一行缺少重点词、拆开词语或拼回后不等于原文，工具都会拒绝该配置。
