@@ -15,7 +15,6 @@ from .language_learning import (
     generate_cards,
     generate_videos,
     generate_words,
-    upload_failed_subject_sheets,
     upload_handoff,
 )
 from .telegram import notify_business_result
@@ -24,17 +23,11 @@ async def _run_language_produce(publish_date: str, work_dir: Path) -> dict:
     state_path = work_dir / "language-learning-state.json"
     handoff_dir = work_dir / "handoff"
     diagnostics_dir = work_dir / "diagnostics"
-    diagnostics_dir.mkdir(parents=True, exist_ok=True)
-    (diagnostics_dir / "diagnostics.json").write_text('{"status":"not_started"}\n', encoding="utf-8")
 
     await generate_words("", ["en-zh", "en-ko"], state_path, publish_date)
     await generate_cards(state_path, diagnostics_dir)
     await generate_videos(state_path, handoff_dir)
     result = await upload_handoff(handoff_dir)
-    try:
-        upload_failed_subject_sheets(diagnostics_dir)
-    except Exception:
-        pass
     return result
 
 

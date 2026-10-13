@@ -24,7 +24,7 @@ finance_get_topic_generation_prompt / finance_validate_topic_response
 finance_get_metadata_generation_prompt / finance_validate_metadata_response
   └─ 只确定长短标题与标签
 finance_get_visual_metadata_prompt / finance_validate_visual_metadata_response
-  └─ 根据确定标题生成封面断行、重点词与片头场景
+  └─ 根据确定标题生成封面断行与重点词
 finance_get_article_linebreak_prompt / finance_validate_article_linebreak_response
   └─ 每段改写后单独断句，去掉换行必须与改写稿逐字一致
 finance_get_stock_video_selection_prompt / finance_validate_stock_video_selection_response

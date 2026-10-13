@@ -153,10 +153,10 @@ SUB|L002|你以为涨薪就能存钱
 1. `finance_get_source_script`：选择并临时占用一条未使用的数据库原稿。
 2. 调用 `finance_get_article_prompt` 获取统一 Prompt 并整理原稿：执行三类必做改动并做措辞级改写（保留大结构与全部信息），把作者与品牌替换为「财富研习岛」并按语义断行。
 3. 正文必须按 `finance_get_article_chunk_plan` 分段改写；调用分段 Prompt 时传入全文、相邻原稿段和已确定品牌替换表。每段改写通过后，单独调用 `finance_get_article_linebreak_prompt` 和 `finance_validate_article_linebreak_response`，只允许插入换行；断句失败只重试断句。合并后执行全文校验。再调用话题生成与校验工具。
-4. 调用 `finance_get_metadata_generation_prompt` 和 `finance_validate_metadata_response` 确定长短标题和标签；再把确定标题传给 `finance_get_visual_metadata_prompt` 和 `finance_validate_visual_metadata_response` 生成封面断行、重点词和片头场景。视觉任务失败只重试视觉任务，封面各行拼接必须与标题逐字一致。
+4. 调用 `finance_get_metadata_generation_prompt` 和 `finance_validate_metadata_response` 确定长短标题和标签；再把确定标题传给视觉元数据工具生成封面断行和重点词。视觉任务失败只重试视觉任务，封面各行拼接必须与标题逐字一致。
 4. 用**长标题**按语义断成 1～3 行 `cover_lines`。封面不自动折行。
 5. 从长标题中选出 1～3 个真正承载点击理由的重点词，作为 `cover_highlights` 传入；每项必须原样出现在 `title` 中。封面重点词使用 `#F2A623` 金黄色，其他文字使用白色，统一加 6px 黑色描边。
-6. 先确定北京时间计划发布日期 `publish_date`（`YYYY-MM-DD`，不得早于当天）；`finance_save_draft` 除原参数外传入 `publish_date`、`source_aweme_id`、`source_reservation_token`、`source_hook`、`cover_highlights`，`stock_video` 策略还要传 `intro_scene`（片头写实图场景描述）。MCP 创建 `output/finance/run-YYYYMMDD/`；日期只表示计划发布日，不包含具体时间。保存草稿后来源仍为临时占用，直接进入制作。
+6. `finance_save_draft` 传入已确定的日期、来源作品 ID、占用令牌、原始和处理后钩子、正文、标题标签与封面排版。保存草稿后来源仍为临时占用，成片成功后才标记已使用。
 
 ### 第二阶段：制作与交付
 
@@ -178,7 +178,7 @@ SUB|L002|你以为涨薪就能存钱
 ### 生产入口
 
 - GitHub Action：`python -m ops.github_actions finance`（读取 Finance MCP 的统一配置，默认使用 `stock_video`，产物自动上传 R2，不发布平台）。每周六批量处理下周周一至周日，每个计划发布日期生产 1 条财经成片，使用 `content_part=1`；已有成片会在预检时跳过。
-- 交互式：`python -m core.mcp.finance`（本地制作，保留本地产物，发布需用户确认）。
+- 交互式：`python -m core.mcp.finance`（本地制作并登记产物；发布另行使用统一发布 MCP）。
 
 ### 后台任务轮询
 
@@ -200,7 +200,7 @@ SUB|L002|你以为涨薪就能存钱
 | `finance_validate_article_response` | 合并全部片段后的全文校验 |
 | `finance_get_topic_generation_prompt` / `finance_validate_topic_response` | 共用话题生成与去重校验 |
 | `finance_get_metadata_generation_prompt` / `finance_validate_metadata_response` | 独立生成与校验长短标题、标签 |
-| `finance_get_visual_metadata_prompt` / `finance_validate_visual_metadata_response` | 根据确定标题生成封面排版、重点词和片头场景 |
+| `finance_get_visual_metadata_prompt` / `finance_validate_visual_metadata_response` | 根据确定标题生成封面排版与重点词 |
 | `finance_get_article_linebreak_prompt` / `finance_validate_article_linebreak_response` | 只插入换行，逐字校验断句没有改稿 |
 | `finance_get_stock_video_selection_prompt` / `finance_validate_stock_video_selection_response` | 共用正版视频候选选择 Prompt 与校验 |
 | `finance_get_source_stats` | 只读统计原稿总数、可用数、有效占用数和已使用数；不会占用稿件 |

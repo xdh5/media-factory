@@ -21,10 +21,8 @@ def main() -> None:
             "language_learning_preflight",
             "language_learning_words",
             "language_learning_cards",
-            "language_learning_recompose_cards",
             "language_learning_videos",
             "language_learning_r2",
-            "language_learning_diagnostics_r2",
             "language_learning_publish",
             "daily_plan",
             "daily_day",
@@ -38,12 +36,7 @@ def main() -> None:
     parser.add_argument("--state-path", default="cache/github_actions/language-learning-state.json")
     parser.add_argument("--handoff-dir", default="cache/github_actions/language-learning-handoff")
     parser.add_argument("--diagnostics-dir", default="cache/github_actions/language-learning-diagnostics")
-    parser.add_argument("--source-run-id", default="")
     parser.add_argument("--run-id", default="")
-    parser.add_argument("--topic-value", default="")
-    parser.add_argument("--subject-sheet-url", default="")
-    parser.add_argument("--chinese-video-url", default="")
-    parser.add_argument("--korean-video-url", default="")
     parser.add_argument("--targets", default="")
     parser.add_argument("--publish-date", default="")
     parser.add_argument("--default-days-ahead", type=int, choices=(0, 1), default=0)
@@ -77,9 +70,10 @@ def main() -> None:
             with Path(output_path).open("a", encoding="utf-8") as stream:
                 stream.write(f"publish_date={payload['publish_date']}\n")
                 stream.write(f"should_generate={str(payload['should_generate']).lower()}\n")
-                stream.write(f"should_resume_publish={str(payload['should_resume_publish']).lower()}\n")
-                stream.write(f"existing_run_id={payload['existing_run_id']}\n")
-                stream.write(f"pending_targets={','.join(payload['pending_targets'])}\n")
+                if business_line == "language_learning":
+                    stream.write(f"should_resume_publish={str(payload['should_resume_publish']).lower()}\n")
+                    stream.write(f"existing_run_id={payload['existing_run_id']}\n")
+                    stream.write(f"pending_targets={','.join(payload['pending_targets'])}\n")
                 stream.write(f"skip_reason={payload['skip_reason']}\n")
     elif arguments.workflow == "finance_restore_library":
         from ._shared import restore_finance_image_library
@@ -108,17 +102,6 @@ def main() -> None:
 
         result = asyncio.run(generate_cards(arguments.state_path, arguments.diagnostics_dir))
         payload = {"status": "succeeded", "card_dirs": result["card_dirs"]}
-    elif arguments.workflow == "language_learning_recompose_cards":
-        from .language_learning import recompose_cards_from_r2
-
-        result = asyncio.run(
-            recompose_cards_from_r2(
-                arguments.source_run_id,
-                arguments.state_path,
-                arguments.publish_date,
-            )
-        )
-        payload = {"status": "succeeded", "run_id": result["run_id"], "card_dirs": result["card_dirs"]}
     elif arguments.workflow == "language_learning_videos":
         from .language_learning import generate_videos
 
@@ -138,10 +121,6 @@ def main() -> None:
                 stream.write(f"subject_sheet_url={result['subject_sheet_url']}\n")
                 stream.write(f"chinese_video_url={result['download_urls'].get('en-zh', '')}\n")
                 stream.write(f"korean_video_url={result['download_urls'].get('en-ko', '')}\n")
-    elif arguments.workflow == "language_learning_diagnostics_r2":
-        from .language_learning import upload_failed_subject_sheets
-
-        payload = upload_failed_subject_sheets(arguments.diagnostics_dir)
     elif arguments.workflow == "language_learning_publish":
         from .language_learning import schedule_publication
 

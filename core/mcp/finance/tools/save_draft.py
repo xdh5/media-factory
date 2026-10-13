@@ -83,7 +83,6 @@ def save_draft(
     publish_date: str,
     draft_path: str | Path | None = None,
     cover_highlights: list[str] | None = None,
-    intro_scene: str = "",
     content_part: int = 1,
     db_source_hook: str = "",
 ) -> dict:
@@ -135,7 +134,6 @@ def save_draft(
     metadata = parse_metadata(metadata_line)
     normalized_cover_lines = _cover_lines(cover_lines)
     normalized_cover_highlights = _cover_highlights(metadata["title"], cover_highlights)
-    normalized_intro_scene = str(intro_scene or "").strip()
     if isinstance(content_part, bool) or not isinstance(content_part, int) or content_part < 1:
         raise WorkflowStepError("content_part 必须是大于等于 1 的整数（同一天第二条传 2）")
     if draft_path is not None:
@@ -146,7 +144,6 @@ def save_draft(
             raise WorkflowStepError("修改已有稿件时不能更换数据库来源稿件")
         if normalized_source_token != str(existing.get("source_reservation_token") or "").strip():
             raise WorkflowStepError("修改已有稿件时必须沿用原来源稿件的占用令牌")
-        normalized_intro_scene = normalized_intro_scene or str(existing.get("intro_scene") or "").strip()
         if not normalized_db_hook:
             normalized_db_hook = (
                 str(existing.get("db_source_hook") or "").strip()
@@ -194,7 +191,6 @@ def save_draft(
         "db_source_hook": normalized_db_hook or normalized_source_hook,
         "source_database_status": str(existing.get("source_database_status") or "reserved") if draft_path is not None else "reserved",
         "article": normalized_article,
-        "intro_scene": normalized_intro_scene,
         **metadata,
         "cover_lines": normalized_cover_lines,
         "cover_highlights": normalized_cover_highlights,

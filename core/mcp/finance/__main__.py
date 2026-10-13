@@ -363,7 +363,6 @@ def finance_save_draft(
     publish_date: str,
     draft_path: str | None = None,
     cover_highlights: list[str] | None = None,
-    intro_scene: str = "",
     content_part: int = 1,
     db_source_hook: str = "",
 ) -> dict:
@@ -397,7 +396,6 @@ def finance_save_draft(
             publish_date,
             draft_path,
             cover_highlights,
-            intro_scene,
             content_part,
             db_source_hook,
         )

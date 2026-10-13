@@ -17,6 +17,7 @@ from pathlib import Path
 
 from core.tools.generate_cover_image import CoverError, generate_cover_image
 from core.tools.cloudflare_data import commit_production_outputs
+from core.tools.topic_dedup import commit as commit_topic
 from core.tools.generate_final_video import generate_final_video, safe_filename
 from core.tools.generate_final_video._defaults import (
     DEFAULT_CHAPTER_TIMELINE,
@@ -1145,6 +1146,10 @@ def finish_finance_video(
         raise WorkflowStepError(f"财经成片失败：{extra}") from extra
     final_path = Path(final_result["output_path"])
     publish_date = publish_date_from_run_id(run_id)
+    topic_commit = commit_topic(
+        MCP_ID, record["topic"], f"{MCP_ID}:{run_id}:{content_part}",
+        days=TOPIC_DEDUPLICATION_DAYS,
+    )
     production_outputs = None
     if production_source == "local_mcp":
         production_outputs = commit_production_outputs([{
@@ -1202,14 +1207,7 @@ def finish_finance_video(
         "production_source": production_source,
         "production_outputs": production_outputs,
         "topic_record_id": record["id"],
-        "database_commit": {
-            "workflow": MCP_ID,
-            "publication_id": f"{MCP_ID}:{run_id}",
-            "run_id": run_id,
-            "topic": record["topic"],
-            "days": TOPIC_DEDUPLICATION_DAYS,
-            "entries": [],
-        },
+        "topic_commit": topic_commit,
         "shots": shots,
     }
     manifest_path = cache_root / "manifest.json"
