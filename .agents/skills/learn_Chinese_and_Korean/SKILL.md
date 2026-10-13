@@ -5,7 +5,7 @@ description: 使用语言学习 MCP 制作中英/韩英词汇短视频；适用�
 
 # 语言学习视频
 
-MCP 入口：`python -m core.mcp.language_learning`。**语言学习 MCP 是 Prompt、TTS、停顿、成片格式、发布账号组、平台和自动排期参数的唯一真源**；本 Skill 只描述交互门禁与完整流程。禁止绕过 MCP 或直接读写内部文件。
+MCP 入口：`python -m core.mcp.language_learning`。**语言学习 MCP 是 Prompt、TTS、停顿和成片格式的唯一真源**；账号组、平台路由和排期由统一发布 MCP 负责。本 Skill 只描述交互门禁与完整流程。禁止绕过 MCP 或直接读写内部文件。
 
 开始交互式生产前，必须先让用户明确这期视频的北京时间计划发布日期 `publish_date`。用户没说清是哪一天时必须先追问；禁止默认今天、禁止占用话题或创建 run，也禁止在日期不明确时生成成片并写入 `production_outputs`。
 
@@ -73,7 +73,7 @@ MCP 入口：`python -m core.mcp.language_learning`。**语言学习 MCP 是 Pro
 - `language_learning_build_vocabulary_prompt` → `user_prompt`
 - `language_learning_prepare_images` 内部根据词表生成主体图 Prompt；必须生成带真实 Alpha 通道的透明背景 PNG。当前生图能力无法生成真实透明 PNG 时必须报错停止，禁止使用任何纯色背景兜底。主体必须是具有自然多色、材质细节和内部明暗的精致全彩插画，禁止单色染色、线稿图标、白色剪影、UI 符号和廉价塑料感；地点、服务、动作等词允许用紧凑小场景表达。主体外部禁止投影、光晕和杂色边缘。禁止把本期目标英语词或其翻译写进图中；与目标词无关的自然场景文字可以保留，仍禁止水印
 
-TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 天去重：每期 10 个英语单词中，至少 5 个必须未在最近 100 天使用。`build_vocabulary_prompt` 会把历史词库写进 `user_prompt`，`parse_vocabulary_response` 只校验、不写库；用户触发发布后才把话题与全部 10 个单词正式写入 D1。
+TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 天去重：每期 10 个英语单词中，至少 5 个必须未在最近 100 天使用。`build_vocabulary_prompt` 会把历史词库写进 `user_prompt`，`parse_vocabulary_response` 只校验、不写库；成片成功后把话题与全部 10 个单词正式写入 D1。
 
 无论单独生成韩语还是同时生成中英、韩英，韩语罗马音都必须与韩文音节逐一对应，并使用英文半角连字符 `-` 分隔；解析器必须硬校验，不能只依赖 Prompt。
 
@@ -117,14 +117,14 @@ GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现�
 
 | 工具 | 作用 |
 | --- | --- |
-| `language_learning_get_production_config` | 返回 Agent 与 GitHub Runner 共用的全部固定生产和自动发布参数 |
-| `language_learning_get_automation_plan` | 返回每周生产与补齐发布的统一预检结果 |
+| `language_learning_get_production_config` | 返回 Agent 与 GitHub Runner 共用的固定生产参数 |
+| `language_learning_get_automation_plan` | 返回 GitHub 生产与发布工作流共用的预检结果 |
 | `language_learning_get_topic_generation_prompt` / `language_learning_validate_topic_response` | 共用主题生成 Prompt 与校验 |
 | `language_learning_get_topics` | 查已占用主题和最近 100 天单词 |
 | `language_learning_get_production_outputs` | 按北京时间计划发布日期查询语言学习成片并区分本地与 GitHub 来源 |
 | `language_learning_occupy_topic` | 占坑并创建 run |
 | `language_learning_build_vocabulary_prompt` | 返回包含最近词库的词表 Prompt |
-| `language_learning_parse_vocabulary_response` | 解析词表、校验至少一半新词，发布前不写历史 |
+| `language_learning_parse_vocabulary_response` | 解析词表、校验至少一半新词，成片前不写历史 |
 | `language_learning_prepare_pack` / `language_learning_validate_pack_words` | 为可复用词包返回词表 Prompt，并校验词表及返回一张十元素透明主题图 Prompt |
 | `language_learning_validate_pack_subject_sheet` / `language_learning_review_pack_subject_sheet` | 复用直接制作的切图与整图视觉验收实现，验收通过后才允许提交词包 |
 | `language_learning_commit_pack` / `language_learning_claim_pack` | 上传一张主题图写入词包库，或由 GitHub 按日期领取一个词包 |

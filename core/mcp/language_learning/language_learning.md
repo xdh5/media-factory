@@ -114,13 +114,12 @@ language_learning_clear_run
 | `server.py` | 创建 FastMCP 并注册 Tools |
 | `tools/` | Tool 接口注册，不放业务实现 |
 | `prompts/` | 词表、透明主题图、定位和切图验收 Prompt |
-| `workflows/` | 共用查询、直接制作、预制包、成片、发布和后台任务编排 |
+| `workflows/` | 共用查询、直接制作、预制包、成片交付和后台任务编排 |
 | `services/prompt_service.py` | 词表与主题图 Prompt 生成、词表解析 |
 | `services/vocabulary.py` | 最近 100 天词库、新词比例校验与历史记录 |
 | `services/subject_cards.py` | 透明校验、定位切图、切图验收图和单词卡渲染 |
 | `services/videos.py` | 卡片与双语 TTS 合成竖版成片 |
 | `services/publishing.py` | 成片交付清单、产物登记和 R2 上传 |
-| `schemas/` | MCP 输入输出 Schema |
 | `errors/` | 领域错误与错误码 |
 | `config/` | 服务说明、生产参数、路径和技术常量 |
 | `infrastructure/` | D1、R2、生图和后台任务适配入口 |

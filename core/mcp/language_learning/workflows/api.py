@@ -85,17 +85,13 @@ def language_learning_get_production_config(topic: str = "", learning_modes: lis
     publish_config = {}
     if "en-zh" in modes:
         publish_config["en-zh"] = {
-            "account_group": "中文",
-            "youtube_account": "language_learning",
             "tags": ["#learnchinese", "#chinesevocabulary", "#mandarinchinese", "#dailychinese"],
             "short_title": f"中文{clean_topic}怎么说",
         }
     if "en-ko" in modes:
         publish_config["en-ko"] = {
-            "account_group": "韩语",
             "tags": ["#学韩语", "#韩语单词", "#韩语入门", "#每日韩语"],
             "short_title": "韩语单词怎么说",
-            "platforms": ["dy", "ks", "bjh", "xhs", "tt", "sph"],
         }
     config["learning_modes"] = modes
     config["publish_config"] = publish_config
@@ -103,7 +99,7 @@ def language_learning_get_production_config(topic: str = "", learning_modes: lis
 
 
 def language_learning_get_automation_plan(publish_date: str) -> dict:
-    """返回每周自动生产与补齐发布所需的统一预检结果。"""
+    """返回 GitHub 生产与发布工作流共用的预检结果。"""
     try:
         normalized_date = normalize_publish_date(publish_date)
         outputs = list_production_outputs(publish_date=normalized_date, business_line=WORKFLOW_ID)

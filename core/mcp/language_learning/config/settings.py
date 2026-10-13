@@ -1,6 +1,5 @@
 """语言学习 MCP 配置与技术常量。"""
 
-import os
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -32,14 +31,10 @@ SUBJECT_GENERATION_MAX_ATTEMPTS = 3
 TOPIC_DEDUPLICATION_DAYS = 30
 MAX_SUBJECT_SHEET_BYTES = 30 * 1024 * 1024
 MAX_CARD_ARCHIVE_BYTES = 300 * 1024 * 1024
-CHINESE_YOUTUBE_CHANNEL_ID = os.getenv("LANGUAGE_LEARNING_YOUTUBE_CHANNEL_ID", "").strip()
-YOUTUBE_LANGUAGE_LEARNING_CATEGORY_ID = "27"
-YOUTUBE_LANGUAGE_BY_MODE = {"en-zh": "zh", "en-ko": "ko"}
 PUBLISH_MANIFEST_FILE_NAME = "publish-manifest.json"
-MATRIXMEDIA_AI_CREATIVE_STATEMENT = "ai_generated"
 TASKS_DIR_NAME = "tasks"
 
-# 语言学习 MCP 是固定生产与自动发布参数的唯一真源。
+# 语言学习 MCP 是固定生产参数的唯一真源。
 DEFAULT_PRODUCTION_CONFIG = {
     "learning_modes": ["en-zh", "en-ko"],
     "voices": {
@@ -53,7 +48,6 @@ DEFAULT_PRODUCTION_CONFIG = {
     "subject_generation_max_attempts": SUBJECT_GENERATION_MAX_ATTEMPTS,
     "model_retry_attempts": 3,
     "publish_targets": ["youtube", "tiktok", "instagram", "facebook"],
-    "publish_hour_beijing": 16,
 }
 
 _ROOT = Path(__file__).resolve().parent.parent
