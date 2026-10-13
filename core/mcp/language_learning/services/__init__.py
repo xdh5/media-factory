@@ -1,6 +1,6 @@
 """语言学习 MCP 内部编排模块。"""
 
-from .subject_cards import approved_subject_cutout_paths, compose_fixed_cards, compose_fixed_cards_from_subjects, require_transparent_subject_sheet, review_subject_sheet, validate_subject_sheet
+from .subject_cards import approved_subject_cutout_paths, compose_fixed_cards, compose_fixed_cards_from_subjects, fit_subject_into_frame, require_transparent_subject_sheet, review_subject_sheet, validate_subject_sheet
 from .videos import create_vocabulary_videos
 from .delivery import (
     attach_publish_manifest,
@@ -29,6 +29,7 @@ __all__ = [
     "build_database_word_entries",
     "compose_fixed_cards",
     "compose_fixed_cards_from_subjects",
+    "fit_subject_into_frame",
     "create_vocabulary_videos",
     "list_recent_words",
     "parse_vocabulary_response",

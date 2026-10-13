@@ -18,6 +18,8 @@ from ..config import (
     SUBJECT_ALPHA_THRESHOLD,
     SUBJECT_COMPONENT_MIN_RATIO,
     SUBJECT_CUTOUT_STRATEGY_VERSION,
+    SUBJECT_FRAME_ORIGIN,
+    SUBJECT_FRAME_SIZE,
     SUBJECT_GENERATION_MAX_ATTEMPTS,
     SUBJECT_SHEET_SIZE,
     TEMPLATE_FILENAMES,
@@ -51,7 +53,13 @@ def _font(kind: str, size: int):
     raise CardCompositionError(f"找不到固定卡片所需的 {kind} 字体；请放到 static/font 或安装系统字体")
 
 
-_LAYOUTS = {"en-ko": {"topic": (540, 581, 54), "box": (335, 716, 745, 984), "target": (540, 1139, 98), "pronunciation": (540, 1249, 47), "english": (540, 1046, 43)}, "en-zh": {"topic": (540, 581, 54), "box": (335, 716, 745, 984), "target": (540, 1139, 88), "pronunciation": (540, 1249, 47), "english": (540, 1046, 43)}}
+_SUBJECT_FRAME_BOX = (
+    SUBJECT_FRAME_ORIGIN[0],
+    SUBJECT_FRAME_ORIGIN[1],
+    SUBJECT_FRAME_ORIGIN[0] + SUBJECT_FRAME_SIZE[0],
+    SUBJECT_FRAME_ORIGIN[1] + SUBJECT_FRAME_SIZE[1],
+)
+_LAYOUTS = {"en-ko": {"topic": (540, 581, 54), "box": _SUBJECT_FRAME_BOX, "target": (540, 1139, 98), "pronunciation": (540, 1249, 47), "english": (540, 1046, 43)}, "en-zh": {"topic": (540, 581, 54), "box": _SUBJECT_FRAME_BOX, "target": (540, 1139, 88), "pronunciation": (540, 1249, 47), "english": (540, 1046, 43)}}
 
 
 def _words(words: list[dict]) -> list[dict]:
@@ -517,16 +525,30 @@ def _extract_subjects(sheet: Image.Image, sheet_path: Path, cache_dir: Path | No
     raise CardCompositionError("透明主体切图尚未通过整图视觉验收，不能制作卡片")
 
 
+def fit_subject_into_frame(
+    subject_width: int,
+    subject_height: int,
+    frame_size: tuple[int, int] = SUBJECT_FRAME_SIZE,
+) -> dict:
+    """按卡片主体区等比缩放并居中。网页预览必须复用同一取整规则。"""
+    frame_width, frame_height = frame_size
+    if subject_width < 1 or subject_height < 1 or frame_width < 1 or frame_height < 1:
+        raise CardCompositionError("主体图或卡片主体区尺寸无效")
+    scale = min(frame_width / subject_width, frame_height / subject_height)
+    width = max(1, round(subject_width * scale))
+    height = max(1, round(subject_height * scale))
+    return {
+        "width": width,
+        "height": height,
+        "left": (frame_width - width) // 2,
+        "top": (frame_height - height) // 2,
+    }
+
+
 def _paste_subject(card: Image.Image, subject: Image.Image, box: tuple[int, int, int, int]) -> None:
-    target_width = box[2] - box[0]
-    target_height = box[3] - box[1]
-    scale = min(target_width / subject.width, target_height / subject.height)
-    fitted_width = max(1, round(subject.width * scale))
-    fitted_height = max(1, round(subject.height * scale))
-    fitted = subject.resize((fitted_width, fitted_height), Image.Resampling.LANCZOS)
-    left = box[0] + (target_width - fitted_width) // 2
-    top = box[1] + (target_height - fitted_height) // 2
-    card.alpha_composite(fitted, (left, top))
+    fitted_box = fit_subject_into_frame(subject.width, subject.height, (box[2] - box[0], box[3] - box[1]))
+    fitted = subject.resize((fitted_box["width"], fitted_box["height"]), Image.Resampling.LANCZOS)
+    card.alpha_composite(fitted, (box[0] + fitted_box["left"], box[1] + fitted_box["top"]))
 
 
 def _draw(draw, value: str, spec: tuple[int, int, int], kind: str):

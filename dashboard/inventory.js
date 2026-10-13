@@ -59,10 +59,16 @@ function renderLanguagePack(pack) {
     const imageFrame = element("div", "word-thumbnail");
     if (imageUrls[index]) {
       const image = document.createElement("img");
-      image.src = imageUrls[index];
       image.alt = `${zh.english || ko.english || `第 ${index + 1} 个`}主体图`;
-      image.loading = "lazy";
       image.decoding = "async";
+      image.addEventListener("load", () => {
+        const fitted = fitSubjectIntoFrame(image.naturalWidth, image.naturalHeight);
+        image.style.width = `${fitted.width}px`;
+        image.style.height = `${fitted.height}px`;
+        image.style.left = `${fitted.left}px`;
+        image.style.top = `${fitted.top}px`;
+      });
+      image.src = imageUrls[index];
       imageFrame.append(image);
     } else {
       imageFrame.append(element("span", "image-missing", "缺少图片"));
