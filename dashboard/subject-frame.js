@@ -15,3 +15,13 @@ function fitSubjectIntoFrame(subjectWidth, subjectHeight, frame = SUBJECT_FRAME)
     top: Math.floor((frame.height - height) / 2),
   };
 }
+
+function fitSubjectIntoFrameRatio(subjectWidth, subjectHeight, frame = SUBJECT_FRAME) {
+  const fitted = fitSubjectIntoFrame(subjectWidth, subjectHeight, frame);
+  return {
+    width: `${fitted.width / frame.width * 100}%`,
+    height: `${fitted.height / frame.height * 100}%`,
+    left: `${fitted.left / frame.width * 100}%`,
+    top: `${fitted.top / frame.height * 100}%`,
+  };
+}

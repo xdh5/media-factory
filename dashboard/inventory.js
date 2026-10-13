@@ -62,11 +62,11 @@ function renderLanguagePack(pack) {
       image.alt = `${zh.english || ko.english || `第 ${index + 1} 个`}主体图`;
       image.decoding = "async";
       image.addEventListener("load", () => {
-        const fitted = fitSubjectIntoFrame(image.naturalWidth, image.naturalHeight);
-        image.style.width = `${fitted.width}px`;
-        image.style.height = `${fitted.height}px`;
-        image.style.left = `${fitted.left}px`;
-        image.style.top = `${fitted.top}px`;
+        const fitted = fitSubjectIntoFrameRatio(image.naturalWidth, image.naturalHeight);
+        image.style.width = fitted.width;
+        image.style.height = fitted.height;
+        image.style.left = fitted.left;
+        image.style.top = fitted.top;
       });
       image.src = imageUrls[index];
       imageFrame.append(image);
