@@ -241,6 +241,9 @@ def search_stock_videos(
     orientation: str = "landscape",
     per_provider: int = DEFAULT_RESULTS_PER_PROVIDER,
     providers: list[str] | tuple[str, ...] | None = None,
+    min_duration: float = 0,
+    min_width: int = 0,
+    min_height: int = 0,
 ) -> dict:
     """按 Pexels → Pixabay → Coverr 顺序搜索，上一站无结果或失败才使用下一站。"""
     normalized_query = str(query or "").strip()
@@ -285,6 +288,17 @@ def search_stock_videos(
             "count": len(candidates),
             "cache_hit": cache_hit,
         })
+        candidates = [
+            row for row in candidates
+            if float(row.get("duration") or 0) >= min_duration
+            and int(row.get("width") or 0) >= min_width
+            and int(row.get("height") or 0) >= min_height
+            and (
+                (orientation == "landscape" and int(row.get("width") or 0) >= int(row.get("height") or 0))
+                or (orientation == "portrait" and int(row.get("height") or 0) > int(row.get("width") or 0))
+                or (orientation == "square" and abs(int(row.get("width") or 0) - int(row.get("height") or 0)) <= max(int(row.get("width") or 0), int(row.get("height") or 0)) * 0.15)
+            )
+        ]
         if candidates:
             return {
                 "query": normalized_query,

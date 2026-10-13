@@ -97,7 +97,7 @@ MCP 入口：`python -m core.mcp.finance`。**Finance MCP 是 Prompt、素材策
 
 - `soft_blur_sigma` 控制正文素材的白蒙版磨砂强度（`core/tools/soft_blur_video`），传 `0` 关闭；片头图与封面帧保持清晰。
 - 封面继续使用原有长标题断行、重点词、配色和描边；只把底图改为从本期下载的正文实拍视频帧中随机选择，禁止使用 AI 生成的片头图或固定背景图作为封面底图。
-- 流程：`finance_start_video_search(draft_path, storyboard_text, video_config)` → 轮询 → Agent 选候选 → `finance_start_download_videos(context_path, selections)` → 轮询。
+- 流程：`finance_start_video_search(draft_path, storyboard_text, video_config)` → 轮询 → 自动取首个时长足够且尺寸达标的候选 → `finance_start_download_videos(context_path)` → 轮询。
 - 实拍策略自动从第一段正文的原始下载视频提取首帧，套用现有片头动画，无需生图或传入 `intro_image_path`。
 - 分镜第一个镜头是片头图 + 转场动画，正文从第二个镜头起使用实拍素材；分镜至少要有两个镜头。
 - 素材来源不烧进视频；成片会在 `output/finance/<run_id>/attribution-comment.txt` 保留来源页、作者和署名文案。
@@ -164,7 +164,7 @@ SUB|L002|你以为涨薪就能存钱
 2. 按 `result.storyboard_prompt` 写完整分镜文本（素材行 + 每句一条纯文本 `SUB` 行，见上文「字幕与片头钩子」）。
 3. 按策略准备素材：
    - `image_library` / `qwen_reference`：`finance_prepare_images` → （生图策略）`finance_start_generate_images` + 轮询 / （图库策略）Agent 选图后 `finance_submit_images`；
-   - `stock_video`：`finance_start_video_search` + 轮询 → `finance_get_stock_video_selection_prompt` → 宿主 Agent 选候选 → `finance_validate_stock_video_selection_response` → `finance_start_download_videos` + 轮询；片头自动使用第一段原始实拍视频首帧。
+   - `stock_video`：`finance_start_video_search` + 轮询 → 自动取首个时长足够且宽高至少 1920×1080 的候选 → `finance_start_download_videos` + 轮询；片头自动使用第一段原始实拍视频首帧。
 4. `finance_start_finish_video` → `finance_poll_task` 直至 `done=true`；传入 `production_config`、素材清单路径（`material_manifest_path`）；`stock_video` 策略自动提取原视频首帧作为片头图。配音直接用 `prepare_storyboard` 的 `tts_path`。成片成功后 MCP 才把来源稿件标记为已使用；合成失败时仍保持临时占用。
    - 交互式生产必须由宿主 Agent 判断重点句、每段 1～2 行语义断行及每行 1～2 个标红重点词，并通过 `production_config.emphasis_lines.groups` 传入；禁止让 MCP 在交互式生产中自行调用文本模型。
    - 每组可用 `sentence_text` 传入完整句子原文，由工具精确匹配对应字幕句；也可使用工具返回的 `sentence` 编号。不要猜编号。
@@ -202,7 +202,7 @@ SUB|L002|你以为涨薪就能存钱
 | `finance_get_metadata_generation_prompt` / `finance_validate_metadata_response` | 独立生成与校验长短标题、标签 |
 | `finance_get_visual_metadata_prompt` / `finance_validate_visual_metadata_response` | 根据确定标题生成封面排版与重点词 |
 | `finance_get_article_linebreak_prompt` / `finance_validate_article_linebreak_response` | 只插入换行，逐字校验断句没有改稿 |
-| `finance_get_stock_video_selection_prompt` / `finance_validate_stock_video_selection_response` | 共用正版视频候选选择 Prompt 与校验 |
+| `finance_get_stock_video_selection_prompt` / `finance_validate_stock_video_selection_response` | 旧选片接口，默认生产流程不再调用 |
 | `finance_get_source_stats` | 只读统计原稿总数、可用数、有效占用数和已使用数；不会占用稿件 |
 | `finance_get_production_outputs` | 按北京时间计划发布日期查询成片及本地/R2位置 |
 | `finance_get_source_script` | 选择并临时占用未使用的数据库原稿；全部用完时报错 |

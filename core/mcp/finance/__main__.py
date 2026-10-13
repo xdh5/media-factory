@@ -580,8 +580,8 @@ def finance_validate_stock_video_selection_response(context_path: str, response_
 
 
 @mcp.tool()
-def finance_start_download_videos(context_path: str, selections: list[dict]) -> dict:
-    """stock_video 策略：后台下载选择的视频、规范化为与配音一致的镜头并加磨砂。"""
+def finance_start_download_videos(context_path: str, selections: list[dict] | None = None) -> dict:
+    """默认直接下载每个镜头首个时长足够、尺寸达标的视频，规范化并加磨砂。"""
     try:
         resolved_context, context = load_draft(context_path, "正版视频搜索上下文")
         metadata = context.get("metadata")

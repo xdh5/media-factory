@@ -69,6 +69,9 @@ def prepare_video_searches(
             orientation=orientation,
             per_provider=per_provider,
             providers=providers,
+            min_duration=float(shot["duration"]),
+            min_width=int(VIDEO_SIZE.split("x")[0]),
+            min_height=int(VIDEO_SIZE.split("x")[1]),
         )
         searches.append({
             "video_id": shot["id"],
@@ -83,7 +86,7 @@ def prepare_video_searches(
     context_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": 1,
-        "status": "awaiting_stock_video_selection",
+        "status": "ready_to_download",
         "metadata": {
             "workflow": MCP_ID,
             "line": MCP_ID,
@@ -102,8 +105,7 @@ def prepare_video_searches(
         },
         "searches": searches,
         "selection_instructions": (
-            "宿主 Agent 根据字幕、检索词、预览图、标题和时长选择每个镜头的视频。"
-            "提交 [{video_id, provider, id}]；只能选择当前 context 返回的候选。"
+            "每个镜头直接使用首个时长足够、尺寸达标的候选；调用下载工具时无需传 selections。"
         ),
         "context_path": context_path.resolve().as_posix(),
     }
@@ -111,13 +113,24 @@ def prepare_video_searches(
     return payload
 
 
-def download_selected_videos(context_path: str | Path, selections: list[dict], *, progress=None) -> dict:
+def download_selected_videos(context_path: str | Path, selections: list[dict] | None = None, *, progress=None) -> dict:
     """下载选择结果、规范化镜头并按配置做白蒙版磨砂，写出视频素材清单。"""
     resolved_context, context = load_draft(context_path, "正版视频搜索上下文")
     searches = context.get("searches")
     metadata = context.get("metadata")
     if not isinstance(searches, list) or not isinstance(metadata, dict):
         raise WorkflowStepError("正版视频搜索上下文缺少 searches 或 metadata")
+    if selections is None:
+        selections = []
+        width, height = map(int, VIDEO_SIZE.split("x"))
+        for search in searches:
+            candidate = next((row for row in search.get("candidates") or []
+                              if float(row.get("duration") or 0) >= float(search["duration"])
+                              and int(row.get("width") or 0) >= width
+                              and int(row.get("height") or 0) >= height), None)
+            if candidate is None:
+                raise WorkflowStepError(f"镜头 {search['video_id']} 没有时长足够且尺寸达标的视频，请重新搜索")
+            selections.append({"video_id": search["video_id"], "provider": candidate["provider"], "id": candidate["id"]})
     if not isinstance(selections, list):
         raise WorkflowStepError("selections 必须是数组")
     by_video_id = {str(item["video_id"]): item for item in searches}

@@ -130,15 +130,6 @@ async def _storyboard(mcp, draft, config, attempts):
     raise RuntimeError(f"财经分镜连续 {attempts} 次不合格：{feedback}")
 
 
-async def _video_selections(mcp, context_path, attempts):
-    result, _ = await _generate_checked(
-        mcp, "finance_get_stock_video_selection_prompt", "finance_validate_stock_video_selection_response",
-        {"context_path": context_path}, {"context_path": context_path},
-        attempts=attempts, max_tokens=5000, json_output=True,
-    )
-    return list(result["selections"])
-
-
 async def run(
     requested_topic: str = "",
     publish_date: str = "",
@@ -175,9 +166,8 @@ async def run(
         })
 
         storyboard, prepared = await _storyboard(mcp, draft, config, int(retries["storyboard"]))
-        selections = await _video_selections(mcp, str(prepared["context_path"]), int(retries["stock_video_selection"]))
         started = await mcp.call("finance_start_download_videos", {
-            "context_path": prepared["context_path"], "selections": selections,
+            "context_path": prepared["context_path"],
         })
         materials = await mcp.poll("finance_poll_task", started["task_path"])
         started = await mcp.call("finance_start_finish_video", {

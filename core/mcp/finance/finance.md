@@ -76,7 +76,7 @@ finance_save_images / finance_submit_images
 finance_start_video_search(draft_path, storyboard_text, video_config)
 └─ tools.prepare_videos.prepare_video_searches
    └─ stock_video.search_stock_videos（Pexels → Pixabay → Coverr 兜底）
-finance_start_download_videos(context_path, selections)
+finance_start_download_videos(context_path)
 └─ tools.prepare_videos.download_selected_videos
    └─ stock_video.prepare_stock_clip 裁到镜头时长
    └─ soft_blur_video.blur_video_segments 正文素材白蒙版磨砂
@@ -123,3 +123,5 @@ finance_clear_run
 - 来源稿件：抖音研究数据库；保存草稿后继续临时占用，成片成功后才永久标记为已使用
 - 素材来源清单：实拍视频策略会写出 `output/finance/{run_id}/attribution-comment.txt`
 - 图片记录：独立 D1 表 `finance_generated_images`
+
+正文素材按搜索顺序直接使用首个时长不短于镜头、宽高至少 1920×1080 的候选；当前站没有达标候选则搜索下一站，不再调用模型选片。全部站点无达标候选时报错。
