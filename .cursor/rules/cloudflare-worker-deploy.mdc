@@ -1,0 +1,24 @@
+---
+description: 修改 Cloudflare Worker 后必须在同一轮重新部署
+globs: ops/cloudflare/d1-data-api/**
+alwaysApply: false
+---
+
+# Worker 改动必须同时部署
+
+修改 `ops/cloudflare/d1-data-api` 的源码、迁移或 `wrangler.jsonc` 后，同一轮必须部署，不能只提交代码。
+
+在 `ops/cloudflare/d1-data-api` 执行：
+
+```powershell
+npx wrangler deploy
+```
+
+新增 `migrations/*.sql` 时，先把迁移应用到远程 D1，再部署：
+
+```powershell
+npx wrangler d1 migrations apply media-factory --remote
+npx wrangler deploy
+```
+
+部署输出里出现新的 Version ID 后，本次修改才算完成。部署失败要先处理，不能把未上线的 Worker 当成已生效。
