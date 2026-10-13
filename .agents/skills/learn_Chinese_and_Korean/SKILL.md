@@ -1,125 +1,33 @@
 ---
 name: learn-chinese-and-korean
-description: 使用语言学习 MCP 制作中英/韩英词汇短视频；适用于“做语言学习视频”“中韩学习视频”等请求。
+description: 使用语言学习 MCP 制作中英/韩英词汇短视频；适用于“做语言学习视频”“中韩学习视频”等请求，也用于提前生成可复用预制图包。
 ---
 
-# 语言学习视频
+# 语言学习制作
 
-MCP 入口：`python -m core.mcp.language_learning`。**语言学习 MCP 是 Prompt、TTS、停顿和成片格式的唯一真源**；账号组、平台路由和排期由统一发布 MCP 负责。本 Skill 只描述交互门禁与完整流程。禁止绕过 MCP 或直接读写内部文件。
+使用 `language_learning` MCP。词表、图片和视觉验收 Prompt、标题格式、配音、停顿与成片参数以 MCP 返回值为准；账号组、平台路由和排期交给统一发布 MCP。禁止绕过 MCP 执行业务流程或读写内部文件。
 
-开始交互式生产前，必须先让用户明确这期视频的北京时间计划发布日期 `publish_date`。用户没说清是哪一天时必须先追问；禁止默认今天、禁止占用话题或创建 run，也禁止在日期不明确时生成成片并写入 `production_outputs`。
+## 交互规则
 
-## 固定参数
+- 制作成片前，先确定用户要求的北京时间计划发布日期 `publish_date`，日期不明确时追问，不默认今天，不占用话题或创建 run。
+- 提前补充预制图包走下方独立流程，不占用成片话题、不创建成片 run，也不为备料自行指定发布日期。
+- 中间步骤无需逐项确认。彩色杂边可以接受，不得因此拒收、拒绝入库或重新生成，也不得改归其他失败类型。
+- 本地成片完成后展示路径、标题与标签；不在成片阶段自动上传 R2。需要发布时使用统一发布 MCP，清缓存需要用户确认。
 
-开始生产时先调用 `language_learning_get_production_config(topic, learning_modes)`；Agent 与 GitHub Action 都必须原样复用返回值，禁止在各自入口维护参数副本。
+## 成片编排
 
-### 语言方向
+1. 获取生产配置、最近主题与主题生成 Prompt，生成主题后调用主题校验工具；日期明确后占用话题。
+2. 获取词表 Prompt，生成词表后交给解析校验工具，不自行维护内容或去重规则。
+3. 用 `language_learning_prepare_images` 返回的 Prompt 生成主体图。每张生成后立即保存并启动提交任务；生图无能力或达到工具要求的失败次数时，按工具提供的兜底流程处理。
+4. 获取共用定位 Prompt，查看主体图并提取十个框，调用主体图校验工具切图。再获取共用整图验收 Prompt，打开工具返回的实际切图验收图，提交真实验收结论。
+5. 切图不完整或带入相邻主体时先重新定位；图片内容不合格时才重新生图，每张主题图最多生成 3 次，仍失败则报告并停止。彩色杂边不算失败。
+6. 为本次需要的语言方向分别启动拼卡、成片任务，原样传入生产配置返回的配音、停顿、视频格式与发布元数据。
 
-- `en-zh`：中英学习
-- `en-ko`：韩英学习
+耗时步骤使用对应 `start` 工具，每 15～30 秒轮询同一 `task_path` 至完成；客户端超时不重复启动。
 
-### TTS 与配音停顿
+## 预制图包编排
 
-分别使用 MCP 返回的 `voices`、`language_pause` 与 `word_pause`，Skill 不保留副本。
-
-### 标题、文件名与描述
-
-成片本地文件名必须与发布标题一致（经 `safe_filename` 后保存为 `.mp4`）。
-
-**中文 `en-zh`**
-
-- 标题与文件名：`10 Essential {Topic} Words in Chinese`
-- 示例：主题 `Dishes` → `10 Essential Dishes Words in Chinese`
-- 问答版也用同一标题，不得加 `guess` 或其它后缀
-- 仅原版分段超过 1 段时在末尾加 ` 1/2`、` 2/2`
-- **作品描述只发 hashtag，不得加入短标题、完整标题或其它正文**，例如 `#learnchinese #chinesevocabulary #mandarinchinese #dailychinese`
-
-**韩语 `en-ko`**
-
-- 标题与文件名：`韩语｜{该段第一个中文词}的韩语怎么说？`
-- 示例：`韩语｜饺子的韩语怎么说？`
-- 问答版也用同一标题，不得加 `看图猜词` 或其它后缀
-- 仅原版分段超过 1 段时在末尾加 ` 1/2`、` 2/2`
-- **作品描述只发 hashtag，不得加入短标题、完整标题或其它正文**，例如 `#学韩语 #韩语单词 #韩语入门 #每日韩语`
-
-### 成片交付配置
-
-制作时原样传入 MCP 返回的 `publish_config`，其中仅包含标签和短标题。语言 MCP 只登记生产产物；账号组、平台、排期、登录和发布记录由统一发布 MCP 负责。
-
-## Prompt
-
-词表与主体图 Prompt 由 MCP 工具返回，不要自行改写模板结构：
-
-- `language_learning_build_vocabulary_prompt` → `user_prompt`
-- `language_learning_prepare_images` 内部根据词表生成主体图 Prompt；必须生成带真实 Alpha 通道的透明背景 PNG。当前生图能力无法生成真实透明 PNG 时必须报错停止，禁止使用任何纯色背景兜底。主体必须是具有自然多色、材质细节和内部明暗的精致全彩插画，禁止单色染色、线稿图标、白色剪影、UI 符号和廉价塑料感；地点、服务、动作等词允许用紧凑小场景表达。主体外部禁止投影、光晕和杂色边缘。禁止把本期目标英语词或其翻译写进图中；与目标词无关的自然场景文字可以保留，仍禁止水印
-
-TOPIC 必须是一个不含空格的英文单词。词表固定执行最近 100 天去重：每期 10 个英语单词中，至少 5 个必须未在最近 100 天使用。`build_vocabulary_prompt` 会把历史词库写进 `user_prompt`，`parse_vocabulary_response` 只校验、不写库；成片成功后把话题与全部 10 个单词正式写入 D1。
-
-无论单独生成韩语还是同时生成中英、韩英，韩语罗马音都必须与韩文音节逐一对应，并使用英文半角连字符 `-` 分隔；解析器必须硬校验，不能只依赖 Prompt。
-
-### 可复用预制词包
-
-任意宿主 Agent 要提前补充词包时，必须调用 `language_learning_prepare_pack(topic)`，按返回的 `vocabulary_prompt` 生成词表后调用 `language_learning_validate_pack_words`。该工具会返回唯一的 `subject_sheet_prompt`：Agent 只生成**一张**按上五下五排列、含十个主体的真实 Alpha 透明 PNG，不能拆成十张图，也不能使用纯色背景。随后必须使用共用视觉 Prompt 提取十个主体框，调用 `language_learning_validate_pack_subject_sheet` 完成切图，再使用共用整图验收 Prompt 检查十张实际切图组成的验收图并调用 `language_learning_review_pack_subject_sheet`。只有验收通过后，才允许调用 `language_learning_commit_pack(pack_id, topic, words, subject_sheet_path)` 上传十张透明主体切图并写入词包库。
-
-GitHub Action 仅调用 `language_learning_claim_pack(publish_date)` 领取现成词包，下载十张已验收透明主体切图后直接拼卡出片；不会再次生成词表、图片、定位框或执行首次视觉验收。没有已验收词包时，GitHub 生产应明确失败，不能静默降级为重新生图。
-
-## 确认门禁
-
-1. **成片**：本地制作完成后展示 `output/language_learning/run-YYYYMMDD/` 中的成片路径、标题、标签与账号组；`YYYYMMDD` 必须是北京时间计划发布日期。本地制作不得在成片阶段自动上传 R2；仅 GitHub Workflow 生产完成后自动交付 R2，发布所需公网地址由统一发布 MCP 按需处理。本地成片成功后 MCP 自动以 `source=local_mcp` 写入 `production_outputs`；GitHub Workflow 只在 R2 交付成功后以 `source=github_workflow` 写入。查询某天产物使用 `language_learning_get_production_outputs(publish_date)`。
-2. **清缓存**：发布结束后用户确认才调用 `language_learning_clear_run(run_id, confirmed=true)`。
-
-`weekly-production` 每周六北京时间 12:00 串行生产下周周一至周日内容，只生产并交付 R2，禁止自动发布语言视频。单独的手动发布 Workflow 按数据库预检结果最多重试 3 次；YouTube 使用官方 API，完整上传或预约并返回 `video_id` 才记为成功，抛错或缺少 `video_id` 记为失败。TikTok、Facebook、Instagram 调用 Zernio；Zernio 请求成功并返回 `post_id` 与成功或预约状态后，立即把标题、发布时间、平台、账号、分段及外部 ID 写入现有 `publication_records`，请求失败则不写入。手动发布 Workflow 只复用 GitHub 已交付 R2 的中文成片，手动 MCP 制作仍执行上述成片确认门禁。生产 Workflow 不清缓存。自动生产仅保留每周入口。
-
-词表、主体图、卡片、出片中间步骤不逐项确认。
-
-## 制作流程
-
-1. `language_learning_get_production_config` 获取唯一标准参数；`language_learning_get_topics` 获取最近主题，再调用 `language_learning_get_topic_generation_prompt`，宿主 Agent 生成后必须交给 `language_learning_validate_topic_response`。
-2. 先确定北京时间计划发布日期 `publish_date`（`YYYY-MM-DD`，不得早于当天）；自选单个英文单词主题后调用 `language_learning_occupy_topic(topic, learning_modes, publish_date)`，创建 `output/language_learning/run-YYYYMMDD/` 并拿到 `run_id`，不写 D1。日期只表示计划发布日，不包含具体时间。
-3. `language_learning_build_vocabulary_prompt(topic, learning_modes)` 获取包含最近 100 天词库的 Prompt，按原样生成纯文本词表；再调用 `language_learning_parse_vocabulary_response(response_text, learning_modes, topic, run_id)`，由 MCP 强制校验至少 5 个新词，但暂不写库。
-4. `language_learning_prepare_images`（无需手写主体图 Prompt）。
-5. 宿主生图时：每生成一张立刻 `language_learning_save_images`，再 `language_learning_start_submit_images`（无能力或单张失败 3 次才传 `failures` 走千问兜底生图）→ `language_learning_poll_task`。MCP 不调用千问文本或视觉模型。
-6. 调用 `language_learning_get_visual_validation_prompt`，宿主 Agent 按返回的 Prompt 只提取按上排从左到右、下排从左到右排序的十个保守边界框，不检查文字、水印、画风、内容或主体完整性；`language_learning_validate_subject_sheet` 会先硬校验真实 Alpha 透明通道，再按十个框裁出十张主体。缺少真实透明通道时立即报错，不得执行纯色去背景。
-7. 调用 `language_learning_get_sheet_validation_prompt`，宿主 Agent 必须打开**由十张实际透明切图重新排列成的整体验收图**，按返回 Prompt 一次性检查：主体数量是否为 10、边缘或结构有没有被切掉、是否误带相邻主体、文字、水印、全彩配色与材质质感、语义表达和透明边缘异常；全体单色染色、大片无层次纯色块、线稿图标、白色剪影、UI 符号或廉价塑料感必须按 `style` 判定失败。再调用 `language_learning_review_subject_sheet` 提交一条结论。切图不完整或误带相邻主体时先让 LLM 重新定位并切图；图片本身存在文字、水印、画风或透明边缘问题时才重新生成透明主题图。失败时 `failure_kind` 取 `background_edge` / `text` / `watermark` / `style` / `count` / `completeness` 之一。主题图最多生成 3 次，第三次仍失败必须报错停止。GitHub Action 没有宿主 Agent 时，由 Runner 对同一张切图验收图调用千问视觉执行同一个 MCP Prompt。
-8. `language_learning_start_compose_cards` 分别做 `en-zh` 与 `en-ko`（若本次包含两个方向）→ 各自 poll。卡片内十个主体保持原比例并完整包含在固定图片区域内：横向主体按区域宽度缩放，纵向主体按区域高度缩放，宽高均不得越界，最后水平和垂直居中。
-9. `language_learning_start_create_videos`：传入 MCP 配置返回的 `voices`、`publish_config`、`language_pause`、`word_pause` 和 `video_formats`；倒计时音轨使用 MCP 默认值，不必传 `countdown_audio_path` → poll 至 `done=true`。
-10. 发布时先调用统一发布 MCP 的 `publishing_preview` 检查产物、账号路由和重复项，再直接调用 `publishing_start_publish`；中文传 `content_kind="en-zh"`，韩语传 `content_kind="en-ko"`，都会同时包含原版和问答版。目标平台需要公网视频地址时由统一发布 MCP 按需上传 R2。
-11. 展示发布结果后，确认清缓存。
-
-### 后台任务轮询
-
-- 耗时步骤禁止同步调用 `submit_images`（含千问）、`compose_cards`、`create_videos`、`publish`。
-- `start` 立即返回 `task_path`；每 15～30 秒调用 `language_learning_poll_task(task_path)`。
-- `status=running` 继续等；`succeeded` 读 `result`；`failed` 读 `error` 并停止。
-- 客户端报 MCP 超时后**不要重复 start**，继续 poll 同一 `task_path`。
-
-## MCP 工具一览
-
-| 工具 | 作用 |
-| --- | --- |
-| `language_learning_get_production_config` | 返回 Agent 与 GitHub Runner 共用的固定生产参数 |
-| `language_learning_get_automation_plan` | 返回 GitHub 生产与发布工作流共用的预检结果 |
-| `language_learning_get_topic_generation_prompt` / `language_learning_validate_topic_response` | 共用主题生成 Prompt 与校验 |
-| `language_learning_get_topics` | 查已占用主题和最近 100 天单词 |
-| `language_learning_get_production_outputs` | 按北京时间计划发布日期查询语言学习成片并区分本地与 GitHub 来源 |
-| `language_learning_occupy_topic` | 占坑并创建 run |
-| `language_learning_build_vocabulary_prompt` | 返回包含最近词库的词表 Prompt |
-| `language_learning_parse_vocabulary_response` | 解析词表、校验至少一半新词，成片前不写历史 |
-| `language_learning_prepare_pack` / `language_learning_validate_pack_words` | 为可复用词包返回词表 Prompt，并校验词表及返回一张十元素透明主题图 Prompt |
-| `language_learning_validate_pack_subject_sheet` / `language_learning_review_pack_subject_sheet` | 复用直接制作的切图与整图视觉验收实现，验收通过后才允许提交词包 |
-| `language_learning_commit_pack` / `language_learning_claim_pack` | 上传一张主题图写入词包库，或由 GitHub 按日期领取一个词包 |
-| `language_learning_prepare_images` | 注册主体图任务 |
-| `language_learning_save_images` | 写入已生成图 |
-| `language_learning_submit_images` | 提交主体图（同步，勿用） |
-| `language_learning_start_submit_images` | 启动主体图提交（可选千问兜底生图） |
-| `language_learning_get_visual_validation_prompt` | 返回宿主 Agent 定位十个主体框的 Prompt |
-| `language_learning_get_sheet_validation_prompt` | 返回宿主 Agent 检查十张透明切图整体验收图的 Prompt |
-| `language_learning_validate_subject_sheet` | 硬校验真实透明通道并按十个框裁出十张透明主体图 |
-| `language_learning_review_subject_sheet` | 接收宿主 Agent 对十张透明切图整体验收图的一条结论 |
-| `language_learning_compose_cards` | 拼单词卡（同步，勿用） |
-| `language_learning_start_compose_cards` | 启动拼卡后台任务 |
-| `language_learning_create_videos` | 出片（同步，勿用） |
-| `language_learning_start_create_videos` | 启动出片后台任务 |
-| `language_learning_start_upload_r2` | 后台上传成片、主题图和发布清单到 R2 |
-| `language_learning_poll_task` | 轮询后台任务 |
-| `language_learning_clear_run` | 清本次目录 |
+1. `language_learning_prepare_pack(topic)` → 按返回的词表 Prompt 生成双语词表 → `language_learning_validate_pack_words`。
+2. 使用校验返回的唯一主体图 Prompt，生成一张包含十个主体的真实 Alpha 透明 PNG，不拆成十次生图，不用纯色背景代替透明。
+3. 复用成片的定位与整图验收 Prompt：先 `language_learning_validate_pack_subject_sheet` 切图，再打开返回的实际切图验收图，调用 `language_learning_review_pack_subject_sheet`。
+4. 验收通过后调用 `language_learning_commit_pack` 上传十张透明切图并入库。GitHub 生产领取现成词包，不在无包时静默降级为生图。

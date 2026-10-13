@@ -1,31 +1,22 @@
 ---
 name: publish-finance
-description: 使用统一发布 MCP 把指定计划发布日期的本地财经成片发布或预约到指定账号组；适用于“发布财经视频”“把某天财经内容发到这些平台”等请求，不用于生产视频。
+description: 使用统一发布 MCP 把指定计划发布日期的财经成片发布或预约到指定账号组；适用于“发布财经视频”“把某天财经内容发到这些平台”等请求，不用于生产视频。
 ---
 
 # 发布财经视频
 
-使用 `python -m core.mcp.publishing`，不得直接运行发布脚本或绕过数据库预检。
+使用 `publishing` MCP，业务线与内容类型均为 `finance`。产物查找、R2 恢复、去重、账号路由、平台预约和记录写入由 MCP 负责，不直接运行发布脚本。
 
-发布 MCP 访问 Cloudflare D1 时，优先使用系统 `curl`；仅在系统 `curl` 不可用或无法建立连接时回退到 Python 客户端。不得为此绕过 D1 预检、去重或发布记录写入。
+## 用户信息与默认时间
 
-## 必须确认的信息
+- 必须明确产物计划发布日期 `publish_date` 和账号组；缺少时追问。日期用于选择产物，与实际预约时间分开。
+- 先调用 `publishing_list_account_groups` 核实账号，不猜账号路由。
+- 用户未指定平台时，使用所选账号组全部启用且当前可用的平台；指定时只用指定平台。
+- 明确说“立即/现在”时立即发布。未给具体时间时，默认预约到产物计划发布日期北京时间 18:00；该时间已过时，追问立即发布还是改约未来时间。明确指定其他时间时遵从用户要求。
 
-发布前必须从用户请求中得到以下信息；缺少必填项时要先追问：
+## 执行与交付
 
-- 产物计划发布日期 `publish_date`，格式 `YYYY-MM-DD`。这一天用于读取 `output/finance/run-YYYYMMDD/` 对应的已落库本地产物，不是预约时间。
-- 账号组。先调用 `publishing_list_account_groups(business_line="finance")` 展示可用名称，禁止猜账号。
-- 平台列表可选。用户未指定平台时，默认使用所选账号组中全部启用且当前可用的平台；用户明确指定平台时只发布到指定平台。
-- 发布方式与时间：用户明确说“立即/现在”时立即发布；未指定发布时间时，默认预约到产物计划发布日期北京时间 18:00；用户指定其他时间时按用户要求预约，并使用对应时区。
-
-平台别名可按用户习惯理解：`ytb/yt`、`fb`、`ig`、`tk`、`ks`，以及抖音、快手、百家号、头条号、视频号。
-
-## 执行
-
-1. 首先调用 `publishing_list_account_groups(business_line="finance")` 检查 `matrixmedia_login_states`。抖音、快手或视频号登录失效时，调用 `publishing_start_matrixmedia_login`，把返回的 `qr_path` 二维码直接展示给用户，并用 `publishing_matrixmedia_login_status` 轮询。扫码成功后重新调用 `publishing_list_account_groups` 刷新账号状态。
-2. 用户未指定平台时，从刷新后的账号组成员中读取全部启用且当前可用的平台；用户指定平台时使用其指定列表。调用 `publishing_preview`，传 `business_line="finance"`、`content_kind="finance"` 和确认后的日期、账号组及平台列表。
-3. 预检必须显示本地成片、账号路由和数据库重复项；没有可发布内容时停止并说明原因。
-4. 用户要求立即发布时调用 `publishing_start_publish`，传 `publish_mode="immediate"`、`publish_at="now"`。
-5. 用户未指定发布时间时，使用产物计划发布日期当天北京时间 18:00；用户指定其他时间时遵从用户时间。未来时间传 `publish_mode="scheduled"` 和带时区的 ISO 8601 `publish_at`，例如 `2026-08-26T18:00:00+08:00`。若默认时间已经过去，必须先询问用户是立即发布还是改约未来时间。抖音、快手、百家号、头条号和视频号必须立即上传并使用平台官方预约；禁止创建或接受应用内定时队列结果。
-6. 用 `publishing_poll_task` 轮询至 `done=true`。逐平台成功或预约成功后 MCP 会立即写入 `publication_records`；不得再手工重复入库。
-7. MatrixMedia 会在上传前对抖音、快手、百家号、头条号和视频号读取真实发布页；不能只依据 Cookie 或 `connected` 判断登录成功。真实检测失败时立即停止：抖音、快手或视频号调用 `publishing_start_matrixmedia_login`，展示二维码并用 `publishing_matrixmedia_login_status` 轮询；百家号或头条号则报告失败并要求用户在 MatrixMedia GUI 重新登录。
+1. 核实账号组与平台，调用 `publishing_preview`。没有可发布内容时说明原因并停止。
+2. 根据上述时间规则调用 `publishing_start_publish`，用 `publishing_poll_task` 每 15～30 秒轮询同一任务至完成；客户端超时不重复启动。
+3. 登录检测失败时按 MCP 返回值恢复。抖音、快手或视频号需要扫码时，调用登录工具并把 `qr_path` 直接展示为 Markdown 图片及可点击文件链接；轮询扫码成功后刷新账号状态并重新预检。百家号或头条号登录失败时，请用户在 MatrixMedia GUI 重新登录。
+4. 展示逐平台成功、预约或失败结果，不重复手工入库。不接受应用内定时队列代替平台官方预约。
