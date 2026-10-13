@@ -81,7 +81,7 @@ finance_start_finish_video(..., production_config, material_manifest_path, intro
    └─ tools.assemble_finance_video.finish_finance_video
       └─ 按素材清单自动识别策略（images → 图库/生图；videos → 实拍视频）
       └─ 复用 prepare_storyboard 的 tts_path
-      └─ generate_cover_image
+      └─ 从本期下载的正文实拍视频帧随机选底图，再由 generate_cover_image 保留原封面叠字样式
       └─ generate_shot.generate_shot_from_intro（片头动画 + 快门音效）
       └─ 黄金钩子图层：字幕位置覆盖 + generate_subtitles 按行生成 hook-title-N.ass（字魂群英体 165px，按标点断行，单行红字黑边 / 多行首行黄黑边其余红白边，\pos 堆叠）
       └─ generate_final_video

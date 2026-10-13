@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from core.tools.generate_cover_image import CoverError, generate_cover_image
-from core.tools.generate_cover_image._constants import DEFAULT_COVER_BACKGROUND_IMAGE
 from core.tools.cloudflare_data import commit_production_outputs
 from core.tools.generate_final_video import generate_final_video, safe_filename
 from core.tools.generate_final_video._defaults import (
@@ -924,7 +923,8 @@ def _apply_material(
             raise WorkflowStepError(f"片头写实图不存在：{resolved_intro_image}")
         shots[0]["image_path"] = str(resolved_intro_image)
         shots[0]["frame_path"] = str(resolved_intro_image)
-        return True, [str(shot["frame_path"]) for shot in shots]
+        # 封面底图只允许来自本期下载的正文实拍视频帧，排除 AI 生成的片头图。
+        return True, [str(shot["frame_path"]) for shot in shots[1:]]
     images = manifest.get("images")
     expected_image_ids = {shot["id"] for shot in shots}
     if not isinstance(images, dict) or set(images) != expected_image_ids:
@@ -1051,11 +1051,8 @@ def finish_finance_video(
         if isinstance(image_config, dict):
             material_strategy = str(image_config.get("source") or "").strip()
     try:
-        # 2026-09-23 起封面底图固定（用户指定），存在即不再从镜头候选图随机抽。
-        fixed_background = DEFAULT_COVER_BACKGROUND_IMAGE
-        cover_image_sources = (
-            [str(fixed_background)] if fixed_background.is_file() else cover_sources
-        )
+        # 实拍视频策略从本期下载的视频帧随机取封面底图；保留原有标题排版、重点词和描边。
+        cover_image_sources = cover_sources
         cover = generate_cover_image(
             cover_image_sources,
             metadata["title"],

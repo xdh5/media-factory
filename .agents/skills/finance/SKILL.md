@@ -96,6 +96,7 @@ MCP 入口：`python -m core.mcp.finance`。**Finance MCP 是 Prompt、素材策
 完整参数直接使用 `finance_get_production_config.video_config`，Skill 不保留副本。
 
 - `soft_blur_sigma` 控制正文素材的白蒙版磨砂强度（`core/tools/soft_blur_video`），传 `0` 关闭；片头图与封面帧保持清晰。
+- 封面继续使用原有长标题断行、重点词、配色和描边；只把底图改为从本期下载的正文实拍视频帧中随机选择，禁止使用 AI 生成的片头图或固定背景图作为封面底图。
 - 流程：`finance_start_video_search(draft_path, storyboard_text, video_config)` → 轮询 → Agent 选候选 → `finance_start_download_videos(context_path, selections)` → 轮询。
 - 搜索结果里的 `intro_image_prompt` 用来生成片头写实图（宿主 Agent 生图或 ImageGen 均可），成片时通过 `intro_image_path` 传入。
 - 分镜第一个镜头是片头图 + 转场动画，正文从第二个镜头起使用实拍素材；分镜至少要有两个镜头。
