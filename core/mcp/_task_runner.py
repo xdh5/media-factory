@@ -6,6 +6,8 @@ import sys
 
 import inspect
 import json
+import os
+import tempfile
 import threading
 import traceback
 import uuid
@@ -119,7 +121,19 @@ def _write_task(path: Path, data: dict) -> None:
     except TypeError as exc:
         print(f"[后台任务] JSON 序列化失败，改用 str 兜底：{exc}", file=sys.stderr, flush=True)
         text = json.dumps(data, ensure_ascii=False, indent=2, default=str)
-    path.write_text(text, encoding="utf-8")
+    # 在同一目录写完临时文件再原子替换，避免轮询读到空文件或半份 JSON。
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(text)
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def submit_task(
