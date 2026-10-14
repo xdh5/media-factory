@@ -153,7 +153,9 @@ def _run_official_python(arguments: list[str]) -> dict | list:
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise MediaPublisherCommandError(f"运行矩媒官方发布失败：{exc}") from exc
-    payload = _last_json(result.stdout) or _last_json(result.stderr)
+    payload = _last_json(result.stdout)
+    if payload is None:
+        payload = _last_json(result.stderr)
     if result.returncode != 0:
         message = ""
         if isinstance(payload, dict):
@@ -190,7 +192,9 @@ def run_publisher_cli(arguments: list[str]) -> dict | list:
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise MediaPublisherCommandError(f"运行 media-publisher CLI 失败：{exc}") from exc
-    payload = _last_json(result.stdout) or _last_json(result.stderr)
+    payload = _last_json(result.stdout)
+    if payload is None:
+        payload = _last_json(result.stderr)
     latest_log = _latest_publisher_log()
     if payload is None and latest_log:
         try:
