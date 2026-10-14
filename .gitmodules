@@ -1,6 +1,3 @@
 [submodule "integrations/media-publisher"]
 	path = integrations/media-publisher
 	url = https://github.com/xdh5/media-publisher.git
-[submodule "integrations/MediaCrawler"]
-	path = integrations/MediaCrawler
-	url = https://github.com/NanmiCoder/MediaCrawler.git

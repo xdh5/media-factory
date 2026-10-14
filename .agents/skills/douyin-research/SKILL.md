@@ -13,6 +13,6 @@ description: 使用项目抖音研究 MCP 把用户提供的抖音链接下载�
 2. 使用返回的 `task_path` 调用 `douyin_research_poll_task`，直到 `done=true`；不得为同一请求重复启动任务。
 3. 成功后向用户展示转写文本、分类和入库结果。
 
-该 MCP 只编排项目 `download`、`transcribe` 和 Cloudflare D1 工具。禁止改用 MediaCrawler、浏览器或临时脚本完成下载、转写或入库。
+该 MCP 只编排项目 `download`、`transcribe` 和 Cloudflare D1 工具。禁止改用浏览器或临时脚本完成下载、转写或入库。
 
 如果 MCP 未连接、进程退出或调用失败，报告具体错误并停止，不得绕过 MCP 直接调用内部实现或读写数据库。

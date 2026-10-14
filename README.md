@@ -283,4 +283,6 @@ Its two production lines currently encode business rules for language learning a
 
 ## License
 
-No open-source license has been declared for this repository. Unless a license is added, the source code should be treated as proprietary.
+Media Factory is licensed under the [MIT License](LICENSE).
+
+`integrations/media-publisher` is a separate repository and remains under GPL-2.0-only.

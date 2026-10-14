@@ -283,4 +283,6 @@ Media Factory 是一个实际运行的内容生产系统，不是通用的拖拽
 
 ## 许可证
 
-本仓库目前未声明开源许可证。在添加许可证前，应将源代码视为专有代码。
+Media Factory 使用 [MIT 许可证](LICENSE)。
+
+`integrations/media-publisher` 是独立仓库，仍使用 GPL-2.0-only。
