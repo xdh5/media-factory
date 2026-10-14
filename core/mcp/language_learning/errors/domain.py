@@ -35,10 +35,6 @@ class VocabularyVideoError(LanguageLearningError):
     code = "VOCABULARY_VIDEO_ERROR"
 
 
-class ConfirmationRequiredError(LanguageLearningError):
-    code = "CONFIRMATION_REQUIRED"
-
-
 class PublishError(LanguageLearningError):
     code = "PUBLISH_ERROR"
 

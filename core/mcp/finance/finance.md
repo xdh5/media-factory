@@ -114,9 +114,6 @@ finance_start_finish_video(..., production_config, material_manifest_path, intro
 
 finance_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task
-
-finance_clear_run
-└─ clear_cache.clear_run
 ```
 
 ## 内部模块

@@ -1,14 +1,12 @@
 """语言学习 MCP 基础设施公开入口。"""
 
 from .gateways import (
-    ClearCacheConfirmationRequiredError,
     CloudflareDataError,
     ImageGenerationError,
     R2StorageError,
     RunnerTaskNotFoundError,
     TopicDedupError,
     claim_language_learning_pack,
-    clear_run,
     commit_language_learning_pack,
     generate_qwen_image,
     get_topic,

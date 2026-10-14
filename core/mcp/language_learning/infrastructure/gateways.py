@@ -3,8 +3,6 @@
 from core.mcp._task_runner import TaskNotFoundError as RunnerTaskNotFoundError
 from core.mcp._task_runner import poll_task as runner_poll_task
 from core.mcp._task_runner import submit_task as runner_submit_task
-from core.tools.clear_cache import ConfirmationRequiredError as ClearCacheConfirmationRequiredError
-from core.tools.clear_cache import clear_run
 from core.tools.cloudflare_data import (
     CloudflareDataError,
     claim_language_learning_pack,

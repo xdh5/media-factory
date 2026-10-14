@@ -31,7 +31,6 @@ from .api import (
     language_learning_start_create_videos,
     language_learning_start_upload_r2,
     language_learning_poll_task,
-    language_learning_clear_run,
 )
 
 ALL_TOOLS = (
@@ -65,7 +64,6 @@ ALL_TOOLS = (
     language_learning_start_create_videos,
     language_learning_start_upload_r2,
     language_learning_poll_task,
-    language_learning_clear_run,
 )
 
 __all__ = ["ALL_TOOLS"]

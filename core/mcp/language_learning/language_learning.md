@@ -101,9 +101,6 @@ language_learning_start_upload_r2
 
 language_learning_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task
-
-language_learning_clear_run
-└─ clear_cache.clear_run
 ```
 
 ## 工程分层

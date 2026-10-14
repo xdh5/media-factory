@@ -18,14 +18,12 @@ warnings.filterwarnings(
 )
 
 from ..infrastructure import (
-    ClearCacheConfirmationRequiredError,
     CloudflareDataError,
     ImageGenerationError,
     R2StorageError,
     RunnerTaskNotFoundError,
     TopicDedupError,
     claim_language_learning_pack,
-    clear_run,
     commit_language_learning_pack,
     generate_qwen_image,
     get_topic,
@@ -55,7 +53,7 @@ from ..config import (
     normalize_publish_date,
     production_run_id,
 )
-from ..errors import ConfirmationRequiredError, LanguageLearningError, TaskNotFoundError
+from ..errors import LanguageLearningError, TaskNotFoundError
 from ..services import (
     approved_subject_cutout_paths,
     attach_publish_manifest,
@@ -156,8 +154,6 @@ def _map_error(exc: Exception) -> LanguageLearningError:
         return LanguageLearningError(str(exc), exc.details)
     if isinstance(exc, R2StorageError):
         return LanguageLearningError(exc.message, exc.details)
-    if isinstance(exc, ClearCacheConfirmationRequiredError):
-        return ConfirmationRequiredError(str(exc))
     if isinstance(exc, CloudflareDataError):
         return LanguageLearningError(exc.message, exc.details)
     raise exc
@@ -814,11 +810,3 @@ def language_learning_poll_task(task_path: str) -> dict:
         return runner_poll_task(task_path=task_path)
     except RunnerTaskNotFoundError as exc:
         raise TaskNotFoundError(str(exc), {"task_path": task_path}) from exc
-
-
-def language_learning_clear_run(run_id: str, confirmed: bool) -> dict:
-    """清本次生产目录（core.tools.clear_cache）。"""
-    try:
-        return clear_run(WORKFLOW_ID, run_id, confirmed=confirmed)
-    except ClearCacheConfirmationRequiredError as exc:
-        raise ConfirmationRequiredError(str(exc)) from exc

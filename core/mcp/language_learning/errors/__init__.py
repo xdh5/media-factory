@@ -2,7 +2,6 @@
 
 from .domain import (
     CardCompositionError,
-    ConfirmationRequiredError,
     InvalidVocabularyError,
     LanguageLearningError,
     PublishError,
@@ -14,7 +13,6 @@ from .domain import (
 
 __all__ = [
     "CardCompositionError",
-    "ConfirmationRequiredError",
     "InvalidVocabularyError",
     "LanguageLearningError",
     "PublishError",
