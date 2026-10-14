@@ -24,7 +24,6 @@ def main() -> None:
             "language_learning_publish",
             "weekly_plan",
             "weekly_day",
-            "publish_notify",
         ],
     )
     parser.add_argument("--topic", default="")
@@ -37,9 +36,6 @@ def main() -> None:
     parser.add_argument("--publish-date", default="")
     parser.add_argument("--default-days-ahead", type=int, choices=(0, 1), default=0)
     parser.add_argument("--week-start", default="")
-    parser.add_argument("--notify-label", default="语言发布")
-    parser.add_argument("--skipped", default="false")
-    parser.add_argument("--run-url", default="")
     arguments = parser.parse_args()
     if arguments.workflow.startswith("finance"):
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"
@@ -126,17 +122,7 @@ def main() -> None:
     elif arguments.workflow == "weekly_day":
         from .weekly import run_day
 
-        run_url = os.getenv("GITHUB_RUN_URL", "").strip()
-        payload = asyncio.run(run_day(arguments.publish_date, run_url))
-    elif arguments.workflow == "publish_notify":
-        from .telegram import notify_manual_publish
-
-        payload = notify_manual_publish(
-            os.getenv("WORKFLOW_NEEDS_JSON", "{}"),
-            arguments.notify_label,
-            arguments.run_url,
-            str(arguments.skipped).strip().casefold() in {"1", "true", "yes"},
-        )
+        payload = asyncio.run(run_day(arguments.publish_date))
     print(json.dumps(payload, ensure_ascii=False))
     if arguments.workflow == "weekly_day":
         failed = any(

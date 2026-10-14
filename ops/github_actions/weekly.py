@@ -19,7 +19,6 @@ from .language_learning import (
     generate_words,
     upload_handoff,
 )
-from .telegram import notify_business_result
 
 async def _run_language_produce(publish_date: str, work_dir: Path) -> dict:
     state_path = work_dir / "language-learning-state.json"
@@ -35,7 +34,6 @@ async def _run_language_produce(publish_date: str, work_dir: Path) -> dict:
 
 async def run_day(
     publish_date: str,
-    run_url: str = "",
     *,
     cache_scope: str = "daily",
 ) -> dict:
@@ -79,10 +77,6 @@ async def run_day(
             except Exception as exc:
                 failed.append({"content_part": int(content_part), "error": str(exc)})
         success = not failed
-        detail = "" if success else "; ".join(
-            f"part={item['content_part']}: {item['error']}" for item in failed
-        )
-        notify_business_result("财经生产", success, run_url, detail)
         results["finance"] = {
             "status": "produced" if success else ("partially_produced" if produced else "produce_failed"),
             "produced": produced,
@@ -108,18 +102,16 @@ async def run_day(
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
         upload_result = await _run_language_produce(publish_date, work_dir)
         run_id = str(upload_result["run_id"])
-        notify_business_result("语言生产", True, run_url)
         results["language"] = {"status": "produced", "run_id": run_id}
     except Exception as exc:
-        notify_business_result("语言生产", False, run_url, str(exc))
         results["language"] = {"status": "produce_failed", "error": str(exc)}
 
     return results
 
 
-async def run_week(week_start: str = "", run_url: str = "") -> dict:
+async def run_week(week_start: str = "") -> dict:
     dates = compute_next_week_dates(week_start)
     day_results = []
     for publish_date in dates:
-        day_results.append(await run_day(publish_date, run_url, cache_scope="weekly"))
+        day_results.append(await run_day(publish_date, cache_scope="weekly"))
     return {"dates": dates, "days": day_results}

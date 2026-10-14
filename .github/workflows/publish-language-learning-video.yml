@@ -16,9 +16,6 @@ concurrency:
   group: publish-language-learning-video
   cancel-in-progress: false
 
-env:
-  GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
 jobs:
   preflight:
     name: 第一步：查询计划发布日期的产物与平台记录
@@ -112,25 +109,3 @@ jobs:
           done
           echo "语言学习发布连续 3 次失败" >&2
           exit 1
-
-  notify:
-    name: 第三步：Telegram 通知
-    needs: [preflight, publish]
-    if: ${{ always() }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: 检出通知代码
-        uses: actions/checkout@v5
-
-      - name: 发送发布结果通知
-        continue-on-error: true
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          WORKFLOW_NEEDS_JSON: ${{ toJSON(needs) }}
-        run: >-
-          python -m ops.github_actions publish_notify
-          --notify-label "语言发布"
-          --run-url "$GITHUB_RUN_URL"
-          --skipped "${{ needs.preflight.result == 'success' && needs.preflight.outputs.should_publish != 'true' }}"

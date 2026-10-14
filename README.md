@@ -53,7 +53,7 @@ Before publishing, the system previews selected outputs, resolves the account gr
 
 GitHub Actions runs a weekly production workflow for the following Monday through Sunday. Each target date is processed independently and sequentially, so one failed product or date does not stop the remainder of the schedule.
 
-Generated assets are delivered through Cloudflare R2, while Telegram notifications report production and publishing results.
+Generated assets are delivered through Cloudflare R2.
 
 ## Architecture
 
