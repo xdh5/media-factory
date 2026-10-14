@@ -23,6 +23,7 @@ from ._constants import (
     COVERR_API_URL,
     DEFAULT_RESULTS_PER_PROVIDER,
     DEFAULT_TIMEOUT_SECONDS,
+    SELECTION_DURATION_MARGIN_SECONDS,
     MAX_DOWNLOAD_BYTES,
     MAX_RESULTS_PER_PROVIDER,
     PEXELS_API_KEY_ENV,
@@ -243,17 +244,18 @@ def _search_coverr(query: str, orientation: str, limit: int, api_key: str) -> li
 
 
 def select_stock_candidates(candidates: list[dict], duration: float, width: int, height: int, *, max_clips: int = 2) -> list[dict]:
-    """按候选顺序取首个可用素材；不足时取首个能补足的第二段。"""
+    """按候选顺序取素材。网站标注时长须比镜头实际需要多 1 秒，单段不够再拼第二段。"""
+    required = float(duration) + SELECTION_DURATION_MARGIN_SECONDS
     valid = [row for row in candidates if int(row.get("width") or 0) >= width
              and int(row.get("height") or 0) >= height and float(row.get("duration") or 0) > 0]
     for index, first in enumerate(valid):
-        if float(first["duration"]) >= duration:
+        if float(first["duration"]) >= required:
             return [first]
         if max_clips > 1:
             for second in valid[index + 1:]:
                 if (first.get("provider"), first.get("id")) == (second.get("provider"), second.get("id")):
                     continue
-                if float(first["duration"]) + float(second["duration"]) >= duration:
+                if float(first["duration"]) + float(second["duration"]) >= required:
                     return [first, second]
     return []
 

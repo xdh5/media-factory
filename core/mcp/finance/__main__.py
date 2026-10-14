@@ -153,7 +153,7 @@ def finance_get_visual_metadata_prompt(article: str, title: str, feedback: str =
 
 @mcp.tool()
 def finance_validate_visual_metadata_response(title: str, response_text: str) -> dict:
-    """校验视觉元数据及标题逐字一致性。"""
+    """校验视觉元数据。封面文字须与标题一致，不校验标点。"""
     return validate_visual_metadata_response(title, response_text)
 
 

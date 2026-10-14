@@ -3,7 +3,6 @@
 import json
 import shutil
 import subprocess
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -319,13 +318,9 @@ def _one_quiz_mode(
 
     word_tts: list[dict | None] = [None] * len(rows)
     try:
-        with ThreadPoolExecutor(max_workers=min(3, len(rows))) as executor:
-            futures = {
-                executor.submit(_one_word_tts, index, word): index - 1
-                for index, word in enumerate(rows, 1)
-            }
-            for future in as_completed(futures):
-                word_tts[futures[future]] = future.result()
+        # 配音已在后台任务线程里，按词顺序做，避免再开线程池。
+        for index, word in enumerate(rows, 1):
+            word_tts[index - 1] = _one_word_tts(index, word)
     except Exception as exc:
         raise VocabularyVideoError(f"问答版配音失败：{exc}") from exc
     if any(item is None for item in word_tts):
@@ -477,47 +472,40 @@ def create_vocabulary_videos(
     )
     if progress is not None:
         progress(f"开始出片：{modes} × {formats}，共 {total_jobs} 条")
-    with ThreadPoolExecutor(max_workers=len(modes) * len(formats)) as executor:
-        futures = {
-            executor.submit(
-                _one_mode,
+    # 出片已在 MCP 后台线程中运行，按顺序做，避免进程退出时再开线程池。
+    for mode in modes:
+        card_dir = Path(card_dirs[mode]).resolve()
+        words = words_by_mode.get(mode) or []
+        mode_cache = cache_root / mode
+        if "standard" in formats:
+            results_by_key[(mode, "standard")] = _one_mode(
                 mode,
-                Path(card_dirs[mode]).resolve(),
-                words_by_mode.get(mode) or [],
-                cache_root / mode,
+                card_dir,
+                words,
+                mode_cache,
                 output_root,
                 str(topic).strip(),
                 language_pause,
                 word_pause,
                 voices,
-            ): (mode, "standard")
-            for mode in modes
-            if "standard" in formats
-        }
-        futures.update({
-            executor.submit(
-                _one_quiz_mode,
+            )
+            if progress is not None:
+                progress(f"已完成出片 {mode}/standard（{len(results_by_key)}/{total_jobs}）")
+        if "quiz" in formats and resolved_countdown_audio is not None:
+            results_by_key[(mode, "quiz")] = _one_quiz_mode(
                 mode,
-                Path(card_dirs[mode]).resolve(),
-                words_by_mode.get(mode) or [],
-                cache_root / mode,
+                card_dir,
+                words,
+                mode_cache,
                 output_root,
                 str(topic).strip(),
                 word_pause,
                 voices,
                 configured_question_voices,
                 resolved_countdown_audio,
-            ): (mode, "quiz")
-            for mode in modes
-            if "quiz" in formats and resolved_countdown_audio is not None
-        })
-        for future in as_completed(futures):
-            mode, video_format = futures[future]
-            results_by_key[(mode, video_format)] = future.result()
+            )
             if progress is not None:
-                progress(
-                    f"已完成出片 {mode}/{video_format}（{len(results_by_key)}/{len(futures)}）"
-                )
+                progress(f"已完成出片 {mode}/quiz（{len(results_by_key)}/{total_jobs}）")
     results = [
         results_by_key[(mode, video_format)]
         for mode in modes

@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from core.tools.stock_video import download_stock_video, prepare_stock_clip, search_stock_videos, select_stock_candidates
+from core.tools.stock_video._constants import SELECTION_DURATION_MARGIN_SECONDS
 
 from .._constants import (
     MATERIAL_STOCK_VIDEO,
@@ -116,7 +117,9 @@ def prepare_video_searches(
         },
         "searches": searches,
         "selection_instructions": (
-            "按搜索顺序取尺寸达标的素材，单段不足时拼两段；调用下载工具时无需传 selections。"
+            "按搜索顺序取尺寸达标的素材。网站标注时长须比镜头实际需要多 "
+            f"{SELECTION_DURATION_MARGIN_SECONDS:g} 秒，单段不足时拼两段，合计也要多出这 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒；"
+            "调用下载工具时无需传 selections。"
         ),
         "context_path": context_path.resolve().as_posix(),
     }
@@ -154,7 +157,9 @@ def download_selected_videos(context_path: str | Path, selections: list[dict] | 
                           and str(row.get("id")) == str(selection.get("id"))]
         chosen = select_stock_candidates(candidates, float(search["duration"]), width, height)
         if not chosen:
-            raise WorkflowStepError(f"镜头 {video_id} 没有单段或两段合计时长足够且尺寸达标的视频，请重新搜索")
+            raise WorkflowStepError(
+                f"镜头 {video_id} 没有单段或两段合计比实际需要多 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒、且尺寸达标的视频，请重新搜索"
+            )
         planned[video_id] = chosen
 
     output_root = resolved_context.parent
@@ -241,7 +246,8 @@ def build_stock_video_selection_prompt(context_path: str | Path, feedback: str =
             ],
         })
     prompt = (
-        "为每个正文镜头选择语义最贴近、横屏构图最合适、时长足够的正版实拍候选视频。"
+        "为每个正文镜头选择语义最贴近、横屏构图最合适的正版实拍候选视频。"
+        f"网站标注时长必须比镜头实际需要至少多 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒；单段不够时，两段合计也要多出这 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒。"
         "必须检查可用预览画面；同一期尽量不重复素材；只能选择输入候选。\n"
         f"搜索结果：{json.dumps(compact, ensure_ascii=False)}\n"
         "只输出 JSON：{\"selections\":[{\"video_id\":\"shot-002\","

@@ -7,6 +7,7 @@ import re
 
 from .._constants import ARTICLE_CHUNK_MAX_SOURCE_LENGTH, ARTICLE_MAX_LINE_LENGTH, TOPIC_DEDUPLICATION_DAYS
 from .._errors import WorkflowStepError
+from .narration import bare_text
 from .parse_metadata import parse_metadata
 from .prompts import build_metadata_prompt
 from .save_draft import _cover_highlights, _cover_lines
@@ -232,8 +233,8 @@ def build_visual_metadata_prompt(article: str, title: str, feedback: str = "") -
 def validate_visual_metadata_response(title: str, response_text: str) -> dict:
     payload = _json_payload(response_text)
     lines = _cover_lines(payload.get("cover_lines"))
-    if "".join(lines) != title:
-        raise WorkflowStepError("封面各行拼接必须与确定标题逐字一致，包括标点")
+    if bare_text("".join(lines)) != bare_text(title):
+        raise WorkflowStepError("封面各行拼接后的文字必须与确定标题一致")
     highlights = _cover_highlights(title, payload.get("cover_highlights"))
     return {"cover_lines": lines, "cover_highlights": highlights}
 
