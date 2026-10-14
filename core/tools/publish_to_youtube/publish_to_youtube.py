@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from google.auth.transport.requests import Request
+from google_auth_httplib2 import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -37,6 +37,7 @@ from ._constants import (
     load_project_env,
 )
 from ._errors import AccountNotFoundError, CredentialError, InvalidParameterError, UploadError
+from ._transport import YouTubeHttp, authorized_http
 
 __all__ = ["delete_youtube_video", "list_youtube_accounts", "publish_to_youtube"]
 
@@ -135,7 +136,11 @@ def _load_credentials(channel_id: str, account: str | None = None) -> Credential
     )
     try:
         if not credentials.valid:
-            credentials.refresh(Request())
+            transport = YouTubeHttp()
+            try:
+                credentials.refresh(Request(transport))
+            finally:
+                transport.close()
         return credentials
     except CredentialError:
         raise
@@ -279,7 +284,7 @@ def publish_to_youtube(
     caption = Path(caption_path).resolve() if caption_path else None
     credentials = _load_credentials(channel_id, account)
     try:
-        with build("youtube", "v3", credentials=credentials) as youtube:
+        with build("youtube", "v3", http=authorized_http(credentials), cache_discovery=False) as youtube:
             existing = _find_existing_video(youtube, channel_id, normalized_title[:100])
             if existing:
                 print(
