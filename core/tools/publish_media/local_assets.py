@@ -65,6 +65,13 @@ def local_video_path(record: dict) -> Path:
 
 
 def r2_object_key(record: dict) -> str:
+    """优先使用已登记的完整对象路径，保留语言类型目录和分段文件名。"""
+    r2_url = str(record.get("r2_url") or "").strip()
+    if r2_url:
+        key = unquote(urlparse(r2_url).path.lstrip("/"))
+        if not key or key.endswith("/"):
+            raise InvalidPublishRequestError("production_outputs 的 r2_url 缺少成片对象路径")
+        return key
     return f"runs/{record['business_line']}/{_r2_dir_for_record(record)}/{stored_video_filename(record)}"
 
 
