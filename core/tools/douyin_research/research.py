@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from core.tools.cloudflare_data import CloudflareDataError, commit_douyin_research
-from core.tools.download import DownloadError, download
+from media_collector import DownloadError, download
 from core.tools.transcribe import TranscriptionError, transcribe
 
 from ._constants import COLLECTION_CODE_BY_NAME, DIRECT_LINK_SOURCE, VIDEO_FILE_NAME

@@ -146,12 +146,12 @@ def transcribe(media_path: str | Path, *, language: str = "zh", filename: str = 
     if not raw:
         raise InvalidParameterError(
             "media_path",
-            "media_path 不能为空。请传本地文件路径；分享链接请先调用 core.tools.download.download",
+            "media_path 不能为空。请传本地文件路径；分享链接请先调用 media_collector.download",
         )
     if raw.startswith(("http://", "https://")):
         raise InvalidParameterError(
             "media_path",
-            "transcribe 只接受本地文件。请先调用 core.tools.download.download 拿到 video_path 再转写",
+            "transcribe 只接受本地文件。请先调用 media_collector.download 拿到 video_path 再转写",
         )
     source = Path(raw).resolve()
     if not source.is_file():

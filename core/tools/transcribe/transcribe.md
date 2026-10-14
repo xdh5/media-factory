@@ -4,7 +4,7 @@
 
 ## 用法
 
-`transcribe(media_path, language="zh")`：把**本地**音视频转成文字。分享链接请先调用 `core.tools.download.download`，再用返回的 `video_path`。返回 `text`（Whisper 原文）和 `segments`。
+`transcribe(media_path, language="zh")`：把**本地**音视频转成文字。分享链接请先调用 `media_collector.download`，再用返回的 `video_path`。返回 `text`（Whisper 原文）和 `segments`。
 
 ## 配置
 
