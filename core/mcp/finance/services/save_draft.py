@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from .._constants import (
+from ..config.settings import (
     ARTICLE_MAX_LINE_LENGTH,
     CONTENT_KIND,
     DRAFT_FILE_NAME,
@@ -14,7 +14,7 @@ from .._constants import (
     production_dirs,
     production_run_id,
 )
-from .._errors import DraftNotFoundError, WorkflowStepError
+from ..errors import DraftNotFoundError, WorkflowStepError
 from .parse_metadata import parse_metadata
 
 # 连载/前文指涉：本文必须是「财富研习岛」独立成篇的文章，出现这些表述必须由 Agent 改写。

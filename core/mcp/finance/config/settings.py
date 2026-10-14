@@ -68,7 +68,7 @@ DEFAULT_PRODUCTION_CONFIG = {
     },
 }
 
-_ROOT = Path(__file__).resolve().parent
+_ROOT = Path(__file__).resolve().parent.parent
 METADATA_PROMPT_PATH = _ROOT / "prompts" / "metadata.md"
 ARTICLE_PROMPT_PATH = _ROOT / "prompts" / "article.md"
 SHOT_IMAGE_RULES_PATH = _ROOT / "prompts" / "shot_image_rules.md"

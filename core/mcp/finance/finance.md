@@ -6,6 +6,21 @@
 
 财经线是唯一的文章成片线（原心灵鸡汤线已并入删除）；财经 Skill 提供原稿整理规则等业务参数，标题标签与分镜 Prompt 在 `core/mcp/finance/prompts/`。完整流程见 `.agents/skills/finance/SKILL.md`。
 
+## 目录职责
+
+- `__main__.py`：启动入口；`server.py`：创建服务实例。
+- `tools/registry.py`：注册工具，保持原有工具名称和参数。
+- `workflows/`：按稿件、素材、交付、后台任务拆分业务编排。
+- `services/`：稿件处理、分镜、素材准备、合成和上传服务；调用方直接导入所需服务。
+- `services/production_config.py`：成片参数校验。
+- `services/video_layers.py`：字幕、钩子标题和章节图层。
+- `services/video_opening.py`：片头渲染和缓存。
+- `services/video_materials.py`：素材时长处理、分镜清单和署名。
+- `services/assemble_finance_video.py`：组织合成步骤并登记生产产物。
+- `infrastructure/gateways.py`：工作流依赖的外部工具接口。
+- `config/`：生产配置、目录规则和服务说明；`errors/`：领域错误。
+- `prompts/`：现有业务提示词。
+
 ## 工具编排
 
 ```

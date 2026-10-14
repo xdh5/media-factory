@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .._constants import (
+from ..config.settings import (
     ARTICLE_PROMPT_PATH,
     IMAGE_MATERIAL_STRATEGIES,
     MATERIAL_STRATEGIES,
@@ -12,7 +12,7 @@ from .._constants import (
     SHOT_IMAGE_RULES_PATH,
     STOCK_VIDEO_RULES_PATH,
 )
-from .._errors import WorkflowStepError
+from ..errors import WorkflowStepError
 
 
 def read_prompt(path: Path) -> str:

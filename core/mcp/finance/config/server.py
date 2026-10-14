@@ -1,0 +1,4 @@
+"""财经 MCP 服务名称和使用说明。"""
+
+SERVER_NAME = 'media-factory-finance'
+SERVER_INSTRUCTIONS = '财经短视频编排 MCP。素材方案、TTS、BGM、片头等生产参数以 finance_get_production_config 为唯一标准，Agent 与 GitHub Runner 都必须先读取并复用。实拍素材调用 finance_start_download_videos 后默认自动合成，轮询同一任务至 done=true 后直接取得 video_path；禁止在自动合成成功后再次调用合成工具；只有 auto_finish=false 时需要单独合成。交互式生产前必须先向用户确认北京时间计划发布日期 publish_date；日期不明确时禁止选稿、创建 run、生产或落库。第一步必须从抖音研究数据库选择未使用的原稿，禁止自行从零写正文；正文执行三类必做改动（品牌替换、连载指涉改写、错别字修正）之外允许措辞级改写，保留大结构与信息量并按语义断行；保存稿件后来源保持临时占用，只有成片成功后才能标记为已使用。查询稿件余量必须使用只读的 finance_get_source_stats，不得用选稿工具代替统计。镜头素材有三类并列策略，默认值由 finance_get_production_config 返回：image_library（存量图库选图）、qwen_reference（用户参考图 + 千问逐镜头生图）、stock_video（Pexels/Pixabay/Coverr 正版实拍视频 + 首帧片头动画）。稿件生成后直接制作视频；成品完成后只登记生产产物，发布统一交给 publishing MCP。耗时步骤（TTS、素材、成片合成）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。禁止绕过 MCP 运行本地脚本。'

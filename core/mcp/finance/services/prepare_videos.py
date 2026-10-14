@@ -16,14 +16,14 @@ from pathlib import Path
 from core.tools.stock_video import download_stock_video, prepare_stock_clip, search_stock_videos, select_stock_candidates
 from core.tools.stock_video._constants import SELECTION_DURATION_MARGIN_SECONDS
 
-from .._constants import (
+from ..config.settings import (
     MATERIAL_STOCK_VIDEO,
     MCP_ID,
     STORYBOARD_CONTEXT_FILE_NAME,
     STORYBOARD_TEXT_FILE_NAME,
     VIDEO_SIZE,
 )
-from .._errors import WorkflowStepError
+from ..errors import WorkflowStepError
 from .narration import display_subtitle_text
 from .save_draft import load_draft
 from .storyboard import parse_storyboard

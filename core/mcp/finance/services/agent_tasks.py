@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import re
 
-from .._constants import ARTICLE_CHUNK_MAX_SOURCE_LENGTH, ARTICLE_MAX_LINE_LENGTH, TOPIC_DEDUPLICATION_DAYS
-from .._errors import WorkflowStepError
+from ..config.settings import ARTICLE_CHUNK_MAX_SOURCE_LENGTH, ARTICLE_MAX_LINE_LENGTH, TOPIC_DEDUPLICATION_DAYS
+from ..errors import WorkflowStepError
 from .narration import bare_text
 from .parse_metadata import parse_metadata
 from .prompts import build_metadata_prompt

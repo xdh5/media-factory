@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .._errors import AgentOutputFormatError
+from ..errors import AgentOutputFormatError
 
 
 def parse_metadata(value: str) -> dict:

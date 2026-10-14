@@ -8,7 +8,7 @@ from pathlib import Path
 
 from core.tools.generate_image import ImageGenerationError, list_local_images, prepare_agent_image_tasks
 
-from .._constants import (
+from ..config.settings import (
     GENERATED_IMAGE_LIBRARY_ROOT,
     MCP_ID,
     STORYBOARD_CONTEXT_FILE_NAME,
@@ -16,7 +16,7 @@ from .._constants import (
     VIDEO_RADIO,
     VIDEO_SIZE,
 )
-from .._errors import WorkflowStepError
+from ..errors import WorkflowStepError
 from .narration import display_subtitle_text
 from .save_draft import load_draft
 from .storyboard import parse_storyboard
