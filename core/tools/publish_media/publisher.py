@@ -89,7 +89,7 @@ def normalize_publish_timings(
 
 
 def _content_key(title: str, platform: str, account_id: str, content_part: int) -> tuple:
-    """生成与 D1 唯一索引一致的发布内容键。"""
+    """在指定业务线和生产批次内生成与 D1 唯一索引一致的内容键。"""
     return (
         str(title).strip(),
         str(platform).strip(),
@@ -106,7 +106,7 @@ def _existing_keys(business_line: str, publish_date: str) -> set[tuple]:
             str(item.get("account_id") or ""),
             int(item.get("content_part") or 1),
         )
-        for item in list_publication_records(business_line=business_line, publish_date=publish_date)
+        for item in list_publication_records(business_line=business_line, run_id=f"run-{publish_date.replace('-', '')}")
     }
 
 
@@ -211,6 +211,7 @@ def _publish_official(item: dict, route: dict, publish_at: str | None) -> dict:
             str(route["account_id"]), item["local_path"], title,
             description=copy, account=str(route.get("account_ref") or ""),
             privacy_status="public", publish_at=publish_at,
+            publication_id=str(item["production_id"]),
         )
     video_url = _public_video_url(item)
     if platform == "tiktok":

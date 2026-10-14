@@ -994,7 +994,7 @@ async function commitPublicationRecords(request, env) {
          publication_id, run_id, business_line, platform, connector, account_id,
          content_part, title, publish_mode, publish_at, status, external_id, external_url
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(business_line, title, platform, account_id, content_part) DO UPDATE SET
+       ON CONFLICT(business_line, run_id, title, platform, account_id, content_part) DO UPDATE SET
          publication_id = excluded.publication_id,
          run_id = excluded.run_id,
          connector = excluded.connector,

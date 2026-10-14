@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 import mimetypes
+import hashlib
 import os
 import re
 import time
@@ -199,8 +200,17 @@ def delete_youtube_video(video_id: str, channel_id: str, *, account: str | None 
     return {"video_id": normalized_video_id, "channel_id": channel_id, "deleted": True}
 
 
-def _find_existing_video(youtube, channel_id: str, title: str) -> dict | None:
-    """按精确标题查找频道里已有视频（含未公开/定时），避免重试时重复上传。"""
+def _upload_tag(video: Path, publication_id: str) -> str:
+    """以产物标识和文件内容识别同一次上传，避免同名新视频复用旧视频。"""
+    digest = hashlib.sha256(publication_id.encode("utf-8"))
+    with video.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"media-factory:{digest.hexdigest()}"
+
+
+def _find_existing_video(youtube, channel_id: str, title: str, upload_tag: str) -> dict | None:
+    """标题仅用于缩小查询范围，必须同时匹配本次产物的内容标识。"""
     wanted = str(title or "").strip()
     if not wanted:
         return None
@@ -243,9 +253,21 @@ def _find_existing_video(youtube, channel_id: str, title: str) -> dict | None:
             break
     if not matches:
         return None
-    matches.sort(key=lambda item: item.get("published_at") or "")
-    oldest = matches[0]
-    oldest["duplicate_count"] = len(matches)
+    verified = []
+    for offset in range(0, len(matches), 50):
+        ids = ",".join(item["video_id"] for item in matches[offset:offset + 50])
+        details = youtube.videos().list(part="snippet,status", id=ids).execute()
+        for item in details.get("items") or []:
+            if upload_tag not in ((item.get("snippet") or {}).get("tags") or []):
+                continue
+            status = item.get("status") or {}
+            if status.get("uploadStatus") in {"failed", "rejected", "deleted"}:
+                raise UploadError("本次 YouTube 上传被平台拒绝或删除", {"video_id": item["id"], "status": status})
+            verified.append({"video_id": item["id"], "status": status})
+    if not verified:
+        return None
+    oldest = verified[0]
+    oldest["duplicate_count"] = len(verified)
     return oldest
 
 
@@ -264,6 +286,7 @@ def publish_to_youtube(
     account: str | None = None,
     publish_at: str | None = None,
     on_progress: Callable[[float, str], None] | None = None,
+    publication_id: str = "",
 ) -> dict:
     """上传单个视频，可选设置封面、字幕和 YouTube 平台定时发布。"""
     video = Path(video_path).resolve()
@@ -280,15 +303,23 @@ def publish_to_youtube(
     normalized_publish_at = _normalize_publish_at(publish_at)
     effective_privacy_status = "private" if normalized_publish_at else privacy_status
     normalized_tags = [str(tag).strip().lstrip("#") for tag in (tags or []) if str(tag).strip()]
+    upload_tag = _upload_tag(video, publication_id)
+    normalized_tags.append(upload_tag)
     thumbnail = Path(thumbnail_path).resolve() if thumbnail_path else None
     caption = Path(caption_path).resolve() if caption_path else None
     credentials = _load_credentials(channel_id, account)
     try:
         with build("youtube", "v3", http=authorized_http(credentials), cache_discovery=False) as youtube:
-            existing = _find_existing_video(youtube, channel_id, normalized_title[:100])
+            existing = _find_existing_video(youtube, channel_id, normalized_title[:100], upload_tag)
             if existing:
+                actual = existing["status"]
+                if actual.get("privacyStatus") != effective_privacy_status or actual.get("publishAt") != normalized_publish_at:
+                    desired = {"privacyStatus": effective_privacy_status, "selfDeclaredMadeForKids": False}
+                    if normalized_publish_at:
+                        desired["publishAt"] = normalized_publish_at
+                    youtube.videos().update(part="status", body={"id": existing["video_id"], "status": desired}).execute()
                 print(
-                    f"[YouTube] 标题已存在 {existing.get('duplicate_count') or 1} 条，跳过上传 "
+                    f"[YouTube] 相同产物已存在 {existing.get('duplicate_count') or 1} 条，跳过上传 "
                     f"title={normalized_title[:100]!r} video_id={existing['video_id']}",
                     file=sys.stderr, flush=True,
                 )
