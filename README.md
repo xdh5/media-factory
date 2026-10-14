@@ -189,6 +189,7 @@ Each workflow runs as a separate stdio MCP server:
 | Language Learning | `python -m core.mcp.language_learning` | Vocabulary video production |
 | Publishing | `python -m core.mcp.publishing` | Output discovery and multi-platform publishing |
 | Douyin Research | `python -m core.mcp.douyin_research` | Link download, transcription, and ingestion |
+| Anime Compile | `python -m core.mcp.anime` | Concatenate Douyin, Kuaishou, and other links in order and save locally |
 
 Example MCP client configuration:
 
@@ -235,7 +236,7 @@ Local productions are stored by business line and planned publication date:
 cache/output/{business_line}/run-YYYYMMDD/
 ```
 
-The date represents the intended publication date in the Asia/Shanghai timezone. Exact scheduled publication times are stored separately as timezone-aware timestamps.
+The date represents the intended publication date in the Asia/Shanghai timezone. Exact scheduled publication times are stored separately as timezone-aware timestamps. Anime compiles have no publication date and are stored directly under `cache/output/anime/run-*/`.
 
 Intermediate files remain under `cache/`, finished videos under `cache/output/`, and scratch files under `cache/tmp/`, so interrupted workflows can be diagnosed or resumed. Cleanup is an explicit operation and is never performed automatically after publishing.
 
@@ -274,6 +275,7 @@ The weekly workflow runs every Saturday at 12:00 Asia/Shanghai and processes the
 - [Finance MCP](core/mcp/finance/finance.md)
 - [Language Learning MCP](core/mcp/language_learning/language_learning.md)
 - [Publishing MCP](core/mcp/publishing/publishing.md)
+- [Anime Compile MCP](core/mcp/anime/anime.md)
 - [Operations](ops/README.md)
 
 ## Current Scope

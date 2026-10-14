@@ -189,6 +189,7 @@ docker build -t media-factory .
 | 语言学习 | `python -m core.mcp.language_learning` | 词汇视频生产 |
 | 统一发布 | `python -m core.mcp.publishing` | 查询产物并发布到多个平台 |
 | 抖音研究 | `python -m core.mcp.douyin_research` | 链接下载、转写和资料入库 |
+| 动漫拼接 | `python -m core.mcp.anime` | 按顺序拼接抖音、快手等链接，本地保存 |
 
 MCP 客户端配置示例：
 
@@ -235,7 +236,7 @@ MCP 客户端配置示例：
 cache/output/{business_line}/run-YYYYMMDD/
 ```
 
-目录日期只代表计划发布日期，精确的预约发布时间单独使用带时区的时间戳保存。
+目录日期只代表计划发布日期，精确的预约发布时间单独使用带时区的时间戳保存。动漫拼接没有计划发布日期，成片直接写在 `cache/output/anime/run-*/`。
 
 中间产物保留在 `cache/`，成片在 `cache/output/`，临时文件在 `cache/tmp/`，便于诊断或恢复中断的流程。清理操作必须显式执行，发布完成后不会自动删除本地文件。
 
@@ -274,6 +275,7 @@ cache/output/{business_line}/run-YYYYMMDD/
 - [财经 MCP](core/mcp/finance/finance.md)
 - [语言学习 MCP](core/mcp/language_learning/language_learning.md)
 - [统一发布 MCP](core/mcp/publishing/publishing.md)
+- [动漫拼接 MCP](core/mcp/anime/anime.md)
 - [运维说明](ops/README.md)
 
 ## 当前范围

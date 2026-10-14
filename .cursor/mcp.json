@@ -45,6 +45,17 @@
         "PYTHONPATH": "${workspaceFolder}",
         "PYTHONUTF8": "1"
       }
+    },
+    "media-factory-anime": {
+      "command": "python",
+      "args": [
+        "-m",
+        "core.mcp.anime"
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "PYTHONUTF8": "1"
+      }
     }
   }
 }
