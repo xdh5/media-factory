@@ -6,7 +6,7 @@ An agent-orchestrated production and publishing system for short-form video.
 
 Media Factory turns source material into production-ready vertical videos through reusable media tools, Model Context Protocol (MCP) workflows, durable production records, and multi-platform publishing integrations.
 
-It currently operates two production lines: language-learning videos and finance knowledge videos built through a text-to-image workflow. Douyin research ingestion and unified multi-platform publishing support both lines.
+It currently operates two production lines: language-learning videos and finance knowledge videos built through a text-to-image workflow. Collecting finance copy and unified multi-platform publishing support both lines.
 
 ## Why This Project Exists
 
@@ -115,7 +115,7 @@ Topic selection
 
 Vocabulary is checked against recent history to reduce repetition. The same run generates both a standard learning video and a countdown-based quiz variant.
 
-### Douyin Research
+### Collect Finance Copy
 
 ```text
 Shared link
@@ -125,7 +125,7 @@ Shared link
     → D1 ingestion
 ```
 
-The research pipeline converts an individual Douyin share link into reusable source material for downstream content production.
+This step runs inside the finance MCP. It collects finance copy from one Douyin share link for later production.
 
 ## Technology Stack
 
@@ -185,10 +185,9 @@ Each workflow runs as a separate stdio MCP server:
 
 | Server | Entry point | Responsibility |
 | --- | --- | --- |
-| Finance Visual Storytelling | `python -m core.mcp.finance` | Finance knowledge text-to-image video production |
+| Finance Visual Storytelling | `python -m core.mcp.finance` | Finance video production, and collecting finance copy |
 | Language Learning | `python -m core.mcp.language_learning` | Vocabulary video production |
 | Publishing | `python -m core.mcp.publishing` | Output discovery and multi-platform publishing |
-| Douyin Research | `python -m core.mcp.douyin_research` | Link download, transcription, and ingestion |
 | Anime Compile | `python -m core.mcp.anime` | Concatenate Douyin, Kuaishou, and other links in order and save locally |
 
 Example MCP client configuration:

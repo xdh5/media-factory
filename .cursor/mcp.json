@@ -35,17 +35,6 @@
         "PYTHONUTF8": "1"
       }
     },
-    "media-factory-douyin-research": {
-      "command": "python",
-      "args": [
-        "-m",
-        "core.mcp.douyin_research"
-      ],
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}",
-        "PYTHONUTF8": "1"
-      }
-    },
     "media-factory-anime": {
       "command": "python",
       "args": [

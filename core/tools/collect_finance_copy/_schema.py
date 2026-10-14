@@ -1,6 +1,6 @@
-"""抖音链接入库工具 Schema。"""
+"""收集财经文案的入参和返回合同。"""
 
-INGEST_INPUT_SCHEMA = {
+COLLECT_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "share_text": {
@@ -18,7 +18,7 @@ INGEST_INPUT_SCHEMA = {
     "additionalProperties": False,
 }
 
-INGEST_OUTPUT_SCHEMA = {
+COLLECT_OUTPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "aweme_id": {"type": "string"},

@@ -4,10 +4,10 @@ from core.tools.clear_cache import ConfirmationRequiredError as ClearCacheConfir
 from core.tools.clear_cache import clear_run
 from core.tools.cloudflare_data import (
     CloudflareDataError,
-    get_douyin_research_script_stats,
+    get_finance_copy_stats,
     list_production_outputs,
-    mark_douyin_research_script_used,
-    reserve_douyin_research_script,
+    mark_finance_copy_used,
+    reserve_finance_copy,
 )
 from core.tools.generate_image import (
     ImageGenerationError,

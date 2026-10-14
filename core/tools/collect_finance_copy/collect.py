@@ -1,46 +1,46 @@
-"""下载抖音链接、转写并分类写入数据库。"""
+"""下载抖音链接、转写并写入财经文案库。"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from core.tools.cloudflare_data import CloudflareDataError, commit_douyin_research
-from media_collector import DownloadError, download
+from core.tools.cloudflare_data import CloudflareDataError, commit_finance_copy
 from core.tools.transcribe import TranscriptionError, transcribe
+from media_collector import DownloadError, download
 
 from ._constants import COLLECTION_CODE_BY_NAME, DIRECT_LINK_SOURCE, VIDEO_FILE_NAME
-from ._errors import IngestError
+from ._errors import CollectCopyError
 
-__all__ = ["ingest_link"]
+__all__ = ["collect_copy"]
 
 
 def _collection_code(collection_name: str) -> str:
     known = COLLECTION_CODE_BY_NAME.get(collection_name)
     if known:
         return known
-    raise IngestError("分类名称仅支持“财经”，请将 collection_name 设置为“财经”")
+    raise CollectCopyError("分类名称仅支持“财经”，请将 collection_name 设置为“财经”")
 
 
-def ingest_link(
+def collect_copy(
     share_text: str,
     cache_dir: str | Path,
     *,
     collection_name: str,
 ) -> dict:
-    """下载单条抖音链接，转写后直接分类写入 D1。"""
+    """下载单条抖音链接，转写后写入财经文案库。"""
     clean_share_text = str(share_text or "").strip()
     clean_collection_name = str(collection_name or "").strip()
     if not clean_share_text:
-        raise IngestError("抖音链接不能为空")
+        raise CollectCopyError("抖音链接不能为空")
     if not clean_collection_name or len(clean_collection_name) > 100:
-        raise IngestError("分类名称必须是 1 到 100 个字符")
+        raise CollectCopyError("分类名称必须是 1 到 100 个字符")
 
     root = Path(cache_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
     try:
         downloaded = download(clean_share_text, root / VIDEO_FILE_NAME)
     except DownloadError as exc:
-        raise IngestError(
+        raise CollectCopyError(
             f"抖音视频下载失败：{exc}",
             getattr(exc, "details", {}),
         ) from exc
@@ -48,9 +48,9 @@ def ingest_link(
     platform = str(downloaded.get("platform") or "").strip()
     video_id = str(downloaded.get("video_id") or "").strip()
     if platform != "抖音":
-        raise IngestError(f"链接平台必须是抖音，当前识别为：{platform or '未知平台'}")
+        raise CollectCopyError(f"链接平台必须是抖音，当前识别为：{platform or '未知平台'}")
     if not video_id.isdigit():
-        raise IngestError("下载结果缺少有效的抖音作品 ID")
+        raise CollectCopyError("下载结果缺少有效的抖音作品 ID")
 
     try:
         recognized = transcribe(
@@ -59,14 +59,14 @@ def ingest_link(
             filename=f"抖音作品{video_id}",
         )
     except TranscriptionError as exc:
-        raise IngestError(
+        raise CollectCopyError(
             f"抖音视频转写失败：{exc}",
             getattr(exc, "details", {}),
         ) from exc
 
     transcript = str(recognized.get("text") or "").strip()
     if not transcript:
-        raise IngestError("抖音视频转写结果为空，未写入数据库")
+        raise CollectCopyError("抖音视频转写结果为空，未写入数据库")
 
     collection_code = _collection_code(clean_collection_name)
     record = {
@@ -84,10 +84,10 @@ def ingest_link(
         "cover_url": str(downloaded.get("cover_url") or "").strip(),
     }
     try:
-        database = commit_douyin_research([record])
+        database = commit_finance_copy([record])
     except CloudflareDataError as exc:
-        raise IngestError(
-            f"写入 Cloudflare D1 抖音研究库失败：{exc}",
+        raise CollectCopyError(
+            f"写入财经文案库失败：{exc}",
             getattr(exc, "details", {}),
         ) from exc
 

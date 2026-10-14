@@ -1,7 +1,7 @@
 """财经成片交付编排。"""
 from __future__ import annotations
 from pathlib import Path
-from ..infrastructure.gateways import mark_douyin_research_script_used
+from ..infrastructure.gateways import mark_finance_copy_used
 from ..infrastructure.gateways import runner_submit_task
 from ..config.settings import MCP_ID
 from ..errors import WorkflowStepError
@@ -19,7 +19,7 @@ def _finish_video_and_commit_source_usage(
     result = finish_finance_video(draft_path, **kwargs)
     _, draft = load_draft(draft_path, "财经稿件")
     if str(draft.get("source_database_status") or "") != "used":
-        usage = mark_douyin_research_script_used(
+        usage = mark_finance_copy_used(
             aweme_id=str(draft["source_aweme_id"]),
             workflow=MCP_ID,
             reservation_token=str(draft["source_reservation_token"]),

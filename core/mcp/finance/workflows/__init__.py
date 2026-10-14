@@ -47,6 +47,7 @@ from .delivery import (
     finance_start_finish_video,
     finance_start_upload_r2,
 )
+from .collect_copy import finance_start_collect_copy
 
 ALL_TOOLS = (
     finance_get_production_config,
@@ -66,6 +67,7 @@ ALL_TOOLS = (
     finance_get_metadata_generation_prompt,
     finance_validate_metadata_response,
     finance_get_source_stats,
+    finance_start_collect_copy,
     finance_get_production_outputs,
     finance_get_source_script,
     finance_get_topics,

@@ -4,7 +4,7 @@
 
 生产参数以 `finance_get_production_config` 返回值为唯一标准；Agent 与 GitHub Runner 共用，禁止在各自入口复制。
 
-财经线是唯一的文章成片线（原心灵鸡汤线已并入删除）；财经 Skill 提供原稿整理规则等业务参数，标题标签与分镜 Prompt 在 `core/mcp/finance/prompts/`。完整流程见 `.agents/skills/finance/SKILL.md`。
+财经线是唯一的文章成片线（原心灵鸡汤线已并入删除）；财经 Skill 提供原稿整理规则等业务参数，标题标签与分镜 Prompt 在 `core/mcp/finance/prompts/`。完整流程见 `.agents/skills/finance/SKILL.md`。收集财经文案也在本 MCP，见 `.agents/skills/collect-finance-copy/SKILL.md`。
 
 ## 目录职责
 
@@ -43,12 +43,17 @@ finance_get_visual_metadata_prompt / finance_validate_visual_metadata_response
 finance_get_article_linebreak_prompt / finance_validate_article_linebreak_response
   └─ 每段改写后单独断句，去掉换行必须与改写稿逐字一致
 finance_get_stock_video_selection_prompt / finance_validate_stock_video_selection_response
+finance_start_collect_copy(share_text, collection_name)
+└─ tools.collect_finance_copy.collect_copy
+   └─ 收集财经文案：下载单条抖音链接、转写口播并写入文案库
+finance_poll_task(task_path)
+
 finance_get_source_stats
-└─ cloudflare_data.get_douyin_research_script_stats
+└─ cloudflare_data.get_finance_copy_stats
    └─ 只读统计原稿总数、可用数、有效占用数和已使用数
 
 finance_get_source_script
-└─ cloudflare_data.reserve_douyin_research_script
+└─ cloudflare_data.reserve_finance_copy
    └─ 选择未使用原稿并临时占用
 
 finance_get_metadata_prompt
@@ -104,7 +109,7 @@ finance_start_finish_video(..., production_config, material_manifest_path, intro
       └─ generate_shot.generate_shot_from_intro（片头动画 + 快门音效）
       └─ 黄金钩子图层：字幕位置覆盖 + generate_subtitles 按行生成 hook-title-N.ass（字魂群英体 165px，按标点断行，单行红字黑边 / 多行首行黄黑边其余红白边，\pos 堆叠）
       └─ generate_final_video
-      └─ 成片成功后 cloudflare_data.mark_douyin_research_script_used
+      └─ 成片成功后 cloudflare_data.mark_finance_copy_used
 
 finance_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task
@@ -134,7 +139,7 @@ finance_clear_run
 - 成片：`cache/output/finance/run-YYYYMMDD/`，日期为北京时间计划发布日期
 - 产物记录：成片成功后自动写入 D1 `production_outputs`
 - 千问生成图库：`data/image_library_finance/{连续编号}.png`
-- 来源稿件：抖音研究数据库；保存草稿后继续临时占用，成片成功后才永久标记为已使用
+- 来源稿件：已收集的财经文案；保存草稿后继续临时占用，成片成功后才永久标记为已使用
 - 素材来源清单：实拍视频策略会写出 `cache/output/finance/{run_id}/attribution-comment.txt`
 - 图片记录：独立 D1 表 `finance_generated_images`
 

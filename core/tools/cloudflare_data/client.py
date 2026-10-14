@@ -401,25 +401,25 @@ def commit_production_outputs(records: list[dict]) -> dict:
     return payload
 
 
-def list_douyin_research_ids() -> list[str]:
+def list_finance_copy_ids() -> list[str]:
     payload = _request("GET", "/v1/douyin-research/ids")
     if not isinstance(payload, dict) or not isinstance(payload.get("aweme_ids"), list):
-        raise CloudflareDataRequestError("Cloudflare 抖音研究去重接口缺少 aweme_ids 数组")
+        raise CloudflareDataRequestError("Cloudflare 财经文案去重接口缺少 aweme_ids 数组")
     return [str(value) for value in payload["aweme_ids"] if str(value).strip()]
 
 
-def commit_douyin_research(records: list[dict]) -> dict:
+def commit_finance_copy(records: list[dict]) -> dict:
     payload = _request(
         "POST",
         "/v1/douyin-research/commit",
         body={"records": records},
     )
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 抖音研究写入接口缺少 records 数组")
+        raise CloudflareDataRequestError("Cloudflare 财经文案写入接口缺少 records 数组")
     return payload
 
 
-def get_douyin_research_script_stats(
+def get_finance_copy_stats(
     *,
     collection_code: str,
     workflow: str,
@@ -454,7 +454,7 @@ def get_douyin_research_script_stats(
     return payload
 
 
-def reserve_douyin_research_script(
+def reserve_finance_copy(
     *,
     collection_code: str,
     workflow: str,
@@ -476,7 +476,7 @@ def reserve_douyin_research_script(
     return payload
 
 
-def mark_douyin_research_script_used(
+def mark_finance_copy_used(
     *,
     aweme_id: str,
     workflow: str,

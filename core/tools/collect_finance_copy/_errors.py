@@ -1,8 +1,8 @@
-"""抖音研究工具错误。"""
+"""收集财经文案的错误。"""
 
 
-class DouyinResearchError(Exception):
-    code = "DOUYIN_RESEARCH_ERROR"
+class CollectFinanceCopyError(Exception):
+    code = "COLLECT_FINANCE_COPY_ERROR"
 
     def __init__(self, message: str, details: dict | None = None):
         super().__init__(message)
@@ -13,5 +13,5 @@ class DouyinResearchError(Exception):
         return {"error": {"code": self.code, "message": self.message, "details": self.details}}
 
 
-class IngestError(DouyinResearchError):
-    code = "DOUYIN_RESEARCH_INGEST_ERROR"
+class CollectCopyError(CollectFinanceCopyError):
+    code = "COLLECT_FINANCE_COPY_FAILED"
