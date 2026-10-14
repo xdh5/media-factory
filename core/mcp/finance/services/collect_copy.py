@@ -64,6 +64,7 @@ def collect_copy(
         ) from exc
 
     transcript = str(recognized.get("text") or "").strip()
+    raw_transcript = str(recognized.get("raw_text") or transcript).strip()
     if not transcript:
         raise WorkflowStepError("抖音视频转写结果为空，未写入数据库")
 
@@ -76,7 +77,7 @@ def collect_copy(
         "author_name": "未知作者",
         "published_at": "",
         "caption": str(downloaded.get("title") or "无文案").strip() or "无文案",
-        "transcript_raw": transcript,
+        "transcript_raw": raw_transcript,
         "transcript_corrected": transcript,
         "aweme_url": f"https://www.douyin.com/video/{video_id}",
         "cover_url": str(downloaded.get("cover_url") or "").strip(),

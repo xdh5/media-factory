@@ -61,7 +61,7 @@ finance_get_metadata_prompt
 └─ tools.prompts.build_metadata_prompt
    └─ prompts/metadata.md
 
-[Agent 按 Skill 把原稿整理为正文：三类必做改动（品牌替换、连载指涉改写、错别字修正）+ 措辞级改写但保留大结构与信息，再按 metadata_prompt 写标题标签]
+[Agent 按 Skill 把原稿整理为正文：两类必做改动（品牌替换、连载指涉改写）+ 措辞级改写但保留大结构与信息。原稿已有标点且文字正确，不要改错别字或标点。再按 metadata_prompt 写标题标签]
 
 finance_save_draft(...)
 └─ topic_dedup.get_topic 查重；暂不写 D1

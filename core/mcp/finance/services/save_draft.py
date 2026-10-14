@@ -96,7 +96,7 @@ def save_draft(
     normalized_source_token = str(source_reservation_token or "").strip()
     normalized_source_hook = str(source_hook or "").strip()
     # 数据库逐字钩子：mark_used 用它校验 transcript_corrected 的逐字前缀。
-    # 处理后的钩子（source_hook）含品牌替换/错字修正时两者不同；缺省回退为处理后钩子。
+    # 处理后的钩子（source_hook）含品牌替换时两者不同；缺省回退为处理后钩子。
     normalized_db_hook = str(db_source_hook or "").strip()
     if not normalized_source_aweme_id.isdigit():
         raise WorkflowStepError("source_aweme_id 必须是有效的抖音作品 ID")

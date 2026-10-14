@@ -113,18 +113,18 @@ def build_article_chunk_generation_prompt(
         raise WorkflowStepError("source_chunk 不能为空")
     hook_rule = (
         "这是首段钩子。article 必须以处理后的钩子原字原标点原顺序开头；"
-        "钩子只允许品牌替换和明确错别字修正，不得措辞改写。\n"
+        "钩子只允许品牌替换，不得措辞改写，不得改错别字或标点。\n"
         f"原始钩子：{hook}\n"
         if hook else ""
     )
     prompt = (
         "只处理下面这一段原稿，不要输出前后段落。保留全部事实、数字、例子和顺序；"
-        "在品牌替换、连载指涉改写和明确错别字修正之外，允许措辞级改写。"
+        "原稿已有标点且文字正确，不要改错别字或标点。"
+        "在品牌替换和连载指涉改写之外，允许措辞级改写。"
         "本轮只改写内容，不负责字幕断句或行长限制。\n"
         "只输出 JSON：{\"article\":\"改写后的本段正文\","
-        f"\"replacements\":[{{\"from\":\"原品牌\",\"to\":\"{BRAND_NAME}\"}}],"
-        "\"corrections\":[{\"from\":\"原稿错字\",\"to\":\"正确文字\"}]}。"
-        "replacements 和 corrections 仅列出本段实际修改。\n"
+        f"\"replacements\":[{{\"from\":\"原品牌\",\"to\":\"{BRAND_NAME}\"}}]}}。"
+        "replacements 仅列出本段实际的品牌替换。\n"
         f"{hook_rule}\n全文背景（只供理解）：\n{source_text}\n"
         f"前一原稿段（不输出）：\n{previous_chunk}\n后一原稿段（不输出）：\n{next_chunk}\n"
         f"已确定品牌替换表：{json.dumps(brand_replacements or [], ensure_ascii=False)}\n"
@@ -142,35 +142,33 @@ def validate_article_chunk_response(source_chunk: str, source_hook: str, respons
     """校验单个正文片段，让失败只重试该片段。"""
     payload = _json_payload(response_text)
     replacements = _pairs(payload.get("replacements"), default_target=BRAND_NAME)
-    corrections = _pairs(payload.get("corrections"))
     if any(_bare(target) != _bare(BRAND_NAME) for _, target in replacements):
         raise WorkflowStepError(f"所有品牌只能替换为「{BRAND_NAME}」")
     article = str(payload.get("article") or "").strip()
     if not article:
         raise WorkflowStepError("本段 article 不能为空")
-    processed_hook = _replace(_replace(source_hook, replacements), corrections)
+    processed_hook = _replace(source_hook, replacements)
     if source_hook and not _bare(article).startswith(_bare(processed_hook)):
-        raise WorkflowStepError("首段必须以完成品牌替换和错字修正后的黄金钩子原样开头")
+        raise WorkflowStepError("首段必须以完成品牌替换后的黄金钩子原样开头")
     source_size = len(_bare(source_chunk))
     ratio = len(_bare(article)) / source_size if source_size else 0
     if not ARTICLE_LENGTH_RATIO_MIN <= ratio <= ARTICLE_LENGTH_RATIO_MAX:
         raise WorkflowStepError(
             f"本段长度是原稿的 {ratio:.2f} 倍，必须在 {ARTICLE_LENGTH_RATIO_MIN}～{ARTICLE_LENGTH_RATIO_MAX} 之间"
         )
-    return {"article": article, "replacements": payload.get("replacements") or [], "corrections": payload.get("corrections") or []}
+    return {"article": article, "replacements": payload.get("replacements") or []}
 
 
 def validate_article_response(source_text: str, source_hook: str, response_text: str) -> dict:
     payload = _json_payload(response_text)
     replacements = _pairs(payload.get("replacements"), default_target=BRAND_NAME)
-    corrections = _pairs(payload.get("corrections"))
     mismatched = [row for row in replacements if _bare(row[1]) != _bare(BRAND_NAME)]
     if mismatched:
         raise WorkflowStepError(f"所有品牌只能替换为「{BRAND_NAME}」")
-    processed_hook = _replace(_replace(source_hook, replacements), corrections)
+    processed_hook = _replace(source_hook, replacements)
     article = str(payload.get("article") or "").strip()
     if not _bare(article).startswith(_bare(processed_hook)):
-        raise WorkflowStepError("正文必须以完成品牌替换和错字修正后的黄金钩子原样开头")
+        raise WorkflowStepError("正文必须以完成品牌替换后的黄金钩子原样开头")
     long_lines = [(index, len(line.strip())) for index, line in enumerate(article.splitlines(), 1) if len(line.strip()) > ARTICLE_MAX_LINE_LENGTH]
     if long_lines:
         detail = "、".join(f"第{index}行 {size}字" for index, size in long_lines)
@@ -181,7 +179,7 @@ def validate_article_response(source_text: str, source_hook: str, response_text:
         raise WorkflowStepError(
             f"正文长度是原稿的 {ratio:.2f} 倍，必须在 {ARTICLE_LENGTH_RATIO_MIN}～{ARTICLE_LENGTH_RATIO_MAX} 之间"
         )
-    return {"article": article, "source_hook": processed_hook, "replacements": payload.get("replacements") or [], "corrections": payload.get("corrections") or []}
+    return {"article": article, "source_hook": processed_hook, "replacements": payload.get("replacements") or []}
 
 
 def build_topic_prompt(article: str, recent_topics: list[str], requested_topic: str = "", feedback: str = "") -> dict:

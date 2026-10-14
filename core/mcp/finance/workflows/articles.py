@@ -230,12 +230,12 @@ def finance_save_draft(
     content_part: int = 1,
     db_source_hook: str = "",
 ) -> dict:
-    """保存完成三类必做改动与措辞级改写的稿件，来源稿件继续保持临时占用。
+    """保存完成两类必做改动与措辞级改写的稿件，来源稿件继续保持临时占用。
 
     同一天制作第二条时传 content_part=2：缓存与产物目录独立（run-YYYYMMDD-part2），
     D1 落库使用 content_part 区分，run_id 仍为 run-YYYYMMDD。
     db_source_hook：数据库原稿开头未经改动的逐字钩子（mark_used 校验用）；
-    处理后的 source_hook 含品牌替换/错字修正时与原稿不同，必须另外传原样钩子。
+    处理后的 source_hook 含品牌替换时与原稿不同，必须另外传原样钩子。不改错别字或标点。
     """
     try:
         if draft_path is None:

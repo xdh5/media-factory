@@ -1,9 +1,10 @@
-"""把本地音视频转成 Whisper 原文，不做错别字校对。"""
+"""把本地音视频转成文字，中文再补标点并改错别字。"""
 
 from __future__ import annotations
 
 import mimetypes
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -22,6 +23,8 @@ from ._constants import (
     GROQ_READ_TIMEOUT_SECONDS,
     SUPPORTED_LANGUAGES,
 )
+from core.tools.qwen_text import QwenTextError, generate_text
+
 from ._errors import (
     FFmpegNotFoundError,
     GroqConfigurationError,
@@ -140,8 +143,42 @@ def _transcribe_file(audio_path: Path, *, language: str, api_key: str, model: st
         raise TranscriptionError("Groq Whisper 返回了无法解析的响应") from extra
 
 
+_BARE_RE = re.compile(r"[\s\W_]+", re.UNICODE)
+
+
+def _polish_chinese(raw_text: str) -> str:
+    """一次模型调用：只补标点、改错别字，不改写内容。"""
+    system = (
+        "你是中文口播校对。只做两件事：补上口语标点，把明显的同音错别字改成原话应有的字。"
+        "不得改写句式，不得增删事实、数字和例子，不得总结或加标题。"
+        "只输出校对后的正文。"
+    )
+    user = f"语音识别原文：\n{raw_text}"
+    try:
+        result = generate_text(system, user, temperature=0, max_tokens=min(8192, max(1024, len(raw_text) * 2)))
+    except QwenTextError as exc:
+        raise TranscriptionError(f"标点与错别字校对失败：{exc}") from exc
+    if result.get("finish_reason") == "length":
+        raise TranscriptionError("标点与错别字校对被截断，请缩短视频后重试")
+    text = str(result.get("text") or "").strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    bare_raw = _BARE_RE.sub("", raw_text)
+    bare_text = _BARE_RE.sub("", text)
+    if not bare_text or not bare_raw:
+        raise TranscriptionError("标点与错别字校对没有返回可用正文")
+    if not 0.85 <= len(bare_text) / len(bare_raw) <= 1.15:
+        raise TranscriptionError("标点与错别字校对改动了过多内容，已停止使用该结果")
+    return text
+
+
 def transcribe(media_path: str | Path, *, language: str = "zh", filename: str = "") -> dict:
-    """识别本地音视频中的语音。只返回 Whisper 原文，不做错别字校对。"""
+    """识别本地音视频。中文会再调用一次模型补标点并改错别字。"""
     raw = str(media_path or "").strip()
     if not raw:
         raise InvalidParameterError(
@@ -213,11 +250,15 @@ def transcribe(media_path: str | Path, *, language: str = "zh", filename: str = 
         )
     if not text:
         raise TranscriptionError("Groq Whisper 未返回识别文本。请确认视频有人声，或换 language 后重试")
+    raw_text = text
+    if language_code == "zh":
+        text = _polish_chinese(raw_text)
     if not segments:
-        segments = [{"start": None, "end": None, "text": text}]
+        segments = [{"start": None, "end": None, "text": raw_text}]
     return {
         "filename": display_name,
         "language": language_code,
         "text": text,
+        "raw_text": raw_text,
         "segments": segments,
     }

@@ -6,7 +6,7 @@ from ._constants import SUPPORTED_LANGUAGES
 
 TRANSCRIBE_INPUT_SCHEMA = {
     "type": "object",
-    "description": "把本地音视频转成 Whisper 原文，不做错别字校对",
+    "description": "把本地音视频转成文字。中文会再调用一次模型补标点并改错别字",
     "properties": {
         "media_path": {
             "type": "string",
@@ -30,7 +30,8 @@ TRANSCRIBE_OUTPUT_SCHEMA = {
     "properties": {
         "filename": {"type": "string"},
         "language": {"type": "string"},
-        "text": {"type": "string", "description": "Whisper 原文，未经错别字校对"},
+        "text": {"type": "string", "description": "中文为补标点并改错别字后的正文，其他语言为识别原文"},
+        "raw_text": {"type": "string", "description": "语音识别原文"},
         "segments": {
             "type": "array",
             "items": {
@@ -45,6 +46,6 @@ TRANSCRIBE_OUTPUT_SCHEMA = {
             },
         },
     },
-    "required": ["filename", "language", "text", "segments"],
+    "required": ["filename", "language", "text", "raw_text", "segments"],
     "additionalProperties": False,
 }
