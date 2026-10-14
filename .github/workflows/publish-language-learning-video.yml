@@ -89,7 +89,9 @@ jobs:
         uses: actions/checkout@v5
 
       - name: 检出 media-publisher
-        run: git submodule update --init integrations/media-publisher
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init integrations/media-publisher
 
       - name: 使用统一发布 MCP 预约缺少的平台（最多重试 3 次）
         env:
