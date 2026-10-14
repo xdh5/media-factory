@@ -154,9 +154,18 @@ def run_matrixmedia_cli(arguments: list[str]) -> dict | list:
     return payload
 
 
+def _matrixmedia_account_rows() -> list:
+    rows = []
+    for group in ("finance", "korean"):
+        payload = run_matrixmedia_cli(["accounts", "--json", "--phone", group])
+        chunk = payload if isinstance(payload, list) else payload.get("accounts", [])
+        if isinstance(chunk, list):
+            rows.extend(chunk)
+    return rows
+
+
 def list_matrixmedia_accounts() -> list[dict]:
-    payload = run_matrixmedia_cli(["accounts", "--json"])
-    rows = payload if isinstance(payload, list) else payload.get("accounts", [])
+    rows = _matrixmedia_account_rows()
     accounts = []
     for item in rows:
         if not isinstance(item, dict):
@@ -182,8 +191,7 @@ def list_matrixmedia_accounts() -> list[dict]:
 
 def list_matrixmedia_login_states() -> list[dict]:
     """返回 MatrixMedia 对 Cookie 的实时检查结果，包含已失效账号。"""
-    payload = run_matrixmedia_cli(["accounts", "--json"])
-    rows = payload if isinstance(payload, list) else payload.get("accounts", [])
+    rows = _matrixmedia_account_rows()
     states = []
     for item in rows:
         if not isinstance(item, dict):
