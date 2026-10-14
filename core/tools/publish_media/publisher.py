@@ -1,10 +1,9 @@
-"""统一执行官方平台和 MatrixMedia 视频发布，并逐条写入 D1。"""
+"""按日期选出成片并写入 D1。真正发到平台时调用矩媒 publishing。"""
 
 from __future__ import annotations
 
-from datetime import datetime
+import sys
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from core.tools.cloudflare_data import (
     commit_production_outputs,
@@ -13,40 +12,28 @@ from core.tools.cloudflare_data import (
 )
 from core.tools.r2_storage import upload_public_file
 
-from ._constants import (
-    BEIJING_TIMEZONE,
-    MATRIXMEDIA_PLATFORM_CODES,
-    PUBLIC_URL_PLATFORMS,
-    PUBLISH_MODES,
-)
+from ._constants import MATRIXMEDIA_DIR_ENV, PROJECT_ROOT, PUBLIC_URL_PLATFORMS
 from ._errors import DuplicatePublicationError, InvalidPublishRequestError, MatrixMediaCommandError
-from .accounts import resolve_account_group, run_matrixmedia_cli
+from .accounts import resolve_account_group
 from .content import local_publish_items, normalize_platforms, normalize_publish_date
 
 
-def normalize_publish_timing(publish_mode: str, publish_at: str) -> tuple[str, str | None]:
-    mode = str(publish_mode or "").strip().casefold()
-    raw = str(publish_at or "").strip()
-    if mode not in PUBLISH_MODES:
-        raise InvalidPublishRequestError(f"publish_mode 必须从 {PUBLISH_MODES} 中选择")
-    if not raw:
-        raise InvalidPublishRequestError("publish_at 不能为空；立即发布请明确填写 now，预约发布请填写带时区时间")
-    now = datetime.now(ZoneInfo(BEIJING_TIMEZONE)).replace(microsecond=0)
-    if mode == "immediate":
-        if raw.casefold() != "now":
-            raise InvalidPublishRequestError("立即发布时 publish_at 必须明确填写 now")
-        return now.isoformat(), None
+def _publishing():
+    """加载矩媒 python/publishing。两个 MCP 的平台发布都走这一份。"""
+    import os
+
+    root = Path(os.getenv(MATRIXMEDIA_DIR_ENV, "") or PROJECT_ROOT / "integrations" / "MatrixMedia").resolve()
+    python_dir = root / "python"
+    text = str(python_dir)
+    if text not in sys.path:
+        sys.path.insert(0, text)
     try:
-        scheduled = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise InvalidPublishRequestError(
-            "预约发布的 publish_at 必须是带时区的 ISO 8601，例如 2026-08-26T16:00:00+08:00"
-        ) from exc
-    if scheduled.tzinfo is None or scheduled.utcoffset() is None:
-        raise InvalidPublishRequestError("预约发布的 publish_at 必须包含时区，北京时间使用 +08:00")
-    if scheduled <= now:
-        raise InvalidPublishRequestError("预约发布时间已经过去；请改为 immediate + now，或指定未来时间")
-    return scheduled.replace(microsecond=0).isoformat(), scheduled.astimezone(ZoneInfo(BEIJING_TIMEZONE)).strftime("%Y-%m-%d %H:%M:%S")
+        from publishing.batch import publish_batch
+        from publishing.platforms import PublishError
+        from publishing.schedule import resolve_timings
+    except ImportError as exc:
+        raise MatrixMediaCommandError(f"无法加载矩媒统一发布：{exc}", {"matrixmedia_dir": str(root)}) from exc
+    return publish_batch, resolve_timings, PublishError
 
 
 def normalize_publish_timings(
@@ -55,33 +42,23 @@ def normalize_publish_timings(
     publish_at: str | None,
     publish_at_by_platform: dict[str, str] | None,
 ) -> dict[str, dict[str, str | None]]:
-    """解析各平台发布时间；映射值使用 now 表示立即发布，ISO 时间表示预约发布。"""
-    configured = {
-        str(platform).strip().casefold(): str(value or "").strip()
-        for platform, value in (publish_at_by_platform or {}).items()
-    }
-    unknown = set(configured) - set(platforms)
-    if unknown:
-        raise InvalidPublishRequestError(f"publish_at_by_platform 包含未选择的平台：{sorted(unknown)}")
-    timings: dict[str, dict[str, str | None]] = {}
-    for platform in platforms:
-        platform_value = configured.get(platform)
-        if platform_value:
-            mode = "immediate" if platform_value.casefold() == "now" else "scheduled"
-            effective_at, scheduled_cli = normalize_publish_timing(mode, platform_value)
-        else:
-            if not publish_mode or not publish_at:
-                raise InvalidPublishRequestError(
-                    f"平台 {platform} 没有发布时间；请传 publish_at_by_platform，或提供 publish_mode 与 publish_at"
-                )
-            mode = str(publish_mode).strip().casefold()
-            effective_at, scheduled_cli = normalize_publish_timing(mode, publish_at)
-        timings[platform] = {
-            "publish_mode": mode,
-            "publish_at": effective_at,
-            "scheduled_cli": scheduled_cli,
+    """解析各平台发布时间。规则与 MatrixMedia MCP 使用同一份 publishing。"""
+    _, resolve_timings, publish_error = _publishing()
+    from publishing.platforms import resolve_platform
+
+    try:
+        specs = [resolve_platform(item) for item in platforms]
+        timings = resolve_timings(specs, publish_mode, publish_at, publish_at_by_platform)
+    except publish_error as exc:
+        raise InvalidPublishRequestError(str(exc)) from exc
+    return {
+        platform: {
+            "publish_mode": item["publish_mode"],
+            "publish_at": item["publish_at"],
+            "scheduled_cli": item["cli_publish_at"],
         }
-    return timings
+        for platform, item in timings.items()
+    }
 
 
 def _content_key(title: str, platform: str, account_id: str, content_part: int) -> tuple:
@@ -158,74 +135,29 @@ def _public_video_url(item: dict) -> str:
     return url
 
 
-def _publish_matrixmedia(item: dict, route: dict, scheduled_cli: str | None) -> dict:
-    platform = str(route["platform"])
+def _publish_copy(item: dict) -> str:
     content_kind = str(item.get("content_kind") or "").strip()
     if content_kind.startswith("en-ko"):
-        publish_copy = str(item.get("publish_copy") or item.get("hashtags") or "").strip()
-    else:
-        publish_copy = str(item.get("publish_copy") or item["title"]).strip()
-    arguments = [
-        "publish", "-p", MATRIXMEDIA_PLATFORM_CODES[platform],
-        "-f", str(item["local_path"]), "--title", str(item["title"]),
-        "--description", publish_copy,
-        "--name", str(item["title"]), "--phone", str(route["account_id"]),
-        "--creative-statement", "ai_generated",
-    ]
-    short_title = str(item.get("short_title") or "").strip()
-    hashtags = str(item.get("hashtags") or "").strip()
-    if hashtags:
-        arguments.extend(["--tags", hashtags])
-    if short_title:
-        arguments.extend(["--bt2", short_title])
-    if scheduled_cli:
-        arguments.extend(["--publish-at", scheduled_cli])
-    payload = run_matrixmedia_cli(arguments)
-    if not isinstance(payload, dict):
-        raise MatrixMediaCommandError("MatrixMedia 发布结果不是 JSON 对象")
-    status = str(payload.get("status") or payload.get("resultStatus") or "success")
-    if status in {"needs_attention", "failed", "failure"}:
-        raise MatrixMediaCommandError(f"MatrixMedia 发布未成功：{payload.get('message') or status}")
-    if scheduled_cli and payload.get("officialScheduled") is not True:
-        raise MatrixMediaCommandError(
-            "MatrixMedia 未确认平台官方预约成功，已拒绝把应用内定时任务记为发布成功",
-            {
-                "platform": platform,
-                "publish_at": scheduled_cli,
-                "fix": "请使用已移除应用内定时队列、支持官方预约结果标记的 MatrixMedia 版本",
-            },
-        )
-    return payload
+        return str(item.get("publish_copy") or item.get("hashtags") or "").strip()
+    return str(item.get("publish_copy") or item["title"]).strip()
 
 
-def _publish_official(item: dict, route: dict, publish_at: str | None) -> dict:
-    """海外平台发布交给矩媒命令行，media-factory 不再直接调用平台接口。"""
+def _target(item: dict, route: dict) -> dict:
     platform = str(route["platform"])
-    title = str(item["title"])
-    copy = str(item.get("publish_copy") or title)
-    arguments = [
-        "publish", "-p", platform,
-        "--phone", str(route.get("account_ref") or ""),
-        "--account-id", str(route["account_id"]),
-        "--title", title,
-        "--description", copy,
-    ]
-    if platform == "youtube":
-        arguments.extend([
-            "-f", str(item["local_path"]),
-            "--publication-id", str(item["production_id"]),
-            "--privacy", "public",
-        ])
-    else:
-        arguments.extend(["--video-url", _public_video_url(item)])
-    if publish_at:
-        arguments.extend(["--publish-at", publish_at])
-    payload = run_matrixmedia_cli(arguments)
-    if not isinstance(payload, dict):
-        raise MatrixMediaCommandError("MatrixMedia 官方发布结果不是 JSON 对象")
-    if payload.get("error"):
-        raise MatrixMediaCommandError(str(payload["error"]))
-    return payload
+    target = {
+        "platform": platform,
+        "title": str(item["title"]),
+        "description": _publish_copy(item),
+        "file": str(item["local_path"]),
+        "tags": str(item.get("hashtags") or "").strip(),
+        "bt2": str(item.get("short_title") or "").strip(),
+        "publication_id": str(item["production_id"]),
+        "client_ref": str(item["production_id"]),
+        "creative_statement": "ai_generated",
+    }
+    if platform in PUBLIC_URL_PLATFORMS:
+        target["video_url"] = _public_video_url(item)
+    return target
 
 
 def publish_local_outputs(
@@ -258,22 +190,39 @@ def publish_local_outputs(
     ]
     if not pending:
         raise DuplicatePublicationError("所选内容在目标账号和平台都已经发布或预约，无需重复发送")
-    published = []
-    for index, task in enumerate(pending, start=1):
-        item, route = task["item"], task["route"]
-        timing = timings[str(route["platform"])]
-        if progress:
-            progress(f"正在发布 {index}/{len(pending)}：{route['platform']} - {item['title']}")
-        connector = str(route["connector"])
-        result = (
-            _publish_matrixmedia(item, route, timing["scheduled_cli"])
-            if connector == "matrixmedia"
-            else _publish_official(
-                item,
-                route,
-                None if timing["publish_mode"] == "immediate" else str(timing["publish_at"]),
-            )
+    publish_batch, _, publish_error = _publishing()
+    from publishing.platforms import resolve_platform
+
+    pending_codes = {resolve_platform(str(task["route"]["platform"])).code for task in pending}
+    platform_times = {}
+    for key, value in (publish_at_by_platform or {}).items():
+        code = resolve_platform(str(key)).code
+        if code in pending_codes:
+            platform_times[code] = value
+    try:
+        outcome = publish_batch(
+            {
+                "account_group": str(account_group).strip(),
+                "publish_mode": publish_mode,
+                "publish_at": publish_at,
+                "publish_at_by_platform": platform_times,
+                "targets": [_target(task["item"], task["route"]) for task in pending],
+            },
+            progress=progress,
         )
+    except publish_error as exc:
+        raise InvalidPublishRequestError(str(exc)) from exc
+    published_by_key = {
+        (str(item.get("client_ref") or ""), str(item.get("platform") or "")): item
+        for item in outcome["published"]
+    }
+    published = []
+    for task in pending:
+        item, route = task["item"], task["route"]
+        sent = published_by_key.get((str(item["production_id"]), str(route["platform"])))
+        if sent is None:
+            continue
+        result = sent.get("result") if isinstance(sent.get("result"), dict) else {}
         external_id = str(result.get("video_id") or result.get("post_id") or result.get("id") or "")
         external_url = str(result.get("video_url") or result.get("platform_url") or result.get("url") or "")
         record = {
@@ -281,18 +230,31 @@ def publish_local_outputs(
             "run_id": str(item["run_id"]),
             "business_line": business_line,
             "platform": str(route["platform"]),
-            "connector": connector,
+            "connector": str(route["connector"]),
             "account_id": str(route["platform_account_id"]),
             "content_part": int(item.get("content_part") or 1),
             "title": str(item["title"]),
-            "publish_mode": timing["publish_mode"],
-            "publish_at": timing["publish_at"],
-            "status": "scheduled" if timing["publish_mode"] == "scheduled" else "published",
+            "publish_mode": sent["publish_mode"],
+            "publish_at": sent["publish_at"],
+            "status": "scheduled" if sent["publish_mode"] == "scheduled" else "published",
             "external_id": external_id or None,
             "external_url": external_url or None,
         }
         saved = commit_publication_records([record])["records"][0]
         published.append({"record": saved, "result": result})
+    if outcome["failed"]:
+        detail = "；".join(
+            f"{item.get('platform')} {item.get('title')}：{item.get('error')}" for item in outcome["failed"]
+        )
+        raise MatrixMediaCommandError(f"部分平台发布失败：{detail}")
+    timings = {
+        platform: {
+            "publish_mode": item["publish_mode"],
+            "publish_at": item["publish_at"],
+            "scheduled_cli": item["cli_publish_at"],
+        }
+        for platform, item in outcome["publish_timings"].items()
+    }
     return {
         "business_line": business_line,
         "publish_date": preview["publish_date"],

@@ -134,11 +134,16 @@ def _run_official_python(arguments: list[str]) -> dict | list:
         cli_args = ["accounts", "--group", _flag_value(arguments, "--phone", "--group")]
     else:
         cli_args = arguments
+    env = dict(os.environ)
+    python_dir = str(matrix_dir / "python")
+    current_path = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = python_dir if not current_path else python_dir + os.pathsep + current_path
+    env["PYTHONUTF8"] = "1"
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "official.cli", *cli_args],
+            [sys.executable, "-m", "platform_api.cli", *cli_args],
             cwd=matrix_dir,
-            env=dict(os.environ),
+            env=env,
             capture_output=True,
             text=True,
             encoding="utf-8",

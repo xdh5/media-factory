@@ -40,6 +40,8 @@ python -m core.mcp.publishing
 | `errors/` | MCP 领域错误与错误映射 |
 | `config/` | 服务说明、缓存路径和 MCP 标识 |
 | `infrastructure/` | 后台任务、D1 与通用发布服务适配入口 |
-| `core/tools/publish_media/` | 可脱离 MCP 复用的账号路由、产物恢复和平台发布服务 |
+| `core/tools/publish_media/` | 选片、去重、R2 公网地址和发布记录。平台发送调用矩媒 `publishing` |
+| `integrations/MatrixMedia/python/publishing/` | 账号组、预约时间和各平台发布参数的唯一实现。两个发布 MCP 都调用它 |
+| `integrations/MatrixMedia/python/platform_api/` | YouTube、TikTok、Instagram、Facebook 的官方接口 |
 
 当前没有独立只读 Resource 和可复用 Prompt，因此不创建空的 `resources/`、`prompts/` 目录。业务服务已经由 `core/tools/publish_media/` 提供，不在 MCP 内复制一套 `services/`。
