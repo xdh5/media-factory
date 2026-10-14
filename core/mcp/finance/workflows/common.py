@@ -1,7 +1,5 @@
 """财经工作流错误转换。"""
 from __future__ import annotations
-from core.tools.collect_finance_copy import CollectFinanceCopyError
-
 from ..infrastructure.gateways import ClearCacheConfirmationRequiredError
 from ..infrastructure.gateways import CloudflareDataError
 from ..infrastructure.gateways import ImageGenerationError
@@ -20,8 +18,6 @@ def _map_error(exc: Exception) -> FinanceError:
         return WorkflowStepError(exc.message, exc.details)
     if isinstance(exc, ClearCacheConfirmationRequiredError):
         return ConfirmationRequiredError(str(exc))
-    if isinstance(exc, CollectFinanceCopyError):
-        return WorkflowStepError(exc.message, exc.details)
     if isinstance(exc, CloudflareDataError):
         details = dict(exc.details)
         remote_code = str(getattr(exc, "remote_code", "")).strip()

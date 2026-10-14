@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import time
 
-from core.tools.collect_finance_copy import collect_copy
-from core.tools.collect_finance_copy._constants import CACHE_ROOT
-
 from ..infrastructure.gateways import runner_submit_task
+from ..services.collect_copy import CACHE_ROOT, collect_copy
 from .common import _map_error
 
 

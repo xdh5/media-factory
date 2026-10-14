@@ -11,7 +11,8 @@
 - `__main__.py`：启动入口；`server.py`：创建服务实例。
 - `tools/registry.py`：注册工具，保持原有工具名称和参数。
 - `workflows/`：按稿件、素材、交付、后台任务拆分业务编排。
-- `services/`：稿件处理、分镜、素材准备、合成和上传服务；调用方直接导入所需服务。
+- `services/`：稿件处理、分镜、素材准备、收集文案、合成和上传服务；调用方直接导入所需服务。
+- `services/collect_copy.py`：下载抖音链接、转写并写入财经文案库。
 - `services/production_config.py`：成片参数校验。
 - `services/video_layers.py`：字幕、钩子标题和章节图层。
 - `services/video_opening.py`：片头渲染和缓存。
@@ -44,7 +45,7 @@ finance_get_article_linebreak_prompt / finance_validate_article_linebreak_respon
   └─ 每段改写后单独断句，去掉换行必须与改写稿逐字一致
 finance_get_stock_video_selection_prompt / finance_validate_stock_video_selection_response
 finance_start_collect_copy(share_text, collection_name)
-└─ tools.collect_finance_copy.collect_copy
+└─ services.collect_copy.collect_copy
    └─ 收集财经文案：下载单条抖音链接、转写口播并写入文案库
 finance_poll_task(task_path)
 

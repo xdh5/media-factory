@@ -8,17 +8,13 @@ from core.tools.cloudflare_data import CloudflareDataError, commit_finance_copy
 from core.tools.transcribe import TranscriptionError, transcribe
 from media_collector import DownloadError, download
 
-from ._constants import COLLECTION_CODE_BY_NAME, DIRECT_LINK_SOURCE, VIDEO_FILE_NAME
-from ._errors import CollectCopyError
+from ..errors import WorkflowStepError
 
-__all__ = ["collect_copy"]
-
-
-def _collection_code(collection_name: str) -> str:
-    known = COLLECTION_CODE_BY_NAME.get(collection_name)
-    if known:
-        return known
-    raise CollectCopyError("分类名称仅支持“财经”，请将 collection_name 设置为“财经”")
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+CACHE_ROOT = _PROJECT_ROOT / "cache" / "collect_finance_copy"
+_VIDEO_FILE_NAME = "video.mp4"
+_DIRECT_LINK_SOURCE = "direct_link"
+_COLLECTION_CODE_BY_NAME = {"财经": "finance"}
 
 
 def collect_copy(
@@ -31,16 +27,19 @@ def collect_copy(
     clean_share_text = str(share_text or "").strip()
     clean_collection_name = str(collection_name or "").strip()
     if not clean_share_text:
-        raise CollectCopyError("抖音链接不能为空")
-    if not clean_collection_name or len(clean_collection_name) > 100:
-        raise CollectCopyError("分类名称必须是 1 到 100 个字符")
+        raise WorkflowStepError("抖音链接不能为空")
+    collection_code = _COLLECTION_CODE_BY_NAME.get(clean_collection_name)
+    if not collection_code:
+        raise WorkflowStepError("分类名称仅支持“财经”，请将 collection_name 设置为“财经”")
+    if len(clean_collection_name) > 100:
+        raise WorkflowStepError("分类名称必须是 1 到 100 个字符")
 
     root = Path(cache_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
     try:
-        downloaded = download(clean_share_text, root / VIDEO_FILE_NAME)
+        downloaded = download(clean_share_text, root / _VIDEO_FILE_NAME)
     except DownloadError as exc:
-        raise CollectCopyError(
+        raise WorkflowStepError(
             f"抖音视频下载失败：{exc}",
             getattr(exc, "details", {}),
         ) from exc
@@ -48,9 +47,9 @@ def collect_copy(
     platform = str(downloaded.get("platform") or "").strip()
     video_id = str(downloaded.get("video_id") or "").strip()
     if platform != "抖音":
-        raise CollectCopyError(f"链接平台必须是抖音，当前识别为：{platform or '未知平台'}")
+        raise WorkflowStepError(f"链接平台必须是抖音，当前识别为：{platform or '未知平台'}")
     if not video_id.isdigit():
-        raise CollectCopyError("下载结果缺少有效的抖音作品 ID")
+        raise WorkflowStepError("下载结果缺少有效的抖音作品 ID")
 
     try:
         recognized = transcribe(
@@ -59,21 +58,20 @@ def collect_copy(
             filename=f"抖音作品{video_id}",
         )
     except TranscriptionError as exc:
-        raise CollectCopyError(
+        raise WorkflowStepError(
             f"抖音视频转写失败：{exc}",
             getattr(exc, "details", {}),
         ) from exc
 
     transcript = str(recognized.get("text") or "").strip()
     if not transcript:
-        raise CollectCopyError("抖音视频转写结果为空，未写入数据库")
+        raise WorkflowStepError("抖音视频转写结果为空，未写入数据库")
 
-    collection_code = _collection_code(clean_collection_name)
     record = {
         "aweme_id": video_id,
         "collection_code": collection_code,
         "collection_name": clean_collection_name,
-        "search_keyword": DIRECT_LINK_SOURCE,
+        "search_keyword": _DIRECT_LINK_SOURCE,
         "search_rank": 1,
         "author_name": "未知作者",
         "published_at": "",
@@ -86,7 +84,7 @@ def collect_copy(
     try:
         database = commit_finance_copy([record])
     except CloudflareDataError as exc:
-        raise CollectCopyError(
+        raise WorkflowStepError(
             f"写入财经文案库失败：{exc}",
             getattr(exc, "details", {}),
         ) from exc
