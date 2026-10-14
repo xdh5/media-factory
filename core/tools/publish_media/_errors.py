@@ -35,7 +35,7 @@ class DuplicatePublicationError(PublishMediaError):
     code = "DUPLICATE_PUBLICATION"
 
 
-class MatrixMediaCommandError(PublishMediaError):
-    """MatrixMedia CLI 不可用或返回失败。"""
+class MediaPublisherCommandError(PublishMediaError):
+    """media-publisher CLI 不可用或返回失败。"""
 
-    code = "MATRIXMEDIA_COMMAND_ERROR"
+    code = "MEDIA_PUBLISHER_COMMAND_ERROR"

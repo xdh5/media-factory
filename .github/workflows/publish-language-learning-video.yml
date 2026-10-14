@@ -88,8 +88,8 @@ jobs:
       - name: 检出发布代码
         uses: actions/checkout@v5
 
-      - name: 检出矩媒官方发布代码
-        run: git submodule update --init integrations/MatrixMedia
+      - name: 检出 media-publisher
+        run: git submodule update --init integrations/media-publisher
 
       - name: 使用统一发布 MCP 预约缺少的平台（最多重试 3 次）
         env:

@@ -22,6 +22,6 @@ PUBLICATION_PLATFORMS = (
 )
 PUBLICATION_MODES = ("immediate", "scheduled")
 PUBLICATION_STATUSES = ("published", "scheduled")
-PUBLISHING_CONNECTORS = ("youtube", "zernio", "matrixmedia")
+PUBLISHING_CONNECTORS = ("youtube", "zernio", "media-publisher")
 PRODUCTION_BUSINESS_LINES = ("finance", "language_learning")
 PRODUCTION_SOURCES = ("local_mcp", "github_workflow")

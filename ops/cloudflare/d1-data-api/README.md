@@ -13,7 +13,7 @@
 - `douyin_research_discoveries`
 - `douyin_research_script_usage`
 
-发布记录把 MatrixMedia 视为连接器，最终平台细分为 YouTube、Facebook、Instagram、TikTok、快手、抖音、百家号、小红书、头条号和视频号。`publish_at` 保存带时区的完整 ISO 8601 日期时间：立即发布写实际发送成功时间，预约发布写预约时间。
+发布记录把 media-publisher 视为连接器，最终平台细分为 YouTube、Facebook、Instagram、TikTok、快手、抖音、百家号、小红书、头条号和视频号。`publish_at` 保存带时区的完整 ISO 8601 日期时间：立即发布写实际发送成功时间，预约发布写预约时间。
 
 通过 `POST /v1/publication-records/commit` 幂等写入发布记录；数据库以业务线、生产批次、标题、平台、账号和分段作为稳定唯一键，同名内容在不同日期发布时各自保留记录，不允许外部任务 ID 变化造成重复记录，也不接受空账号。通过 `GET /v1/publication-records` 查询，可选按 `business_line`、`platform`、`publish_date` 和 `run_id` 过滤。补发去重按产物的 `run_id` 查询，不按实际发送日期查询。通过 `GET /v1/publishing-account-groups` 查询数据库账号组。
 

@@ -72,7 +72,7 @@ ops/
 └── youtube/         # YouTube OAuth 运维工具
 
 integrations/
-└── MatrixMedia/     # 本地多平台发布集成
+└── media-publisher/ # 本地多平台发布集成
 
 dashboard/           # 发布管理面板
 data/                # 本地持久化资源库
@@ -135,7 +135,7 @@ cache/               # 中间产物、成片 cache/output、临时文件 cache/t
 - Groq Whisper 语音转写
 - Cloudflare D1 与 R2
 - GitHub Actions
-- YouTube Data API、Zernio 与 MatrixMedia
+- YouTube Data API、Zernio 与 media-publisher
 - Docker
 
 ## 快速开始

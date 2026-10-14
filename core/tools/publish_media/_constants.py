@@ -4,9 +4,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 BEIJING_TIMEZONE = "Asia/Shanghai"
-MATRIXMEDIA_EXECUTABLE_ENV = "MATRIXMEDIA_EXECUTABLE"
-MATRIXMEDIA_DIR_ENV = "MATRIXMEDIA_DIR"
-MATRIXMEDIA_TIMEOUT_SECONDS = 2400
+MEDIA_PUBLISHER_EXECUTABLE_ENV = "MEDIA_PUBLISHER_EXECUTABLE"
+MEDIA_PUBLISHER_DIR_ENV = "MEDIA_PUBLISHER_DIR"
+MEDIA_PUBLISHER_TIMEOUT_SECONDS = 2400
 
 BUSINESS_LINES = ("finance", "language_learning")
 SUPPORTED_PLATFORMS = (
@@ -43,19 +43,36 @@ PLATFORM_ALIASES = {
     "sph": "wechat_channels",
     "视频号": "wechat_channels",
 }
-MATRIXMEDIA_PLATFORM_CODES = {
+MEDIA_PUBLISHER_PLATFORM_CODES = {
     "douyin": "dy",
     "kuaishou": "ks",
     "toutiao": "tt",
     "wechat_channels": "sph",
 }
-MATRIXMEDIA_CODE_PLATFORMS = {
-    **{value: key for key, value in MATRIXMEDIA_PLATFORM_CODES.items()},
+MEDIA_PUBLISHER_CODE_PLATFORMS = {
+    **{value: key for key, value in MEDIA_PUBLISHER_PLATFORM_CODES.items()},
     "抖音": "douyin",
     "快手": "kuaishou",
     "头条": "toutiao",
     "头条号": "toutiao",
     "视频号": "wechat_channels",
 }
+
+
+def media_publisher_root() -> Path:
+    """media-publisher 仓库根目录。"""
+    import os
+
+    override = os.getenv(MEDIA_PUBLISHER_DIR_ENV, "").strip()
+    return Path(override or PROJECT_ROOT / "integrations" / "media-publisher").resolve()
+
+
+def media_publisher_executable() -> str:
+    """已安装的命令行程序。"""
+    import os
+
+    return os.getenv(MEDIA_PUBLISHER_EXECUTABLE_ENV, "").strip()
+
+
 PUBLIC_URL_PLATFORMS = ("facebook", "instagram", "tiktok")
 PUBLISH_MODES = ("immediate", "scheduled")

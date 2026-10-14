@@ -3,8 +3,8 @@
 from .api import (
     publishing_list_account_groups,
     publishing_preview,
-    publishing_start_matrixmedia_login,
-    publishing_matrixmedia_login_status,
+    publishing_start_login,
+    publishing_login_status,
     publishing_start_publish,
     publishing_poll_task,
 )
@@ -12,8 +12,8 @@ from .api import (
 ALL_TOOLS = (
     publishing_list_account_groups,
     publishing_preview,
-    publishing_start_matrixmedia_login,
-    publishing_matrixmedia_login_status,
+    publishing_start_login,
+    publishing_login_status,
     publishing_start_publish,
     publishing_poll_task,
 )

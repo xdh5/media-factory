@@ -7,10 +7,10 @@ from core.tools.cloudflare_data import CloudflareDataError
 from core.tools.publish_media import (
     PublishMediaError,
     list_account_groups,
-    matrixmedia_login_status,
+    publisher_login_status,
     preview_publication,
     publish_local_outputs,
-    start_matrixmedia_login,
+    start_publisher_login,
 )
 
 __all__ = [name for name in globals() if not name.startswith("_")]

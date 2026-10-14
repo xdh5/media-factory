@@ -1,4 +1,4 @@
-"""合并数据库账号组、官方账号和 MatrixMedia 本机账号。"""
+"""合并数据库账号组、官方账号和 media-publisher 本机账号。"""
 
 from __future__ import annotations
 
@@ -17,28 +17,28 @@ from pathlib import Path
 from core.tools.cloudflare_data import list_publishing_account_groups
 
 from ._constants import (
-    MATRIXMEDIA_CODE_PLATFORMS,
-    MATRIXMEDIA_DIR_ENV,
-    MATRIXMEDIA_EXECUTABLE_ENV,
-    MATRIXMEDIA_PLATFORM_CODES,
-    MATRIXMEDIA_TIMEOUT_SECONDS,
-    PROJECT_ROOT,
+    MEDIA_PUBLISHER_CODE_PLATFORMS,
+    MEDIA_PUBLISHER_PLATFORM_CODES,
+    MEDIA_PUBLISHER_EXECUTABLE_ENV,
+    MEDIA_PUBLISHER_TIMEOUT_SECONDS,
+    media_publisher_executable,
+    media_publisher_root,
 )
-from ._errors import MatrixMediaCommandError, PublishAccountGroupError
+from ._errors import MediaPublisherCommandError, PublishAccountGroupError
 
 
 _LOGIN_SESSIONS: dict[str, dict] = {}
 
 
-def _matrixmedia_command() -> tuple[list[str], Path]:
-    configured = os.getenv(MATRIXMEDIA_EXECUTABLE_ENV, "").strip()
-    matrix_dir = Path(os.getenv(MATRIXMEDIA_DIR_ENV, "") or PROJECT_ROOT / "integrations" / "MatrixMedia").resolve()
+def _publisher_command() -> tuple[list[str], Path]:
+    configured = media_publisher_executable()
+    matrix_dir = media_publisher_root()
     if configured:
         executable = Path(configured).expanduser().resolve()
         if not executable.is_file():
-            raise MatrixMediaCommandError(
-                f"{MATRIXMEDIA_EXECUTABLE_ENV} 指向的文件不存在：{executable}",
-                {"fix": "请配置已安装的 MatrixMedia 可执行文件绝对路径"},
+            raise MediaPublisherCommandError(
+                f"{MEDIA_PUBLISHER_EXECUTABLE_ENV} 指向的文件不存在：{executable}",
+                {"fix": "请配置已安装的 media-publisher 可执行文件绝对路径"},
             )
         return [str(executable), "cli"], matrix_dir
     electron = matrix_dir / "node_modules" / "electron" / "dist" / "electron.exe"
@@ -47,18 +47,18 @@ def _matrixmedia_command() -> tuple[list[str], Path]:
         # 受限环境（沙箱/无 GPU 会话）下 GPU 进程会崩溃退出：--no-sandbox 允许 GPU 进程启动，
         # --disable-gpu 降低对显卡依赖；注意不能加 --in-process-gpu，否则 webview 加载 about:blank 会 ERR_FAILED。
         return [str(electron), "--no-sandbox", "--disable-gpu", ".", "--", "cli"], matrix_dir
-    installed = shutil.which("matrixmedia")
+    installed = shutil.which("media-publisher")
     if installed:
         return [installed, "cli"], matrix_dir
     local_app_data = Path(os.getenv("LOCALAPPDATA", ""))
-    installed_executable = local_app_data / "Programs" / "matrixmedia" / "matrixmedia.exe"
+    installed_executable = local_app_data / "Programs" / "media-publisher" / "media-publisher.exe"
     if installed_executable.is_file():
         return [str(installed_executable), "cli"], matrix_dir
-    raise MatrixMediaCommandError(
-        "找不到 MatrixMedia CLI，无法查询本机账号组",
+    raise MediaPublisherCommandError(
+        "找不到 media-publisher CLI，无法查询本机账号组",
         {
-            "fix": f"请设置 {MATRIXMEDIA_EXECUTABLE_ENV}，或安装 matrixmedia 命令",
-            "matrixmedia_dir": str(matrix_dir),
+            "fix": f"请设置 {MEDIA_PUBLISHER_EXECUTABLE_ENV}，或安装 media-publisher 命令",
+            "media_publisher_dir": str(matrix_dir),
         },
     )
 
@@ -80,8 +80,8 @@ def _last_json(text: str):
     return None
 
 
-def _latest_matrixmedia_log() -> Path | None:
-    log_dir = Path(os.getenv("APPDATA", "")) / "matrix-video" / "logs"
+def _latest_publisher_log() -> Path | None:
+    log_dir = Path(os.getenv("APPDATA", "")) / "media-publisher" / "logs"
     if not log_dir.is_dir():
         return None
     files = [item for item in log_dir.glob("*.log") if item.is_file()]
@@ -129,7 +129,7 @@ def _is_official_cli(arguments: list[str]) -> bool:
 
 def _run_official_python(arguments: list[str]) -> dict | list:
     """YouTube 与 Zernio 走矩媒里的 Python 包，GitHub Runner 不依赖本机 Electron。"""
-    matrix_dir = Path(os.getenv(MATRIXMEDIA_DIR_ENV, "") or PROJECT_ROOT / "integrations" / "MatrixMedia").resolve()
+    matrix_dir = media_publisher_root()
     if arguments[0] == "accounts":
         cli_args = ["accounts", "--group", _flag_value(arguments, "--phone", "--group")]
     else:
@@ -148,33 +148,33 @@ def _run_official_python(arguments: list[str]) -> dict | list:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=MATRIXMEDIA_TIMEOUT_SECONDS,
+            timeout=MEDIA_PUBLISHER_TIMEOUT_SECONDS,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise MatrixMediaCommandError(f"运行矩媒官方发布失败：{exc}") from exc
+        raise MediaPublisherCommandError(f"运行矩媒官方发布失败：{exc}") from exc
     payload = _last_json(result.stdout) or _last_json(result.stderr)
     if result.returncode != 0:
         message = ""
         if isinstance(payload, dict):
             message = str(payload.get("message") or payload.get("error") or "")
-        raise MatrixMediaCommandError(
+        raise MediaPublisherCommandError(
             f"矩媒官方发布失败（退出码 {result.returncode}）：{message or result.stderr[-500:]}",
             {"exit_code": result.returncode},
         )
     if payload is None:
-        raise MatrixMediaCommandError("矩媒官方发布未返回可解析的 JSON")
+        raise MediaPublisherCommandError("矩媒官方发布未返回可解析的 JSON")
     return payload
 
 
-def run_matrixmedia_cli(arguments: list[str]) -> dict | list:
-    """扫码平台调用 MatrixMedia Electron；YouTube 与 Zernio 调用矩媒官方发布包。"""
+def run_publisher_cli(arguments: list[str]) -> dict | list:
+    """扫码平台调用 media-publisher Electron；YouTube 与 Zernio 调用官方发布包。"""
     if _is_official_cli(arguments):
         return _run_official_python(arguments)
-    prefix, cwd = _matrixmedia_command()
+    prefix, cwd = _publisher_command()
     env = dict(os.environ)
     env.pop("ELECTRON_RUN_AS_NODE", None)
-    log_path = _latest_matrixmedia_log()
+    log_path = _latest_publisher_log()
     log_offset = log_path.stat().st_size if log_path else 0
     try:
         result = subprocess.run(
@@ -185,13 +185,13 @@ def run_matrixmedia_cli(arguments: list[str]) -> dict | list:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=MATRIXMEDIA_TIMEOUT_SECONDS,
+            timeout=MEDIA_PUBLISHER_TIMEOUT_SECONDS,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise MatrixMediaCommandError(f"运行 MatrixMedia CLI 失败：{exc}") from exc
+        raise MediaPublisherCommandError(f"运行 media-publisher CLI 失败：{exc}") from exc
     payload = _last_json(result.stdout) or _last_json(result.stderr)
-    latest_log = _latest_matrixmedia_log()
+    latest_log = _latest_publisher_log()
     if payload is None and latest_log:
         try:
             with latest_log.open("r", encoding="utf-8", errors="replace") as stream:
@@ -202,41 +202,41 @@ def run_matrixmedia_cli(arguments: list[str]) -> dict | list:
             payload = None
     if result.returncode != 0:
         message = payload.get("message") if isinstance(payload, dict) else ""
-        raise MatrixMediaCommandError(
-            f"MatrixMedia CLI 返回失败（退出码 {result.returncode}）：{message or result.stderr[-500:]}",
+        raise MediaPublisherCommandError(
+            f"media-publisher CLI 返回失败（退出码 {result.returncode}）：{message or result.stderr[-500:]}",
             {"exit_code": result.returncode},
         )
     if payload is None:
-        raise MatrixMediaCommandError("MatrixMedia CLI 未返回可解析的 JSON")
+        raise MediaPublisherCommandError("media-publisher CLI 未返回可解析的 JSON")
     return payload
 
 
-def _matrixmedia_account_rows() -> list:
+def _publisher_account_rows() -> list:
     rows = []
     for group in ("finance", "korean"):
-        payload = run_matrixmedia_cli(["accounts", "--json", "--phone", group])
+        payload = run_publisher_cli(["accounts", "--json", "--phone", group])
         chunk = payload if isinstance(payload, list) else payload.get("accounts", [])
         if isinstance(chunk, list):
             rows.extend(chunk)
     return rows
 
 
-def list_matrixmedia_accounts() -> list[dict]:
-    rows = _matrixmedia_account_rows()
+def list_publisher_accounts() -> list[dict]:
+    rows = _publisher_account_rows()
     accounts = []
     for item in rows:
         if not isinstance(item, dict):
             continue
         raw_platform = str(item.get("pt") or item.get("platform") or "").strip()
-        platform = MATRIXMEDIA_CODE_PLATFORMS.get(raw_platform, raw_platform)
+        platform = MEDIA_PUBLISHER_CODE_PLATFORMS.get(raw_platform, raw_platform)
         group = str(item.get("phone") or item.get("account_group") or item.get("group") or "").strip()
-        if platform not in MATRIXMEDIA_PLATFORM_CODES or not group:
+        if platform not in MEDIA_PUBLISHER_PLATFORM_CODES or not group:
             continue
         if item.get("loggedIn") is False:
             continue
         accounts.append({
             "platform": platform,
-            "connector": "matrixmedia",
+            "connector": "media-publisher",
             "account_id": group,
             "account_ref": group,
             "display_name": str(item.get("name") or item.get("title") or group),
@@ -246,17 +246,17 @@ def list_matrixmedia_accounts() -> list[dict]:
     return accounts
 
 
-def list_matrixmedia_login_states() -> list[dict]:
-    """返回 MatrixMedia 对 Cookie 的实时检查结果，包含已失效账号。"""
-    rows = _matrixmedia_account_rows()
+def list_publisher_login_states() -> list[dict]:
+    """返回 media-publisher 对 Cookie 的实时检查结果，包含已失效账号。"""
+    rows = _publisher_account_rows()
     states = []
     for item in rows:
         if not isinstance(item, dict):
             continue
         raw_platform = str(item.get("pt") or item.get("platform") or "").strip()
-        platform = MATRIXMEDIA_CODE_PLATFORMS.get(raw_platform, raw_platform)
+        platform = MEDIA_PUBLISHER_CODE_PLATFORMS.get(raw_platform, raw_platform)
         account_ref = str(item.get("phone") or item.get("account_group") or item.get("group") or "").strip()
-        if platform not in MATRIXMEDIA_PLATFORM_CODES or not account_ref:
+        if platform not in MEDIA_PUBLISHER_PLATFORM_CODES or not account_ref:
             continue
         logged_in = item.get("loggedIn") is True
         states.append({
@@ -266,13 +266,13 @@ def list_matrixmedia_login_states() -> list[dict]:
             "reason": str(item.get("reason") or "") if not logged_in else "",
             "expire_at": item.get("expireAt"),
             "login_required": not logged_in,
-            "login_tool": "publishing_start_matrixmedia_login" if not logged_in else None,
+            "login_tool": "publishing_start_login" if not logged_in else None,
         })
     return states
 
 
-def _matrixmedia_login_target(business_line: str, account_group: str, platform: str) -> dict:
-    """从数据库账号组解析 MatrixMedia 扫码登录目标，不依赖当前登录态。"""
+def _publisher_login_target(business_line: str, account_group: str, platform: str) -> dict:
+    """从数据库账号组解析 media-publisher 扫码登录目标，不依赖当前登录态。"""
     database = _database_groups(business_line)
     selected = next((item for item in database if str(item["name"]) == account_group), None)
     if selected is None:
@@ -283,11 +283,11 @@ def _matrixmedia_login_target(business_line: str, account_group: str, platform: 
     matches = [
         item for item in selected["members"]
         if str(item.get("platform") or "") == platform
-        and str(item.get("connector") or "") == "matrixmedia"
+        and str(item.get("connector") or "") == "media-publisher"
     ]
     if len(matches) != 1:
         raise PublishAccountGroupError(
-            f"账号组“{account_group}”没有唯一的 {platform} MatrixMedia 账号",
+            f"账号组“{account_group}”没有唯一的 {platform} media-publisher 账号",
             {"account_group": account_group, "platform": platform, "matches": len(matches)},
         )
     account_ref = str(matches[0].get("account_ref") or "").strip()
@@ -316,10 +316,10 @@ def _login_payload(session: dict) -> dict:
         message = "扫码登录成功，可以重新执行发布预检或发布"
     elif exit_code is not None:
         status = "failed"
-        message = session["stderr"].strip()[-800:] or f"MatrixMedia 登录进程退出码 {exit_code}"
+        message = session["stderr"].strip()[-800:] or f"media-publisher 登录进程退出码 {exit_code}"
     elif qr_path.is_file() and qr_path.stat().st_size >= 80:
         status = "waiting_scan"
-        message = "请把二维码图片展示给用户扫码，然后调用 publishing_matrixmedia_login_status"
+        message = "请把二维码图片展示给用户扫码，然后调用 publishing_login_status"
     else:
         status = "starting"
         message = "正在打开登录页并提取二维码"
@@ -336,7 +336,7 @@ def _login_payload(session: dict) -> dict:
     }
 
 
-def start_matrixmedia_login(
+def start_publisher_login(
     business_line: str,
     account_group: str,
     platform: str,
@@ -344,7 +344,7 @@ def start_matrixmedia_login(
     timeout_seconds: int = 900,
     force: bool = True,
 ) -> dict:
-    """启动 MatrixMedia 扫码登录并等待二维码文件就绪。"""
+    """启动 media-publisher 扫码登录并等待二维码文件就绪。"""
     normalized = str(platform or "").strip().casefold()
     aliases = {
         "douyin": "douyin", "dy": "douyin",
@@ -355,15 +355,15 @@ def start_matrixmedia_login(
     normalized = aliases.get(normalized, normalized)
     if normalized not in {"douyin", "kuaishou", "toutiao", "wechat_channels"}:
         raise PublishAccountGroupError("扫码登录只支持抖音、快手、头条和视频号", {"platform": platform})
-    target = _matrixmedia_login_target(business_line, account_group, normalized)
+    target = _publisher_login_target(business_line, account_group, normalized)
     login_id = uuid.uuid4().hex
-    qr_path = Path(tempfile.gettempdir()) / f"matrixmedia-login-{login_id}.png"
-    prefix, cwd = _matrixmedia_command()
+    qr_path = Path(tempfile.gettempdir()) / f"media-publisher-login-{login_id}.png"
+    prefix, cwd = _publisher_command()
     command = [
         *prefix,
         "login",
         "-p",
-        MATRIXMEDIA_PLATFORM_CODES[normalized],
+        MEDIA_PUBLISHER_PLATFORM_CODES[normalized],
         "--phone",
         target["account_ref"],
         "--save-qr-png",
@@ -387,8 +387,8 @@ def start_matrixmedia_login(
             errors="replace",
         )
     except OSError as exc:
-        raise MatrixMediaCommandError(
-            f"启动 MatrixMedia 扫码登录失败：{exc}",
+        raise MediaPublisherCommandError(
+            f"启动 media-publisher 扫码登录失败：{exc}",
             {"platform": normalized, "account_ref": target["account_ref"]},
         ) from exc
     session = {
@@ -411,14 +411,14 @@ def start_matrixmedia_login(
         time.sleep(0.4)
     process.terminate()
     _LOGIN_SESSIONS.pop(login_id, None)
-    raise MatrixMediaCommandError("90 秒内没有提取到登录二维码", {"platform": normalized, "account_ref": target["account_ref"]})
+    raise MediaPublisherCommandError("90 秒内没有提取到登录二维码", {"platform": normalized, "account_ref": target["account_ref"]})
 
 
-def matrixmedia_login_status(login_id: str) -> dict:
+def publisher_login_status(login_id: str) -> dict:
     """查询扫码登录结果；等待中继续返回最新二维码路径。"""
     session = _LOGIN_SESSIONS.get(str(login_id or "").strip())
     if session is None:
-        raise MatrixMediaCommandError("找不到扫码登录会话，请重新启动登录", {"login_id": login_id})
+        raise MediaPublisherCommandError("找不到扫码登录会话，请重新启动登录", {"login_id": login_id})
     payload = _login_payload(session)
     if payload["status"] in {"success", "failed"}:
         _LOGIN_SESSIONS.pop(session["login_id"], None)
@@ -437,34 +437,34 @@ def _database_groups(business_line: str | None = None) -> list[dict]:
 
 
 def list_account_groups(business_line: str | None = None) -> dict:
-    """返回 D1 账号组，并尽量合并 MatrixMedia 当前已登录账号组。"""
+    """返回 D1 账号组，并尽量合并 media-publisher 当前已登录账号组。"""
     groups = _database_groups(business_line)
     all_database_names = {str(item["name"]) for item in _database_groups(None)}
     matrix_error = None
     try:
-        matrix_accounts = list_matrixmedia_accounts()
-        matrix_login_states = list_matrixmedia_login_states()
-    except MatrixMediaCommandError as exc:
+        matrix_accounts = list_publisher_accounts()
+        matrix_login_states = list_publisher_login_states()
+    except MediaPublisherCommandError as exc:
         matrix_accounts = []
         matrix_login_states = []
         matrix_error = str(exc)
     for group in groups:
         live = [item for item in matrix_accounts if item["account_ref"] == group["name"]]
-        group["matrixmedia_accounts"] = live
+        group["publisher_accounts"] = live
     for name in sorted({item["account_ref"] for item in matrix_accounts} - all_database_names):
         groups.append({
-            "code": f"matrixmedia:{name}",
+            "code": f"media-publisher:{name}",
             "name": name,
             "business_line": None,
             "enabled": 1,
-            "source": "matrixmedia",
+            "source": "media-publisher",
             "members": [],
-            "matrixmedia_accounts": [item for item in matrix_accounts if item["account_ref"] == name],
+            "publisher_accounts": [item for item in matrix_accounts if item["account_ref"] == name],
         })
     return {
         "groups": groups,
-        "matrixmedia_login_states": matrix_login_states,
-        "matrixmedia_error": matrix_error,
+        "publisher_login_states": matrix_login_states,
+        "publisher_error": matrix_error,
     }
 
 
@@ -473,7 +473,7 @@ _OFFICIAL_ACCOUNT_CACHE: dict[str, list] = {}
 
 def _official_account_rows(group: str) -> list:
     if group not in _OFFICIAL_ACCOUNT_CACHE:
-        payload = run_matrixmedia_cli(["accounts", "--json", "--phone", group, "--official"])
+        payload = run_publisher_cli(["accounts", "--json", "--phone", group, "--official"])
         rows = payload if isinstance(payload, list) else payload.get("accounts", [])
         _OFFICIAL_ACCOUNT_CACHE[group] = rows if isinstance(rows, list) else []
     return _OFFICIAL_ACCOUNT_CACHE[group]
@@ -538,15 +538,15 @@ def resolve_account_group(account_group: str, business_line: str, platforms: lis
             {"account_group": account_group, "expected_business_line": known_group["business_line"]},
         )
     try:
-        live_matrix = list_matrixmedia_accounts()
-    except MatrixMediaCommandError:
+        live_matrix = list_publisher_accounts()
+    except MediaPublisherCommandError:
         live_matrix = []
     if selected:
         routes = []
         for member in selected["members"]:
             if member["platform"] not in requested:
                 continue
-            if member["connector"] == "matrixmedia":
+            if member["connector"] == "media-publisher":
                 platform_account_id = str(member.get("platform_account_id") or "").strip()
                 if not platform_account_id:
                     raise PublishAccountGroupError(
@@ -563,7 +563,7 @@ def resolve_account_group(account_group: str, business_line: str, platforms: lis
                 routes.extend(_official_members(member))
     else:
         raise PublishAccountGroupError(
-            f"找不到数据库账号组“{account_group}”；未入库的 MatrixMedia 登录态不能直接用于发布",
+            f"找不到数据库账号组“{account_group}”；未入库的 media-publisher 登录态不能直接用于发布",
             {"account_group": account_group},
         )
     missing = sorted(requested - {str(item["platform"]) for item in routes})
@@ -572,11 +572,11 @@ def resolve_account_group(account_group: str, business_line: str, platforms: lis
             {
                 "platform": str(member["platform"]),
                 "account_ref": str(member.get("account_ref") or ""),
-                "login_tool": "publishing_start_matrixmedia_login",
+                "login_tool": "publishing_start_login",
             }
             for member in (selected.get("members") or [])
             if str(member.get("platform") or "") in missing
-            and str(member.get("connector") or "") == "matrixmedia"
+            and str(member.get("connector") or "") == "media-publisher"
         ]
         raise PublishAccountGroupError(
             f"账号组“{account_group}”缺少这些平台的可用账号：{', '.join(missing)}",
@@ -584,7 +584,7 @@ def resolve_account_group(account_group: str, business_line: str, platforms: lis
                 "account_group": account_group,
                 "missing_platforms": missing,
                 "login_required": login_required,
-                "next_step": "对 login_required 逐项调用 publishing_start_matrixmedia_login，并把 qr_path 图片展示给用户",
+                "next_step": "对 login_required 逐项调用 publishing_start_login，并把 qr_path 图片展示给用户",
             },
         )
     return routes

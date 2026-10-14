@@ -7,12 +7,12 @@ from ..infrastructure import (
     PublishMediaError,
     RunnerTaskNotFoundError,
     list_account_groups,
-    matrixmedia_login_status,
+    publisher_login_status,
     preview_publication,
     publish_local_outputs,
     runner_poll_task,
     runner_submit_task,
-    start_matrixmedia_login,
+    start_publisher_login,
 )
 
 from ..config import CACHE_ROOT
@@ -30,7 +30,7 @@ def _map_error(exc: Exception) -> PublishingError:
 
 
 def publishing_list_account_groups(business_line: str | None = None) -> dict:
-    """列出数据库账号组，并尽量附带 MatrixMedia 当前可见的本机账号。"""
+    """列出数据库账号组，并尽量附带 media-publisher 当前可见的本机账号。"""
     try:
         return list_account_groups(business_line)
     except Exception as exc:
@@ -57,16 +57,16 @@ def publishing_preview(
         raise _map_error(exc) from exc
 
 
-def publishing_start_matrixmedia_login(
+def publishing_start_login(
     business_line: str,
     account_group: str,
     platform: str,
     timeout_seconds: int = 900,
     force: bool = True,
 ) -> dict:
-    """为抖音、快手、头条或视频号启动 MatrixMedia 扫码登录，并返回二维码图片路径。"""
+    """为抖音、快手、头条或视频号启动 media-publisher 扫码登录，并返回二维码图片路径。"""
     try:
-        return start_matrixmedia_login(
+        return start_publisher_login(
             business_line,
             account_group,
             platform,
@@ -77,10 +77,10 @@ def publishing_start_matrixmedia_login(
         raise _map_error(exc) from exc
 
 
-def publishing_matrixmedia_login_status(login_id: str) -> dict:
+def publishing_login_status(login_id: str) -> dict:
     """轮询扫码结果；waiting_scan 时继续向用户展示 qr_path，success 后重新发布。"""
     try:
-        return matrixmedia_login_status(login_id)
+        return publisher_login_status(login_id)
     except Exception as exc:
         raise _map_error(exc) from exc
 

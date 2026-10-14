@@ -1,4 +1,4 @@
-"""按日期选出成片并写入 D1。真正发到平台时调用矩媒 publishing。"""
+"""按日期选出成片并写入 D1。真正发到平台时调用 media-publisher 的 publishing。"""
 
 from __future__ import annotations
 
@@ -12,17 +12,15 @@ from core.tools.cloudflare_data import (
 )
 from core.tools.r2_storage import upload_public_file
 
-from ._constants import MATRIXMEDIA_DIR_ENV, PROJECT_ROOT, PUBLIC_URL_PLATFORMS
-from ._errors import DuplicatePublicationError, InvalidPublishRequestError, MatrixMediaCommandError
+from ._constants import PUBLIC_URL_PLATFORMS, media_publisher_root
+from ._errors import DuplicatePublicationError, InvalidPublishRequestError, MediaPublisherCommandError
 from .accounts import resolve_account_group
 from .content import local_publish_items, normalize_platforms, normalize_publish_date
 
 
 def _publishing():
-    """加载矩媒 python/publishing。两个 MCP 的平台发布都走这一份。"""
-    import os
-
-    root = Path(os.getenv(MATRIXMEDIA_DIR_ENV, "") or PROJECT_ROOT / "integrations" / "MatrixMedia").resolve()
+    """加载 media-publisher 的 python/publishing。两个 MCP 的平台发布都走这一份。"""
+    root = media_publisher_root()
     python_dir = root / "python"
     text = str(python_dir)
     if text not in sys.path:
@@ -32,7 +30,7 @@ def _publishing():
         from publishing.platforms import PublishError
         from publishing.schedule import resolve_timings
     except ImportError as exc:
-        raise MatrixMediaCommandError(f"无法加载矩媒统一发布：{exc}", {"matrixmedia_dir": str(root)}) from exc
+        raise MediaPublisherCommandError(f"无法加载 media-publisher 统一发布：{exc}", {"media_publisher_dir": str(root)}) from exc
     return publish_batch, resolve_timings, PublishError
 
 
@@ -42,7 +40,7 @@ def normalize_publish_timings(
     publish_at: str | None,
     publish_at_by_platform: dict[str, str] | None,
 ) -> dict[str, dict[str, str | None]]:
-    """解析各平台发布时间。规则与 MatrixMedia MCP 使用同一份 publishing。"""
+    """解析各平台发布时间。规则与 media-publisher MCP 使用同一份 publishing。"""
     _, resolve_timings, publish_error = _publishing()
     from publishing.platforms import resolve_platform
 
@@ -246,7 +244,7 @@ def publish_local_outputs(
         detail = "；".join(
             f"{item.get('platform')} {item.get('title')}：{item.get('error')}" for item in outcome["failed"]
         )
-        raise MatrixMediaCommandError(f"部分平台发布失败：{detail}")
+        raise MediaPublisherCommandError(f"部分平台发布失败：{detail}")
     timings = {
         platform: {
             "publish_mode": item["publish_mode"],

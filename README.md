@@ -72,7 +72,7 @@ ops/
 └── youtube/         # YouTube OAuth utilities
 
 integrations/
-└── MatrixMedia/     # Local multi-platform publishing integration
+└── media-publisher/ # Local multi-platform publishing integration
 
 dashboard/           # Publishing dashboard
 data/                # Persistent local libraries
@@ -135,7 +135,7 @@ The research pipeline converts an individual Douyin share link into reusable sou
 - Groq Whisper transcription
 - Cloudflare D1 and R2
 - GitHub Actions
-- YouTube Data API, Zernio, and MatrixMedia
+- YouTube Data API, Zernio, and media-publisher
 - Docker
 
 ## Getting Started
