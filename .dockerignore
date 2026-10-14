@@ -10,7 +10,9 @@ data/*/cache/
 data/*/outputs/
 data/youtube/tokens/
 /cache/
+/output/
 /outputs/
+/tmp/
 /ops/
 **/*.db
 **/*.sqlite

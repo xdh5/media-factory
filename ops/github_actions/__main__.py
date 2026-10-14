@@ -15,8 +15,6 @@ def main() -> None:
         "workflow",
         choices=[
             "finance_preflight",
-            "finance_restore_library",
-            "finance_upload_libraries",
             "finance",
             "language_learning_preflight",
             "language_learning_words",
@@ -38,7 +36,6 @@ def main() -> None:
     parser.add_argument("--targets", default="")
     parser.add_argument("--publish-date", default="")
     parser.add_argument("--default-days-ahead", type=int, choices=(0, 1), default=0)
-    parser.add_argument("--library-line", default="finance")
     parser.add_argument("--week-start", default="")
     parser.add_argument("--notify-label", default="语言发布")
     parser.add_argument("--skipped", default="false")
@@ -73,15 +70,6 @@ def main() -> None:
                     stream.write(f"existing_run_id={payload['existing_run_id']}\n")
                     stream.write(f"pending_targets={','.join(payload['pending_targets'])}\n")
                 stream.write(f"skip_reason={payload['skip_reason']}\n")
-    elif arguments.workflow == "finance_restore_library":
-        from ._shared import restore_finance_image_library
-
-        library = restore_finance_image_library(arguments.library_line)
-        payload = {"status": "succeeded", "library_line": arguments.library_line, "library_path": str(library)}
-    elif arguments.workflow == "finance_upload_libraries":
-        from core.tools.generate_image.pack_libraries import upload_finance_libraries
-
-        payload = {"status": "succeeded", **upload_finance_libraries()}
     elif arguments.workflow == "finance":
         from .finance import run as run_finance
 

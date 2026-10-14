@@ -179,7 +179,7 @@ def slide_in_shutter(
     """片头动画与快门后的画面一次渲成无音 mp4。音效在成片时叠加。
 
     传入 video_path 时，拍照展开结束后直接播放该视频。
-    未传时仍用静图运镜，供图库和生图策略使用。
+    未传时仍用静图运镜，供千问生图策略使用。
     """
     image_path = Path(image_path)
     if not image_path.is_file():

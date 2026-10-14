@@ -19,9 +19,9 @@ description: 使用项目财经 MCP 制作中文短视频（财经、心灵鸡�
 1. 读取生产配置，用 `finance_get_source_script` 领取原稿。库存查询使用只读统计工具；稿件耗尽或被其他任务占用时报告工具错误并停止。
 2. 按 MCP 的黄金钩子 Prompt 生成并校验，再获取正文分段计划。每段依次执行改写 Prompt、改写校验、断句 Prompt、断句校验，失败只重试对应段或断句；合并后执行全文校验。内容规则全部以工具返回的 Prompt 为准。
 3. 用话题、标题标签、视觉元数据各自的 Prompt 与校验工具确定元数据，再保存草稿。`source_hook` 使用处理后的钩子；钩子发生品牌替换或纠错时，同时把钩子校验返回的原样钩子作为 `db_source_hook` 传回，不能拿处理后的版本代替。
-4. 启动分镜任务，按返回的分镜 Prompt 生成完整文本。根据配置选择图库选图、参考图生图或实拍搜索流程。实拍素材按搜索顺序取尺寸达标的候选，单段不足时拼两段，不调用模型选片。
+4. 启动分镜任务，按返回的分镜 Prompt 生成完整文本。根据配置选择参考图生图或实拍搜索流程。实拍素材按搜索顺序取尺寸达标的候选，单段不足时拼两段，不调用模型选片。
 5. 实拍策略调用 finance_start_download_videos，默认下载后在同一后台任务自动合成；可省略 production_config 以使用统一配置，并允许 MCP 自动生成重点句。成功结果包含 video_path、最终成片 manifest_path、material_manifest_path 与 auto_finished=true，不再调用独立合成工具。仅需素材时显式传 auto_finish=false。独立调用合成工具时，由宿主判断重点句、断行及标红词，通过 `production_config.emphasis_lines.groups` 传入。优先使用 `sentence_text` 精确对应原文，不猜句子编号；其他字幕和制作参数复用 MCP 配置。
-6. 图库、生图或 auto_finish=false 时才单独启动成片任务，完成后交付结果。耗时步骤使用对应 `start` 工具，每 15～30 秒轮询返回的 `task_path`；客户端超时后继续轮询同一任务，不重复启动。
+6. 生图或 auto_finish=false 时才单独启动成片任务，完成后交付结果。耗时步骤使用对应 `start` 工具，每 15～30 秒轮询返回的 `task_path`；客户端超时后继续轮询同一任务，不重复启动。
 
 参考图生图已经完成、仅 D1 入库失败时，重连后调用 `finance_commit_existing_images(context_path)` 恢复，不重新生图。其他失败按工具返回的错误与恢复指引处理，禁止绕过 MCP 执行业务脚本或读写内部文件。
 

@@ -1,9 +1,8 @@
 """生图任务的真实入参和返回合同。
 
-公开入口分三类，互不耦合：
+公开入口分两类，互不耦合：
 - 宿主 Agent：prepare_agent_image_tasks / save_agent_image_tasks / submit_agent_image_tasks
 - 千问：generate_qwen_image
-- 本地选：list_local_images（本地缺失时从 R2 自动恢复图库包）
 宿主失败后是否改走千问，由业务 MCP（如语言学习）决定，不放在 image 内。
 """
 
@@ -22,7 +21,6 @@ IMAGE_GENERATION_ERROR_SCHEMA = {
                     "enum": [
                         "INVALID_PARAMETER", "STYLE_NOT_FOUND", "REFERENCE_IMAGE_ERROR",
                         "AI_CONFIGURATION_ERROR", "AI_GENERATION_FAILED", "AGENT_IMAGE_TASK_ERROR",
-                        "IMAGE_LIBRARY_DATA_ERROR", "IMAGE_LIBRARY_EMPTY",
                     ],
                 },
                 "message": {"type": "string"},
@@ -131,32 +129,4 @@ GENERATE_QWEN_IMAGE_INPUT_SCHEMA = {
     },
     "required": ["prompt", "output_path", "size"],
     "additionalProperties": False,
-}
-
-LIST_LOCAL_IMAGES_INPUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "line": {
-            "type": "string",
-            "minLength": 1,
-            "enum": ["finance"],
-            "description": "财经本地图库 line；当前仅支持 finance，对应 image_library",
-        },
-    },
-    "required": ["line"],
-    "additionalProperties": False,
-}
-
-LIST_LOCAL_IMAGES_OUTPUT_SCHEMA = {
-    "type": "array",
-    "items": {
-        "type": "object",
-        "properties": {
-            "id": {"type": "integer"},
-            "caption": {"type": "string"},
-            "image_path": {"type": "string"},
-        },
-        "required": ["id", "caption", "image_path"],
-        "additionalProperties": False,
-    },
 }

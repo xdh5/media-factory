@@ -29,7 +29,8 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 
-# 工作流运行数据由部署目录持久化，不进入版本库
+# 工作流运行数据由部署目录持久化，不进入版本库。
+# 成片在 cache/output，临时文件在 cache/tmp。根目录这两项只忽略尚未迁走的旧目录。
 /data/
 /cache/
 /outputs/

@@ -75,10 +75,8 @@ integrations/
 └── MatrixMedia/     # 本地多平台发布集成
 
 dashboard/           # 发布管理面板
-config/              # 运行配置
 data/                # 本地持久化资源库
-cache/               # 可恢复的中间产物
-output/              # 本地最终成片
+cache/               # 中间产物、成片 cache/output、临时文件 cache/tmp
 ```
 
 ## 生产流程
@@ -233,12 +231,12 @@ MCP 客户端配置示例：
 本地成片按照业务线和北京时间计划发布日期保存：
 
 ```text
-output/{business_line}/run-YYYYMMDD/
+cache/output/{business_line}/run-YYYYMMDD/
 ```
 
 目录日期只代表计划发布日期，精确的预约发布时间单独使用带时区的时间戳保存。
 
-中间产物保留在 `cache/`，便于诊断或恢复中断的流程。清理操作必须显式执行，发布完成后不会自动删除本地文件。
+中间产物保留在 `cache/`，成片在 `cache/output/`，临时文件在 `cache/tmp/`，便于诊断或恢复中断的流程。清理操作必须显式执行，发布完成后不会自动删除本地文件。
 
 生产记录会保留产物来源：
 

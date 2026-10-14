@@ -35,8 +35,8 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
 # 日常改动只重建这一层（含根 static/bgm BGM 曲库与 static/sfx 提示音效）
 COPY . .
 
-# 库文件、缓存、成片由部署侧分别挂载持久化。
-VOLUME ["/app/data", "/app/cache", "/app/outputs"]
+# 库文件与缓存由部署侧挂载。成片在 /app/cache/output，临时文件在 /app/cache/tmp。
+VOLUME ["/app/data", "/app/cache"]
 
 # 工作流 MCP 在本机 stdio 运行；镜像内默认进入 python 供调试
 CMD ["python"]

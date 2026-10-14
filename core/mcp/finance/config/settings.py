@@ -25,16 +25,14 @@ ARTICLE_MAX_LINE_LENGTH = 36
 # 单次正文改写交给模型的原稿片段上限。钩子单独作为首片段处理，避免与后文任务互相干扰。
 ARTICLE_CHUNK_MAX_SOURCE_LENGTH = 280
 
-# 素材策略：三类并列的镜头素材来源，由用户在制作时指定。
-MATERIAL_IMAGE_LIBRARY = "image_library"      # 存量图库选图
+# 素材策略：实拍视频是默认来源，参考图千问生图仍可指定。
 MATERIAL_QWEN_REFERENCE = "qwen_reference"    # 用户参考图 + 千问逐镜头生图
 MATERIAL_STOCK_VIDEO = "stock_video"          # Pexels/Pixabay/Coverr 正版实拍视频
 MATERIAL_STRATEGIES = (
-    MATERIAL_IMAGE_LIBRARY,
-    MATERIAL_QWEN_REFERENCE,
     MATERIAL_STOCK_VIDEO,
+    MATERIAL_QWEN_REFERENCE,
 )
-IMAGE_MATERIAL_STRATEGIES = (MATERIAL_IMAGE_LIBRARY, MATERIAL_QWEN_REFERENCE)
+IMAGE_MATERIAL_STRATEGIES = (MATERIAL_QWEN_REFERENCE,)
 
 # Finance MCP 是生产参数的唯一真源；Agent 与 GitHub Runner 均通过
 # finance_get_production_config 获取，禁止在各自入口复制参数。
@@ -85,7 +83,8 @@ def _project_root() -> Path:
 _PROJECT_ROOT = _project_root()
 PROJECT_DATA_ROOT = _PROJECT_ROOT / "data"
 PROJECT_CACHE_ROOT = _PROJECT_ROOT / "cache"
-PROJECT_OUTPUT_ROOT = _PROJECT_ROOT / "output"
+PROJECT_OUTPUT_ROOT = PROJECT_CACHE_ROOT / "output"
+PROJECT_TMP_ROOT = PROJECT_CACHE_ROOT / "tmp"
 GENERATED_IMAGE_LIBRARY_ROOT = PROJECT_DATA_ROOT / "image_library_finance"
 BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 

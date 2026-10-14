@@ -481,16 +481,6 @@ async function validateAndRecordWords(request, env) {
   }, 201);
 }
 
-async function listImageLibrary(request, env) {
-  const url = new URL(request.url);
-  const line = String(url.searchParams.get("line") || "finance").trim();
-  requiredText(line, "line", 64);
-  const result = await env.DB.prepare(
-    "SELECT id, caption, image_path FROM image_library WHERE line = ? ORDER BY id",
-  ).bind(line).all();
-  return jsonResponse({ records: result.results || [] });
-}
-
 async function listFinanceGeneratedImages(request, env) {
   const result = await env.DB.prepare(
     "SELECT id, caption, image_path FROM finance_generated_images ORDER BY id",
@@ -1452,7 +1442,6 @@ export default {
       if (request.method === "POST" && url.pathname === "/v1/words/validate-and-record") return await validateAndRecordWords(request, env);
       if (request.method === "POST" && url.pathname === "/v1/language-learning-packs/commit") return await commitLanguageLearningPack(request, env);
       if (request.method === "POST" && url.pathname === "/v1/language-learning-packs/claim") return await claimLanguageLearningPack(request, env);
-      if (request.method === "GET" && url.pathname === "/v1/image-library") return await listImageLibrary(request, env);
       if (request.method === "GET" && url.pathname === "/v1/finance-generated-images") return await listFinanceGeneratedImages(request, env);
       if (request.method === "POST" && url.pathname === "/v1/finance-generated-images/commit") return await commitFinanceGeneratedImages(request, env);
       if (request.method === "GET" && url.pathname === "/v1/scenario-quiz-questions") return await listScenarioQuizQuestions(request, env);

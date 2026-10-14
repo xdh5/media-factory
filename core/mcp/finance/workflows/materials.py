@@ -37,8 +37,8 @@ def finance_start_storyboard(
 ) -> dict:
     """启动 TTS 与分镜上下文生成；material_strategy 决定分镜写 IMAGE 行还是 VIDEO 行。
 
-    取值：image_library（存量图库选图）、qwen_reference（参考图千问生图）、
-    stock_video（Pexels/Pixabay/Coverr 正版实拍视频）。
+    取值：stock_video（Pexels/Pixabay/Coverr 正版实拍视频）、
+    qwen_reference（参考图千问生图）。
     立即返回 task_path，用 finance_poll_task 轮询至 done=true。
     """
     try:
@@ -69,7 +69,7 @@ def finance_prepare_images(
     storyboard_text: str,
     image_config: dict,
 ) -> dict:
-    """按 Skill 准备镜头图；支持旧图库选图和用户参考图千问生图两种模式。"""
+    """按 Skill 准备用户参考图千问生图任务。"""
     try:
         return prepare_shot_images(
             draft_path,

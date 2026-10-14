@@ -128,6 +128,6 @@ language_learning_clear_run
 
 - 缓存：`cache/language_learning/{run_id}/`
 - 预制词包验收缓存：`cache/language_learning/packs/{pack_id}/subject-cutouts/`
-- 成片：`output/language_learning/run-YYYYMMDD/`，日期为北京时间计划发布日期
+- 成片：`cache/output/language_learning/run-YYYYMMDD/`，日期为北京时间计划发布日期
 - 产物记录：本地成片成功后写入 `source=local_mcp`；GitHub 在 R2 交付成功后写入 `source=github_workflow`；`language_learning_get_production_outputs(publish_date)` 可按日期查询
 - 话题与单词历史：通过 `CLOUDFLARE_DATA_API_URL` 指向的鉴权 Worker 访问 Cloudflare D1

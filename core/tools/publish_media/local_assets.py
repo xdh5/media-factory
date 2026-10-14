@@ -44,16 +44,24 @@ def _r2_dir_for_record(record: dict) -> str:
 
 
 def local_video_path(record: dict) -> Path:
-    """本地成片路径：output/{业务线}/{run_id}[-partN]/{R2对象名}。"""
+    """本地成片路径：cache/output/{业务线}/{run_id}[-partN]/{R2对象名}。"""
     business_line = str(record.get("business_line") or "").strip()
     run_id = str(record.get("run_id") or "").strip()
     if not business_line or not run_id:
         raise InvalidPublishRequestError("production_outputs 缺少 business_line 或 run_id")
-    base = PROJECT_ROOT / "output" / business_line / _r2_dir_for_record(record)
-    if base.is_dir():
-        return (base / stored_video_filename(record)).resolve()
-    # 兼容旧记录：part 目录不存在时回退到基础 run 目录。
-    return (PROJECT_ROOT / "output" / business_line / run_id / stored_video_filename(record)).resolve()
+    filename = stored_video_filename(record)
+    relative_dirs = (
+        Path(business_line) / _r2_dir_for_record(record),
+        Path(business_line) / run_id,
+    )
+    # 新成片写在 cache/output；根目录 output 只用于读取尚未迁走的旧文件。
+    roots = (PROJECT_ROOT / "cache" / "output", PROJECT_ROOT / "output")
+    for root in roots:
+        for relative in relative_dirs:
+            base = root / relative
+            if base.is_dir():
+                return (base / filename).resolve()
+    return (roots[0] / relative_dirs[0] / filename).resolve()
 
 
 def r2_object_key(record: dict) -> str:

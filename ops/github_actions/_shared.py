@@ -17,15 +17,6 @@ from core.tools.r2_storage import upload_public_file
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def restore_finance_image_library(library_line: str) -> Path:
-    """恢复指定财经图库；本地已有文件时跳过 R2。"""
-    from core.tools.generate_image import restore_image_library
-
-    library = restore_image_library(library_line)
-    print(f"财经图库已就绪：line={library_line} path={library}", flush=True)
-    return library
-
-
 def qwen(system_prompt: str, user_prompt: str, *, json_output: bool = False, max_tokens: int = 8192) -> dict:
     result = generate_text(
         system_prompt,

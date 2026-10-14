@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from core.tools.generate_image import ImageGenerationError, list_local_images, prepare_agent_image_tasks
+from core.tools.generate_image import ImageGenerationError, prepare_agent_image_tasks
 
 from ..config.settings import (
     GENERATED_IMAGE_LIBRARY_ROOT,
@@ -17,7 +17,6 @@ from ..config.settings import (
     VIDEO_SIZE,
 )
 from ..errors import WorkflowStepError
-from .narration import display_subtitle_text
 from .save_draft import load_draft
 from .storyboard import parse_storyboard
 
@@ -26,11 +25,6 @@ def _image_config(config: dict) -> dict:
     if not isinstance(config, dict):
         raise WorkflowStepError("image_config 必须是对象")
     source = str(config.get("source") or "").strip()
-    if source == "local_library":
-        library_line = str(config.get("library_line") or "").strip()
-        if not library_line:
-            raise WorkflowStepError("image_config.library_line 不能为空（local_library 时必填）")
-        return {"source": source, "library_line": library_line}
     if source == "qwen_reference":
         reference_image_path = str(config.get("reference_image_path") or "").strip()
         if not reference_image_path:
@@ -38,82 +32,8 @@ def _image_config(config: dict) -> dict:
         return {"source": source, "reference_image_path": reference_image_path}
     raise WorkflowStepError(
         f"不支持的 image_config.source：{source or '(空)'}",
-        {"supported_sources": ["local_library", "qwen_reference"]},
+        {"supported_sources": ["qwen_reference"]},
     )
-
-
-def _prepare_local_library(
-    shots: list[dict],
-    cache_root: Path,
-    metadata: dict,
-    library_line: str,
-) -> dict:
-    try:
-        catalog = list_local_images(library_line)
-    except ImageGenerationError as extra:
-        raise WorkflowStepError(extra.message, extra.details) from extra
-    output_root = cache_root / "agent-images"
-    output_root.mkdir(parents=True, exist_ok=True)
-    tasks = []
-    selection_tasks = []
-    for shot in shots:
-        subtitle = display_subtitle_text(str(shot.get("subtitle") or ""))
-        prompt = str(shot["prompt"])
-        selection_tasks.append(
-            {
-                "image_id": shot["id"],
-                "subtitle": subtitle,
-                "prompt": prompt,
-                "match_query": f"{subtitle}\n{prompt}".strip(),
-            }
-        )
-        tasks.append(
-            {
-                "image_id": shot["id"],
-                "kind": "shot",
-                "prompt": prompt,
-                "style": None,
-                "radio": VIDEO_RADIO,
-                "size": VIDEO_SIZE,
-                "referenced_image_paths": [],
-                "reference_images_required": False,
-                "output_path": str((output_root / f"{shot['id']}.png").resolve()),
-                "cache_signature": None,
-                "cache_hit": False,
-                "needs_generation": False,
-                "provider": "local_library",
-            }
-        )
-    metadata = {
-        **metadata,
-        "image_source": "local",
-        "library_line": library_line,
-        "library_catalog": catalog,
-    }
-    context_path = output_root / "agent-image-context.json"
-    context = {
-        "version": 4,
-        "status": "awaiting_library_selection",
-        "tasks": tasks,
-        "metadata": metadata,
-        "context_path": context_path.resolve().as_posix(),
-        "library_catalog": catalog,
-        "selection_tasks": selection_tasks,
-        "selection_instructions": (
-            f"本期已固定使用图库 line={library_line}，所有镜头必须且只能来自该图库。"
-            "对照每个镜头的 match_query 与 library_catalog 中各图的 caption，"
-            "为每个 image_id 选出语义最贴近的一张图；"
-            "然后调用 finance_submit_images，"
-            "images 传入 [{image_id, image_path}]，image_path 使用 catalog 中的路径。"
-            "同一期可重复使用同一张图，禁止混用另一个图库。"
-        ),
-    }
-    context_path.write_text(json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {
-        **context,
-        "image_source": "local",
-        "library_line": library_line,
-    }
 
 
 def _prepare_qwen_reference(
@@ -232,8 +152,6 @@ def prepare_shot_images(
         "image_config": image_config,
         "tts_path": storyboard_context.get("tts_path"),
     }
-    if source == "local_library":
-        return _prepare_local_library(shots, cache_root, metadata, normalized_config["library_line"])
     if source == "qwen_reference":
         return _prepare_qwen_reference(
             shots,

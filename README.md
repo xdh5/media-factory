@@ -75,10 +75,8 @@ integrations/
 └── MatrixMedia/     # Local multi-platform publishing integration
 
 dashboard/           # Publishing dashboard
-config/              # Runtime configuration
 data/                # Persistent local libraries
-cache/               # Recoverable intermediate artifacts
-output/              # Completed local productions
+cache/               # Intermediate files, finished videos in cache/output, scratch files in cache/tmp
 ```
 
 ## Production Pipelines
@@ -233,12 +231,12 @@ Replace the repository path and Python executable with absolute paths appropriat
 Local productions are stored by business line and planned publication date:
 
 ```text
-output/{business_line}/run-YYYYMMDD/
+cache/output/{business_line}/run-YYYYMMDD/
 ```
 
 The date represents the intended publication date in the Asia/Shanghai timezone. Exact scheduled publication times are stored separately as timezone-aware timestamps.
 
-Intermediate files remain under `cache/` so interrupted workflows can be diagnosed or resumed. Cleanup is an explicit operation and is never performed automatically after publishing.
+Intermediate files remain under `cache/`, finished videos under `cache/output/`, and scratch files under `cache/tmp/`, so interrupted workflows can be diagnosed or resumed. Cleanup is an explicit operation and is never performed automatically after publishing.
 
 Production records preserve artifact provenance:
 
