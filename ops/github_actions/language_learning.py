@@ -216,7 +216,7 @@ async def schedule_publication(
             {
                 "business_line": "language_learning",
                 "publish_date": publish_date,
-                "account_group": "中文",
+                "account_group": "chinese",
                 "platforms": selected_targets,
                 "content_kind": "en-zh",
                 "publish_mode": "scheduled",

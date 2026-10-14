@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -14,10 +15,6 @@ import uuid
 from pathlib import Path
 
 from core.tools.cloudflare_data import list_publishing_account_groups
-from core.tools.publish_to_facebook import list_facebook_accounts
-from core.tools.publish_to_instagram import list_instagram_accounts
-from core.tools.publish_to_tiktok import list_tiktok_accounts
-from core.tools.publish_to_youtube import list_youtube_accounts
 
 from ._constants import (
     MATRIXMEDIA_CODE_PLATFORMS,
@@ -112,8 +109,63 @@ def _last_log_json(text: str):
     return None
 
 
+def _flag_value(arguments: list[str], *flags: str) -> str:
+    for index, item in enumerate(arguments):
+        if item in flags and index + 1 < len(arguments):
+            return str(arguments[index + 1] or "").strip()
+    return ""
+
+
+def _is_official_cli(arguments: list[str]) -> bool:
+    if not arguments:
+        return False
+    if arguments[0] == "accounts" and "--official" in arguments:
+        return True
+    if arguments[0] != "publish":
+        return False
+    platform = _flag_value(arguments, "-p", "--platform").casefold()
+    return platform in {"youtube", "yt", "ytb", "tiktok", "tk", "instagram", "ig", "ins", "facebook", "fb"}
+
+
+def _run_official_python(arguments: list[str]) -> dict | list:
+    """YouTube 与 Zernio 走矩媒里的 Python 包，GitHub Runner 不依赖本机 Electron。"""
+    matrix_dir = Path(os.getenv(MATRIXMEDIA_DIR_ENV, "") or PROJECT_ROOT / "integrations" / "MatrixMedia").resolve()
+    if arguments[0] == "accounts":
+        cli_args = ["accounts", "--group", _flag_value(arguments, "--phone", "--group")]
+    else:
+        cli_args = arguments
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "official.cli", *cli_args],
+            cwd=matrix_dir,
+            env=dict(os.environ),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=MATRIXMEDIA_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise MatrixMediaCommandError(f"运行矩媒官方发布失败：{exc}") from exc
+    payload = _last_json(result.stdout) or _last_json(result.stderr)
+    if result.returncode != 0:
+        message = ""
+        if isinstance(payload, dict):
+            message = str(payload.get("message") or payload.get("error") or "")
+        raise MatrixMediaCommandError(
+            f"矩媒官方发布失败（退出码 {result.returncode}）：{message or result.stderr[-500:]}",
+            {"exit_code": result.returncode},
+        )
+    if payload is None:
+        raise MatrixMediaCommandError("矩媒官方发布未返回可解析的 JSON")
+    return payload
+
+
 def run_matrixmedia_cli(arguments: list[str]) -> dict | list:
-    """调用 MatrixMedia 公开 CLI；不读写其仓库源码。"""
+    """扫码平台调用 MatrixMedia Electron；YouTube 与 Zernio 调用矩媒官方发布包。"""
+    if _is_official_cli(arguments):
+        return _run_official_python(arguments)
     prefix, cwd = _matrixmedia_command()
     env = dict(os.environ)
     env.pop("ELECTRON_RUN_AS_NODE", None)
@@ -411,6 +463,17 @@ def list_account_groups(business_line: str | None = None) -> dict:
     }
 
 
+_OFFICIAL_ACCOUNT_CACHE: dict[str, list] = {}
+
+
+def _official_account_rows(group: str) -> list:
+    if group not in _OFFICIAL_ACCOUNT_CACHE:
+        payload = run_matrixmedia_cli(["accounts", "--json", "--phone", group, "--official"])
+        rows = payload if isinstance(payload, list) else payload.get("accounts", [])
+        _OFFICIAL_ACCOUNT_CACHE[group] = rows if isinstance(rows, list) else []
+    return _OFFICIAL_ACCOUNT_CACHE[group]
+
+
 def _official_members(member: dict) -> list[dict]:
     platform = str(member["platform"])
     account_ref = str(member.get("account_ref") or "").strip()
@@ -441,25 +504,19 @@ def _official_members(member: dict) -> list[dict]:
             "platform_account_id": stored_platform_account_id,
         }
 
-    if platform == "youtube":
-        rows = list_youtube_accounts(account=account_ref)
-        return [verified({"display_name": row["channel_title"]}, row["channel_id"], row["channel_id"]) for row in rows]
-    if platform == "tiktok":
-        rows = list_tiktok_accounts(account=None if account_ref == "configured" else account_ref)
-        return [
-            verified(
-                {"account_ref": row["account"], "display_name": row["account_title"]},
-                row["account_id"], row["platform_account_id"],
-            )
-            for row in rows
-        ]
-    if platform == "instagram":
-        rows = list_instagram_accounts()
-        return [verified({"display_name": row["account_title"]}, row["user_id"], row["platform_account_id"]) for row in rows]
-    if platform == "facebook":
-        rows = list_facebook_accounts()
-        return [verified({"display_name": row["page_name"]}, row["page_id"], row["platform_account_id"]) for row in rows]
-    return [{**member, "account_id": account_ref, "platform_account_id": stored_platform_account_id, "display_name": display_name}]
+    rows = [
+        row for row in _official_account_rows(account_ref)
+        if str(row.get("platform") or "") == platform
+    ]
+    return [
+        verified(
+            {"display_name": row.get("display_name") or display_name},
+            str(row.get("account_id") or ""),
+            str(row.get("platform_account_id") or ""),
+        )
+        for row in rows
+        if isinstance(row, dict)
+    ]
 
 
 def resolve_account_group(account_group: str, business_line: str, platforms: list[str]) -> list[dict]:

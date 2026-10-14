@@ -11,10 +11,6 @@ from core.tools.cloudflare_data import (
     commit_publication_records,
     list_publication_records,
 )
-from core.tools.publish_to_facebook import publish_to_facebook
-from core.tools.publish_to_instagram import publish_to_instagram
-from core.tools.publish_to_tiktok import publish_to_tiktok
-from core.tools.publish_to_youtube import publish_to_youtube
 from core.tools.r2_storage import upload_public_file
 
 from ._constants import (
@@ -203,27 +199,33 @@ def _publish_matrixmedia(item: dict, route: dict, scheduled_cli: str | None) -> 
 
 
 def _publish_official(item: dict, route: dict, publish_at: str | None) -> dict:
+    """海外平台发布交给矩媒命令行，media-factory 不再直接调用平台接口。"""
     platform = str(route["platform"])
     title = str(item["title"])
     copy = str(item.get("publish_copy") or title)
+    arguments = [
+        "publish", "-p", platform,
+        "--phone", str(route.get("account_ref") or ""),
+        "--account-id", str(route["account_id"]),
+        "--title", title,
+        "--description", copy,
+    ]
     if platform == "youtube":
-        return publish_to_youtube(
-            str(route["account_id"]), item["local_path"], title,
-            description=copy, account=str(route.get("account_ref") or ""),
-            privacy_status="public", publish_at=publish_at,
-            publication_id=str(item["production_id"]),
-        )
-    video_url = _public_video_url(item)
-    if platform == "tiktok":
-        return publish_to_tiktok(
-            str(route["account_id"]), video_url, copy,
-            account=str(route.get("account_ref") or ""), publish_at=publish_at,
-        )
-    if platform == "instagram":
-        return publish_to_instagram(str(route["account_id"]), video_url, copy, publish_at=publish_at)
-    if platform == "facebook":
-        return publish_to_facebook(str(route["account_id"]), video_url, copy, title=title, publish_at=publish_at)
-    raise InvalidPublishRequestError(f"平台 {platform} 没有可用的官方发布实现")
+        arguments.extend([
+            "-f", str(item["local_path"]),
+            "--publication-id", str(item["production_id"]),
+            "--privacy", "public",
+        ])
+    else:
+        arguments.extend(["--video-url", _public_video_url(item)])
+    if publish_at:
+        arguments.extend(["--publish-at", publish_at])
+    payload = run_matrixmedia_cli(arguments)
+    if not isinstance(payload, dict):
+        raise MatrixMediaCommandError("MatrixMedia 官方发布结果不是 JSON 对象")
+    if payload.get("error"):
+        raise MatrixMediaCommandError(str(payload["error"]))
+    return payload
 
 
 def publish_local_outputs(
