@@ -1,16 +1,15 @@
 ---
 name: produce-language-learning-video
-description: 生产语言学习视频。使用语言学习 MCP 制作中英/韩英词汇短视频；适用于“做语言学习视频”“生产语言学习视频”“中韩学习视频”等请求，也用于提前生成可复用预制图包。
+description: 生产语言学习视频。使用语言学习 MCP 制作中英/韩英词汇短视频；适用于“做语言学习视频”“生产语言学习视频”“中韩学习视频”等请求。不用于提前制作预制图包。
 ---
 
 # 生产语言学习视频
 
-使用 `language_learning` MCP。词表、图片和视觉验收 Prompt、标题格式、配音、停顿与成片参数以 MCP 返回值为准；账号组、平台路由和排期交给统一发布 MCP。禁止绕过 MCP 执行业务流程或读写内部文件。
+使用 `language_learning` MCP。词表、图片和视觉验收 Prompt、标题格式、配音、停顿与成片参数以 MCP 返回值为准；账号组、平台路由和排期交给统一发布 MCP。提前制作预制图包使用 produce-language-learning-pack skill。禁止绕过 MCP 执行业务流程或读写内部文件。
 
 ## 交互规则
 
 - 制作成片前，先确定用户要求的北京时间计划发布日期 `publish_date`，日期不明确时追问，不默认今天，不占用话题或创建 run。
-- 提前补充预制图包走下方独立流程，不占用成片话题、不创建成片 run，也不为备料自行指定发布日期。
 - 中间步骤无需逐项确认。彩色杂边可以接受，不得因此拒收、拒绝入库或重新生成，也不得改归其他失败类型。
 - 本地成片完成后展示路径、标题与标签；不在成片阶段自动上传 R2。需要发布时使用统一发布 MCP，清缓存需要用户确认。
 
@@ -24,10 +23,3 @@ description: 生产语言学习视频。使用语言学习 MCP 制作中英/韩�
 6. 为本次需要的语言方向分别启动拼卡、成片任务，原样传入生产配置返回的配音、停顿、视频格式与发布元数据。
 
 耗时步骤使用对应 `start` 工具，每 15～30 秒轮询同一 `task_path` 至完成；客户端超时不重复启动。
-
-## 预制图包编排
-
-1. `language_learning_prepare_pack(topic)` → 按返回的词表 Prompt 生成双语词表 → `language_learning_validate_pack_words`。
-2. 使用校验返回的唯一主体图 Prompt，生成一张包含十个主体的真实 Alpha 透明 PNG，不拆成十次生图，不用纯色背景代替透明。
-3. 复用成片的定位与整图验收 Prompt：先 `language_learning_validate_pack_subject_sheet` 切图，再打开返回的实际切图验收图，调用 `language_learning_review_pack_subject_sheet`。
-4. 验收通过后调用 `language_learning_commit_pack` 上传十张透明切图并入库。GitHub 生产领取现成词包，不在无包时静默降级为生图。
