@@ -1,4 +1,4 @@
-"""Cloudflare R2 对象存储输入输出 Schema。"""
+"""成片和图片文件的输入输出 Schema。"""
 
 UPLOAD_PUBLIC_FILE_INPUT_SCHEMA = {
     "type": "object",

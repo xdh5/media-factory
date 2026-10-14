@@ -1,9 +1,9 @@
 """语言学习 MCP 基础设施公开入口。"""
 
 from .gateways import (
-    CloudflareDataError,
+    MediaRecordsError,
     ImageGenerationError,
-    R2StorageError,
+    MediaFilesError,
     RunnerTaskNotFoundError,
     TopicDedupError,
     claim_language_learning_pack,

@@ -1,4 +1,4 @@
-"""通过鉴权 Worker API 访问 Cloudflare D1。"""
+"""读写媒体生产记录。记录保存在远端数据库，经鉴权接口访问。"""
 
 from __future__ import annotations
 
@@ -22,9 +22,9 @@ from ._constants import (
     MAX_RESPONSE_BYTES,
 )
 from ._errors import (
-    CloudflareDataConfigurationError,
-    CloudflareDataConflictError,
-    CloudflareDataRequestError,
+    MediaRecordsConfigurationError,
+    MediaRecordsConflictError,
+    MediaRecordsRequestError,
 )
 
 load_dotenv()
@@ -39,12 +39,12 @@ def _configuration() -> tuple[str, str]:
     if not token:
         missing.append(CLOUDFLARE_DATA_API_TOKEN_ENV)
     if missing:
-        raise CloudflareDataConfigurationError(
-            f"Cloudflare 数据服务未配置：缺少 {', '.join(missing)}",
+        raise MediaRecordsConfigurationError(
+            f"媒体生产记录未配置：缺少 {', '.join(missing)}",
             {"missing_environment_variables": missing},
         )
     if not base_url.startswith("https://"):
-        raise CloudflareDataConfigurationError(
+        raise MediaRecordsConfigurationError(
             f"{CLOUDFLARE_DATA_API_URL_ENV} 必须使用 https:// 地址",
             {"environment_variable": CLOUDFLARE_DATA_API_URL_ENV},
         )
@@ -53,20 +53,20 @@ def _configuration() -> tuple[str, str]:
 
 def _decode_response(raw: bytes, *, status: int) -> dict | list:
     if len(raw) > MAX_RESPONSE_BYTES:
-        raise CloudflareDataRequestError(
-            "Cloudflare 数据服务响应过大，已停止读取",
+        raise MediaRecordsRequestError(
+            "媒体生产记录响应过大，已停止读取",
             {"status": status, "maximum_bytes": MAX_RESPONSE_BYTES},
         )
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise CloudflareDataRequestError(
-            "Cloudflare 数据服务返回了无法解析的 JSON",
+        raise MediaRecordsRequestError(
+            "媒体生产记录返回了无法解析的 JSON",
             {"status": status},
         ) from exc
     if not isinstance(payload, (dict, list)):
-        raise CloudflareDataRequestError(
-            "Cloudflare 数据服务响应必须是 JSON 对象或数组",
+        raise MediaRecordsRequestError(
+            "媒体生产记录响应必须是 JSON 对象或数组",
             {"status": status},
         )
     return payload
@@ -75,9 +75,9 @@ def _decode_response(raw: bytes, *, status: int) -> dict | list:
 def _remote_error(payload: object, *, status: int) -> tuple[str, str, dict]:
     error = payload.get("error") if isinstance(payload, dict) else None
     if not isinstance(error, dict):
-        return "REMOTE_ERROR", f"Cloudflare 数据服务请求失败（HTTP {status}）", {"status": status}
+        return "REMOTE_ERROR", f"媒体生产记录请求失败（HTTP {status}）", {"status": status}
     code = str(error.get("code") or "REMOTE_ERROR")
-    message = str(error.get("message") or f"Cloudflare 数据服务请求失败（HTTP {status}）")
+    message = str(error.get("message") or f"媒体生产记录请求失败（HTTP {status}）")
     details = error.get("details") if isinstance(error.get("details"), dict) else {}
     return code, message, {**details, "status": status}
 
@@ -147,9 +147,9 @@ def _request(method: str, path: str, *, query: dict | None = None, body: dict | 
             return payload
         code, message, details = _remote_error(payload, status=status)
         if status == 409:
-            raise CloudflareDataConflictError(message, details, remote_code=code)
-        raise CloudflareDataRequestError(message, {**details, "remote_code": code})
-    except (CloudflareDataConflictError, CloudflareDataRequestError):
+            raise MediaRecordsConflictError(message, details, remote_code=code)
+        raise MediaRecordsRequestError(message, {**details, "remote_code": code})
+    except (MediaRecordsConflictError, MediaRecordsRequestError):
         raise
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         pass
@@ -172,15 +172,15 @@ def _request(method: str, path: str, *, query: dict | None = None, body: dict | 
         raw = exc.read(MAX_RESPONSE_BYTES + 1)
         try:
             payload = _decode_response(raw, status=exc.code)
-        except CloudflareDataRequestError:
+        except MediaRecordsRequestError:
             payload = {}
         code, message, details = _remote_error(payload, status=exc.code)
         if exc.code == 409:
-            raise CloudflareDataConflictError(message, details, remote_code=code) from exc
-        raise CloudflareDataRequestError(message, {**details, "remote_code": code}) from exc
+            raise MediaRecordsConflictError(message, details, remote_code=code) from exc
+        raise MediaRecordsRequestError(message, {**details, "remote_code": code}) from exc
     except (URLError, TimeoutError, OSError) as exc:
-        raise CloudflareDataRequestError(
-            f"无法连接 Cloudflare 数据服务：{exc}",
+        raise MediaRecordsRequestError(
+            f"无法连接媒体生产记录：{exc}",
             {"url": url},
         ) from exc
     return payload
@@ -189,7 +189,7 @@ def _request(method: str, path: str, *, query: dict | None = None, body: dict | 
 def list_topics(workflow: str, days: int) -> list[dict]:
     payload = _request("GET", "/v1/topics", query={"workflow": workflow, "days": days})
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 话题接口缺少 records 数组")
+        raise MediaRecordsRequestError("话题接口缺少 records 数组")
     return payload["records"]
 
 
@@ -200,7 +200,7 @@ def reserve_topic(workflow: str, topic: str, fingerprint: str, days: int) -> dic
         body={"workflow": workflow, "topic": topic, "fingerprint": fingerprint, "days": days},
     )
     if not isinstance(payload, dict) or not isinstance(payload.get("record"), dict):
-        raise CloudflareDataRequestError("Cloudflare 话题占用接口缺少 record 对象")
+        raise MediaRecordsRequestError("话题占用接口缺少 record 对象")
     return payload["record"]
 
 
@@ -230,14 +230,14 @@ def commit_publication(
         },
     )
     if not isinstance(payload, dict) or not isinstance(payload.get("record"), dict):
-        raise CloudflareDataRequestError("Cloudflare 发布入库接口缺少 record 对象")
+        raise MediaRecordsRequestError("发布入库接口缺少 record 对象")
     return payload
 
 
 def list_recent_words(days: int) -> list[str]:
     payload = _request("GET", "/v1/words/recent", query={"days": days})
     if not isinstance(payload, dict) or not isinstance(payload.get("words"), list):
-        raise CloudflareDataRequestError("Cloudflare 单词历史接口缺少 words 数组")
+        raise MediaRecordsRequestError("单词历史接口缺少 words 数组")
     return [str(item) for item in payload["words"]]
 
 
@@ -245,7 +245,7 @@ def commit_language_learning_pack(pack: dict) -> dict:
     """写入一个已验收的语言学习词包。"""
     payload = _request("POST", "/v1/language-learning-packs/commit", body={"pack": pack})
     if not isinstance(payload, dict) or not isinstance(payload.get("pack"), dict):
-        raise CloudflareDataRequestError("Cloudflare 语言词包写入接口缺少 pack 对象")
+        raise MediaRecordsRequestError("语言词包写入接口缺少 pack 对象")
     return payload["pack"]
 
 
@@ -256,7 +256,7 @@ def claim_language_learning_pack(*, run_id: str, publish_date: str) -> dict:
         body={"run_id": run_id, "publish_date": publish_date},
     )
     if not isinstance(payload, dict) or not isinstance(payload.get("pack"), dict):
-        raise CloudflareDataRequestError("Cloudflare 语言词包领取接口缺少 pack 对象")
+        raise MediaRecordsRequestError("语言词包领取接口缺少 pack 对象")
     return payload["pack"]
 
 
@@ -282,14 +282,14 @@ def validate_and_record_words(
         },
     )
     if not isinstance(payload, dict):
-        raise CloudflareDataRequestError("Cloudflare 单词历史接口响应格式不正确")
+        raise MediaRecordsRequestError("单词历史接口响应格式不正确")
     return payload
 
 
 def list_finance_generated_images() -> list[dict]:
     payload = _request("GET", "/v1/finance-generated-images")
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 财经生成图库接口缺少 records 数组")
+        raise MediaRecordsRequestError("财经生成图库接口缺少 records 数组")
     return payload["records"]
 
 
@@ -300,21 +300,21 @@ def commit_finance_generated_images(records: list[dict]) -> dict:
         body={"records": records},
     )
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 财经生成图库写入接口缺少 records 数组")
+        raise MediaRecordsRequestError("财经生成图库写入接口缺少 records 数组")
     return payload
 
 
 def list_scenario_quiz_questions(*, days: int = 30) -> list[dict]:
     payload = _request("GET", "/v1/scenario-quiz-questions", query={"days": days})
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 情境测试题库接口缺少 records 数组")
+        raise MediaRecordsRequestError("情境测试题库接口缺少 records 数组")
     return payload["records"]
 
 
 def commit_scenario_quiz_question(record: dict) -> dict:
     payload = _request("POST", "/v1/scenario-quiz-questions/commit", body={"record": record})
     if not isinstance(payload, dict) or not isinstance(payload.get("record"), dict):
-        raise CloudflareDataRequestError("Cloudflare 情境测试题库写入接口缺少 record 对象")
+        raise MediaRecordsRequestError("情境测试题库写入接口缺少 record 对象")
     return payload["record"]
 
 
@@ -336,14 +336,14 @@ def list_publication_records(
         query["run_id"] = run_id
     payload = _request("GET", "/v1/publication-records", query=query)
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 发布记录接口缺少 records 数组")
+        raise MediaRecordsRequestError("发布记录接口缺少 records 数组")
     return payload["records"]
 
 
 def commit_publication_records(records: list[dict]) -> dict:
     payload = _request("POST", "/v1/publication-records/commit", body={"records": records})
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 发布记录写入接口缺少 records 数组")
+        raise MediaRecordsRequestError("发布记录写入接口缺少 records 数组")
     return payload
 
 
@@ -351,7 +351,7 @@ def delete_publication_records(record_ids: list[int]) -> dict:
     """按数据库记录 ID 精确删除发布记录。"""
     payload = _request("DELETE", "/v1/publication-records", body={"record_ids": record_ids})
     if not isinstance(payload, dict) or not isinstance(payload.get("deleted_ids"), list):
-        raise CloudflareDataRequestError("Cloudflare 删除发布记录接口缺少 deleted_ids 数组")
+        raise MediaRecordsRequestError("删除发布记录接口缺少 deleted_ids 数组")
     return payload
 
 
@@ -363,7 +363,7 @@ def list_publishing_account_groups(*, business_line: str | None = None) -> dict:
         or not isinstance(payload.get("groups"), list)
         or not isinstance(payload.get("members"), list)
     ):
-        raise CloudflareDataRequestError("Cloudflare 发布账号组接口缺少 groups 或 members 数组")
+        raise MediaRecordsRequestError("发布账号组接口缺少 groups 或 members 数组")
     return payload
 
 
@@ -382,7 +382,7 @@ def list_production_outputs(
         query["source"] = source
     payload = _request("GET", "/v1/production-outputs", query=query)
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 产物记录接口缺少 records 数组")
+        raise MediaRecordsRequestError("产物记录接口缺少 records 数组")
     return payload["records"]
 
 
@@ -390,21 +390,21 @@ def delete_production_outputs(record_ids: list[int]) -> dict:
     """按精确记录 ID 删除成片记录。"""
     payload = _request("DELETE", "/v1/production-outputs", body={"record_ids": record_ids})
     if not isinstance(payload, dict) or not isinstance(payload.get("deleted_ids"), list):
-        raise CloudflareDataRequestError("Cloudflare 删除产物记录接口缺少 deleted_ids 数组")
+        raise MediaRecordsRequestError("删除产物记录接口缺少 deleted_ids 数组")
     return payload
 
 
 def commit_production_outputs(records: list[dict]) -> dict:
     payload = _request("POST", "/v1/production-outputs/commit", body={"records": records})
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 产物记录写入接口缺少 records 数组")
+        raise MediaRecordsRequestError("产物记录写入接口缺少 records 数组")
     return payload
 
 
 def list_finance_copy_ids() -> list[str]:
     payload = _request("GET", "/v1/douyin-research/ids")
     if not isinstance(payload, dict) or not isinstance(payload.get("aweme_ids"), list):
-        raise CloudflareDataRequestError("Cloudflare 财经文案去重接口缺少 aweme_ids 数组")
+        raise MediaRecordsRequestError("财经文案去重接口缺少 aweme_ids 数组")
     return [str(value) for value in payload["aweme_ids"] if str(value).strip()]
 
 
@@ -415,7 +415,7 @@ def commit_finance_copy(records: list[dict]) -> dict:
         body={"records": records},
     )
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
-        raise CloudflareDataRequestError("Cloudflare 财经文案写入接口缺少 records 数组")
+        raise MediaRecordsRequestError("财经文案写入接口缺少 records 数组")
     return payload
 
 
@@ -438,19 +438,19 @@ def get_finance_copy_stats(
     if not isinstance(payload, dict) or any(
         type(payload.get(name)) is not int or payload[name] < 0 for name in required_counts
     ):
-        raise CloudflareDataRequestError("Cloudflare 稿件统计接口缺少有效的数量字段")
+        raise MediaRecordsRequestError("稿件统计接口缺少有效的数量字段")
     if (
         not isinstance(payload.get("collection_code"), str)
         or not isinstance(payload.get("workflow"), str)
         or type(payload.get("reservation_minutes")) is not int
         or not isinstance(payload.get("checked_at"), str)
     ):
-        raise CloudflareDataRequestError("Cloudflare 稿件统计接口缺少有效的查询信息")
+        raise MediaRecordsRequestError("稿件统计接口缺少有效的查询信息")
     classified_count = sum(
         payload[name] for name in ("available_count", "reserved_count", "used_count")
     )
     if classified_count != payload["total_count"]:
-        raise CloudflareDataRequestError("Cloudflare 稿件统计接口返回的分类数量与总数不一致")
+        raise MediaRecordsRequestError("稿件统计接口返回的分类数量与总数不一致")
     return payload
 
 
@@ -470,9 +470,9 @@ def reserve_finance_copy(
         },
     )
     if not isinstance(payload, dict):
-        raise CloudflareDataRequestError("Cloudflare 财经稿件选择接口响应格式不正确")
+        raise MediaRecordsRequestError("财经稿件选择接口响应格式不正确")
     if not isinstance(payload.get("source"), dict) or not isinstance(payload.get("reservation"), dict):
-        raise CloudflareDataRequestError("Cloudflare 财经稿件选择接口缺少 source 或 reservation 对象")
+        raise MediaRecordsRequestError("财经稿件选择接口缺少 source 或 reservation 对象")
     return payload
 
 
@@ -496,5 +496,5 @@ def mark_finance_copy_used(
         },
     )
     if not isinstance(payload, dict) or not isinstance(payload.get("record"), dict):
-        raise CloudflareDataRequestError("Cloudflare 财经稿件使用标记接口缺少 record 对象")
+        raise MediaRecordsRequestError("财经稿件使用标记接口缺少 record 对象")
     return payload

@@ -1,4 +1,4 @@
-"""把财经成片、封面和生产清单上传到 Cloudflare R2。"""
+"""把财经成片、封面和生产清单上传为可公开访问的媒体文件。"""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import json
 import mimetypes
 from pathlib import Path
 
-from core.tools.cloudflare_data import commit_production_outputs
-from core.tools.r2_storage import upload_public_file
+from core.tools.media_records import commit_production_outputs
+from core.tools.media_files import upload_public_file
 
 from ..config.settings import MCP_ID
 from ..errors import WorkflowStepError

@@ -6,7 +6,7 @@ import json
 import re
 import unicodedata
 
-from core.tools.cloudflare_data import CloudflareDataError, list_recent_words as cloudflare_list_recent_words
+from core.tools.media_records import MediaRecordsError, list_recent_words as records_list_recent_words
 
 from ..config import (
     MINIMUM_NEW_WORDS,
@@ -26,8 +26,8 @@ def normalize_english_word(value: str) -> str:
 def list_recent_words() -> list[str]:
     """返回 D1 最近 100 天使用过的英语词汇。"""
     try:
-        return cloudflare_list_recent_words(WORD_HISTORY_DAYS)
-    except CloudflareDataError as exc:
+        return records_list_recent_words(WORD_HISTORY_DAYS)
+    except MediaRecordsError as exc:
         raise VocabularyHistoryError(
             f"读取 Cloudflare D1 最近 {WORD_HISTORY_DAYS} 天单词历史失败：{exc.message}",
             exc.details,
@@ -76,8 +76,8 @@ def validate_words(*, run_id: str, topic: str, words_by_mode: dict) -> dict:
         raise VocabularyHistoryError(f"run_id 格式不正确：{rid}")
     entries = _word_entries(words_by_mode)
     try:
-        recent = {normalize_english_word(word) for word in cloudflare_list_recent_words(WORD_HISTORY_DAYS)}
-    except CloudflareDataError as exc:
+        recent = {normalize_english_word(word) for word in records_list_recent_words(WORD_HISTORY_DAYS)}
+    except MediaRecordsError as exc:
         raise VocabularyHistoryError(
             f"读取 Cloudflare D1 单词历史失败：{exc.message}",
             exc.details,

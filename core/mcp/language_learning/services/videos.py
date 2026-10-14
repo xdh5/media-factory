@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from core.tools.cloudflare_data import commit_production_outputs
+from core.tools.media_records import commit_production_outputs
 from core.tools.generate_final_video import generate_final_video, safe_filename
 from core.tools.generate_sticker import generate_sticker
 from core.tools.generate_tts import generate_tts

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from core.tools.cloudflare_data import CloudflareDataError, commit_finance_copy
+from core.tools.media_records import MediaRecordsError, commit_finance_copy
 from core.tools.transcribe import TranscriptionError, transcribe
 from media_collector import DownloadError, download
 
@@ -84,7 +84,7 @@ def collect_copy(
     }
     try:
         database = commit_finance_copy([record])
-    except CloudflareDataError as exc:
+    except MediaRecordsError as exc:
         raise WorkflowStepError(
             f"写入财经文案库失败：{exc}",
             getattr(exc, "details", {}),

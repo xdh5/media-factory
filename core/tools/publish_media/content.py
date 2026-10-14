@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from core.tools.cloudflare_data import list_production_outputs
+from core.tools.media_records import list_production_outputs
 
 from ._constants import BUSINESS_LINES, PLATFORM_ALIASES, SUPPORTED_PLATFORMS
 from ._errors import InvalidPublishRequestError, PublishContentNotFoundError

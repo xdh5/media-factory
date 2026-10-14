@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from ._mcp import ProjectMCP
-from core.tools.r2_storage import download_public_file
+from core.tools.media_files import download_public_file
 
 from ._shared import (
     PROJECT_ROOT,

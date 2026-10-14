@@ -7,7 +7,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from core.tools.generate_final_video._ffmpeg import _probe
-from core.tools.stock_video import prepare_stock_clip
+from core.tools.generate_stock_video import prepare_stock_clip
 from ..config.settings import STORYBOARD_TEXT_FILE_NAME, VIDEO_SIZE
 from ..errors import WorkflowStepError
 

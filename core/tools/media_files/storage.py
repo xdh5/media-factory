@@ -1,4 +1,4 @@
-"""上传和删除 Cloudflare R2 公开对象。"""
+"""上传、下载和删除成片与图片文件。"""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def _settings() -> dict:
     missing = [name for name, value in values.items() if not value]
     if missing:
         raise CredentialError(
-            f"缺少 Cloudflare R2 配置：{', '.join(missing)}。请在 .env 填写后重试",
+            f"缺少媒体文件存储配置：{', '.join(missing)}。请在 .env 填写后重试",
             {"required": list(R2_REQUIRED_ENV), "missing": missing},
         )
     return values
@@ -72,8 +72,8 @@ def upload_public_file(file_path: str | Path, object_key: str, *, content_type: 
         )
     except Exception as exc:
         raise UploadError(
-            f"上传到 Cloudflare R2 失败：{exc}",
-            {"bucket": settings["R2_BUCKET"], "key": key, "fix": "请确认 R2 密钥有目标桶写权限"},
+            f"上传媒体文件失败：{exc}",
+            {"bucket": settings["R2_BUCKET"], "key": key, "fix": "请确认存储密钥有目标位置的写权限"},
         ) from exc
     return {
         "url": f"{settings['R2_PUBLIC_BASE_URL'].rstrip('/')}/{quote(key, safe='/')}",
@@ -84,7 +84,7 @@ def upload_public_file(file_path: str | Path, object_key: str, *, content_type: 
 
 
 def download_public_file(object_key: str, destination_path: str | Path) -> dict:
-    """从 R2 下载对象到指定本地文件。"""
+    """把成片或图片下载到指定本地文件。"""
     key = _normalize_key(object_key)
     destination = Path(destination_path).resolve()
     if destination.exists() and not destination.is_file():
@@ -113,7 +113,7 @@ def download_public_file(object_key: str, destination_path: str | Path) -> dict:
     except Exception as exc:
         temporary.unlink(missing_ok=True)
         raise DownloadError(
-            f"从 Cloudflare R2 下载失败：{exc}",
+            f"下载媒体文件失败：{exc}",
             {"bucket": settings["R2_BUCKET"], "key": key, "destination_path": str(destination)},
         ) from exc
     return {
@@ -125,7 +125,7 @@ def download_public_file(object_key: str, destination_path: str | Path) -> dict:
 
 
 def delete_public_file(object_key: str) -> dict:
-    """删除 R2 对象；对象不存在也视为成功。"""
+    """删除成片或图片；文件不存在也视为成功。"""
     key = _normalize_key(object_key)
     settings = _settings()
     client = _client(settings["R2_ACCOUNT_ID"], settings["R2_ACCESS_KEY_ID"], settings["R2_SECRET_ACCESS_KEY"])
@@ -133,14 +133,14 @@ def delete_public_file(object_key: str) -> dict:
         client.delete_object(Bucket=settings["R2_BUCKET"], Key=key)
     except Exception as exc:
         raise UploadError(
-            f"从 Cloudflare R2 删除失败：{exc}",
+            f"删除媒体文件失败：{exc}",
             {"bucket": settings["R2_BUCKET"], "key": key},
         ) from exc
     return {"deleted": True, "key": key, "bucket": settings["R2_BUCKET"]}
 
 
 def delete_public_files(object_keys: list[str | Path]) -> dict:
-    """批量删除 R2 对象；对象不存在也视为成功。"""
+    """批量删除成片或图片；文件不存在也视为成功。"""
     keys = list(dict.fromkeys(_normalize_key(str(item)) for item in object_keys))
     if not keys:
         raise InvalidParameterError("object_keys 至少需要包含一个对象路径", {"parameter": "object_keys"})
@@ -155,13 +155,13 @@ def delete_public_files(object_keys: list[str | Path]) -> dict:
         )
     except Exception as exc:
         raise UploadError(
-            f"从 Cloudflare R2 批量删除失败：{exc}",
+            f"批量删除媒体文件失败：{exc}",
             {"bucket": settings["R2_BUCKET"], "count": len(keys)},
         ) from exc
     errors = response.get("Errors") or []
     if errors:
         raise UploadError(
-            "从 Cloudflare R2 批量删除时部分对象失败",
+            "批量删除媒体文件时部分文件失败",
             {"bucket": settings["R2_BUCKET"], "errors": errors},
         )
     return {"deleted": True, "keys": keys, "bucket": settings["R2_BUCKET"]}

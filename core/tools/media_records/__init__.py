@@ -1,10 +1,10 @@
-"""Cloudflare D1 数据服务公开入口。"""
+"""媒体生产记录公开入口：稿件、话题、成片、发布和账号组。"""
 
 from ._errors import (
-    CloudflareDataConfigurationError,
-    CloudflareDataConflictError,
-    CloudflareDataError,
-    CloudflareDataRequestError,
+    MediaRecordsConfigurationError,
+    MediaRecordsConflictError,
+    MediaRecordsError,
+    MediaRecordsRequestError,
 )
 from .client import (
     commit_finance_copy,
@@ -33,10 +33,10 @@ from .client import (
 )
 
 __all__ = [
-    "CloudflareDataConfigurationError",
-    "CloudflareDataConflictError",
-    "CloudflareDataError",
-    "CloudflareDataRequestError",
+    "MediaRecordsConfigurationError",
+    "MediaRecordsConflictError",
+    "MediaRecordsError",
+    "MediaRecordsRequestError",
     "commit_finance_copy",
     "commit_finance_generated_images",
     "commit_publication",

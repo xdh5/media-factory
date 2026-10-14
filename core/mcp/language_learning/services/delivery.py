@@ -6,8 +6,8 @@ import json
 import re
 from pathlib import Path
 
-from core.tools.r2_storage import upload_public_file
-from core.tools.cloudflare_data import commit_production_outputs
+from core.tools.media_files import upload_public_file
+from core.tools.media_records import commit_production_outputs
 from core.tools.topic_dedup import commit as commit_topic
 
 from ..config import (

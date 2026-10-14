@@ -1,6 +1,6 @@
 # 正版视频素材工具
 
-公开入口：`core.tools.stock_video`。
+公开入口：`core.tools.generate_stock_video`。
 
 ## 能力
 

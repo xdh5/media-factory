@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from core.tools.cloudflare_data import commit_production_outputs, list_production_outputs
+from core.tools.media_records import commit_production_outputs, list_production_outputs
 from core.tools.generate_final_video import safe_filename
-from core.tools.r2_storage import R2StorageError, download_public_file
+from core.tools.media_files import MediaFilesError, download_public_file
 
 from ._constants import PROJECT_ROOT
 from ._errors import InvalidPublishRequestError
@@ -87,7 +87,7 @@ def _materialize_finance_publish_metadata(record: dict, output_dir: Path) -> Non
             continue
         try:
             download_public_file(f"{prefix}/{filename}", destination)
-        except R2StorageError:
+        except MediaFilesError:
             # 旧 Workflow 产物可能只有视频，保留 D1 标题和标签兜底。
             continue
 

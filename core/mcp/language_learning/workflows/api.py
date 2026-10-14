@@ -18,9 +18,9 @@ warnings.filterwarnings(
 )
 
 from ..infrastructure import (
-    CloudflareDataError,
+    MediaRecordsError,
     ImageGenerationError,
-    R2StorageError,
+    MediaFilesError,
     RunnerTaskNotFoundError,
     TopicDedupError,
     claim_language_learning_pack,
@@ -152,9 +152,9 @@ def _map_error(exc: Exception) -> LanguageLearningError:
         return LanguageLearningError(exc.message, exc.details)
     if isinstance(exc, TopicDedupError):
         return LanguageLearningError(str(exc), exc.details)
-    if isinstance(exc, R2StorageError):
+    if isinstance(exc, MediaFilesError):
         return LanguageLearningError(exc.message, exc.details)
-    if isinstance(exc, CloudflareDataError):
+    if isinstance(exc, MediaRecordsError):
         return LanguageLearningError(exc.message, exc.details)
     raise exc
 

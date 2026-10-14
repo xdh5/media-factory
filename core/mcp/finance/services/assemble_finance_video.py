@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from core.tools.generate_cover_image import CoverError, generate_cover_image
-from core.tools.cloudflare_data import commit_production_outputs
+from core.tools.media_records import commit_production_outputs
 from core.tools.topic_dedup import commit as commit_topic
 from core.tools.generate_final_video import generate_final_video, safe_filename
 from core.tools.generate_shot import intro_bgm_start_seconds

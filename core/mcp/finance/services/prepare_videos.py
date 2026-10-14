@@ -13,8 +13,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from core.tools.stock_video import download_stock_video, prepare_stock_clip, search_stock_videos, select_stock_candidates
-from core.tools.stock_video._constants import SELECTION_DURATION_MARGIN_SECONDS
+from core.tools.generate_stock_video import download_stock_video, prepare_stock_clip, search_stock_videos, select_stock_candidates
+from core.tools.generate_stock_video._constants import SELECTION_DURATION_MARGIN_SECONDS
 
 from ..config.settings import (
     MATERIAL_STOCK_VIDEO,

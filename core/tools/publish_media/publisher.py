@@ -5,12 +5,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from core.tools.cloudflare_data import (
+from core.tools.media_records import (
     commit_production_outputs,
     commit_publication_records,
     list_publication_records,
 )
-from core.tools.r2_storage import upload_public_file
+from core.tools.media_files import upload_public_file
 
 from ._constants import PUBLIC_URL_PLATFORMS, media_publisher_root
 from ._errors import DuplicatePublicationError, InvalidPublishRequestError, MediaPublisherCommandError

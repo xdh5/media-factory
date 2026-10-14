@@ -1,4 +1,4 @@
-"""Cloudflare R2 对象存储常量。"""
+"""成片和图片文件存储常量。"""
 
 from pathlib import Path
 

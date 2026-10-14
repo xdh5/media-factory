@@ -6,9 +6,9 @@ import hashlib
 import re
 import unicodedata
 
-from core.tools.cloudflare_data import (
-    CloudflareDataConflictError,
-    CloudflareDataError,
+from core.tools.media_records import (
+    MediaRecordsConflictError,
+    MediaRecordsError,
     commit_publication,
     list_topics,
     reserve_topic,
@@ -46,7 +46,7 @@ def get_topic(workflow: str, days: int = DEFAULT_DEDUPLICATION_DAYS) -> list[dic
     window_days = _validate_days(days)
     try:
         return list_topics(normalized_workflow, window_days)
-    except CloudflareDataError as exc:
+    except MediaRecordsError as exc:
         raise TopicDataServiceError(
             f"读取 Cloudflare D1 最近话题失败：{exc.message}",
             exc.details,
@@ -65,11 +65,11 @@ def update(workflow: str, topic: str, days: int = DEFAULT_DEDUPLICATION_DAYS) ->
             _fingerprint(normalized_topic),
             window_days,
         )
-    except CloudflareDataConflictError as exc:
+    except MediaRecordsConflictError as exc:
         if exc.remote_code == "DUPLICATE_TOPIC":
             raise DuplicateTopicError(exc.message, exc.details) from exc
         raise TopicDataServiceError(exc.message, exc.details) from exc
-    except CloudflareDataError as exc:
+    except MediaRecordsError as exc:
         raise TopicDataServiceError(
             f"写入 Cloudflare D1 话题失败：{exc.message}",
             exc.details,
@@ -102,11 +102,11 @@ def commit(
             history_days=_validate_days(history_days),
             minimum_new_words=_validate_days(minimum_new_words),
         )
-    except CloudflareDataConflictError as exc:
+    except MediaRecordsConflictError as exc:
         if exc.remote_code == "DUPLICATE_TOPIC":
             raise DuplicateTopicError(exc.message, exc.details) from exc
         raise TopicDataServiceError(exc.message, exc.details) from exc
-    except CloudflareDataError as exc:
+    except MediaRecordsError as exc:
         raise TopicDataServiceError(
             f"发布入库 Cloudflare D1 失败：{exc.message}",
             exc.details,

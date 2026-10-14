@@ -50,11 +50,11 @@ finance_start_collect_copy(share_text, collection_name)
 finance_poll_task(task_path)
 
 finance_get_source_stats
-└─ cloudflare_data.get_finance_copy_stats
+└─ media_records.get_finance_copy_stats
    └─ 只读统计原稿总数、可用数、有效占用数和已使用数
 
 finance_get_source_script
-└─ cloudflare_data.reserve_finance_copy
+└─ media_records.reserve_finance_copy
    └─ 选择未使用原稿并临时占用
 
 finance_get_metadata_prompt
@@ -95,10 +95,10 @@ finance_save_images / finance_submit_images
 素材策略 B：正版实拍视频
 finance_start_video_search(draft_path, storyboard_text, video_config)
 └─ tools.prepare_videos.prepare_video_searches
-   └─ stock_video.search_stock_videos（Pexels → Pixabay → Coverr 兜底）
+   └─ generate_stock_video.search_stock_videos（Pexels → Pixabay → Coverr 兜底）
 finance_start_download_videos(context_path)
 └─ tools.prepare_videos.download_selected_videos
-   └─ stock_video.prepare_stock_clip 一次完成拼接、裁切、帧率规范化与磨砂
+   └─ generate_stock_video.prepare_stock_clip 一次完成拼接、裁切、帧率规范化与磨砂
    └─ 按素材与参数签名复用完成镜头；最多并发处理 3 个镜头
 
 finance_start_finish_video(..., production_config, material_manifest_path, intro_image_path?)
@@ -110,7 +110,7 @@ finance_start_finish_video(..., production_config, material_manifest_path, intro
       └─ generate_shot.generate_shot_from_intro（片头动画 + 快门音效）
       └─ 黄金钩子图层：字幕位置覆盖 + generate_subtitles 按行生成 hook-title-N.ass（字魂群英体 165px，按标点断行，单行红字黑边 / 多行首行黄黑边其余红白边，\pos 堆叠）
       └─ generate_final_video
-      └─ 成片成功后 cloudflare_data.mark_finance_copy_used
+      └─ 成片成功后 media_records.mark_finance_copy_used
 
 finance_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..infrastructure import (
-    CloudflareDataError,
+    MediaRecordsError,
     PublishMediaError,
     RunnerTaskNotFoundError,
     list_account_groups,
@@ -24,7 +24,7 @@ def _map_error(exc: Exception) -> PublishingError:
         return exc
     if isinstance(exc, PublishMediaError):
         return PublishingRequestError(str(exc), {"tool_code": exc.code, **exc.details})
-    if isinstance(exc, CloudflareDataError):
+    if isinstance(exc, MediaRecordsError):
         return PublishingRequestError(exc.message, exc.details)
     raise exc
 

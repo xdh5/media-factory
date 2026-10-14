@@ -1,4 +1,4 @@
-"""Cloudflare 数据服务输入输出 Schema。"""
+"""媒体生产记录的输入输出 Schema。"""
 
 TOPIC_RECORD_SCHEMA = {
     "type": "object",
@@ -260,7 +260,7 @@ LANGUAGE_LEARNING_PACK_SCHEMA = {
     "additionalProperties": True,
 }
 
-CLOUDFLARE_DATA_ERROR_SCHEMA = {
+MEDIA_RECORDS_ERROR_SCHEMA = {
     "type": "object",
     "properties": {
         "error": {
@@ -269,10 +269,10 @@ CLOUDFLARE_DATA_ERROR_SCHEMA = {
                 "code": {
                     "type": "string",
                     "enum": [
-                        "CLOUDFLARE_DATA_ERROR",
-                        "CLOUDFLARE_DATA_CONFIGURATION_ERROR",
-                        "CLOUDFLARE_DATA_REQUEST_ERROR",
-                        "CLOUDFLARE_DATA_CONFLICT",
+                        "MEDIA_RECORDS_ERROR",
+                        "MEDIA_RECORDS_CONFIGURATION_ERROR",
+                        "MEDIA_RECORDS_REQUEST_ERROR",
+                        "MEDIA_RECORDS_CONFLICT",
                     ],
                 },
                 "message": {"type": "string"},

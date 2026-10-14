@@ -11,7 +11,7 @@ import boto3
 
 from core.tools.qwen_text import generate_text
 from core.tools.qwen_vision import analyze_image
-from core.tools.r2_storage import upload_public_file
+from core.tools.media_files import upload_public_file
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
