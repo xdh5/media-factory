@@ -37,4 +37,4 @@ cache/output/anime/run-*/
 1. `anime_start_compile(share_texts)`：按数组顺序启动后台拼接，返回 `task_path`。
 2. `anime_poll_task(task_path)`：轮询到 `done=true`。成功时 `result.parts` 含每段路径、标题、描述和话题。
 
-完整调用约定见 `.agents/skills/anime/SKILL.md`。
+完整调用约定见 `.agents/skills/produce-anime-video/SKILL.md`。

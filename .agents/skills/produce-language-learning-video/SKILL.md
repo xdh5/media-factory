@@ -1,9 +1,9 @@
 ---
-name: learn-chinese-and-korean
-description: 使用语言学习 MCP 制作中英/韩英词汇短视频；适用于“做语言学习视频”“中韩学习视频”等请求，也用于提前生成可复用预制图包。
+name: produce-language-learning-video
+description: 生产语言学习视频。使用语言学习 MCP 制作中英/韩英词汇短视频；适用于“做语言学习视频”“生产语言学习视频”“中韩学习视频”等请求，也用于提前生成可复用预制图包。
 ---
 
-# 语言学习制作
+# 生产语言学习视频
 
 使用 `language_learning` MCP。词表、图片和视觉验收 Prompt、标题格式、配音、停顿与成片参数以 MCP 返回值为准；账号组、平台路由和排期交给统一发布 MCP。禁止绕过 MCP 执行业务流程或读写内部文件。
 

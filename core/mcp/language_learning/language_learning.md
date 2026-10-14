@@ -8,7 +8,7 @@ language_learning_get_production_config
 language_learning_get_automation_plan
 language_learning_get_topic_generation_prompt / language_learning_validate_topic_response
 
-TTS、发布账号组与完整流程见 `.agents/skills/learn_Chinese_and_Korean/SKILL.md`。Prompt 模板在 `prompts/`。
+TTS、发布账号组与完整流程见 `.agents/skills/produce-language-learning-video/SKILL.md`。Prompt 模板在 `prompts/`。
 
 ## 工具编排
 

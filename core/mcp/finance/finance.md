@@ -4,7 +4,7 @@
 
 生产参数以 `finance_get_production_config` 返回值为唯一标准；Agent 与 GitHub Runner 共用，禁止在各自入口复制。
 
-财经线是唯一的文章成片线（原心灵鸡汤线已并入删除）；财经 Skill 提供原稿整理规则等业务参数，标题标签与分镜 Prompt 在 `core/mcp/finance/prompts/`。完整流程见 `.agents/skills/finance/SKILL.md`。收集财经文案也在本 MCP，见 `.agents/skills/collect-finance-copy/SKILL.md`。
+财经线是唯一的文章成片线（原心灵鸡汤线已并入删除）；财经 Skill 提供原稿整理规则等业务参数，标题标签与分镜 Prompt 在 `core/mcp/finance/prompts/`。完整流程见 `.agents/skills/produce-finance-video/SKILL.md`。收集财经文案也在本 MCP，见 `.agents/skills/collect-finance-copy/SKILL.md`。
 
 ## 目录职责
 
