@@ -45,12 +45,12 @@ def load_manifest(manifest_path: str) -> tuple[Path, list[dict]]:
 
 
 def transcribe_intros(manifest_path: str, progress=None) -> dict:
-    """逐段抽取从零秒开始的前一分钟，缓存原始转写。"""
+    """只抽取第一段从零秒开始的前一分钟，缓存原始转写。"""
     from core.tools.transcribe import transcribe
 
     directory, parts = load_manifest(manifest_path)
     results = []
-    for part in parts:
+    for part in parts[:1]:
         index = part["part_index"]
         transcript = directory / f"youtube-intro-{index}.json"
         if not transcript.is_file():
@@ -125,8 +125,8 @@ def prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
     from core.tools.generate_image import ImageGenerationError, prepare_agent_image_tasks
 
     directory, parts = load_manifest(manifest_path)
-    if len(titles) != len(parts):
-        raise AnimeError("每段视频必须对应一个封面标题")
+    if len(titles) != 1:
+        raise AnimeError("只需提供一个共用封面标题")
     if any(not str(title).strip() for title in titles):
         raise AnimeError("封面标题不能为空")
     prepared_tasks = []
@@ -136,7 +136,7 @@ def prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
     frame = directory / "youtube-style-frame.jpg"
     sample = parts[0]
     _extract_style_frame(Path(sample["video_path"]), frame, float(sample["duration_seconds"]))
-    for part, title in zip(parts, titles):
+    for part, title in zip(parts[:1], titles):
         index = part["part_index"]
         image_id = f"youtube-thumbnail-{index}"
         text = str(title).strip()
@@ -275,15 +275,17 @@ def _verify_processed_video(route: dict, result: dict, expected_duration: float,
 
 
 def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str],
-                    account_group: str, progress=None) -> dict:
+                    account_group: str, progress=None, receipt_saved=None) -> dict:
     """逐段即时公开发布到指定动漫账号组，按文件摘要去重并逐条写回发布记录。"""
     from core.tools.media_records import list_publication_records, commit_publication_records, delete_publication_records
     from core.tools.publish_media.accounts import resolve_account_group
     from core.tools.publish_media.publisher import _publishing
 
     directory, parts = load_manifest(manifest_path)
-    if len(titles) != len(parts) or len(descriptions) != len(parts):
-        raise AnimeError("每段视频必须对应一个标题和描述")
+    if json.loads((directory / "manifest.json").read_text(encoding="utf-8")).get("preview_only"):
+        raise AnimeError("预览片段不能发布，请调用 anime_dispatch_github_execution 由 Action 下载完整来源后发布")
+    if len(titles) != 1 or len(descriptions) != 1:
+        raise AnimeError("只需提供一个共用标题和描述")
     if any(not title.strip() or len(title) > 100 for title in titles):
         raise AnimeError("YouTube 标题须为 1 到 100 个字符")
     if any(not text.strip() or len(text) > 5000 for text in descriptions):
@@ -291,9 +293,9 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
     tags = list(dict.fromkeys(str(tag).strip().lstrip("#") for tag in tags if str(tag).strip()))
     if sum(len(tag) + 3 for tag in tags) > 420:
         raise AnimeError("标签总长度须留出系统去重标记空间，请控制在 420 字符以内")
-    for part in parts:
+    for part in parts[:1]:
         if not (directory / f"youtube-intro-{part['part_index']}.json").is_file():
-            raise AnimeError("请先完成各段前一分钟转写，再根据原文生成发布文案")
+            raise AnimeError("请先完成第一段前一分钟转写，再根据原文生成共用发布文案")
     _publishing()
     from platform_api.account_registry import account_context, verify_account
     from platform_api.youtube import publish_to_youtube
@@ -306,7 +308,9 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
     route = routes[0]
     verify_account(route)
     results = []
-    for part, title, description in zip(parts, titles, descriptions):
+    first_digest = _file_sha256(Path(parts[0]["video_path"]))
+    for part in parts:
+        title, description = titles[0], descriptions[0]
         path = Path(part["video_path"])
         hasher = hashlib.sha256()
         with path.open("rb") as stream:
@@ -356,7 +360,7 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
                 if progress:
                     progress("本地回执中的 YouTube 视频已失效，重新上传")
         if result is None:
-            thumbnail = _require_host_thumbnail(directory, index, title, digest)
+            thumbnail = _require_host_thumbnail(directory, parts[0]["part_index"], title, first_digest)
             if progress:
                 progress(f"正在发布第 {index}/{len(parts)} 段到 {account_group} YouTube")
             with account_context(route) as account:
@@ -366,6 +370,8 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
                     on_progress=lambda percent, message: progress(f"YouTube：{message}（{percent:.1%}）") if progress else None)
             publish_title = title
             _write_json(receipt, {**metadata, "title": publish_title, "result": result})
+            if receipt_saved:
+                receipt_saved(receipt)
             _verify_processed_video(route, result, part["duration_seconds"], progress)
         record = {"publication_id": run_id, "run_id": run_id, "business_line": "anime",
                   "platform": "youtube", "connector": "youtube", "account_id": route["platform_account_id"],

@@ -10,8 +10,14 @@ MCP_ID = "anime"
 MAX_PART_SECONDS = 3 * 60 * 60
 
 SERVER_INSTRUCTIONS = (
-    "用户明确要求制作并发布时，可用 anime_start_transcribe_intro 转写成片前60秒，"
-    "生成独立YouTube发布文案后，调用 anime_prepare_youtube_thumbnails。"
+    "主页找剧并发布默认使用 GitHub Action：找齐并排序后 anime_start_prepare_execution，"
+    "只读取第一来源开头60秒并转写，禁止先全量下载或拼接。"
+    "以返回的预览 manifest_path 准备一套共用标题、描述、标签和一张宿主封面，"
+    "保存封面后 anime_dispatch_github_execution 上传执行包并触发 Action。"
+    "Action 全量下载、拼接、分段、上传和写回，不调用 LLM。"
+    "dispatched 仅代表已触发；无需持续轮询，按需 anime_get_github_execution_result 查询最终链接。"
+    "用户明确指定已有本地完整成片发布时，可用 anime_start_transcribe_intro 只转写第一段成片前60秒，"
+    "生成所有分段共用的YouTube标题、描述、标签后，调用 anime_prepare_youtube_thumbnails。"
     "宿主查看这一帧参考，一次生成与该画风一致的封面，标题和画面一起出图，再 anime_save_youtube_thumbnails。"
     "然后 anime_start_publish_youtube 发布到用户指定账号组。发布工具不代替宿主生图。"
     "原标题描述的原样保留规则适用于来源存档；独立YouTube文案可按用户要求撰写。"

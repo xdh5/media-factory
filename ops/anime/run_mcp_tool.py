@@ -39,6 +39,11 @@ async def main():
         async with ClientSession(reader, writer) as session:
             await session.initialize()
             started = payload(await session.call_tool(args.tool, parameters))
+            if "task_path" not in started:
+                args.result_file.parent.mkdir(parents=True, exist_ok=True)
+                args.result_file.write_text(json.dumps(started, ensure_ascii=False, indent=2), encoding="utf-8")
+                print(f"工具完成：{args.result_file}", flush=True)
+                return
             previous = None
             while True:
                 result = payload(await session.call_tool("anime_poll_task", {"task_path": started["task_path"]}))

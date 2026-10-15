@@ -51,6 +51,22 @@ cache/output/anime/run-*/
 
 ## YouTube 发布扩展
 
-用户明确授权发布时，调用 `anime_start_transcribe_intro(manifest_path)`，抽取每段成片前60秒并复用 Groq 转写。宿主根据转写生成独立发布文案，不覆盖来源文案。文案确定后调用 `anime_prepare_youtube_thumbnails(manifest_path, titles)`，工具只抽一帧作为画风参考。宿主查看这一帧后自己一次生成封面，画风与参考帧一致，标题和画面一起出图，再调用 `anime_save_youtube_thumbnails(context_path, images)`。然后调用 `anime_start_publish_youtube(manifest_path, titles, descriptions, tags, account_group)`，逐段即时公开发布到用户指定的动漫账号组，并上传已保存的封面。发布工具不代替宿主生图。目录从项目布局推导，频道身份与凭据引用从数据库和部署环境读取，不预置个人信息。耗时的转写和发布通过 `anime_poll_task` 轮询。封面准备和保存是同步工具。
+### 默认：Agent 准备，GitHub Action 执行
 
-标题、描述数组与清单分段对应，标题最多100字符，描述最多5000字符；标签预算420字符以内，给平台去重标记留空间。前一分钟未转写时拒绝发布。工具按文件摘要和频道查询发布记录去重，保存本地平台回执并逐段写回 D1；数据库写回失败时重试复用回执。新增工具尚未在客户端加载时，可用 `ops/anime/run_mcp_tool.py` 通过 MCP stdio 调用。
+主页找剧并发布时，宿主扫描、排序、去重和判断合集覆盖；按需取证仅远程截取短片段，不下载整集。
+
+1. `anime_start_prepare_execution(discovery_path, work_ids, selection_reason)`：冻结来源顺序，仅远程读取第一来源前60秒并转写，返回预览 `manifest_path`。轮询到完成。
+2. 宿主根据预览生成一套共用标题、描述和标签，调用现有封面准备和保存工具，以预览清单为输入，只生成一张封面。
+3. `anime_dispatch_github_execution(manifest_path, titles, descriptions, tags, account_group)`：上传执行包和封面至 R2，启动 main 上的 `publish-anime-youtube.yml`。标题和描述数组各一个元素。授权使用 `ANIME_GITHUB_TOKEN`，也可复用本机 gh 登录。
+4. Action 全量下载、核对 ID 和时长、拼接分段、上传 YouTube、设置共用封面、核验平台结果并写回 D1。Action 不配置 LLM、Groq 或生图密钥。账号组目标发生变化或来源不符时停止。
+5. 返回执行 ID 和工作流链接，无需宿主持续在线。按需 `anime_get_github_execution_result(execution_id)` 查询；`dispatched` 不等于发布成功。
+
+执行包、来源、完整成片、回执和结果保存在 `runs/anime/executions/{执行ID}/`。重跑同一 ID 恢复已持久化下载和成片，复用回执核验，不重新生成文案或封面。拼接未全部完成时重新拼接；下载尚未持久化时需重新下载。GitHub 诊断 artifact 保存七天，R2 缓存不自动删除。托管 Runner 的磁盘和六小时执行时限仍适用，超限时保留已持久化进度并报告。
+
+Action 所需 Secrets：已有 D1 和 R2 配置、`ANIME_PUBLISHING_CREDENTIALS_JSON`（仅动漫账号组引用的 OAuth 客户端和 refresh token）。不覆盖其他业务共用的发布凭据 Secret。手动运行工作流时可选 `verify_auth_only=true`，只读核验 Secret 的 OAuth、频道身份和上传权限，不下载或发布视频。
+
+### 用户指定已有本地完整成片
+
+用户明确授权发布时，调用 `anime_start_transcribe_intro(manifest_path)`，抽取第一段成片前60秒并复用 Groq 转写。宿主根据转写生成独立发布文案，不覆盖来源文案。文案确定后调用 `anime_prepare_youtube_thumbnails(manifest_path, titles)`，titles 只传一个共用标题，工具只从第一段抽一帧作为画风参考。宿主查看这一帧后自己一次生成封面，画风与参考帧一致，标题和画面一起出图，再调用 `anime_save_youtube_thumbnails(context_path, images)`。然后调用 `anime_start_publish_youtube(manifest_path, titles, descriptions, tags, account_group)`，逐段即时公开发布到用户指定的动漫账号组，并上传已保存的封面。发布工具不代替宿主生图。目录从项目布局推导，频道身份与凭据引用从数据库和部署环境读取，不预置个人信息。耗时的转写和发布通过 `anime_poll_task` 轮询。封面准备和保存是同步工具。
+
+标题、描述数组各只传一个元素，所有分段共用文案和第一段封面，标题最多100字符，描述最多5000字符；标签预算420字符以内，给平台去重标记留空间。第一段前一分钟未转写时拒绝发布。工具按文件摘要和频道查询发布记录去重，保存本地平台回执并逐段写回 D1；数据库写回失败时重试复用回执。新增工具尚未在客户端加载时，可用 `ops/anime/run_mcp_tool.py` 通过 MCP stdio 调用。

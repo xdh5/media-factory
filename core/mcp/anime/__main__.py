@@ -22,6 +22,7 @@ from ._errors import AnimeError, TaskNotFoundError, WorkflowStepError
 from .services.compile import compile_videos, normalize_share_texts
 from .services.discover import discover_series, inspect_works, compile_selection, load_discovery
 from .services.youtube import load_manifest, transcribe_intros, publish_youtube, prepare_youtube_thumbnails, save_youtube_thumbnails
+from .services.github_execution import prepare_execution, dispatch_execution, read_execution_result
 
 mcp = FastMCP("media-factory-anime", instructions=SERVER_INSTRUCTIONS)
 
@@ -98,8 +99,37 @@ def anime_start_compile_series(discovery_path: str, work_ids: list[str], selecti
 
 
 @mcp.tool()
+def anime_start_prepare_execution(discovery_path: str, work_ids: list[str], selection_reason: str) -> dict:
+    """冻结选片顺序，只远程截取第一来源前60秒并转写。返回预览 manifest_path，用于共用文案和封面；不下载整部作品。"""
+    directory, _ = load_discovery(discovery_path)
+    task_id = f"prepare-execution-{time.time_ns()}"
+    return {**runner_submit_task(cache_dir=directory / task_id, run_id=task_id, step="prepare-execution",
+            fn=lambda progress: prepare_execution(discovery_path, work_ids, selection_reason, progress)),
+            "poll_tool": "anime_poll_task"}
+
+
+@mcp.tool()
+def anime_dispatch_github_execution(manifest_path: str, titles: list[str], descriptions: list[str],
+                                    tags: list[str], account_group: str) -> dict:
+    """获得用户发布授权后使用。上传执行包和共用封面并启动 GitHub Action，全量下载、拼接、上传全部由 Action 执行。返回 dispatched 不代表已发布成功。"""
+    try:
+        return dispatch_execution(manifest_path, titles, descriptions, tags, account_group)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def anime_get_github_execution_result(execution_id: str) -> dict:
+    """按执行 ID 读取 Action 进度或最终发布结果；无需宿主持续在线轮询。"""
+    try:
+        return read_execution_result(execution_id)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
 def anime_start_transcribe_intro(manifest_path: str) -> dict:
-    """抽取每段成片前60秒并复用 Groq 转写，供宿主撰写 YouTube 文案。"""
+    """抽取第一段成片前60秒并复用 Groq 转写，供宿主撰写 YouTube 文案。"""
     directory, _ = load_manifest(manifest_path)
     return {**runner_submit_task(cache_dir=directory, run_id=str(directory), step="youtube-intro",
             fn=lambda progress: transcribe_intros(manifest_path, progress)), "poll_tool": "anime_poll_task"}
@@ -107,7 +137,7 @@ def anime_start_transcribe_intro(manifest_path: str) -> dict:
 
 @mcp.tool()
 def anime_prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
-    """只抽一帧成片作为画风参考，返回宿主生图任务。宿主一次生成封面，标题和画面一起出图，禁止先出图再叠字。"""
+    """titles 只传一个共用标题；只抽第一段的一帧作为画风参考，返回一个宿主生图任务。宿主一次生成封面，标题和画面一起出图，禁止先出图再叠字。"""
     try:
         return prepare_youtube_thumbnails(manifest_path, titles)
     except Exception as exc:
@@ -116,7 +146,7 @@ def anime_prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> d
 
 @mcp.tool()
 def anime_save_youtube_thumbnails(context_path: str, images: list[dict]) -> dict:
-    """保存宿主生成的 YouTube 封面。images 每项包含 image_id 和 image_path；已缓存的段可以不重复提交。"""
+    """保存宿主生成的 YouTube 封面。images 每项包含 image_id 和 image_path；已缓存的共用封面可以不重复提交。"""
     try:
         return save_youtube_thumbnails(context_path, images)
     except Exception as exc:
@@ -125,7 +155,7 @@ def anime_save_youtube_thumbnails(context_path: str, images: list[dict]) -> dict
 
 @mcp.tool()
 def anime_start_publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str], account_group: str) -> dict:
-    """必须获得用户发布授权后使用。发布各段到指定动漫账号组的 YouTube，并上传宿主已生成的封面。未生成封面时拒绝发布。"""
+    """必须获得用户发布授权后使用。titles 和 descriptions 各只传一个元素。所有段共用文案和第一段封面，发布到指定动漫账号组的 YouTube。未生成封面时拒绝发布。"""
     directory, _ = load_manifest(manifest_path)
     return {**runner_submit_task(cache_dir=directory, run_id=str(directory), step="youtube-publish",
             fn=lambda progress: publish_youtube(manifest_path, titles, descriptions, tags, account_group, progress)),

@@ -15,6 +15,7 @@ from list_author_works import list_author_works
 from .._constants import OUTPUT_ROOT
 from .._errors import AnimeError
 from .compile import _executable, _probe, _subprocess_kwargs, _write_json, _write_text, assemble_videos
+from .preview import extract_remote_preview
 
 
 def load_discovery(discovery_path: str) -> tuple[Path, dict]:
@@ -79,19 +80,22 @@ def inspect_works(discovery_path: str, work_ids: list[str], windows: list[float]
     results = []
     for work_id in work_ids:
         progress(f"正在取证作品 {work_id}")
-        source = _source(directory, works[work_id])
-        evidence = {"work_id": work_id, "duration_seconds": source["duration"], "windows": []}
+        work = works[work_id]
+        evidence = {"work_id": work_id, "duration_seconds": work.get("duration_seconds"), "windows": []}
+        (directory / "sources").mkdir(exist_ok=True)
         for start in windows:
-            if start >= source["duration"]:
+            if work.get("duration_seconds") and start >= work["duration_seconds"]:
                 raise AnimeError(f"作品 {work_id} 的片段起点超过视频长度")
             clip = directory / "sources" / f"{work_id}-speech-{start:g}.mp3"
             transcript = clip.with_suffix(".json")
             if not transcript.is_file():
                 from core.tools.transcribe import transcribe
 
+                preview = clip.with_suffix(".mp4")
+                extract_remote_preview(work, preview, start, 45)
                 subprocess.run([
-                    _executable("ffmpeg"), "-v", "error", "-y", "-ss", str(start),
-                    "-i", str(source["path"]), "-t", "45", "-vn", "-ac", "1", str(clip),
+                    _executable("ffmpeg"), "-v", "error", "-y",
+                    "-i", str(preview), "-t", "45", "-vn", "-ac", "1", str(clip),
                 ], check=True, capture_output=True, timeout=120, **_subprocess_kwargs())
                 _write_json(transcript, transcribe(clip))
             text = json.loads(transcript.read_text(encoding="utf-8"))["text"]
@@ -101,7 +105,7 @@ def inspect_works(discovery_path: str, work_ids: list[str], windows: list[float]
 
             cover_result = directory / "sources" / f"{work_id}-cover.json"
             if not cover_result.is_file():
-                url = works[work_id].get("cover_url") or source.get("cover_url")
+                url = work.get("cover_url")
                 if not url:
                     raise AnimeError(f"作品 {work_id} 没有可读取的封面")
                 response = requests.get(url, timeout=30)

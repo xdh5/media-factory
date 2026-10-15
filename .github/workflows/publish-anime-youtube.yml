@@ -1,0 +1,85 @@
+name: 动漫下载拼接并发布 YouTube
+run-name: 动漫执行 ${{ inputs.execution_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      execution_id:
+        description: Agent 已上传的执行包 ID（32 位十六进制）
+        required: false
+        type: string
+      verify_auth_only:
+        description: 只读核验 YouTube 鉴权，不下载或发布视频
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: publish-anime-youtube-${{ inputs.execution_id }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    name: 下载、拼接并上传，无 LLM 调用
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    container:
+      image: ghcr.io/xdh5/media-factory-runner:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      PYTHONUTF8: "1"
+      PYTHONUNBUFFERED: "1"
+      CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
+      CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      PUBLISHING_CREDENTIALS_JSON: ${{ secrets.ANIME_PUBLISHING_CREDENTIALS_JSON }}
+    steps:
+      - name: 检出执行代码
+        uses: actions/checkout@v5
+
+      - name: 检出采集及发布服务
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init integrations/media-collector integrations/media-publisher
+
+      - name: 检查执行环境
+        shell: bash
+        run: |
+          for name in CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN \
+            R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL \
+            PUBLISHING_CREDENTIALS_JSON; do
+            test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
+          done
+
+      - name: 执行已冻结清单，复用 R2 缓存和回执
+        env:
+          EXECUTION_ID: ${{ inputs.execution_id }}
+          VERIFY_AUTH_ONLY: ${{ inputs.verify_auth_only }}
+        shell: bash
+        run: |
+          if [ "$VERIFY_AUTH_ONLY" = "true" ]; then
+            python -m ops.anime.execute_github_package --verify-auth-only
+          else
+            python -m ops.anime.execute_github_package --execution-id "$EXECUTION_ID"
+          fi
+
+      - name: 保留执行诊断和平台回执
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anime-${{ inputs.execution_id }}-${{ github.run_attempt }}
+          path: |
+            cache/output/anime/github-*/**/*.json
+            cache/output/anime/github-*/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7
