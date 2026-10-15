@@ -24,7 +24,8 @@ https://www.douyin.com/user/MS4wLjABAAAA... 显示名
 
 1. 调用 `finance_start_collect_copy`，原样传入 `share_text`，并固定传入 `collection_name="财经"`。
 2. 使用返回的 `task_path` 调用 `finance_poll_task`，直到 `done=true`。不得为同一请求重复启动任务。
-3. 成功后展示转写文本、分类和入库结果。
+3. 成功后读取 `result.pending` 和 `prompt`，由宿主 Agent 逐篇改正明显错别字、补标点、按需修改措辞并审核广告，禁止调用外部文本 LLM。调用 `finance_submit_copy_reviews(context_path, response_text)` 提交结果后才会入库。
+4. 正常内容中的插入广告填写原文 `ad_segments` 并删除；整篇广告标记 `ad`，不入库。展示最终审核文本、分类及入库结果。
 
 ## 作者名单
 
@@ -37,9 +38,9 @@ https://www.douyin.com/user/MS4wLjABAAAA... 显示名
 
 ## 按数量抓取
 
-用户说抓取 N 个财经稿件时，调用 `finance_start_collect_author_copies`，`count` 传 N，再用 `finance_poll_task` 轮询至 `done=true`。
+用户说抓取 N 个财经稿件时，调用 `finance_start_collect_author_copies`，`count` 传 N，再用 `finance_poll_task` 轮询至 `done=true`。任务完成只表示原始转写已准备，不表示已经入库；必须由宿主 Agent 校对和审核，再通过 `finance_submit_copy_reviews` 提交。
 
-工具会按当前作者人数平分。例如 100 篇、10 位作者，就是每人取 10 条最新作品。已入库的作品会跳过，并继续往下取，直到凑够或该作者没有更多作品。整篇广告不入库；正文中间的插入广告会删掉后再入库。除不尽时，先添加的作者多取 1 篇。
+工具会按当前作者人数平分。例如 100 篇、10 位作者，就是每人取 10 条最新作品。已入库的作品会跳过。宿主提交审核后若 `needs_more=true`，沿用 `context_path` 调用 `finance_start_continue_collect_author_copies`、轮询并继续审核，直到 `completed=true` 或候选作品用尽。整篇广告不入库；正文中间的插入广告由宿主删除。除不尽时，先添加的作者多取 1 篇。
 
 完成后展示入库篇数、每位作者的取稿数量、跳过的重复和广告，以及失败原因。
 

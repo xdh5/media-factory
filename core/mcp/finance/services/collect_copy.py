@@ -1,13 +1,10 @@
-"""下载抖音链接、转写并写入财经文案库。"""
+"""下载抖音链接并转写原文，等待宿主校对和审核。"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from core.tools.media_records import MediaRecordsError
-
-from ..infrastructure.source_scripts import save_transcribed_scripts, remember_rejected_ad_video
-from .copy_ad_review import review_finance_transcript
+from .copy_review import save_review_context, review_result
 from core.tools.transcribe import TranscriptionError, transcribe
 from download_video import DownloadError, download
 
@@ -26,7 +23,7 @@ def collect_copy(
     *,
     collection_name: str,
 ) -> dict:
-    """下载单条抖音链接，转写后写入财经文案库。"""
+    """下载单条抖音链接，返回未入库的待审原文。"""
     clean_share_text = str(share_text or "").strip()
     clean_collection_name = str(collection_name or "").strip()
     if not clean_share_text:
@@ -71,20 +68,6 @@ def collect_copy(
     if not transcript:
         raise WorkflowStepError("抖音视频转写结果为空，未写入数据库")
 
-    reviewed = review_finance_transcript(transcript)
-    if reviewed["kind"] == "ad":
-        remember_rejected_ad_video(video_id)
-        return {
-            "aweme_id": video_id,
-            "collection_code": collection_code,
-            "collection_name": clean_collection_name,
-            "skipped_ad": True,
-            "transcript": "",
-            "video_path": str(downloaded["video_path"]),
-            "database": {"inserted_count": 0},
-        }
-    transcript = reviewed["text"]
-
     record = {
         "aweme_id": video_id,
         "collection_code": collection_code,
@@ -95,23 +78,11 @@ def collect_copy(
         "published_at": "",
         "caption": str(downloaded.get("title") or "无文案").strip() or "无文案",
         "transcript_raw": raw_transcript,
-        "transcript_corrected": transcript,
         "aweme_url": f"https://www.douyin.com/video/{video_id}",
         "cover_url": str(downloaded.get("cover_url") or "").strip(),
     }
-    try:
-        database = save_transcribed_scripts([record])
-    except MediaRecordsError as exc:
-        raise WorkflowStepError(
-            f"写入财经文案库失败：{exc}",
-            getattr(exc, "details", {}),
-        ) from exc
-
-    return {
-        "aweme_id": video_id,
-        "collection_code": collection_code,
-        "collection_name": clean_collection_name,
-        "transcript": transcript,
-        "video_path": str(downloaded["video_path"]),
-        "database": database,
-    }
+    context = {"requested_count": 1, "saved_count": 0, "skipped_ad_count": 0,
+               "pending": [record], "failures": []}
+    path = root / "copy-review.json"
+    save_review_context(path, context)
+    return review_result(path, context)

@@ -6,7 +6,7 @@ from ._constants import SUPPORTED_LANGUAGES
 
 TRANSCRIBE_INPUT_SCHEMA = {
     "type": "object",
-    "description": "把本地音视频转成文字。中文会再调用一次模型补标点并改错别字",
+    "description": "把本地音视频转成原始文字，不调用文本大模型；校对及广告审核由宿主 Agent 完成",
     "properties": {
         "media_path": {
             "type": "string",
@@ -30,7 +30,7 @@ TRANSCRIBE_OUTPUT_SCHEMA = {
     "properties": {
         "filename": {"type": "string"},
         "language": {"type": "string"},
-        "text": {"type": "string", "description": "中文为补标点并改错别字后的正文，其他语言为识别原文"},
+        "text": {"type": "string", "description": "语音识别原文，与 raw_text 相同"},
         "raw_text": {"type": "string", "description": "语音识别原文"},
         "segments": {
             "type": "array",

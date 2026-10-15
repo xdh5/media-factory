@@ -14,7 +14,7 @@
 - `services/`：稿件处理、分镜、素材准备、收集文案、合成和上传服务；调用方直接导入所需服务。
 - `services/collect_copy.py`：调用 media-collector 子仓库下载单条抖音链接，转写并写入财经文案库。
 - `services/collect_author_copies.py`：调用 media-collector 子仓库按作者名单平分抓取最新口播，去重并去掉广告后入库。
-- `services/copy_ad_review.py`：判断整篇广告，并删除正文中的插入广告。
+- `services/copy_review.py`：管理待审原文并校验宿主 Agent 的校对、措辞修改和广告审核结果，不调用外部文本模型。
 - `services/production_config.py`：成片参数校验。
 - `services/video_layers.py`：字幕、钩子标题和章节图层。
 - `services/video_opening.py`：片头渲染和缓存。
@@ -50,12 +50,16 @@ finance_get_stock_video_selection_prompt / finance_validate_stock_video_selectio
 finance_start_collect_copy(share_text, collection_name)
 └─ services.collect_copy.collect_copy
    └─ infrastructure.source_scripts.save_transcribed_scripts
-   └─ 收集财经文案：下载单条抖音链接、转写口播并写入文案库
+   └─ 收集财经文案：下载单条抖音链接、转写口播，返回待审原文
 finance_list_source_authors / finance_add_source_author / finance_remove_source_author
 └─ 财经作者名单可随时查看、添加和删除，保存在数据库
 finance_start_collect_author_copies(count)
 └─ services.collect_author_copies.collect_author_copies
-   └─ 按作者人数平分 count，每人取最新且未入库的正常口播；整篇广告不入库，插入广告从正文删掉
+   └─ 按作者人数平分 count，准备最新且未入库作品的原始转写
+finance_submit_copy_reviews(context_path, response_text)
+└─ 宿主 Agent 校对、按需修改措辞及广告审核后提交；正常稿入库，整篇广告登记排除
+finance_start_continue_collect_author_copies(context_path)
+└─ 继续补足被广告排除的作者配额，复用候选列表，不重启原始任务
 finance_poll_task(task_path)
 
 finance_get_source_stats
