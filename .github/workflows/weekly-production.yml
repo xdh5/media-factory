@@ -99,3 +99,17 @@ jobs:
         run: >-
           python -m ops.github_actions weekly_day
           --publish-date "$PUBLISH_DATE"
+
+  publish-chinese:
+    name: 发布学中文视频 ${{ matrix.publish_date }}
+    needs: [plan, produce-day]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    strategy:
+      matrix:
+        publish_date: ${{ fromJSON(needs.plan.outputs.dates_json) }}
+      max-parallel: 1
+      fail-fast: false
+    uses: ./.github/workflows/publish-language-learning-video.yml
+    with:
+      publish_date: ${{ matrix.publish_date }}
+    secrets: inherit

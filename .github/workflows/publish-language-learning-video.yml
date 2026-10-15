@@ -1,6 +1,12 @@
 name: 发布语言学习视频
 
 on:
+  workflow_call:
+    inputs:
+      publish_date:
+        description: 计划发布日期（YYYY-MM-DD）
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       publish_date:
