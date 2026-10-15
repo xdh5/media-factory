@@ -77,6 +77,11 @@ jobs:
       - name: 检出生产代码
         uses: actions/checkout@v5
 
+      - name: 检出 media-collector
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init integrations/media-collector
+
       - name: 检查生产所需配置
         shell: bash
         run: |
