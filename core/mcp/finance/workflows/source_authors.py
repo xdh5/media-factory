@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from list_author_works import AuthorWorksError, list_author_works, resolve_author_profile
+from list_author_works import AuthorWorksError, resolve_author_nickname, resolve_author_profile
 from ..infrastructure.source_scripts import (
     add_source_author,
     list_source_authors,
@@ -30,15 +30,7 @@ def finance_add_source_author(profile_url: str, display_name: str = "") -> dict:
         nickname_error = ""
         if not name:
             try:
-                works = list_author_works(author["profile_url"], limit=1)
-                name = next((
-                    str(work.get("author_name") or "").strip()
-                    for work in works
-                    if work.get("sec_user_id") == author["sec_user_id"]
-                    and str(work.get("author_name") or "").strip()
-                ), "")
-                if not name:
-                    nickname_error = "作者作品未返回昵称，已使用作者 ID"
+                name = resolve_author_nickname(author["profile_url"])
             except AuthorWorksError as extra:
                 nickname_error = f"昵称获取失败，已使用作者 ID：{extra.message}"
             name = name or author["sec_user_id"]
