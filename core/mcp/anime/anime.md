@@ -48,3 +48,9 @@ cache/output/anime/run-*/
 2. `anime_poll_task(task_path)`：轮询到 `done=true`。成功时 `result.parts` 含每段路径、标题、描述和话题。
 
 完整调用约定见 `.agents/skills/produce-anime-video/SKILL.md`。
+
+## YouTube 发布扩展
+
+用户明确授权发布时，调用 `anime_start_transcribe_intro(manifest_path)`，抽取每段成片前60秒并复用 Groq 转写。宿主根据转写生成独立发布文案，不覆盖来源文案。再调用 `anime_start_publish_youtube(manifest_path, titles, descriptions, tags, account_group)`，逐段即时公开发布到用户指定的动漫账号组。目录从项目布局推导，频道身份与凭据引用从数据库和部署环境读取，不预置个人信息。所有操作统一通过 `anime_poll_task` 轮询。
+
+标题、描述数组与清单分段对应，标题最多100字符，描述最多5000字符；标签预算420字符以内，给平台去重标记留空间。前一分钟未转写时拒绝发布。工具按文件摘要和频道查询发布记录去重，保存本地平台回执并逐段写回 D1；数据库写回失败时重试复用回执。新增工具尚未在客户端加载时，可用 `ops/anime/run_mcp_tool.py` 通过 MCP stdio 调用。

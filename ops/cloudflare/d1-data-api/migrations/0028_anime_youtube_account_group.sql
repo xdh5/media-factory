@@ -28,18 +28,6 @@ DROP TABLE anime_group_members_preserved;
 INSERT INTO publishing_account_groups(code, name, business_line)
 VALUES ('anime', 'anime', 'anime');
 
-INSERT INTO publishing_accounts (
-    account_key, platform, connector, connector_account_id, platform_account_id, display_name, credential_ref
-) VALUES (
-    'anime_youtube', 'youtube', 'youtube', 'UCDOEDQCI_9xR_7A86JCeTHQ',
-    'UCDOEDQCI_9xR_7A86JCeTHQ', '沙雕漫岛', 'youtube_anime'
-);
-
-INSERT INTO publishing_account_group_members (
-    group_code, platform, connector, account_ref, display_name, position, platform_account_id, account_key
-) VALUES (
-    'anime', 'youtube', 'youtube', 'anime_youtube', '沙雕漫岛', 10,
-    'UCDOEDQCI_9xR_7A86JCeTHQ', 'anime_youtube'
-);
+-- 频道身份与凭据引用由部署者完成 OAuth 后配置，不在公共迁移中预置个人账号。
 
 PRAGMA defer_foreign_keys = OFF;

@@ -21,6 +21,7 @@ from ._constants import OUTPUT_ROOT, SERVER_INSTRUCTIONS
 from ._errors import AnimeError, TaskNotFoundError, WorkflowStepError
 from .services.compile import compile_videos, normalize_share_texts
 from .services.discover import discover_series, inspect_works, compile_selection, load_discovery
+from .services.youtube import load_manifest, transcribe_intros, publish_youtube
 
 mcp = FastMCP("media-factory-anime", instructions=SERVER_INSTRUCTIONS)
 
@@ -93,6 +94,23 @@ def anime_start_compile_series(discovery_path: str, work_ids: list[str], selecti
     task_id = f"compile-series-{time.time_ns()}"
     return {**runner_submit_task(cache_dir=directory / task_id, run_id=task_id, step="compile-series",
             fn=lambda progress: compile_selection(discovery_path, work_ids, selection_reason, progress)),
+            "poll_tool": "anime_poll_task"}
+
+
+@mcp.tool()
+def anime_start_transcribe_intro(manifest_path: str) -> dict:
+    """抽取每段成片前60秒并复用 Groq 转写，供宿主撰写 YouTube 文案。"""
+    directory, _ = load_manifest(manifest_path)
+    return {**runner_submit_task(cache_dir=directory, run_id=str(directory), step="youtube-intro",
+            fn=lambda progress: transcribe_intros(manifest_path, progress)), "poll_tool": "anime_poll_task"}
+
+
+@mcp.tool()
+def anime_start_publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str], account_group: str) -> dict:
+    """必须获得用户发布授权后使用。根据前一分钟转写生成文案后，将各段立即公开发布到指定动漫账号组的 YouTube；先去重、成功后逐条写回。"""
+    directory, _ = load_manifest(manifest_path)
+    return {**runner_submit_task(cache_dir=directory, run_id=str(directory), step="youtube-publish",
+            fn=lambda progress: publish_youtube(manifest_path, titles, descriptions, tags, account_group, progress)),
             "poll_tool": "anime_poll_task"}
 
 

@@ -10,6 +10,10 @@ MCP_ID = "anime"
 MAX_PART_SECONDS = 3 * 60 * 60
 
 SERVER_INSTRUCTIONS = (
+    "用户明确要求制作并发布时，可用 anime_start_transcribe_intro 转写成片前60秒，"
+    "生成独立YouTube发布文案，再 anime_start_publish_youtube 发布到用户指定账号组。"
+    "原标题描述的原样保留规则适用于来源存档；独立YouTube文案可按用户要求撰写。"
+    "没有发布授权时只生产；发布工具逐段去重并写回数据库，不要求动漫计划发布日期。"
     "用户给作者主页和作品名时，调用 anime_start_discover 获取作品，宿主自主找剧。"
     "先看标题描述、明确集数、发布时间和时长；不清楚再 anime_start_inspect 比较片段口播；"
     "封面识别是最后兜底，必须先取证片段且说明仍不明确的原因。"

@@ -17,7 +17,7 @@
 
 通过 `POST /v1/publication-records/commit` 幂等写入发布记录；数据库以业务线、生产批次、标题、平台、账号和分段作为稳定唯一键，同名内容在不同日期发布时各自保留记录，不允许外部任务 ID 变化造成重复记录，也不接受空账号。通过 `GET /v1/publication-records` 查询，可选按 `business_line`、`platform`、`publish_date` 和 `run_id` 过滤。补发去重按产物的 `run_id` 查询，不按实际发送日期查询。通过 `GET /v1/publishing-account-groups` 查询数据库账号组。
 
-动漫账号组使用 `anime`，仅绑定 YouTube 频道“沙雕漫岛”，凭据引用为 `youtube_anime`；凭据只保存在本地发布凭据文件。账号组查询支持 `business_line=anime`。本次仅配置账号组，不扩展动漫产物登记与发布记录接口。
+动漫账号组、频道身份和凭据引用由部署者配置；公共迁移仅初始化空的 `anime` 示例账号组，不预置个人频道。凭据只保存在部署环境的发布凭据文件。账号组、产物和发布记录接口均支持 `business_line=anime`。动漫即时发布按成片摘要和频道去重，成功后逐条写回发布记录。
 
 通过 `POST /v1/production-outputs/commit` 幂等写入成片记录；通过 `GET /v1/production-outputs` 查询，可选按 `publish_date`、`business_line` 和 `source` 过滤；仅可通过 `DELETE /v1/production-outputs` 按精确记录 ID 清理已确认废弃的成片记录。`source=local_mcp` 保留 `local_path`，按需上传 R2 后补充 `r2_url`；`source=github_workflow` 只在 R2 交付成功后写入 `r2_url`，禁止保存 Runner 临时路径。
 

@@ -1,6 +1,6 @@
 const ACTIVE_STATUSES = ["reserved", "completed", "published", "used"];
-const PUBLICATION_BUSINESS_LINES = ["finance", "language_learning", "psychology_quiz"];
-const ACCOUNT_GROUP_BUSINESS_LINES = [...PUBLICATION_BUSINESS_LINES, "anime"];
+const PUBLICATION_BUSINESS_LINES = ["finance", "language_learning", "psychology_quiz", "anime"];
+const ACCOUNT_GROUP_BUSINESS_LINES = PUBLICATION_BUSINESS_LINES;
 const PUBLICATION_PLATFORMS = [
   "youtube", "facebook", "instagram", "tiktok", "kuaishou",
   "douyin", "baijiahao", "xiaohongshu", "toutiao", "wechat_channels",
