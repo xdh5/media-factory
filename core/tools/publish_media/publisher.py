@@ -16,6 +16,7 @@ from ._constants import PUBLIC_URL_PLATFORMS, media_publisher_root
 from ._errors import DuplicatePublicationError, InvalidPublishRequestError, MediaPublisherCommandError
 from .accounts import resolve_account_group
 from .content import local_publish_items, normalize_platforms, normalize_publish_date
+from .finance_schedule import plan_finance_publications
 
 
 def _publishing():
@@ -104,6 +105,8 @@ def preview_publication(
                 int(item.get("content_part") or 1),
             )
             tasks.append({"item": item, "route": route, "already_published": key in existing})
+    default_plan, default_skipped = (plan_finance_publications(tasks, normalized_date, None, None, None)
+                                     if business_line == "finance" else ([], []))
     return {
         "business_line": business_line,
         "publish_date": normalized_date,
@@ -114,6 +117,12 @@ def preview_publication(
         "tasks": tasks,
         "publishable_count": sum(not task["already_published"] for task in tasks),
         "duplicate_count": sum(task["already_published"] for task in tasks),
+        "default_publication_plan": [
+            {"production_id": t["item"]["production_id"], "content_part": t["item"].get("content_part", 1),
+             "platform": t["route"]["platform"], "account_id": t["route"]["platform_account_id"],
+             "publish_mode": t["publish_mode"], "publish_at": t["publish_at"]} for t in default_plan
+        ],
+        "default_schedule_skipped": default_skipped,
     }
 
 
@@ -174,9 +183,6 @@ def publish_local_outputs(
     preview = preview_publication(
         business_line, publish_date, account_group, platforms, content_kind=content_kind,
     )
-    timings = normalize_publish_timings(
-        preview["platforms"], publish_mode, publish_at, publish_at_by_platform,
-    )
     pending = [task for task in preview["tasks"] if not task["already_published"]]
     skipped = [
         {
@@ -189,34 +195,44 @@ def publish_local_outputs(
     ]
     if not pending:
         raise DuplicatePublicationError("所选内容在目标账号和平台都已经发布或预约，无需重复发送")
-    publish_batch, _, publish_error = _publishing()
-    from publishing.platforms import resolve_platform
-
-    pending_codes = {resolve_platform(str(task["route"]["platform"])).code for task in pending}
-    platform_times = {}
-    for key, value in (publish_at_by_platform or {}).items():
-        code = resolve_platform(str(key)).code
-        if code in pending_codes:
-            platform_times[code] = value
-    try:
-        outcome = publish_batch(
-            {
-                "account_group": str(account_group).strip(),
-                "publish_mode": publish_mode,
-                "publish_at": publish_at,
-                "publish_at_by_platform": platform_times,
-                "targets": [_target(task["item"], task["route"]) for task in pending],
-            },
-            progress=progress,
-            account_routes={
-                str(task["route"].get("account_key") or f"{task['route']['platform']}:{task['route']['platform_account_id']}"): {
-                    **task["route"], "account_group": task["route"]["account_ref"],
-                }
-                for task in pending
-            },
+    if business_line == "finance":
+        pending, schedule_skipped = plan_finance_publications(
+            preview["tasks"], preview["publish_date"], publish_mode, publish_at, publish_at_by_platform,
         )
-    except publish_error as exc:
-        raise InvalidPublishRequestError(str(exc)) from exc
+        skipped.extend(schedule_skipped)
+        if not pending:
+            raise InvalidPublishRequestError("财经没有可预约的未来时段；北京时间 14 点、18 点各最多一篇，请明确其他时间或立即发布")
+    language_timings = (normalize_publish_timings(preview["platforms"], publish_mode, publish_at, publish_at_by_platform)
+                        if business_line != "finance" else {})
+    # 先校验所有目标时间，避免发出第一篇后才发现下一篇的时间无效。
+    for task in pending:
+        task["timing"] = language_timings.get(task["route"]["platform"]) or normalize_publish_timings(
+            [task["route"]["platform"]], task.get("publish_mode", publish_mode),
+            task.get("publish_at", publish_at), None,
+        )[task["route"]["platform"]]
+    publish_batch, _, _ = _publishing()
+    outcome = {"published": [], "failed": [], "publish_timings": {}}
+    for index, task in enumerate(pending, start=1):
+        try:
+            route = task["route"]
+            if progress:
+                progress(f"正在发布 {index}/{len(pending)}：{route['platform']} - {task['item']['title']}")
+            account_key = str(route.get("account_key") or f"{route['platform']}:{route['platform_account_id']}")
+            batch_outcome = publish_batch(
+                {
+                    "account_group": str(account_group).strip(),
+                    "publish_mode": task["timing"]["publish_mode"],
+                    "publish_at": "now" if task["timing"]["publish_mode"] == "immediate" else task["timing"]["publish_at"],
+                    "targets": [_target(task["item"], route)],
+                },
+                progress=None,
+                account_routes={account_key: {**route, "account_group": route["account_ref"]}},
+            )
+            outcome["published"].extend(batch_outcome["published"])
+            outcome["failed"].extend(batch_outcome["failed"])
+            outcome["publish_timings"].update(batch_outcome["publish_timings"])
+        except Exception as exc:
+            outcome["failed"].append({"platform": task["route"]["platform"], "title": task["item"]["title"], "error": str(exc)})
     published_by_key = {
         (str(item.get("client_ref") or ""), str(item.get("platform") or ""), str(item.get("platform_account_id") or "")): item
         for item in outcome["published"]
@@ -270,6 +286,11 @@ def publish_local_outputs(
         ),
         "publish_at": str(publish_at or "per_platform"),
         "publish_timings": timings,
+        "publication_plan": [
+            {"production_id": t["item"]["production_id"], "platform": t["route"]["platform"],
+             "account_id": t["route"]["platform_account_id"], **t["timing"]}
+            for t in pending
+        ],
         "published": published,
         "skipped": skipped,
     }

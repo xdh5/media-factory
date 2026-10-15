@@ -9,4 +9,6 @@ SERVER_INSTRUCTIONS = (
     "发布前查询 publication_records 去重，成功或预约成功后逐条写回数据库。"
     "抖音、快手、头条或视频号登录失效时返回二维码，并轮询扫码结果。"
     "耗时发布必须调用 publishing_start_publish，再用 publishing_poll_task 轮询。"
+    "财经未指定时间时默认北京时间14点、18点各一篇；只有一篇或14点已过时只排18点一篇。"
+    "财经仅指定一个预约时间时只安排一篇；明确立即发布时使用immediate和now。"
 )

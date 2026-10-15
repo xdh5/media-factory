@@ -95,7 +95,7 @@ def publishing_start_publish(
     content_kind: str | None = None,
     publish_at_by_platform: dict[str, str] | None = None,
 ) -> dict:
-    """启动统一发布；立即发布用 publish_at=now，预约发布使用带时区的未来时间。"""
+    """启动统一发布；财经省略时间时按北京时间14点和18点各一篇，单篇只排18点。"""
     try:
         date_text = str(publish_date or "").strip()
         if not date_text:

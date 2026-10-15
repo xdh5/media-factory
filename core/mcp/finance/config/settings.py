@@ -16,7 +16,7 @@ TOPIC_DEDUPLICATION_DAYS = 30
 VIDEO_SIZE = "1920x1080"
 VIDEO_RADIO = "16:9"
 CONTENT_KIND = "finance"
-AUTOMATION_DAILY_OUTPUT_COUNT = 1
+AUTOMATION_DAILY_OUTPUT_COUNT = 2
 
 # 正文在两类必做改动（品牌替换、连载指涉改写）之外允许措辞级改写。
 # 原稿入库前已补标点并修正错别字，制作时视为文字和标点正确。
