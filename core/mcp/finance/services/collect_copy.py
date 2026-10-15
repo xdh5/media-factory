@@ -6,7 +6,8 @@ from pathlib import Path
 
 from core.tools.media_records import MediaRecordsError
 
-from ..infrastructure.source_scripts import save_transcribed_scripts
+from ..infrastructure.source_scripts import save_transcribed_scripts, remember_rejected_ad_video
+from .copy_ad_review import review_finance_transcript
 from core.tools.transcribe import TranscriptionError, transcribe
 from download_video import DownloadError, download
 
@@ -69,6 +70,20 @@ def collect_copy(
     raw_transcript = str(recognized.get("raw_text") or transcript).strip()
     if not transcript:
         raise WorkflowStepError("抖音视频转写结果为空，未写入数据库")
+
+    reviewed = review_finance_transcript(transcript)
+    if reviewed["kind"] == "ad":
+        remember_rejected_ad_video(video_id)
+        return {
+            "aweme_id": video_id,
+            "collection_code": collection_code,
+            "collection_name": clean_collection_name,
+            "skipped_ad": True,
+            "transcript": "",
+            "video_path": str(downloaded["video_path"]),
+            "database": {"inserted_count": 0},
+        }
+    transcript = reviewed["text"]
 
     record = {
         "aweme_id": video_id,
