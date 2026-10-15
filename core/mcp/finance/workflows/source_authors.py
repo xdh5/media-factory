@@ -23,7 +23,7 @@ def finance_list_source_authors() -> dict:
 
 
 def finance_add_source_author(profile_url: str, display_name: str = "") -> dict:
-    """添加一位财经作者。profile_url 是抖音作者主页链接，display_name 是可选显示名。"""
+    """添加一位财经作者。profile_url 可以是作者主页或「查看TA的更多作品」分享口令，display_name 是可选显示名。"""
     try:
         author = resolve_author_profile(profile_url)
         record = add_source_author(
