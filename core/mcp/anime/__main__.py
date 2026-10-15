@@ -20,6 +20,7 @@ from download_video import DownloadError
 from ._constants import OUTPUT_ROOT, SERVER_INSTRUCTIONS
 from ._errors import AnimeError, TaskNotFoundError, WorkflowStepError
 from .services.compile import compile_videos, normalize_share_texts
+from .services.discover import discover_series, inspect_works, compile_selection, load_discovery
 
 mcp = FastMCP("media-factory-anime", instructions=SERVER_INSTRUCTIONS)
 
@@ -57,6 +58,42 @@ def anime_start_compile(share_texts: list[str]) -> dict:
         }
     except Exception as exc:
         raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def anime_start_discover(profile_url: str, series_name: str, limit: int = 300) -> dict:
+    """复用 media-collector 扫描抖音主页。轮询后由宿主根据标题描述、集数和发布时间找剧；不明确再取证。"""
+    if not profile_url.strip() or not series_name.strip():
+        raise WorkflowStepError("必须提供作者主页和目标作品名称")
+    if isinstance(limit, bool) or not 1 <= limit <= 1000:
+        raise WorkflowStepError("扫描数量必须为 1 到 1000")
+    run_id = f"run-{time.time_ns()}"
+    directory = OUTPUT_ROOT / run_id
+    return {**runner_submit_task(cache_dir=directory, run_id=run_id, step="discover",
+            fn=lambda progress: discover_series(profile_url, series_name, limit, directory, progress)),
+            "poll_tool": "anime_poll_task"}
+
+
+@mcp.tool()
+def anime_start_inspect(discovery_path: str, work_ids: list[str],
+                        window_starts: list[float] | None = None, cover_reason: str = "") -> dict:
+    """按需转写指定作品的 45 秒片段，默认从 5 秒开始跳过短片头。封面为最后兜底，必须先完成片段取证并说明原因。转写复用 Groq，封面复用千问视觉，会产生相应服务用量。"""
+    directory, _ = load_discovery(discovery_path)
+    task_id = f"inspect-{time.time_ns()}"
+    return {**runner_submit_task(cache_dir=directory / task_id, run_id=task_id, step="inspect",
+            fn=lambda progress: inspect_works(discovery_path, work_ids,
+                [5.0] if window_starts is None else window_starts, cover_reason, progress)),
+            "poll_tool": "anime_poll_task"}
+
+
+@mcp.tool()
+def anime_start_compile_series(discovery_path: str, work_ids: list[str], selection_reason: str) -> dict:
+    """按宿主判断的顺序下载选定作品。必须排除合集与分集的重复覆盖，并在原因中说明排序、覆盖及缺集情况。完整合集只选一条，直接保留原文件；多个来源按既有三小时规则拼接。"""
+    directory, _ = load_discovery(discovery_path)
+    task_id = f"compile-series-{time.time_ns()}"
+    return {**runner_submit_task(cache_dir=directory / task_id, run_id=task_id, step="compile-series",
+            fn=lambda progress: compile_selection(discovery_path, work_ids, selection_reason, progress)),
+            "poll_tool": "anime_poll_task"}
 
 
 @mcp.tool()
