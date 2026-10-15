@@ -90,10 +90,15 @@ def preview_publication(
     platforms: list[str],
     *,
     content_kind: str | None = None,
+    production_id: str | None = None,
 ) -> dict:
     normalized_date = normalize_publish_date(publish_date)
     normalized_platforms = normalize_platforms(platforms)
     items = local_publish_items(business_line, normalized_date, content_kind=content_kind)
+    if production_id:
+        items = [item for item in items if item["production_id"] == production_id]
+        if not items:
+            raise InvalidPublishRequestError(f"找不到指定成片：{production_id}")
     routes = resolve_account_group(str(account_group).strip(), business_line, normalized_platforms)
     existing = _existing_keys(business_line, normalized_date)
     tasks = []
@@ -174,7 +179,7 @@ def _target(item: dict, route: dict) -> dict:
     if platform in PUBLIC_URL_PLATFORMS:
         target["video_url"] = _public_video_url(item)
     if item.get("business_line") == "finance" and platform == "youtube":
-        target["thumbnail_path"] = str(resolve_youtube_thumbnail(item["local_path"]))
+        target["thumbnail_path"] = str(item.get("thumbnail_path") or resolve_youtube_thumbnail(item["local_path"]))
     return target
 
 
@@ -187,11 +192,13 @@ def publish_local_outputs(
     publish_at: str | None,
     *,
     content_kind: str | None = None,
+    production_id: str | None = None,
     publish_at_by_platform: dict[str, str] | None = None,
     progress=None,
 ) -> dict:
     preview = preview_publication(
         business_line, publish_date, account_group, platforms, content_kind=content_kind,
+        production_id=production_id,
     )
     pending = [task for task in preview["tasks"] if not task["already_published"]]
     skipped = [

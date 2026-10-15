@@ -13,6 +13,16 @@ from ._constants import PROJECT_ROOT
 from ._errors import InvalidPublishRequestError
 
 
+def _record_local_path(record: dict) -> Path:
+    """容器挂载工作区时读取宿主登记的本地成片路径。"""
+    value = str(record.get("local_path") or "")
+    normalized = value.replace("\\", "/")
+    marker = "/cache/output/"
+    if Path("/.dockerenv").exists() and marker in normalized:
+        return (PROJECT_ROOT / "cache" / "output" / normalized.split(marker, 1)[1]).resolve()
+    return Path(value).resolve()
+
+
 def matching_content_kinds(content_kind: str | None) -> set[str] | None:
     """en-zh / en-ko 同时包含对应问答版；显式 *-quiz 只匹配问答版。"""
     wanted = str(content_kind or "").strip()
@@ -50,10 +60,7 @@ def local_video_path(record: dict) -> Path:
     if not business_line or not run_id:
         raise InvalidPublishRequestError("production_outputs 缺少 business_line 或 run_id")
     filename = stored_video_filename(record)
-    relative_dirs = (
-        Path(business_line) / _r2_dir_for_record(record),
-        Path(business_line) / run_id,
-    )
+    relative_dirs = (Path(business_line) / _r2_dir_for_record(record),)
     # 新成片写在 cache/output；根目录 output 只用于读取尚未迁走的旧文件。
     roots = (PROJECT_ROOT / "cache" / "output", PROJECT_ROOT / "output")
     for root in roots:
@@ -144,7 +151,7 @@ def ensure_local_publish_items(
         local_rows = [item for item in local_rows if str(item.get("content_kind") or "") in wanted_kinds]
 
     def _is_valid(row: dict) -> bool:
-        current = Path(str(row.get("local_path") or "")).resolve()
+        current = _record_local_path(row)
         # 兼容历史本地产物文件名与 R2 对象名不一致的情况；发布时使用 D1 已登记且存在的本地文件。
         return current.is_file() or local_video_path(row).is_file()
 
@@ -184,22 +191,20 @@ def enrich_local_publish_item(row: dict) -> dict | None:
     if not title:
         return None
     expected = local_video_path(row)
-    local_path = Path(str(row.get("local_path") or "")).resolve()
-    if local_path.is_file() and local_path != expected:
-        expected.parent.mkdir(parents=True, exist_ok=True)
-        local_path.replace(expected)
-        commit_production_outputs([{**row, "source": "local_mcp", "local_path": str(expected)}])
-        local_path = expected
+    local_path = _record_local_path(row)
+    if local_path.is_file():
+        pass
     elif expected.is_file():
         local_path = expected
         if str(row.get("local_path") or "").strip() != str(expected):
             commit_production_outputs([{**row, "source": "local_mcp", "local_path": str(expected)}])
-    elif local_path.is_file():
-        pass
     else:
         return None
 
-    output_dir = local_path.parent
+    output_dir = expected.parent
+    if not output_dir.is_dir() and row.get("r2_url"):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        _materialize_finance_publish_metadata(row, output_dir)
     title_path = output_dir / "title.txt"
     short_title_path = output_dir / "short-title.txt"
     copy_path = output_dir / "publish-copy.txt"
@@ -215,7 +220,8 @@ def enrich_local_publish_item(row: dict) -> dict | None:
     return {
         **row,
         "local_path": str(local_path),
-        "title": title_path.read_text(encoding="utf-8").strip() if title_path.is_file() else title,
+        "title": title,
+        "thumbnail_path": str(output_dir / "cover.png") if (output_dir / "cover.png").is_file() else "",
         "short_title": short_title_path.read_text(encoding="utf-8").strip() if short_title_path.is_file() else "",
         "publish_copy": publish_copy,
         "source_hook": source_hook_path.read_text(encoding="utf-8").strip() if source_hook_path.is_file() else "",

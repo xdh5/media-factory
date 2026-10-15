@@ -43,6 +43,7 @@ def publishing_preview(
     account_group: str,
     platforms: list[str],
     content_kind: str | None = None,
+    production_id: str | None = None,
 ) -> dict:
     """只读预检指定日期的本地产物、账号路由和数据库重复记录，不执行发布。"""
     try:
@@ -52,6 +53,7 @@ def publishing_preview(
             account_group,
             platforms,
             content_kind=content_kind,
+            production_id=production_id,
         )
     except Exception as exc:
         raise _map_error(exc) from exc
@@ -94,6 +96,7 @@ def publishing_start_publish(
     publish_at: str | None = None,
     content_kind: str | None = None,
     publish_at_by_platform: dict[str, str] | None = None,
+    production_id: str | None = None,
 ) -> dict:
     """启动统一发布；财经省略时间时按北京时间14点和18点各一篇，单篇只排18点。"""
     try:
@@ -112,6 +115,7 @@ def publishing_start_publish(
                 publish_mode,
                 publish_at,
                 content_kind=content_kind,
+                production_id=production_id,
                 publish_at_by_platform=publish_at_by_platform,
                 progress=progress,
             )
