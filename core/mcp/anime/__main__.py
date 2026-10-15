@@ -21,7 +21,7 @@ from ._constants import OUTPUT_ROOT, SERVER_INSTRUCTIONS
 from ._errors import AnimeError, TaskNotFoundError, WorkflowStepError
 from .services.compile import compile_videos, normalize_share_texts
 from .services.discover import discover_series, inspect_works, compile_selection, load_discovery
-from .services.youtube import load_manifest, transcribe_intros, publish_youtube
+from .services.youtube import load_manifest, transcribe_intros, publish_youtube, prepare_youtube_thumbnails, save_youtube_thumbnails
 
 mcp = FastMCP("media-factory-anime", instructions=SERVER_INSTRUCTIONS)
 
@@ -106,8 +106,26 @@ def anime_start_transcribe_intro(manifest_path: str) -> dict:
 
 
 @mcp.tool()
+def anime_prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
+    """只抽一帧成片作为画风参考，返回宿主生图任务。宿主一次生成封面，标题和画面一起出图，禁止先出图再叠字。"""
+    try:
+        return prepare_youtube_thumbnails(manifest_path, titles)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
+def anime_save_youtube_thumbnails(context_path: str, images: list[dict]) -> dict:
+    """保存宿主生成的 YouTube 封面。images 每项包含 image_id 和 image_path；已缓存的段可以不重复提交。"""
+    try:
+        return save_youtube_thumbnails(context_path, images)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
 def anime_start_publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str], account_group: str) -> dict:
-    """必须获得用户发布授权后使用。根据前一分钟转写生成文案后，将各段立即公开发布到指定动漫账号组的 YouTube；先去重、成功后逐条写回。"""
+    """必须获得用户发布授权后使用。发布各段到指定动漫账号组的 YouTube，并上传宿主已生成的封面。未生成封面时拒绝发布。"""
     directory, _ = load_manifest(manifest_path)
     return {**runner_submit_task(cache_dir=directory, run_id=str(directory), step="youtube-publish",
             fn=lambda progress: publish_youtube(manifest_path, titles, descriptions, tags, account_group, progress)),

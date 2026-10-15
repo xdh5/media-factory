@@ -11,7 +11,9 @@ MAX_PART_SECONDS = 3 * 60 * 60
 
 SERVER_INSTRUCTIONS = (
     "用户明确要求制作并发布时，可用 anime_start_transcribe_intro 转写成片前60秒，"
-    "生成独立YouTube发布文案，再 anime_start_publish_youtube 发布到用户指定账号组。"
+    "生成独立YouTube发布文案后，调用 anime_prepare_youtube_thumbnails。"
+    "宿主查看这一帧参考，一次生成与该画风一致的封面，标题和画面一起出图，再 anime_save_youtube_thumbnails。"
+    "然后 anime_start_publish_youtube 发布到用户指定账号组。发布工具不代替宿主生图。"
     "原标题描述的原样保留规则适用于来源存档；独立YouTube文案可按用户要求撰写。"
     "没有发布授权时只生产；发布工具逐段去重并写回数据库，不要求动漫计划发布日期。"
     "用户给作者主页和作品名时，调用 anime_start_discover 获取作品，宿主自主找剧。"
