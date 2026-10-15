@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="查看语言学习预制词包的主题、主体图和中韩词表。">
     <title>语言词包｜媒体发布日历</title>
-    <link rel="stylesheet" href="./styles.css?v=20261013-12">
+    <link rel="stylesheet" href="./styles.css?v=20261016-1">
   </head>
   <body data-page="language-packs">
     <div class="ambient ambient-one"></div>
@@ -14,9 +14,7 @@
     <main class="shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">CONTENT INVENTORY</p>
           <h1>语言词包</h1>
-          <p class="subtitle">十张图排成一行，并按卡片主体区 410×268 的比例缩小。画面位置与卡片上一致。</p>
         </div>
       </header>
 
@@ -24,24 +22,19 @@
         <a class="page-nav-link" href="./index.html">发布日历</a>
         <a class="page-nav-link is-active" href="./language-packs.html" aria-current="page">语言词包</a>
         <a class="page-nav-link" href="./finance-articles.html">财经文章</a>
+        <a class="page-nav-link" href="./anime.html">动画</a>
       </nav>
 
-      <section id="summary" class="summary-grid" aria-label="词包统计"></section>
-      <section class="toolbar inventory-toolbar" aria-label="词包筛选">
-        <label>
-          <span>使用状态</span>
-          <select id="statusFilter">
-            <option value="ready">未使用</option>
-            <option value="claimed">已领取</option>
-            <option value="">全部状态</option>
-          </select>
-        </label>
-      </section>
+      <div class="segmented-filter pack-filter" role="group" aria-label="词包筛选">
+        <button type="button" data-pack-status="" aria-pressed="true">全部</button>
+        <button type="button" data-pack-status="claimed" aria-pressed="false">已领取</button>
+        <button type="button" data-pack-status="ready" aria-pressed="false">未使用</button>
+      </div>
       <p id="status" class="status" role="status" aria-live="polite"></p>
       <section id="inventoryResults" class="inventory-results" aria-label="语言词包列表"></section>
     </main>
 
     <script src="./subject-frame.js?v=20261013-12" defer></script>
-    <script src="./inventory.js?v=20261013-12" defer></script>
+    <script src="./inventory.js?v=20261016-1" defer></script>
   </body>
 </html>

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="按计划发布日期查看媒体工厂的本地产物和平台发布状态。">
     <title>媒体发布日历</title>
-    <link rel="stylesheet" href="./styles.css?v=20261013-12">
+    <link rel="stylesheet" href="./styles.css?v=20261016-1">
   </head>
   <body>
     <div class="ambient ambient-one"></div>
@@ -14,9 +14,7 @@
     <main class="shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">MEDIA FACTORY</p>
           <h1>媒体发布日历</h1>
-          <p class="subtitle">按计划发布日期核对产物，以及每条内容已经到达的平台。</p>
         </div>
       </header>
 
@@ -24,15 +22,24 @@
         <a class="page-nav-link is-active" href="./index.html" aria-current="page">发布日历</a>
         <a class="page-nav-link" href="./language-packs.html">语言词包</a>
         <a class="page-nav-link" href="./finance-articles.html">财经文章</a>
+        <a class="page-nav-link" href="./anime.html">动画</a>
       </nav>
 
       <section id="toolbar" class="toolbar" aria-label="查询条件">
+        <div class="segmented-filter" role="group" aria-label="日期筛选方式">
+          <button type="button" data-date-mode="single" aria-pressed="true">单日</button>
+          <button type="button" data-date-mode="range" aria-pressed="false">时间段</button>
+        </div>
         <label>
-          <span>周内日期</span>
+          <span id="dateLabel">日期</span>
           <input id="dateInput" type="date">
         </label>
+        <label id="endDateField" hidden>
+          <span>结束日期</span>
+          <input id="endDateInput" type="date">
+        </label>
         <div class="toolbar-actions">
-          <button id="queryButton" class="primary-button" type="button">查询这一周</button>
+          <button id="queryButton" class="primary-button" type="button">查询</button>
           <button id="allButton" class="secondary-button" type="button">查看全部</button>
         </div>
       </section>
@@ -41,6 +48,7 @@
       <section id="results" class="results" aria-label="产物与发布记录"></section>
     </main>
 
-    <script src="./app.js?v=20261015-1" defer></script>
+    <script src="./platforms.js?v=20261016-1" defer></script>
+    <script src="./app.js?v=20261016-1" defer></script>
   </body>
 </html>

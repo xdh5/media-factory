@@ -716,7 +716,9 @@ async function listPublishingAccountGroups(request, env) {
 
 function runDate(runId, fallback) {
   const matched = /^run-(\d{4})(\d{2})(\d{2})$/.exec(String(runId || ""));
-  return matched ? `${matched[1]}-${matched[2]}-${matched[3]}` : String(fallback || "").slice(0, 10);
+  if (matched) return `${matched[1]}-${matched[2]}-${matched[3]}`;
+  const timestamp = Date.parse(fallback);
+  return Number.isFinite(timestamp) ? new Date(timestamp + 8 * 60 * 60 * 1000).toISOString().slice(0, 10) : "";
 }
 
 async function dashboardRecords(request, env) {
@@ -734,45 +736,59 @@ async function dashboardRecords(request, env) {
     ? env.DB.prepare(
       `SELECT production_id, run_id, publish_date, business_line, content_kind,
               content_part, title, hashtags, source, local_path, r2_url, r2_expires_at
-       FROM production_outputs WHERE publish_date >= ? AND publish_date <= ?
+       FROM production_outputs WHERE business_line != 'anime' AND publish_date >= ? AND publish_date <= ?
        ORDER BY publish_date, business_line, content_kind, content_part`,
     ).bind(rangeFrom, rangeTo)
     : selectedDate
     ? env.DB.prepare(
       `SELECT production_id, run_id, publish_date, business_line, content_kind,
               content_part, title, hashtags, source, local_path, r2_url, r2_expires_at
-       FROM production_outputs WHERE publish_date = ?
+       FROM production_outputs WHERE business_line != 'anime' AND publish_date = ?
        ORDER BY business_line, content_kind, content_part`,
     ).bind(selectedDate)
     : env.DB.prepare(
       `SELECT production_id, run_id, publish_date, business_line, content_kind,
               content_part, title, hashtags, source, local_path, r2_url, r2_expires_at
-       FROM production_outputs ORDER BY publish_date DESC, business_line, content_kind, content_part
+       FROM production_outputs WHERE business_line != 'anime' ORDER BY publish_date DESC, business_line, content_kind, content_part
        LIMIT 1000`,
     );
+  // 补发按内容的计划日期归组；无日期批次使用北京时间实际发送日期。
+  const calendarDateSql = `CASE
+    WHEN run_id GLOB 'run-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'
+      THEN substr(run_id, 5, 4) || '-' || substr(run_id, 9, 2) || '-' || substr(run_id, 11, 2)
+    ELSE date(publish_at, '+8 hours') END`;
   const publicationStatement = rangeFrom
     ? env.DB.prepare(
       `SELECT publication_id, run_id, business_line, platform, content_part, title,
               publish_mode, publish_at, status, external_url
        FROM publication_records
-       WHERE substr(publish_at, 1, 10) >= ? AND substr(publish_at, 1, 10) <= ?
+       WHERE business_line != 'anime' AND ${calendarDateSql} >= ? AND ${calendarDateSql} <= ?
        ORDER BY publish_at, business_line, title, content_part, platform`,
     ).bind(rangeFrom, rangeTo)
     : selectedDate
     ? env.DB.prepare(
       `SELECT publication_id, run_id, business_line, platform, content_part, title,
               publish_mode, publish_at, status, external_url
-       FROM publication_records WHERE substr(publish_at, 1, 10) = ?
+       FROM publication_records WHERE business_line != 'anime' AND ${calendarDateSql} = ?
        ORDER BY business_line, title, content_part, platform`,
     ).bind(selectedDate)
     : env.DB.prepare(
       `SELECT publication_id, run_id, business_line, platform, content_part, title,
               publish_mode, publish_at, status, external_url
-       FROM publication_records ORDER BY id DESC LIMIT 1000`,
+       FROM publication_records WHERE business_line != 'anime' ORDER BY id DESC LIMIT 1000`,
     );
-  const [outputResult, publicationResult] = await Promise.all([
+  const [outputResult, publicationResult, platformResult] = await Promise.all([
     outputStatement.all(),
     publicationStatement.all(),
+    env.DB.prepare(
+      `SELECT DISTINCT g.business_line, COALESCE(a.platform, m.platform) AS platform
+       FROM publishing_account_groups g
+       JOIN publishing_account_group_members m ON m.group_code = g.code
+       LEFT JOIN publishing_accounts a ON a.account_key = m.account_key
+       WHERE g.enabled = 1 AND m.enabled = 1 AND g.business_line != 'anime'
+         AND (m.account_key IS NULL OR a.enabled = 1)
+       ORDER BY g.business_line, platform`,
+    ).all(),
   ]);
   const byKey = new Map();
   const itemKey = (item) => [
@@ -834,6 +850,10 @@ async function dashboardRecords(request, env) {
     dates.get(item.publish_date).push(item);
   }
   return dashboardResponse({
+    platforms_by_business_line: Object.fromEntries(
+      [...new Set((platformResult.results || []).map((row) => row.business_line))]
+        .map((line) => [line, platformResult.results.filter((row) => row.business_line === line).map((row) => row.platform)]),
+    ),
     dates: [...dates.entries()]
       .sort(([left], [right]) => right.localeCompare(left))
       .map(([date, contents]) => ({
@@ -844,6 +864,27 @@ async function dashboardRecords(request, env) {
           || left.content_part - right.content_part),
       })),
   });
+}
+
+async function dashboardAnime(env) {
+  const result = await env.DB.prepare(
+    `SELECT run_id, content_part, title, platform, publish_at, external_url
+     FROM publication_records
+     WHERE business_line = 'anime' AND status = 'published'
+     ORDER BY publish_at DESC, id DESC`,
+  ).all();
+  const contents = new Map();
+  for (const row of result.results || []) {
+    const key = `${row.run_id}|${row.content_part}`;
+    if (!contents.has(key)) {
+      contents.set(key, { title: row.title, published_at: row.publish_at, publications: [] });
+    }
+    contents.get(key).publications.push({
+      platform: row.platform, status: "published", publish_at: row.publish_at,
+      external_url: row.external_url || "",
+    });
+  }
+  return dashboardResponse({ contents: [...contents.values()] });
 }
 
 async function dashboardLanguagePacks(env) {
@@ -1511,6 +1552,14 @@ export default {
         }
         console.error(error);
         return dashboardResponse({ error: { code: "D1_ERROR", message: "读取发布看板失败" } }, 500);
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/dashboard/anime") {
+      try {
+        return await dashboardAnime(env);
+      } catch (error) {
+        console.error(error);
+        return dashboardResponse({ error: { code: "D1_ERROR", message: "读取动画发布记录失败" } }, 500);
       }
     }
     if (request.method === "GET" && url.pathname === "/v1/dashboard/language-packs") {

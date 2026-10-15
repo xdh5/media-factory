@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="查看财经视频可用、占用和已使用的预制来源文章。">
     <title>财经文章｜媒体发布日历</title>
-    <link rel="stylesheet" href="./styles.css?v=20261013-12">
+    <link rel="stylesheet" href="./styles.css?v=20261016-1">
   </head>
   <body data-page="finance-articles">
     <div class="ambient ambient-one"></div>
@@ -14,9 +14,7 @@
     <main class="shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">CONTENT INVENTORY</p>
           <h1>财经文章</h1>
-          <p class="subtitle">查看财经生产可领取的来源文章，以及文章当前的使用状态。</p>
         </div>
       </header>
 
@@ -24,9 +22,10 @@
         <a class="page-nav-link" href="./index.html">发布日历</a>
         <a class="page-nav-link" href="./language-packs.html">语言词包</a>
         <a class="page-nav-link is-active" href="./finance-articles.html" aria-current="page">财经文章</a>
+        <a class="page-nav-link" href="./anime.html">动画</a>
       </nav>
 
-      <section id="summary" class="summary-grid" aria-label="文章统计"></section>
+      <p id="inventoryNote" class="inventory-note" aria-live="polite"></p>
 
       <section class="toolbar inventory-toolbar" aria-label="文章筛选">
         <label>
@@ -48,6 +47,6 @@
       <section id="inventoryResults" class="inventory-results" aria-label="财经文章列表"></section>
     </main>
 
-    <script src="./inventory.js?v=20261013-12" defer></script>
+    <script src="./inventory.js?v=20261016-1" defer></script>
   </body>
 </html>

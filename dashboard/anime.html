@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="查看已发布的动画和对应平台。">
+    <title>动画｜媒体发布日历</title>
+    <link rel="stylesheet" href="./styles.css?v=20261016-1">
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <main class="shell">
+      <header class="topbar"><h1>动画</h1></header>
+      <nav class="page-nav" aria-label="内容看板">
+        <a class="page-nav-link" href="./index.html">发布日历</a>
+        <a class="page-nav-link" href="./language-packs.html">语言词包</a>
+        <a class="page-nav-link" href="./finance-articles.html">财经文章</a>
+        <a class="page-nav-link is-active" href="./anime.html" aria-current="page">动画</a>
+      </nav>
+      <section class="toolbar inventory-toolbar" aria-label="动画筛选">
+        <label><span>动画标题</span><input id="searchInput" type="search" placeholder="搜索已发布的动画"></label>
+      </section>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <section id="animeResults" class="content-grid anime-results" aria-label="已发布动画"></section>
+    </main>
+    <script src="./platforms.js?v=20261016-1" defer></script>
+    <script src="./anime.js?v=20261016-1" defer></script>
+  </body>
+</html>

@@ -1,55 +1,19 @@
 const API_BASE_URL = "https://media-data.cyberlab.lol";
-
-const platformNames = {
-  youtube: "YouTube",
-  facebook: "Facebook",
-  instagram: "Instagram",
-  tiktok: "TikTok",
-  kuaishou: "快手",
-  douyin: "抖音",
-  toutiao: "头条号",
-  wechat_channels: "视频号",
-};
-
+const { element, renderPlatforms } = window.dashboardPlatforms;
 const dateInput = document.querySelector("#dateInput");
+const endDateInput = document.querySelector("#endDateInput");
 const queryButton = document.querySelector("#queryButton");
 const allButton = document.querySelector("#allButton");
 const status = document.querySelector("#status");
 const results = document.querySelector("#results");
-
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-function copyText(value) {
-  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
-  const input = document.createElement("textarea");
-  input.value = value;
-  input.style.position = "fixed";
-  input.style.opacity = "0";
-  document.body.append(input);
-  input.select();
-  document.execCommand("copy");
-  input.remove();
-  return Promise.resolve();
-}
-
-function copyValue(content) {
-  const hashtags = String(content.hashtags || "").trim();
-  return hashtags ? `${content.title}\n\n${hashtags}` : String(content.title || "");
-}
+const modeButtons = [...document.querySelectorAll("[data-date-mode]")];
+let dateMode = "single";
 
 function downloadState(outputs) {
   const rows = Array.isArray(outputs) ? outputs : [];
   const available = rows.find((item) => item.r2_url && !item.r2_expired);
-  if (available) return { enabled: true, url: available.r2_url, label: "下载产物" };
-  if (rows.some((item) => item.r2_url && item.r2_expired)) {
-    return { enabled: false, url: "", label: "产物已过期" };
-  }
-  return { enabled: false, url: "", label: "仅本地产物" };
+  if (available) return { enabled: true, url: available.r2_url, label: "下载" };
+  return { enabled: false, url: "", label: "下载", reason: rows.some((item) => item.r2_expired) ? "产物已过期" : "暂无可下载文件" };
 }
 
 function downloadOutput(url) {
@@ -76,50 +40,19 @@ function downloadOutput(url) {
   form.remove();
 }
 
-function beijingDate(date = new Date()) {
+function beijingDate() {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
-function parseDate(value) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day));
-}
-
-function formatDate(date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function weekRange(dateValue, today = beijingDate()) {
-  const date = parseDate(dateValue);
-  const weekday = date.getUTCDay();
-  const monday = new Date(date);
-  monday.setUTCDate(date.getUTCDate() + (weekday === 0 ? -6 : 1 - weekday));
-  const sunday = new Date(monday);
-  sunday.setUTCDate(monday.getUTCDate() + 6);
-  const start = parseDate(today) > monday ? parseDate(today) : monday;
-  return { from: formatDate(start), to: formatDate(sunday) };
-}
-
-function defaultWeekRange(today = beijingDate()) {
-  const weekday = parseDate(today).getUTCDay();
-  if (weekday === 6 || weekday === 0) {
-    const nextMonday = new Date(parseDate(today));
-    nextMonday.setUTCDate(nextMonday.getUTCDate() + (weekday === 6 ? 2 : 1));
-    return weekRange(formatDate(nextMonday));
-  }
-  return weekRange(today);
+    timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
 }
 
 function render(data) {
   results.replaceChildren();
-  const dates = Array.isArray(data.dates) ? data.dates : [];
+  const dates = (data.dates || []).map((day) => ({
+    ...day, contents: day.contents.filter((content) => content.business_line !== "anime"),
+  })).filter((day) => day.contents.length);
   if (!dates.length) {
-    results.append(element("div", "empty", data.emptyMessage || "还没有产物或发布记录。"));
+    results.append(element("div", "empty", "所选日期没有产物或发布记录。"));
     return;
   }
   for (const day of dates) {
@@ -132,62 +65,19 @@ function render(data) {
     for (const content of day.contents) {
       const card = element("article", "content-card");
       card.append(element("h3", "", content.title));
-      const hashtags = String(content.hashtags || "").trim();
-      if (hashtags) {
-        card.append(element("p", "hashtags", hashtags));
-      }
-      const publications = content.publications || [];
-      if (!publications.length) {
-        card.append(element("span", "unpublished", "未发布"));
-      } else {
-        const platforms = element("div", "platforms");
-        const seen = new Set();
-        for (const publication of publications) {
-          if (seen.has(publication.platform)) continue;
-          seen.add(publication.platform);
-          const label = `${platformNames[publication.platform] || publication.platform} · ${publication.status === "scheduled" ? "已预约" : "已发布"}`;
-          const chip = element(publication.external_url ? "a" : "span", "platform-chip", label);
-          if (publication.external_url) {
-            chip.href = publication.external_url;
-            chip.target = "_blank";
-            chip.rel = "noreferrer";
-          }
-          chip.title = publication.publish_at;
-          platforms.append(chip);
-        }
-        card.append(platforms);
-      }
-      const actions = element("div", "card-actions");
-      const copyButton = element("button", "card-button", "复制标题和标签");
-      copyButton.type = "button";
-      copyButton.addEventListener("click", async () => {
-        try {
-          await copyText(copyValue(content));
-          copyButton.textContent = "已复制";
-          window.setTimeout(() => { copyButton.textContent = "复制标题和标签"; }, 1200);
-        } catch (error) {
-          status.textContent = `复制失败：${error.message}`;
-        }
-      });
-      actions.append(copyButton);
+      const footer = element("div", "card-footer");
+      const configured = data.platforms_by_business_line?.[content.business_line]
+        || ["youtube", "facebook", "instagram", "tiktok", "douyin", "kuaishou", "toutiao", "wechat_channels"];
+      footer.append(renderPlatforms(content.publications || [], configured));
       const download = downloadState(content.outputs);
-      const downloadButton = element("button", "card-button download-button", download.label);
-      downloadButton.type = "button";
-      if (download.enabled) {
-        downloadButton.addEventListener("click", () => {
-          downloadButton.disabled = true;
-          downloadOutput(download.url);
-          downloadButton.textContent = "已交给浏览器";
-          window.setTimeout(() => {
-            downloadButton.textContent = download.label;
-            downloadButton.disabled = false;
-          }, 1200);
-        });
-      } else {
-        downloadButton.disabled = true;
-      }
-      actions.append(downloadButton);
-      card.append(actions);
+      const button = element("button", "card-button download-button", download.label);
+      button.type = "button";
+      button.disabled = !download.enabled;
+      button.title = download.reason || "下载成片";
+      button.setAttribute("aria-label", `${download.label}：${content.title}`);
+      if (download.enabled) button.addEventListener("click", () => downloadOutput(download.url));
+      footer.append(button);
+      card.append(footer);
       grid.append(card);
     }
     section.append(grid);
@@ -196,7 +86,7 @@ function render(data) {
 }
 
 async function loadRecords(range = null) {
-  status.textContent = "正在读取 Cloudflare 数据…";
+  status.textContent = "正在读取记录…";
   queryButton.disabled = true;
   allButton.disabled = true;
   try {
@@ -208,38 +98,42 @@ async function loadRecords(range = null) {
       payload.dates = (payload.dates || []).filter((item) => item.date >= range.from && item.date <= range.to);
       payload.dates.sort((left, right) => left.date.localeCompare(right.date));
     }
-    payload.emptyMessage = range ? "这一周还没有产物或发布记录。" : "还没有产物或发布记录。";
     render(payload);
-    status.textContent = range ? `已显示 ${range.from} 至 ${range.to} 的记录。` : "已显示数据库中的全部日期。";
-    return true;
+    status.textContent = "";
   } catch (error) {
+    results.replaceChildren();
     status.textContent = `读取失败：${error.message}`;
-    return false;
   } finally {
     queryButton.disabled = false;
     allButton.disabled = false;
   }
 }
 
+for (const button of modeButtons) {
+  button.addEventListener("click", () => {
+    dateMode = button.dataset.dateMode;
+    modeButtons.forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+    document.querySelector("#endDateField").hidden = dateMode !== "range";
+    document.querySelector("#dateLabel").textContent = dateMode === "range" ? "开始日期" : "日期";
+    if (!dateInput.value) dateInput.value = beijingDate();
+    if (!endDateInput.value || endDateInput.value < dateInput.value) endDateInput.value = dateInput.value;
+  });
+}
+
 queryButton.addEventListener("click", () => {
-  if (!dateInput.value) {
-    status.textContent = "请先选择这一周中的任意日期。";
+  const from = dateInput.value;
+  const to = dateMode === "single" ? from : endDateInput.value;
+  if (!from || !to) {
+    status.textContent = dateMode === "single" ? "请选择日期。" : "请选择开始和结束日期。";
     return;
   }
-  const range = weekRange(dateInput.value);
-  if (range.from > range.to) {
-    render({ dates: [], emptyMessage: "这一周已经过去，没有今天及以后的记录。" });
-    status.textContent = "所选周早于今天，已隐藏之前的日期。";
+  if (from > to) {
+    status.textContent = "结束日期不能早于开始日期。";
     return;
   }
-  loadRecords(range);
+  loadRecords({ from, to });
 });
-allButton.addEventListener("click", () => {
-  dateInput.value = "";
-  loadRecords();
-});
-const openingWeek = defaultWeekRange();
-const today = beijingDate();
-const weekday = parseDate(today).getUTCDay();
-dateInput.value = weekday === 6 || weekday === 0 ? openingWeek.from : today;
-loadRecords(openingWeek);
+allButton.addEventListener("click", () => loadRecords());
+dateInput.value = beijingDate();
+endDateInput.value = dateInput.value;
+loadRecords({ from: dateInput.value, to: dateInput.value });

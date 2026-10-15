@@ -1,14 +1,6 @@
 const API_BASE_URL = "https://media-data.cyberlab.lol";
 
-const statusNames = {
-  ready: "可用",
-  reserved: "已占用",
-  used: "已使用",
-  claimed: "已领取",
-};
-
 const status = document.querySelector("#status");
-const summary = document.querySelector("#summary");
 const results = document.querySelector("#inventoryResults");
 
 function element(tag, className, text) {
@@ -16,20 +8,6 @@ function element(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
-}
-
-function statusChip(value) {
-  return element("span", `inventory-status status-${value}`, statusNames[value] || value);
-}
-
-function renderSummary(items) {
-  summary.replaceChildren();
-  for (const item of items) {
-    const card = element("article", "summary-card");
-    card.append(element("strong", "", String(item.value)));
-    card.append(element("span", "", item.label));
-    summary.append(card);
-  }
 }
 
 function renderEmpty(message) {
@@ -43,12 +21,7 @@ function wordAt(words, mode, index) {
 
 function renderLanguagePack(pack) {
   const card = element("article", "pack-card");
-  const heading = element("div", "inventory-heading");
-  const title = element("div");
-  title.append(element("p", "inventory-kicker", pack.pack_id));
-  title.append(element("h2", "", pack.topic));
-  heading.append(title, statusChip(pack.status));
-  card.append(heading);
+  card.append(element("h2", "pack-topic", pack.topic));
 
   const grid = element("div", "word-grid");
   const imageUrls = Array.isArray(pack.image_urls) ? pack.image_urls : [];
@@ -76,30 +49,23 @@ function renderLanguagePack(pack) {
     }
     wordCard.append(imageFrame);
     wordCard.append(element("strong", "word-english", zh.english || ko.english || "—"));
-    wordCard.append(element("span", "word-translation", `${zh.chinese || "—"} · ${zh.romanization || "—"}`));
-    wordCard.append(element("span", "word-translation", `${ko.korean || "—"} · ${ko.romanization || "—"}`));
+    wordCard.append(element("span", "word-translation", [zh.chinese, ko.korean].filter(Boolean).join(" · ")));
     grid.append(wordCard);
   }
   card.append(grid);
 
-  const meta = element("p", "inventory-meta");
-  meta.textContent = pack.status === "claimed" && pack.publish_date
-    ? `计划发布日期：${pack.publish_date}`
-    : `创建时间：${pack.created_at || "未知"}`;
-  card.append(meta);
   return card;
 }
 
 const PAGE_SIZE = 5;
 let lazyObserver = null;
 
-function mountLazyList(items, renderItem, emptyMessage, describe) {
+function mountLazyList(items, renderItem, emptyMessage) {
   lazyObserver?.disconnect();
   lazyObserver = null;
   results.replaceChildren();
   if (!items.length) {
     renderEmpty(emptyMessage);
-    status.textContent = describe(0, 0);
     return;
   }
   let shown = 0;
@@ -112,7 +78,6 @@ function mountLazyList(items, renderItem, emptyMessage, describe) {
   const reveal = () => {
     items.slice(shown, shown + PAGE_SIZE).forEach((item) => results.insertBefore(renderItem(item), sentinel));
     shown = Math.min(shown + PAGE_SIZE, items.length);
-    status.textContent = describe(shown, items.length);
     if (shown >= items.length) finish();
   };
   const nearViewport = () => {
@@ -154,24 +119,22 @@ async function loadLanguagePacks() {
     const response = await fetch(`${API_BASE_URL}/v1/dashboard/language-packs`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message || "读取失败");
-    renderSummary([
-      { label: "全部词包", value: payload.summary.total },
-      { label: "未使用", value: payload.summary.ready },
-      { label: "已领取", value: payload.summary.claimed },
-    ]);
-    const statusFilter = document.querySelector("#statusFilter");
+    const filters = [...document.querySelectorAll("[data-pack-status]")];
+    let selectedStatus = "";
     const renderFiltered = () => {
-      const selectedStatus = statusFilter.value;
       const packs = payload.packs.filter((pack) => !selectedStatus || pack.status === selectedStatus);
-      const label = selectedStatus === "ready" ? "未使用词包" : selectedStatus === "claimed" ? "已领取词包" : "语言词包";
       mountLazyList(
         packs,
         renderLanguagePack,
         selectedStatus ? "这个状态下还没有语言词包。" : "目前还没有语言词包。",
-        (shown, total) => `已显示 ${shown} / ${total} 个${label}。`,
       );
     };
-    statusFilter.addEventListener("change", renderFiltered);
+    filters.forEach((button) => button.addEventListener("click", () => {
+      selectedStatus = button.dataset.packStatus;
+      filters.forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+      renderFiltered();
+    }));
+    status.textContent = "";
     renderFiltered();
   } catch (error) {
     renderEmpty("语言词包暂时无法显示。");
@@ -192,13 +155,8 @@ function renderFinanceArticle(article) {
   const details = element("details", "article-card");
   const heading = element("summary", "article-summary");
   const main = element("div", "article-summary-main");
-  main.append(element("h2", "", article.caption || "未命名文章"));
-  const chips = element("div", "article-chips");
-  chips.append(statusChip(article.status));
-  for (const keyword of article.search_keywords || []) {
-    chips.append(element("span", "keyword-chip", keyword));
-  }
-  main.append(chips);
+  const title = String(article.caption || "").replace(/#[^\s#]+/gu, "").replace(/\s+/gu, " ").trim();
+  main.append(element("h2", "", title || "未命名文章"));
   heading.append(main);
   heading.append(element("span", "details-hint", "展开正文"));
   details.append(heading);
@@ -226,12 +184,10 @@ function renderFinanceArticles(articles) {
   const filtered = articles.filter((article) =>
     (!selectedStatus || article.status === selectedStatus)
     && (!query || articleSearchText(article).includes(query)));
-  const label = selectedStatus === "ready" ? "未使用文章" : "财经文章";
   mountLazyList(
     filtered,
     renderFinanceArticle,
     "没有符合当前筛选条件的财经文章。",
-    (shown, total) => `已显示 ${shown} / ${total} 篇${label}。`,
   );
 }
 
@@ -241,12 +197,8 @@ async function loadFinanceArticles() {
     const response = await fetch(`${API_BASE_URL}/v1/dashboard/finance-articles`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message || "读取失败");
-    renderSummary([
-      { label: "全部文章", value: payload.summary.total },
-      { label: "未使用", value: payload.summary.ready },
-      { label: "已占用", value: payload.summary.reserved },
-      { label: "已使用", value: payload.summary.used },
-    ]);
+    document.querySelector("#inventoryNote").textContent = `还剩 ${payload.summary.ready} 篇未使用文章`;
+    status.textContent = "";
     const rerender = () => renderFinanceArticles(payload.articles);
     document.querySelector("#searchInput").addEventListener("input", rerender);
     document.querySelector("#statusFilter").addEventListener("change", rerender);
