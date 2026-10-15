@@ -1,7 +1,7 @@
 """财经稿件和生产计划编排。"""
 from __future__ import annotations
 from copy import deepcopy
-from ..infrastructure.gateways import get_finance_copy_stats, list_production_outputs, reserve_finance_copy
+from ..infrastructure.gateways import get_source_script_stats, list_production_outputs, reserve_source_script
 from ..infrastructure.gateways import get_topic
 from ..config.settings import AUTOMATION_DAILY_OUTPUT_COUNT, DEFAULT_PRODUCTION_CONFIG, MCP_ID, SOURCE_COLLECTION_CODE, SOURCE_RESERVATION_MINUTES, TOPIC_DEDUPLICATION_DAYS, normalize_publish_date
 from ..errors import WorkflowStepError
@@ -149,7 +149,7 @@ def finance_validate_metadata_response(response_text: str) -> dict:
 def finance_get_source_stats() -> dict:
     """只读统计财经数据库原稿总数、可用数、占用数和已使用数，不占用稿件。"""
     try:
-        return get_finance_copy_stats(
+        return get_source_script_stats(
             collection_code=SOURCE_COLLECTION_CODE,
             workflow=MCP_ID,
             reservation_minutes=SOURCE_RESERVATION_MINUTES,
@@ -176,7 +176,7 @@ def finance_get_production_outputs(publish_date: str) -> dict:
 def finance_get_source_script() -> dict:
     """从已收集的财经文案中选择并临时占用一条未使用的稿件。"""
     try:
-        return reserve_finance_copy(
+        return reserve_source_script(
             collection_code=SOURCE_COLLECTION_CODE,
             workflow=MCP_ID,
             reservation_minutes=SOURCE_RESERVATION_MINUTES,

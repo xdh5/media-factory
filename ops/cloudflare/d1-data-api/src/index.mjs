@@ -1127,6 +1127,108 @@ async function commitProductionOutputs(request, env) {
   return jsonResponse({ records: results.map((result) => result.results?.[0]).filter(Boolean) }, 201);
 }
 
+function financeSourceAuthor(row) {
+  return {
+    sec_user_id: String(row.sec_user_id),
+    profile_url: String(row.profile_url),
+    display_name: String(row.display_name || ""),
+    created_at: String(row.created_at || ""),
+    updated_at: String(row.updated_at || ""),
+  };
+}
+
+function financeSourceAuthorId(value) {
+  const secUserId = requiredText(value, "sec_user_id", 128);
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(secUserId)) {
+    throw new Error("sec_user_id 格式不正确");
+  }
+  return secUserId;
+}
+
+async function listFinanceSourceAuthors(env) {
+  const result = await env.DB.prepare(
+    `SELECT sec_user_id, profile_url, display_name, created_at, updated_at
+     FROM finance_source_authors
+     ORDER BY created_at ASC, sec_user_id ASC`,
+  ).all();
+  const authors = (result.results || []).map(financeSourceAuthor);
+  return jsonResponse({ authors, author_count: authors.length });
+}
+
+async function addFinanceSourceAuthor(request, env) {
+  const body = await request.json();
+  const secUserId = financeSourceAuthorId(body.sec_user_id);
+  const profileUrl = requiredText(body.profile_url, "profile_url", 1000);
+  if (profileUrl !== `https://www.douyin.com/user/${secUserId}`) {
+    throw new Error("profile_url 必须是该作者的抖音主页链接");
+  }
+  const displayName = optionalText(body.display_name, "display_name", 100) || "";
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const record = await env.DB.prepare(
+    `INSERT INTO finance_source_authors(
+       sec_user_id, profile_url, display_name, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(sec_user_id) DO UPDATE SET
+       profile_url = excluded.profile_url,
+       display_name = CASE
+         WHEN excluded.display_name != '' THEN excluded.display_name
+         ELSE finance_source_authors.display_name
+       END,
+       updated_at = excluded.updated_at
+     RETURNING sec_user_id, profile_url, display_name, created_at, updated_at`,
+  ).bind(secUserId, profileUrl, displayName, now, now).first();
+  return jsonResponse({ author: financeSourceAuthor(record) }, 201);
+}
+
+async function removeFinanceSourceAuthor(request, env) {
+  const body = await request.json();
+  const secUserId = financeSourceAuthorId(body.sec_user_id);
+  const record = await env.DB.prepare(
+    `DELETE FROM finance_source_authors
+     WHERE sec_user_id = ?
+     RETURNING sec_user_id, profile_url, display_name, created_at, updated_at`,
+  ).bind(secUserId).first();
+  if (!record) {
+    return errorResponse("FINANCE_AUTHOR_NOT_FOUND", "财经作者不在名单中", 404, {
+      sec_user_id: secUserId,
+    });
+  }
+  return jsonResponse({ author: financeSourceAuthor(record) });
+}
+
+async function listFinanceRejectedAwemes(env) {
+  const result = await env.DB.prepare(
+    "SELECT aweme_id FROM finance_rejected_awemes ORDER BY created_at DESC",
+  ).all();
+  return jsonResponse({
+    aweme_ids: (result.results || []).map((row) => String(row.aweme_id)),
+  });
+}
+
+async function rejectFinanceAweme(request, env) {
+  const body = await request.json();
+  const awemeId = requiredText(body.aweme_id, "aweme_id", 64);
+  if (!/^\d+$/.test(awemeId)) {
+    throw new Error("aweme_id 格式不正确");
+  }
+  const reason = requiredText(body.reason, "reason", 16);
+  if (reason !== "ad") {
+    throw new Error("reason 只能是 ad");
+  }
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const record = await env.DB.prepare(
+    `INSERT INTO finance_rejected_awemes(aweme_id, reason, created_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(aweme_id) DO NOTHING
+     RETURNING aweme_id, reason, created_at`,
+  ).bind(awemeId, reason, now).first();
+  return jsonResponse({
+    aweme_id: awemeId,
+    reason,
+    already_rejected: !record,
+  }, record ? 201 : 200);
+}
+
 async function listDouyinResearchIds(env) {
   const result = await env.DB.prepare(
     "SELECT aweme_id FROM douyin_research_contents ORDER BY created_at DESC",
@@ -1459,6 +1561,21 @@ export default {
       if (request.method === "GET" && url.pathname === "/v1/production-outputs") return await listProductionOutputs(request, env);
       if (request.method === "DELETE" && url.pathname === "/v1/production-outputs") return await deleteProductionOutputs(request, env);
       if (request.method === "POST" && url.pathname === "/v1/production-outputs/commit") return await commitProductionOutputs(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/finance-source-authors") {
+        return await listFinanceSourceAuthors(env);
+      }
+      if (request.method === "POST" && url.pathname === "/v1/finance-source-authors") {
+        return await addFinanceSourceAuthor(request, env);
+      }
+      if (request.method === "DELETE" && url.pathname === "/v1/finance-source-authors") {
+        return await removeFinanceSourceAuthor(request, env);
+      }
+      if (request.method === "GET" && url.pathname === "/v1/finance-rejected-awemes") {
+        return await listFinanceRejectedAwemes(env);
+      }
+      if (request.method === "POST" && url.pathname === "/v1/finance-rejected-awemes") {
+        return await rejectFinanceAweme(request, env);
+      }
       if (request.method === "GET" && url.pathname === "/v1/douyin-research/ids") return await listDouyinResearchIds(env);
       if (request.method === "POST" && url.pathname === "/v1/douyin-research/commit") return await commitDouyinResearch(request, env);
       if (request.method === "GET" && url.pathname === "/v1/douyin-research/scripts/stats") {

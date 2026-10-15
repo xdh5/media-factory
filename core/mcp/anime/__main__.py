@@ -15,7 +15,7 @@ from mcp.server.fastmcp import FastMCP
 from core.mcp._task_runner import TaskNotFoundError as RunnerTaskNotFoundError
 from core.mcp._task_runner import poll_task as runner_poll_task
 from core.mcp._task_runner import submit_task as runner_submit_task
-from media_collector import DownloadError
+from download_video import DownloadError
 
 from ._constants import OUTPUT_ROOT, SERVER_INSTRUCTIONS
 from ._errors import AnimeError, TaskNotFoundError, WorkflowStepError

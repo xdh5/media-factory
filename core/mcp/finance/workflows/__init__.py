@@ -45,6 +45,12 @@ from .delivery import (
     finance_start_upload_r2,
 )
 from .collect_copy import finance_start_collect_copy
+from .collect_author_copies import finance_start_collect_author_copies
+from .source_authors import (
+    finance_add_source_author,
+    finance_list_source_authors,
+    finance_remove_source_author,
+)
 
 ALL_TOOLS = (
     finance_get_production_config,
@@ -65,6 +71,10 @@ ALL_TOOLS = (
     finance_validate_metadata_response,
     finance_get_source_stats,
     finance_start_collect_copy,
+    finance_list_source_authors,
+    finance_add_source_author,
+    finance_remove_source_author,
+    finance_start_collect_author_copies,
     finance_get_production_outputs,
     finance_get_source_script,
     finance_get_topics,

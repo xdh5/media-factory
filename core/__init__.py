@@ -3,8 +3,8 @@
 import sys
 from pathlib import Path
 
-_COLLECTOR_ROOT = Path(__file__).resolve().parents[1] / "integrations" / "media-collector"
-if (_COLLECTOR_ROOT / "media_collector").is_dir():
-    _collector = str(_COLLECTOR_ROOT)
+_COLLECTOR_CORE = Path(__file__).resolve().parents[1] / "integrations" / "media-collector" / "core"
+if _COLLECTOR_CORE.is_dir():
+    _collector = str(_COLLECTOR_CORE)
     if _collector not in sys.path:
         sys.path.insert(0, _collector)

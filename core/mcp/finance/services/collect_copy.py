@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from core.tools.media_records import MediaRecordsError, commit_finance_copy
+from core.tools.media_records import MediaRecordsError
+
+from ..infrastructure.source_scripts import save_transcribed_scripts
 from core.tools.transcribe import TranscriptionError, transcribe
-from media_collector import DownloadError, download
+from download_video import DownloadError, download
 
 from ..errors import WorkflowStepError
 
@@ -83,7 +85,7 @@ def collect_copy(
         "cover_url": str(downloaded.get("cover_url") or "").strip(),
     }
     try:
-        database = commit_finance_copy([record])
+        database = save_transcribed_scripts([record])
     except MediaRecordsError as exc:
         raise WorkflowStepError(
             f"写入财经文案库失败：{exc}",

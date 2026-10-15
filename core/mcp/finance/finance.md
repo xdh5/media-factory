@@ -12,13 +12,16 @@
 - `tools/registry.py`：注册工具，保持原有工具名称和参数。
 - `workflows/`：按稿件、素材、交付、后台任务拆分业务编排。
 - `services/`：稿件处理、分镜、素材准备、收集文案、合成和上传服务；调用方直接导入所需服务。
-- `services/collect_copy.py`：下载抖音链接、转写并写入财经文案库。
+- `services/collect_copy.py`：调用 media-collector 子仓库下载单条抖音链接，转写并写入财经文案库。
+- `services/collect_author_copies.py`：调用 media-collector 子仓库按作者名单平分抓取最新口播，去重并去掉广告后入库。
+- `services/copy_ad_review.py`：判断整篇广告，并删除正文中的插入广告。
 - `services/production_config.py`：成片参数校验。
 - `services/video_layers.py`：字幕、钩子标题和章节图层。
 - `services/video_opening.py`：片头渲染和缓存。
 - `services/video_materials.py`：素材时长处理、分镜清单和署名。
 - `services/assemble_finance_video.py`：组织合成步骤并登记生产产物。
 - `infrastructure/gateways.py`：工作流依赖的外部工具接口。
+- `infrastructure/source_scripts.py`：转写稿入库、去重、占用，以及作者名单和整篇广告记录。
 - `config/`：生产配置、目录规则和服务说明；`errors/`：领域错误。
 - `prompts/`：现有业务提示词。
 
@@ -46,15 +49,21 @@ finance_get_article_linebreak_prompt / finance_validate_article_linebreak_respon
 finance_get_stock_video_selection_prompt / finance_validate_stock_video_selection_response
 finance_start_collect_copy(share_text, collection_name)
 └─ services.collect_copy.collect_copy
+   └─ infrastructure.source_scripts.save_transcribed_scripts
    └─ 收集财经文案：下载单条抖音链接、转写口播并写入文案库
+finance_list_source_authors / finance_add_source_author / finance_remove_source_author
+└─ 财经作者名单可随时查看、添加和删除，保存在数据库
+finance_start_collect_author_copies(count)
+└─ services.collect_author_copies.collect_author_copies
+   └─ 按作者人数平分 count，每人取最新且未入库的正常口播；整篇广告不入库，插入广告从正文删掉
 finance_poll_task(task_path)
 
 finance_get_source_stats
-└─ media_records.get_finance_copy_stats
+└─ infrastructure.source_scripts.get_source_script_stats
    └─ 只读统计原稿总数、可用数、有效占用数和已使用数
 
 finance_get_source_script
-└─ media_records.reserve_finance_copy
+└─ infrastructure.source_scripts.reserve_source_script
    └─ 选择未使用原稿并临时占用
 
 finance_get_metadata_prompt
@@ -110,7 +119,7 @@ finance_start_finish_video(..., production_config, material_manifest_path, intro
       └─ generate_shot.generate_shot_from_intro（片头动画 + 快门音效）
       └─ 黄金钩子图层：字幕位置覆盖 + generate_subtitles 按行生成 hook-title-N.ass（字魂群英体 165px，按标点断行，单行红字黑边 / 多行首行黄黑边其余红白边，\pos 堆叠）
       └─ generate_final_video
-      └─ 成片成功后 media_records.mark_finance_copy_used
+      └─ 成片成功后 infrastructure.source_scripts.mark_source_script_used
 
 finance_poll_task(task_path)
 └─ core.mcp._task_runner.poll_task

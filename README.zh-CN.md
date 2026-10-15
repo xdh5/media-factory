@@ -72,7 +72,7 @@ ops/
 └── youtube/         # YouTube OAuth 运维工具
 
 integrations/
-├── media-collector/ # 媒体采集，当前为视频下载；MIT
+├── media-collector/ # 子仓库：core/download_video、core/list_author_works；MIT
 └── media-publisher/ # 本地多平台发布集成
 
 dashboard/           # 发布管理面板
@@ -287,6 +287,6 @@ Media Factory 是一个实际运行的内容生产系统，不是通用的拖拽
 
 Media Factory 使用 [MIT 许可证](LICENSE)。
 
-`integrations/media-collector` 是独立仓库，使用 MIT。
+`integrations/media-collector` 是独立仓库，使用 MIT。下载视频在其子目录 `core/download_video`，作者作品列表在 `core/list_author_works`。
 
 `integrations/media-publisher` 是独立仓库，仍使用 GPL-2.0-only。

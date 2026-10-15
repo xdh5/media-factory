@@ -11,7 +11,7 @@ TRANSCRIBE_INPUT_SCHEMA = {
         "media_path": {
             "type": "string",
             "minLength": 1,
-            "description": "本地音视频路径；远程链接请先调用 media_collector.download",
+            "description": "本地音视频路径；远程链接请先调用 download_video.download",
         },
         "language": {
             "type": "string",

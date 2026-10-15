@@ -1,4 +1,4 @@
-"""媒体生产记录公开入口：稿件、话题、成片、发布和账号组。"""
+"""媒体生产记录公开入口：话题、成片、发布和账号组。财经口播稿在财经 MCP。"""
 
 from ._errors import (
     MediaRecordsConfigurationError,
@@ -7,8 +7,6 @@ from ._errors import (
     MediaRecordsRequestError,
 )
 from .client import (
-    commit_finance_copy,
-    commit_finance_generated_images,
     commit_publication,
     commit_publication_records,
     commit_language_learning_pack,
@@ -17,17 +15,12 @@ from .client import (
     delete_production_outputs,
     commit_production_outputs,
     commit_scenario_quiz_question,
-    get_finance_copy_stats,
-    list_finance_copy_ids,
-    list_finance_generated_images,
     list_publication_records,
     list_publishing_account_groups,
     list_production_outputs,
     list_scenario_quiz_questions,
     list_recent_words,
     list_topics,
-    mark_finance_copy_used,
-    reserve_finance_copy,
     reserve_topic,
     validate_and_record_words,
 )
@@ -37,8 +30,6 @@ __all__ = [
     "MediaRecordsConflictError",
     "MediaRecordsError",
     "MediaRecordsRequestError",
-    "commit_finance_copy",
-    "commit_finance_generated_images",
     "commit_publication",
     "commit_publication_records",
     "commit_language_learning_pack",
@@ -47,17 +38,12 @@ __all__ = [
     "delete_production_outputs",
     "commit_production_outputs",
     "commit_scenario_quiz_question",
-    "get_finance_copy_stats",
-    "list_finance_copy_ids",
-    "list_finance_generated_images",
     "list_publication_records",
     "list_publishing_account_groups",
     "list_production_outputs",
     "list_scenario_quiz_questions",
     "list_recent_words",
     "list_topics",
-    "mark_finance_copy_used",
-    "reserve_finance_copy",
     "reserve_topic",
     "validate_and_record_words",
 ]

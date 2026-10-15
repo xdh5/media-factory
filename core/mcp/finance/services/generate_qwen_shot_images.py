@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from core.tools.media_records import MediaRecordsError, commit_finance_generated_images
+from core.tools.media_records import MediaRecordsError
+
+from ..infrastructure.source_scripts import save_shot_images
 from core.tools.generate_image import ImageGenerationError, generate_qwen_image, submit_agent_image_tasks
 
 from ..config.settings import _PROJECT_ROOT
@@ -64,7 +66,7 @@ def _commit_generated_images(
         for image_id in image_ids
     ]
     try:
-        database = commit_finance_generated_images(records)
+        database = save_shot_images(records)
     except MediaRecordsError as exc:
         raise WorkflowStepError(exc.message, exc.details) from exc
     if len(database["records"]) != len(tasks):

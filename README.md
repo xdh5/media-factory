@@ -72,7 +72,7 @@ ops/
 └── youtube/         # YouTube OAuth utilities
 
 integrations/
-├── media-collector/ # Media collection. Video download today; MIT
+├── media-collector/ # Submodule: core/download_video and core/list_author_works; MIT
 └── media-publisher/ # Local multi-platform publishing integration
 
 dashboard/           # Publishing dashboard
@@ -287,6 +287,6 @@ Its two production lines currently encode business rules for language learning a
 
 Media Factory is licensed under the [MIT License](LICENSE).
 
-`integrations/media-collector` is a separate repository and uses the MIT License.
+`integrations/media-collector` is a separate repository and uses the MIT License. Video download is `core/download_video`; author work lists are `core/list_author_works`.
 
 `integrations/media-publisher` is a separate repository and remains under GPL-2.0-only.

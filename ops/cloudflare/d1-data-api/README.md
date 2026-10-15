@@ -19,7 +19,7 @@
 
 通过 `POST /v1/production-outputs/commit` 幂等写入成片记录；通过 `GET /v1/production-outputs` 查询，可选按 `publish_date`、`business_line` 和 `source` 过滤；仅可通过 `DELETE /v1/production-outputs` 按精确记录 ID 清理已确认废弃的成片记录。`source=local_mcp` 保留 `local_path`，按需上传 R2 后补充 `r2_url`；`source=github_workflow` 只在 R2 交付成功后写入 `r2_url`，禁止保存 Runner 临时路径。
 
-财经 MCP 的 `finance_start_collect_copy` 收集财经文案：接收用户提供的抖音链接和分类，完成下载、转写后调用 `POST /v1/douyin-research/commit`。作品内容只存一份，内容分类和来源标识记录在 `douyin_research_discoveries`；链接直投的来源标识固定为 `direct_link`。
+财经 MCP 的 `finance_start_collect_copy` 收集单条抖音链接。`finance_start_collect_author_copies` 按 `finance_source_authors` 里的作者名单平分抓取最新作品。两者完成下载、转写后调用 `POST /v1/douyin-research/commit`。作品内容只存一份，内容分类和来源标识记录在 `douyin_research_discoveries`；链接直投的来源标识固定为 `direct_link`，作者主页抓取固定为 `author_homepage`。整篇广告写入 `finance_rejected_awemes`，避免下次重复下载。
 
 财经 MCP 通过 `POST /v1/douyin-research/scripts/reserve` 从“财经”分类随机选择未使用原稿并临时占用，保存改编稿后调用 `POST /v1/douyin-research/scripts/used` 标记为已使用。占用默认两小时后自动过期；全部稿件已使用时接口返回 `DOUYIN_SCRIPTS_EXHAUSTED`，禁止回退到重复稿件。
 

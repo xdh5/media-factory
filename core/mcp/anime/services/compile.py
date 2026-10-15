@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from media_collector import DownloadError, download, extract_urls
+from download_video import DownloadError, download, extract_urls
 
 from .._constants import MAX_PART_SECONDS
 from .._errors import AnimeError
