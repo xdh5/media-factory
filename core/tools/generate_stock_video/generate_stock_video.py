@@ -348,11 +348,15 @@ def _allowed_download_url(provider: str, url: str) -> bool:
     )
 
 
-def _curl_download(provider: str, url: str, temporary: Path) -> str:
+_DOWNLOAD_ATTEMPTS = 4
+
+
+def _curl_download(provider: str, url: str, temporary: Path, *, http1: bool) -> str:
     """用 curl 下载（urlopen 在代理环境下会出现 socket 超时不生效的假活连接）。
 
     --speed-limit/--speed-time 组合在"连接假活、几乎无数据"时主动掐断，
     --max-time 给整个下载设总上限；返回 curl 看到的最终跳转 URL。
+    http1 为真时强制 HTTP/1.1，用来避开素材站 HTTP/2 流被中途掐断（curl exit 92）。
     """
     command = [
         "curl", "-L", "--fail", "--silent", "--show-error",
@@ -362,13 +366,15 @@ def _curl_download(provider: str, url: str, temporary: Path) -> str:
         "--user-agent", "media-factory/1.0",
         "--output", str(temporary),
         "--write-out", "%{url_effective}",
-        url,
     ]
+    if http1:
+        command.insert(1, "--http1.1")
+    command.append(url)
     result = subprocess.run(command, capture_output=True, text=True, timeout=660)
     if result.returncode != 0:
         raise StockVideoDownloadError(
             f"curl 下载视频素材失败（exit {result.returncode}）：{result.stderr.strip()[:300]}",
-            {"provider": provider},
+            {"provider": provider, "curl_exit": result.returncode, "http1": http1},
         )
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     if not lines:
@@ -398,9 +404,11 @@ def download_stock_video(candidate: dict, output_path: str | Path) -> dict:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(destination.suffix + ".part")
     last_error: StockVideoDownloadError | None = None
-    for attempt in range(2):
+    for attempt in range(_DOWNLOAD_ATTEMPTS):
+        # 第一次用 curl 默认的 HTTP/2；中断或传输失败后改走 HTTP/1.1，避免同一条坏流反复失败。
+        http1 = attempt > 0
         try:
-            final_url = _curl_download(provider, url, temporary)
+            final_url = _curl_download(provider, url, temporary, http1=http1)
             if not _allowed_download_url(provider, final_url):
                 raise StockVideoDownloadError(
                     "视频下载跳转到了不受支持的域名",
@@ -421,16 +429,20 @@ def download_stock_video(candidate: dict, output_path: str | Path) -> dict:
             if temporary.exists():
                 temporary.unlink()
             last_error = exc
-            if attempt == 0:
-                time.sleep(3)
+            curl_exit = exc.details.get("curl_exit")
+            # 域名、空文件、体积超限重试也不会变好；传输中断才继续换协议再下。
+            if curl_exit is None or attempt + 1 >= _DOWNLOAD_ATTEMPTS:
+                break
+            time.sleep(3 * (attempt + 1))
         except (subprocess.TimeoutExpired, OSError) as exc:
             if temporary.exists():
                 temporary.unlink()
             last_error = StockVideoDownloadError(
                 f"下载视频素材失败：{exc}", {"provider": provider}
             )
-            if attempt == 0:
-                time.sleep(3)
+            if attempt + 1 >= _DOWNLOAD_ATTEMPTS:
+                break
+            time.sleep(3 * (attempt + 1))
     raise last_error
 
 
