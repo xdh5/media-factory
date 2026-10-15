@@ -454,6 +454,9 @@ def list_account_groups(business_line: str | None = None) -> dict:
         matrix_error = str(exc)
     for group in groups:
         live = [item for item in matrix_accounts if item["account_ref"] == group["name"]]
+        for member in group["members"]:
+            if member.get("account_key"):
+                live.extend(_official_members(member))
         group["publisher_accounts"] = live
     for name in sorted({item["account_ref"] for item in matrix_accounts} - all_database_names):
         groups.append({
@@ -484,6 +487,16 @@ def _official_account_rows(group: str) -> list:
 
 
 def _official_members(member: dict) -> list[dict]:
+    if member.get("account_key"):
+        python_dir = str(media_publisher_root() / "python")
+        if python_dir not in sys.path:
+            sys.path.insert(0, python_dir)
+        from platform_api.account_registry import verify_account
+        route = {**member, "account_id": member["connector_account_id"], "account_group": member["account_ref"]}
+        try:
+            return [{**route, **verify_account(member)}]
+        except Exception as exc:
+            return [{**route, "login_status": "error", "error": str(exc)}]
     platform = str(member["platform"])
     account_ref = str(member.get("account_ref") or "").strip()
     display_name = str(member.get("display_name") or account_ref)

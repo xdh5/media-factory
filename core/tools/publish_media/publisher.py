@@ -144,6 +144,7 @@ def _target(item: dict, route: dict) -> dict:
     platform = str(route["platform"])
     target = {
         "platform": platform,
+        "account_key": str(route.get("account_key") or f"{platform}:{route['platform_account_id']}"),
         "title": str(item["title"]),
         "description": _publish_copy(item),
         "file": str(item["local_path"]),
@@ -207,17 +208,23 @@ def publish_local_outputs(
                 "targets": [_target(task["item"], task["route"]) for task in pending],
             },
             progress=progress,
+            account_routes={
+                str(task["route"].get("account_key") or f"{task['route']['platform']}:{task['route']['platform_account_id']}"): {
+                    **task["route"], "account_group": task["route"]["account_ref"],
+                }
+                for task in pending
+            },
         )
     except publish_error as exc:
         raise InvalidPublishRequestError(str(exc)) from exc
     published_by_key = {
-        (str(item.get("client_ref") or ""), str(item.get("platform") or "")): item
+        (str(item.get("client_ref") or ""), str(item.get("platform") or ""), str(item.get("platform_account_id") or "")): item
         for item in outcome["published"]
     }
     published = []
     for task in pending:
         item, route = task["item"], task["route"]
-        sent = published_by_key.get((str(item["production_id"]), str(route["platform"])))
+        sent = published_by_key.get((str(item["production_id"]), str(route["platform"]), str(route["platform_account_id"])))
         if sent is None:
             continue
         result = sent.get("result") if isinstance(sent.get("result"), dict) else {}

@@ -698,11 +698,17 @@ async function listPublishingAccountGroups(request, env) {
   if (!groups.length) return jsonResponse({ groups: [], members: [] });
   const placeholders = groups.map(() => "?").join(",");
   const memberResult = await env.DB.prepare(
-    `SELECT id, platform_account_id, group_code, platform, connector, account_ref, display_name,
-            position, enabled, created_at, updated_at
-     FROM publishing_account_group_members
-     WHERE enabled = 1 AND group_code IN (${placeholders})
-     ORDER BY group_code, position, platform, id`,
+    `SELECT m.id, COALESCE(a.platform_account_id, m.platform_account_id) AS platform_account_id,
+            m.group_code, COALESCE(a.platform, m.platform) AS platform,
+            COALESCE(a.connector, m.connector) AS connector, m.account_ref,
+            COALESCE(a.display_name, m.display_name) AS display_name,
+            m.position, m.enabled, m.created_at, m.updated_at,
+            m.account_key, a.connector_account_id, a.credential_ref
+     FROM publishing_account_group_members m
+     LEFT JOIN publishing_accounts a ON a.account_key = m.account_key
+     WHERE m.enabled = 1 AND (m.account_key IS NULL OR a.enabled = 1)
+       AND m.group_code IN (${placeholders})
+     ORDER BY m.group_code, m.position, m.platform, m.id`,
   ).bind(...groups.map((item) => item.code)).all();
   return jsonResponse({ groups, members: memberResult.results || [] });
 }

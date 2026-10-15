@@ -2,6 +2,8 @@
 .git
 .gitignore
 .env
+**/.env
+integrations/*/data/
 **/__pycache__
 **/*.pyc
 tmp_audio/
