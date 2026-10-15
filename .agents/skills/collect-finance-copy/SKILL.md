@@ -30,6 +30,7 @@ https://www.douyin.com/user/MS4wLjABAAAA... 显示名
 
 - 查看：调用 `finance_list_source_authors`，把主页、显示名和人数告诉用户。
 - 添加：对用户给出的每一行调用 `finance_add_source_author`。`profile_url` 传主页链接，`display_name` 传显示名；没有显示名就传空字符串。
+- 未指定显示名时，工具自动从作者作品读取昵称并保存；读取失败或没有作品时保存 `sec_user_id`，同时返回原因。不得将空显示名当作正常结果。
 - 删除：先查看名单，确认要删的作者，再调用 `finance_remove_source_author`。`author` 传主页链接或 `sec_user_id`。
 
 添加或删除后再次查看名单，把最新结果告诉用户。

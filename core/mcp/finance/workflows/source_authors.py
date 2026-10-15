@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from list_author_works import AuthorWorksError, resolve_author_profile
+from list_author_works import AuthorWorksError, list_author_works, resolve_author_profile
 from ..infrastructure.source_scripts import (
     add_source_author,
     list_source_authors,
@@ -23,19 +23,38 @@ def finance_list_source_authors() -> dict:
 
 
 def finance_add_source_author(profile_url: str, display_name: str = "") -> dict:
-    """添加一位财经作者。profile_url 可以是作者主页或「查看TA的更多作品」分享口令，display_name 是可选显示名。"""
+    """添加或更新财经作者。未指定显示名时获取昵称，获取失败则保存作者 ID。"""
     try:
         author = resolve_author_profile(profile_url)
+        name = str(display_name or "").strip()
+        nickname_error = ""
+        if not name:
+            try:
+                works = list_author_works(author["profile_url"], limit=1)
+                name = next((
+                    str(work.get("author_name") or "").strip()
+                    for work in works
+                    if work.get("sec_user_id") == author["sec_user_id"]
+                    and str(work.get("author_name") or "").strip()
+                ), "")
+                if not name:
+                    nickname_error = "作者作品未返回昵称，已使用作者 ID"
+            except AuthorWorksError as extra:
+                nickname_error = f"昵称获取失败，已使用作者 ID：{extra.message}"
+            name = name or author["sec_user_id"]
         record = add_source_author(
             sec_user_id=author["sec_user_id"],
             profile_url=author["profile_url"],
-            display_name=str(display_name or "").strip(),
+            display_name=name,
         )
     except AuthorWorksError as extra:
         raise WorkflowStepError(extra.message, extra.details) from extra
     except Exception as extra:
         raise _map_error(extra) from extra
-    return {"author": record}
+    result = {"author": record}
+    if nickname_error:
+        result["nickname_warning"] = nickname_error
+    return result
 
 
 def finance_remove_source_author(author: str) -> dict:
