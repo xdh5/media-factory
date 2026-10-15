@@ -94,14 +94,15 @@ function formatDate(date) {
   return date.toISOString().slice(0, 10);
 }
 
-function weekRange(dateValue) {
+function weekRange(dateValue, today = beijingDate()) {
   const date = parseDate(dateValue);
   const weekday = date.getUTCDay();
   const monday = new Date(date);
   monday.setUTCDate(date.getUTCDate() + (weekday === 0 ? -6 : 1 - weekday));
   const sunday = new Date(monday);
   sunday.setUTCDate(monday.getUTCDate() + 6);
-  return { from: formatDate(monday), to: formatDate(sunday) };
+  const start = parseDate(today) > monday ? parseDate(today) : monday;
+  return { from: formatDate(start), to: formatDate(sunday) };
 }
 
 function defaultWeekRange(today = beijingDate()) {
@@ -203,7 +204,10 @@ async function loadRecords(range = null) {
     const response = await fetch(`${API_BASE_URL}/v1/dashboard/records${query}`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message || "读取失败");
-    if (range) payload.dates?.sort((left, right) => left.date.localeCompare(right.date));
+    if (range) {
+      payload.dates = (payload.dates || []).filter((item) => item.date >= range.from && item.date <= range.to);
+      payload.dates.sort((left, right) => left.date.localeCompare(right.date));
+    }
     payload.emptyMessage = range ? "这一周还没有产物或发布记录。" : "还没有产物或发布记录。";
     render(payload);
     status.textContent = range ? `已显示 ${range.from} 至 ${range.to} 的记录。` : "已显示数据库中的全部日期。";
@@ -222,7 +226,13 @@ queryButton.addEventListener("click", () => {
     status.textContent = "请先选择这一周中的任意日期。";
     return;
   }
-  loadRecords(weekRange(dateInput.value));
+  const range = weekRange(dateInput.value);
+  if (range.from > range.to) {
+    render({ dates: [], emptyMessage: "这一周已经过去，没有今天及以后的记录。" });
+    status.textContent = "所选周早于今天，已隐藏之前的日期。";
+    return;
+  }
+  loadRecords(range);
 });
 allButton.addEventListener("click", () => {
   dateInput.value = "";
