@@ -1,13 +1,11 @@
 const API_BASE_URL = "https://media-data.cyberlab.lol";
 const { element, renderPlatforms } = window.dashboardPlatforms;
 const dateInput = document.querySelector("#dateInput");
-const endDateInput = document.querySelector("#endDateInput");
 const queryButton = document.querySelector("#queryButton");
+const weekButton = document.querySelector("#weekButton");
 const allButton = document.querySelector("#allButton");
 const status = document.querySelector("#status");
 const results = document.querySelector("#results");
-const modeButtons = [...document.querySelectorAll("[data-date-mode]")];
-let dateMode = "single";
 
 function downloadState(outputs) {
   const rows = Array.isArray(outputs) ? outputs : [];
@@ -44,6 +42,15 @@ function beijingDate() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(new Date());
+}
+
+function currentWeekRange() {
+  const today = new Date(`${beijingDate()}T00:00:00Z`);
+  const monday = new Date(today);
+  monday.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7));
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  return { from: monday.toISOString().slice(0, 10), to: sunday.toISOString().slice(0, 10) };
 }
 
 function render(data) {
@@ -88,6 +95,7 @@ function render(data) {
 async function loadRecords(range = null) {
   status.textContent = "正在读取记录…";
   queryButton.disabled = true;
+  weekButton.disabled = true;
   allButton.disabled = true;
   try {
     const query = range ? `?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}` : "";
@@ -105,35 +113,20 @@ async function loadRecords(range = null) {
     status.textContent = `读取失败：${error.message}`;
   } finally {
     queryButton.disabled = false;
+    weekButton.disabled = false;
     allButton.disabled = false;
   }
 }
 
-for (const button of modeButtons) {
-  button.addEventListener("click", () => {
-    dateMode = button.dataset.dateMode;
-    modeButtons.forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
-    document.querySelector("#endDateField").hidden = dateMode !== "range";
-    document.querySelector("#dateLabel").textContent = dateMode === "range" ? "开始日期" : "日期";
-    if (!dateInput.value) dateInput.value = beijingDate();
-    if (!endDateInput.value || endDateInput.value < dateInput.value) endDateInput.value = dateInput.value;
-  });
-}
-
 queryButton.addEventListener("click", () => {
   const from = dateInput.value;
-  const to = dateMode === "single" ? from : endDateInput.value;
-  if (!from || !to) {
-    status.textContent = dateMode === "single" ? "请选择日期。" : "请选择开始和结束日期。";
+  if (!from) {
+    status.textContent = "请选择日期。";
     return;
   }
-  if (from > to) {
-    status.textContent = "结束日期不能早于开始日期。";
-    return;
-  }
-  loadRecords({ from, to });
+  loadRecords({ from, to: from });
 });
+weekButton.addEventListener("click", () => loadRecords(currentWeekRange()));
 allButton.addEventListener("click", () => loadRecords());
 dateInput.value = beijingDate();
-endDateInput.value = dateInput.value;
-loadRecords({ from: dateInput.value, to: dateInput.value });
+loadRecords(currentWeekRange());

@@ -26,20 +26,13 @@
       </nav>
 
       <section id="toolbar" class="toolbar" aria-label="查询条件">
-        <div class="segmented-filter" role="group" aria-label="日期筛选方式">
-          <button type="button" data-date-mode="single" aria-pressed="true">单日</button>
-          <button type="button" data-date-mode="range" aria-pressed="false">时间段</button>
-        </div>
         <label>
           <span id="dateLabel">日期</span>
           <input id="dateInput" type="date">
         </label>
-        <label id="endDateField" hidden>
-          <span>结束日期</span>
-          <input id="endDateInput" type="date">
-        </label>
         <div class="toolbar-actions">
-          <button id="queryButton" class="primary-button" type="button">查询</button>
+          <button id="queryButton" class="primary-button" type="button">查看单日</button>
+          <button id="weekButton" class="secondary-button" type="button">查看本周</button>
           <button id="allButton" class="secondary-button" type="button">查看全部</button>
         </div>
       </section>
@@ -49,6 +42,6 @@
     </main>
 
     <script src="./platforms.js?v=20261016-1" defer></script>
-    <script src="./app.js?v=20261016-1" defer></script>
+    <script src="./app.js?v=20261016-2" defer></script>
   </body>
 </html>
