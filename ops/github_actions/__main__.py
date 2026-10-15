@@ -16,6 +16,7 @@ def main() -> None:
         choices=[
             "finance_preflight",
             "finance",
+            "finance_publish",
             "language_learning_preflight",
             "language_learning_words",
             "language_learning_cards",
@@ -66,6 +67,10 @@ def main() -> None:
                     stream.write(f"existing_run_id={payload['existing_run_id']}\n")
                     stream.write(f"pending_targets={','.join(payload['pending_targets'])}\n")
                 stream.write(f"skip_reason={payload['skip_reason']}\n")
+    elif arguments.workflow == "finance_publish":
+        from .finance_publication import schedule_publication
+
+        payload = asyncio.run(schedule_publication(arguments.publish_date))
     elif arguments.workflow == "finance":
         from .finance import run as run_finance
 

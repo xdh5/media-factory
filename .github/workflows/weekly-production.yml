@@ -113,3 +113,17 @@ jobs:
     with:
       publish_date: ${{ matrix.publish_date }}
     secrets: inherit
+
+  publish-finance:
+    name: 发布财经 YouTube 视频 ${{ matrix.publish_date }}
+    needs: [plan, produce-day]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    strategy:
+      matrix:
+        publish_date: ${{ fromJSON(needs.plan.outputs.dates_json) }}
+      max-parallel: 1
+      fail-fast: false
+    uses: ./.github/workflows/publish-finance-video.yml
+    with:
+      publish_date: ${{ matrix.publish_date }}
+    secrets: inherit
