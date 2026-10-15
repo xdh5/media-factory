@@ -17,6 +17,8 @@
 
 通过 `POST /v1/publication-records/commit` 幂等写入发布记录；数据库以业务线、生产批次、标题、平台、账号和分段作为稳定唯一键，同名内容在不同日期发布时各自保留记录，不允许外部任务 ID 变化造成重复记录，也不接受空账号。通过 `GET /v1/publication-records` 查询，可选按 `business_line`、`platform`、`publish_date` 和 `run_id` 过滤。补发去重按产物的 `run_id` 查询，不按实际发送日期查询。通过 `GET /v1/publishing-account-groups` 查询数据库账号组。
 
+动漫账号组使用 `anime`，仅绑定 YouTube 频道“沙雕漫岛”，凭据引用为 `youtube_anime`；凭据只保存在本地发布凭据文件。账号组查询支持 `business_line=anime`。本次仅配置账号组，不扩展动漫产物登记与发布记录接口。
+
 通过 `POST /v1/production-outputs/commit` 幂等写入成片记录；通过 `GET /v1/production-outputs` 查询，可选按 `publish_date`、`business_line` 和 `source` 过滤；仅可通过 `DELETE /v1/production-outputs` 按精确记录 ID 清理已确认废弃的成片记录。`source=local_mcp` 保留 `local_path`，按需上传 R2 后补充 `r2_url`；`source=github_workflow` 只在 R2 交付成功后写入 `r2_url`，禁止保存 Runner 临时路径。
 
 财经 MCP 的 `finance_start_collect_copy` 收集单条抖音链接。`finance_start_collect_author_copies` 按 `finance_source_authors` 里的作者名单平分抓取最新作品。两者完成下载、转写后调用 `POST /v1/douyin-research/commit`。作品内容只存一份，内容分类和来源标识记录在 `douyin_research_discoveries`；链接直投的来源标识固定为 `direct_link`，作者主页抓取固定为 `author_homepage`。整篇广告写入 `finance_rejected_awemes`，避免下次重复下载。

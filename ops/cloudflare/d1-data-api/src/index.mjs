@@ -1,5 +1,6 @@
 const ACTIVE_STATUSES = ["reserved", "completed", "published", "used"];
 const PUBLICATION_BUSINESS_LINES = ["finance", "language_learning", "psychology_quiz"];
+const ACCOUNT_GROUP_BUSINESS_LINES = [...PUBLICATION_BUSINESS_LINES, "anime"];
 const PUBLICATION_PLATFORMS = [
   "youtube", "facebook", "instagram", "tiktok", "kuaishou",
   "douyin", "baijiahao", "xiaohongshu", "toutiao", "wechat_channels",
@@ -682,8 +683,8 @@ async function deletePublicationRecords(request, env) {
 async function listPublishingAccountGroups(request, env) {
   const url = new URL(request.url);
   const businessLine = String(url.searchParams.get("business_line") || "").trim();
-  if (businessLine && !PUBLICATION_BUSINESS_LINES.includes(businessLine)) {
-    throw new Error(`business_line 必须从 ${PUBLICATION_BUSINESS_LINES.join(", ")} 中选择`);
+  if (businessLine && !ACCOUNT_GROUP_BUSINESS_LINES.includes(businessLine)) {
+    throw new Error(`business_line 必须从 ${ACCOUNT_GROUP_BUSINESS_LINES.join(", ")} 中选择`);
   }
   const where = businessLine ? "WHERE business_line = ? AND enabled = 1" : "WHERE enabled = 1";
   const groupStatement = env.DB.prepare(
