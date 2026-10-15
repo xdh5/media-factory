@@ -38,7 +38,7 @@
 3. 为 Worker 设置秘密 `DATA_API_TOKEN`。
 4. GitHub Pages 发布看板为公开只读页面。看板接口为 `GET /v1/dashboard/records`；下载使用 `POST /v1/dashboard/download`，浏览器提交数据库返回的 `url`，并直接接收 Worker 回源的 R2 流，不在页面内缓存完整视频。下载只允许数据库里已有且未过期的 `r2_url`，并以 `Content-Disposition: attachment` 强制保存文件。跨域读取仅允许 `https://xdh5.github.io`，响应不会返回本地路径、账号凭据或数据 API Token。
 
-   日历支持 `date` 单日或 `from`、`to` 闭区间查询，排除 `anime`，并返回各业务线已配置的平台供图标展示。动画独立使用 `GET /v1/dashboard/anime`，只返回发布成功的标题及平台链接，按同一成片聚合。图标只有 `published` 状态显示彩色，预约仍显示灰色。看板改版不修改历史记录或数据库结构。
+   日历支持 `date` 单日或 `from`、`to` 闭区间查询，排除 `anime`。每条成片返回 `platforms`，只包含该片应发账号组的平台：`en-zh` 走 `chinese`，`en-ko` 走 `korean`，财经走 `finance`。同时返回 `platforms_by_account_group` 与按业务线汇总的 `platforms_by_business_line`。动画独立使用 `GET /v1/dashboard/anime`，只返回发布成功的标题及平台链接，按同一成片聚合。看板把已发布和已预约的平台图标显示为彩色，未发送仍为灰色。看板改版不修改历史记录或数据库结构。
 5. 部署 Worker，并把地址与相同令牌填入 MCP 宿主环境变量：
    - `CLOUDFLARE_DATA_API_URL`
    - `CLOUDFLARE_DATA_API_TOKEN`

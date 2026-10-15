@@ -22,9 +22,11 @@
     }
   }
 
-  function renderPlatforms(publications = [], configured = []) {
+  function renderPlatforms(publications = [], configured = null) {
     const list = element("div", "platforms");
-    const platforms = [...new Set([...configured, ...publications.map((item) => item.platform)])];
+    const platforms = [...new Set(Array.isArray(configured)
+      ? configured
+      : publications.map((item) => item.platform))];
     platforms.sort((left, right) => order.indexOf(left) - order.indexOf(right));
     for (const platform of platforms) {
       const records = publications.filter((item) => item.platform === platform);
@@ -34,7 +36,7 @@
       const state = published ? "已发送" : scheduled ? "已预约，尚未发送" : "未发送";
       const name = names[platform] || platform;
       const url = safeUrl(record?.external_url);
-      const icon = element(url ? "a" : "span", `platform-icon${published ? " is-published" : ""}`);
+      const icon = element(url ? "a" : "span", `platform-icon${published || scheduled ? " is-published" : ""}`);
       icon.title = `${name} · ${state}`;
       icon.setAttribute("aria-label", icon.title);
       if (url) {

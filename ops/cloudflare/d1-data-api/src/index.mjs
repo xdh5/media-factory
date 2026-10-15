@@ -721,6 +721,15 @@ function runDate(runId, fallback) {
   return Number.isFinite(timestamp) ? new Date(timestamp + 8 * 60 * 60 * 1000).toISOString().slice(0, 10) : "";
 }
 
+// 成片应发平台按账号组区分，不把同一业务线下的其他组混进来。
+function dashboardAccountGroupName(item) {
+  const kind = String(item.content_kind || "");
+  if (kind.startsWith("en-zh")) return "chinese";
+  if (kind.startsWith("en-ko")) return "korean";
+  if (item.business_line === "finance") return "finance";
+  return "";
+}
+
 async function dashboardRecords(request, env) {
   const url = new URL(request.url);
   const selectedDate = String(url.searchParams.get("date") || "").trim();
@@ -781,13 +790,14 @@ async function dashboardRecords(request, env) {
     outputStatement.all(),
     publicationStatement.all(),
     env.DB.prepare(
-      `SELECT DISTINCT g.business_line, COALESCE(a.platform, m.platform) AS platform
+      `SELECT DISTINCT g.business_line, g.name AS account_group,
+              COALESCE(a.platform, m.platform) AS platform
        FROM publishing_account_groups g
        JOIN publishing_account_group_members m ON m.group_code = g.code
        LEFT JOIN publishing_accounts a ON a.account_key = m.account_key
        WHERE g.enabled = 1 AND m.enabled = 1 AND g.business_line != 'anime'
          AND (m.account_key IS NULL OR a.enabled = 1)
-       ORDER BY g.business_line, platform`,
+       ORDER BY g.business_line, g.name, platform`,
     ).all(),
   ]);
   const byKey = new Map();
@@ -844,16 +854,32 @@ async function dashboardRecords(request, env) {
     });
     byKey.set(key, item);
   }
+  const platformRows = platformResult.results || [];
+  const platformsByGroup = new Map();
+  for (const row of platformRows) {
+    if (!platformsByGroup.has(row.account_group)) {
+      platformsByGroup.set(row.account_group, []);
+    }
+    const platforms = platformsByGroup.get(row.account_group);
+    if (row.platform && !platforms.includes(row.platform)) platforms.push(row.platform);
+  }
   const dates = new Map();
   for (const item of byKey.values()) {
+    const groupName = dashboardAccountGroupName(item);
+    const sameLine = platformRows.filter((row) => row.business_line === item.business_line);
+    const lineGroups = [...new Set(sameLine.map((row) => row.account_group))];
+    item.platforms = platformsByGroup.get(groupName)
+      || (lineGroups.length === 1 ? platformsByGroup.get(lineGroups[0]) : [])
+      || [];
     if (!dates.has(item.publish_date)) dates.set(item.publish_date, []);
     dates.get(item.publish_date).push(item);
   }
   return dashboardResponse({
     platforms_by_business_line: Object.fromEntries(
-      [...new Set((platformResult.results || []).map((row) => row.business_line))]
-        .map((line) => [line, platformResult.results.filter((row) => row.business_line === line).map((row) => row.platform)]),
+      [...new Set(platformRows.map((row) => row.business_line))]
+        .map((line) => [line, [...new Set(platformRows.filter((row) => row.business_line === line).map((row) => row.platform))]]),
     ),
+    platforms_by_account_group: Object.fromEntries(platformsByGroup),
     dates: [...dates.entries()]
       .sort(([left], [right]) => right.localeCompare(left))
       .map(([date, contents]) => ({

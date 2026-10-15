@@ -46,11 +46,23 @@ function beijingDate() {
 
 function currentWeekRange() {
   const today = new Date(`${beijingDate()}T00:00:00Z`);
-  const monday = new Date(today);
-  monday.setUTCDate(today.getUTCDate() - ((today.getUTCDay() + 6) % 7));
-  const sunday = new Date(monday);
-  sunday.setUTCDate(monday.getUTCDate() + 6);
-  return { from: monday.toISOString().slice(0, 10), to: sunday.toISOString().slice(0, 10) };
+  const weekday = today.getUTCDay();
+  // 周六、周日改看下一周周一到周日；周一到周五只看到本周日，不含今天之前。
+  if (weekday === 0 || weekday === 6) {
+    const monday = new Date(today);
+    monday.setUTCDate(today.getUTCDate() + (weekday === 6 ? 2 : 1));
+    const sunday = new Date(monday);
+    sunday.setUTCDate(monday.getUTCDate() + 6);
+    return { from: monday.toISOString().slice(0, 10), to: sunday.toISOString().slice(0, 10) };
+  }
+  const sunday = new Date(today);
+  sunday.setUTCDate(today.getUTCDate() + (7 - weekday));
+  return { from: today.toISOString().slice(0, 10), to: sunday.toISOString().slice(0, 10) };
+}
+
+function targetPlatforms(content) {
+  if (Array.isArray(content.platforms) && content.platforms.length) return content.platforms;
+  return [...new Set((content.publications || []).map((item) => item.platform))];
 }
 
 function render(data) {
@@ -73,9 +85,7 @@ function render(data) {
       const card = element("article", "content-card");
       card.append(element("h3", "", content.title));
       const footer = element("div", "card-footer");
-      const configured = data.platforms_by_business_line?.[content.business_line]
-        || ["youtube", "facebook", "instagram", "tiktok", "douyin", "kuaishou", "toutiao", "wechat_channels"];
-      footer.append(renderPlatforms(content.publications || [], configured));
+      footer.append(renderPlatforms(content.publications || [], targetPlatforms(content)));
       const download = downloadState(content.outputs);
       const button = element("button", "card-button download-button", download.label);
       button.type = "button";
