@@ -75,7 +75,7 @@ def main() -> None:
         from .finance import run as run_finance
 
         result = asyncio.run(run_finance(arguments.topic, arguments.publish_date))
-        payload = {"status": "succeeded", "r2": result["r2"]}
+        payload = {"status": "succeeded", "publication": result["publication"]}
     elif arguments.workflow == "language_learning_words":
         from .language_learning import generate_words
 

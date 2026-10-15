@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from core.tools.generate_cover_image import CoverError, generate_cover_image
@@ -117,6 +118,10 @@ def finish_finance_video(
         )
     except CoverError as exc:
         raise WorkflowStepError(exc.message, exc.details) from exc
+    # 合成与平台上传共用同一张封面，随成片保存在产物目录。
+    saved_cover_path = output_root / "cover.png"
+    shutil.copyfile(cover["output_path"], saved_cover_path)
+    cover["output_path"] = str(saved_cover_path)
 
     forced = set(force_shot_ids or [])
     unknown_forced = forced.difference(shot["id"] for shot in shots)
@@ -191,7 +196,7 @@ def finish_finance_video(
         days=TOPIC_DEDUPLICATION_DAYS,
     )
     production_outputs = None
-    if production_source == "local_mcp":
+    if production_source in {"local_mcp", "github_workflow"}:
         production_outputs = commit_production_outputs([{
             "production_id": f"local_mcp:finance:{run_id}:{content_kind}:{content_part}",
             "run_id": run_id,

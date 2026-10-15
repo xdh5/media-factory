@@ -81,7 +81,7 @@ def _materialize_finance_publish_metadata(record: dict, output_dir: Path) -> Non
         return
 
     prefix = f"runs/finance/{_r2_dir_for_record(record)}"
-    for filename in ("title.txt", "short-title.txt", "publish-copy.txt", "source-hook.txt"):
+    for filename in ("title.txt", "short-title.txt", "publish-copy.txt", "source-hook.txt", "cover.png"):
         destination = output_dir / filename
         if destination.is_file():
             continue
@@ -146,21 +146,22 @@ def ensure_local_publish_items(
     def _is_valid(row: dict) -> bool:
         current = Path(str(row.get("local_path") or "")).resolve()
         # 兼容历史本地产物文件名与 R2 对象名不一致的情况；发布时使用 D1 已登记且存在的本地文件。
-        return current.is_file()
+        return current.is_file() or local_video_path(row).is_file()
+
+    # 本地产物已有 R2 地址时，仅在本地文件缺失后恢复该文件。
+    for row in local_rows:
+        if not _is_valid(row) and row.get("r2_url"):
+            materialize_github_workflow_output(row)
 
     valid_local_rows = [row for row in local_rows if _is_valid(row)]
     valid_kinds = {str(row.get("content_kind") or "") for row in valid_local_rows}
     if wanted_kinds is None:
         if valid_local_rows:
-            for row in valid_local_rows:
-                _materialize_finance_publish_metadata(row, local_video_path(row).parent)
             return
         missing_kinds = None
     else:
         missing_kinds = wanted_kinds - valid_kinds
         if valid_local_rows:
-            for row in valid_local_rows:
-                _materialize_finance_publish_metadata(row, local_video_path(row).parent)
             if not missing_kinds:
                 return
 

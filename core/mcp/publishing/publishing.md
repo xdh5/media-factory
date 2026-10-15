@@ -14,6 +14,8 @@ python -m core.mcp.publishing
 - 语言学习中文传 `content_kind="en-zh"` 时，同时发布原版 `en-zh` 和问答版 `en-zh-quiz`。
 - 语言学习韩语传 `content_kind="en-ko"` 时，同时发布原版 `en-ko` 和问答版 `en-ko-quiz`。
 - 平台支持 YouTube、Facebook、Instagram、TikTok、快手、抖音、头条号和视频号。
+- 财经制作时将合入第一帧的封面原图保存到成片目录的 `cover.png`；YouTube 发布优先通过 `thumbnail_path` 将这张原图传给 `thumbnails.set`，原图缺失时才截取成片第零帧。封面提取或上传失败时不得视为发布完成。
+- 财经成片制作完成后，在同一生产任务中直接上传本地文件到 YouTube 并预约公开时间，不以 R2 交付作为发布前置条件。本地成片缺失时才从已有 R2 产物恢复。
 - `publish_mode=immediate` 时必须明确传 `publish_at=now`；`publish_mode=scheduled` 时必须传带时区的未来 ISO 8601 时间。media-publisher 的抖音、快手、头条号和视频号预约必须由平台官方确认，应用内定时任务不得视为成功。
 
 财经省略发布时间时由公共发布层排北京时间 14:00、18:00 各一篇；只有一篇时排 18:00。当日 14:00 已过时，只安排第二篇在 18:00 发布；两个时段都过期时返回错误，不自动补发。明确只指定 18:00 时只安排一篇，优先第二篇；其他单个预约时间也只安排一篇。明确立即发布仍按用户选择执行。预检返回 `default_publication_plan` 和 `default_schedule_skipped`，实际结果的 `publication_plan` 逐篇列出时间。

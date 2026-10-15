@@ -17,6 +17,7 @@ from ._errors import DuplicatePublicationError, InvalidPublishRequestError, Medi
 from .accounts import resolve_account_group
 from .content import local_publish_items, normalize_platforms, normalize_publish_date
 from .finance_schedule import plan_finance_publications
+from .thumbnails import resolve_youtube_thumbnail
 
 
 def _publishing():
@@ -172,6 +173,8 @@ def _target(item: dict, route: dict) -> dict:
     }
     if platform in PUBLIC_URL_PLATFORMS:
         target["video_url"] = _public_video_url(item)
+    if item.get("business_line") == "finance" and platform == "youtube":
+        target["thumbnail_path"] = str(resolve_youtube_thumbnail(item["local_path"]))
     return target
 
 
