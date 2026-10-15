@@ -1,4 +1,4 @@
-"""按日期串行生产；财经成片直接上传 YouTube，语言成片交付 R2。"""
+"""按日期串行生产；财经成片上传 R2 并预约 YouTube，语言成片交付 R2。"""
 
 from __future__ import annotations
 

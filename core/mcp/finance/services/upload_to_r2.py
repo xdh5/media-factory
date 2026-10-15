@@ -60,9 +60,9 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
     manifest["cover_url"] = cover["url"]
     manifest["cover_r2_key"] = cover["key"]
     manifest["r2_uploaded"] = True
-    source = str(manifest.get("production_source") or "local_mcp").strip()
+    # 成片记录固定写在 local_mcp 这一条上。GitHub 运行器销毁后本地路径会失效，发布端靠 r2_url 拉回。
     production_outputs = commit_production_outputs([{
-        "production_id": f"{source}:{MCP_ID}:{run_id}:finance:{content_part}",
+        "production_id": f"local_mcp:{MCP_ID}:{run_id}:finance:{content_part}",
         "run_id": run_id,
         "publish_date": str(manifest.get("publish_date") or "").strip(),
         "business_line": MCP_ID,
@@ -74,8 +74,8 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
             for tag in manifest.get("hashtags") or []
             if str(tag).strip().lstrip("#")
         ),
-        "source": source,
-        "local_path": str(video_path) if source == "local_mcp" else None,
+        "source": "local_mcp",
+        "local_path": str(video_path),
         "r2_url": video["url"],
         "r2_expires_at": None,
     }])

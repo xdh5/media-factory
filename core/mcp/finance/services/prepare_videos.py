@@ -1,7 +1,7 @@
 """正版实拍视频素材策略：逐镜头搜索、选择、下载并规范化为与配音一致的镜头。
 
 这是财经线的默认素材策略，与参考图千问生图并列。
-第一个镜头使用第一段原始实拍视频首帧制作片头动画，正文从第二个镜头开始使用实拍素材。
+每个镜头独立选片；第一个镜头用自己的素材制作片头动画并补足剩余时长。
 """
 
 from __future__ import annotations
@@ -60,9 +60,9 @@ def prepare_video_searches(
     storyboard_path = cache_root / STORYBOARD_TEXT_FILE_NAME
     storyboard_path.write_text(normalized_storyboard, encoding="utf-8")
     searches = []
-    # 第一个镜头由写实静态图和片头动画承担，正文从第二个镜头开始使用实拍素材。
-    stock_shots = shots[1:]
-    if not stock_shots:
+    # 片头也独立选片，避免借用下一镜头后再次从头播放。
+    stock_shots = shots
+    if len(stock_shots) < 2:
         raise WorkflowStepError("分镜至少需要两个镜头：片头动画后必须有正文视频素材")
     def search_shot(shot):
         search = search_stock_videos(
@@ -149,18 +149,21 @@ def download_selected_videos(context_path: str | Path, selections: list[dict] | 
     selected_by_id = {str(item["video_id"]): item for item in selections or []}
     width, height = map(int, VIDEO_SIZE.split("x"))
     planned = {}
+    used_sources: set[tuple[str, str]] = set()
     for video_id, search in by_video_id.items():
         candidates = search.get("candidates") or []
         if video_id in selected_by_id:
             selection = selected_by_id[video_id]
             candidates = [row for row in candidates if str(row.get("provider")) == str(selection.get("provider"))
                           and str(row.get("id")) == str(selection.get("id"))]
+        candidates = [row for row in candidates if (str(row.get("provider")), str(row.get("id"))) not in used_sources]
         chosen = select_stock_candidates(candidates, float(search["duration"]), width, height)
         if not chosen:
             raise WorkflowStepError(
-                f"镜头 {video_id} 没有单段或两段合计比实际需要多 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒、且尺寸达标的视频，请重新搜索"
+                f"镜头 {video_id} 没有单段或两段合计比实际需要多 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒、尺寸达标且未被其他镜头使用的视频，请重新搜索"
             )
         planned[video_id] = chosen
+        used_sources.update((str(row["provider"]), str(row["id"])) for row in chosen)
 
     output_root = resolved_context.parent
     raw_root, clip_root, frame_root = (output_root / name for name in ("raw", "clips", "frames"))
@@ -248,7 +251,7 @@ def build_stock_video_selection_prompt(context_path: str | Path, feedback: str =
     prompt = (
         "为每个正文镜头选择语义最贴近、横屏构图最合适的正版实拍候选视频。"
         f"网站标注时长必须比镜头实际需要至少多 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒；单段不够时，两段合计也要多出这 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒。"
-        "必须检查可用预览画面；同一期尽量不重复素材；只能选择输入候选。\n"
+        "必须检查可用预览画面；同一期各镜头必须使用不同素材；只能选择输入候选。\n"
         f"搜索结果：{json.dumps(compact, ensure_ascii=False)}\n"
         "只输出 JSON：{\"selections\":[{\"video_id\":\"shot-002\","
         "\"provider\":\"pexels\",\"id\":\"123\"}]}，完整覆盖全部正文镜头。"

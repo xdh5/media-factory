@@ -172,8 +172,14 @@ async def run(
             "production_source": "github_workflow",
         })
         manifest = await mcp.poll("finance_poll_task", started["task_path"])
+        # 先传 R2。YouTube 预约失败或运行器销毁后，国内平台仍能按 r2_url 拉回成片。
+        uploaded = await mcp.call("finance_start_upload_r2", {
+            "manifest_path": str(manifest["manifest_path"]),
+            "run_id": str(manifest["run_id"]),
+        })
+        remote = await mcp.poll("finance_poll_task", uploaded["task_path"])
 
-    # 在当前 Runner 的本地成片仍可用时立即上传，公开时间继续按分片预约。
+    # 在当前 Runner 的本地成片仍可用时立即预约，公开时间继续按分片安排。
     from .finance_publication import schedule_publication
     publication = await schedule_publication(publish_date, content_part=content_part)
 
@@ -182,6 +188,13 @@ async def run(
         ("素材策略", str(config["material_strategy"])),
         ("视频来源", ", ".join(config["video_config"]["providers"])),
         ("BGM", Path(config["production_config"]["bgm_path"]).name),
-        ("本地成片", manifest["video_path"]), ("平台发布", "已上传 YouTube 并预约公开"),
+        ("本地成片", manifest["video_path"]),
+        ("R2", str(remote["video_url"])),
+        ("平台发布", "已上传 YouTube 并预约公开"),
     ])
-    return {"manifest": manifest, "publication": publication, "production_outputs": manifest["production_outputs"]}
+    return {
+        "manifest": manifest,
+        "r2": remote,
+        "publication": publication,
+        "production_outputs": remote["production_outputs"],
+    }

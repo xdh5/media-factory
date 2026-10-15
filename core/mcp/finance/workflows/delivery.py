@@ -44,7 +44,7 @@ def finance_finish_video(
     """合成成片（同步，易超时）。优先使用 finance_start_finish_video + poll_task。
 
     material_manifest_path 传选图清单或视频素材清单，按清单内容自动识别素材策略；
-    stock_video 策略自动提取第一段已选原视频首帧制作片头动画。
+    stock_video 策略为片头独立选片，提取其原视频首帧制作动画，剩余时长播放片头自己的素材。
     """
     try:
         return _finish_video_and_commit_source_usage(

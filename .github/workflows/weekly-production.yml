@@ -95,7 +95,7 @@ jobs:
             test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
           done
 
-      - name: 按日期生产并直接上传财经 YouTube、交付语言 R2
+      - name: 按日期生产，财经上传 R2 并预约 YouTube，语言交付 R2
         env:
           PUBLISH_DATE: ${{ matrix.publish_date }}
         run: >-

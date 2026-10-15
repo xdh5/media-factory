@@ -86,9 +86,7 @@ def _render_first_shot_cached(
         seed = "|".join([MCP_ID, shot["id"]] + [_hash_file(path) for path in pool])
         page_images = _pick_page_flip_images(pool, shot["image_path"], seed)
     metadata_path = segment_path.with_suffix(".json")
-    follow_video = ""
-    if len(shots) > 1:
-        follow_video = str(shots[1].get("segment_path") or "").strip()
+    follow_video = str(shot.get("intro_video_path") or "").strip()
     payload = {
         "version": 5,
         "intro": intro,

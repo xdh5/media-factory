@@ -140,10 +140,10 @@ def _apply_material(
         frames = manifest.get("frames")
         if len(shots) < 2:
             raise WorkflowStepError("分镜至少需要两个镜头：片头动画后必须有正文视频素材")
-        expected_ids = {shot["id"] for shot in shots[1:]}
+        expected_ids = {shot["id"] for shot in shots}
         if set(videos) != expected_ids:
             raise WorkflowStepError(
-                "视频素材清单没有完整覆盖所有镜头",
+                "视频素材清单必须为片头和正文各自提供独立素材，请重新搜索并下载素材",
                 {"expected_video_ids": sorted(expected_ids), "actual_video_ids": sorted(videos)},
             )
         if not isinstance(frames, dict) or set(frames) != expected_ids:
@@ -151,16 +151,16 @@ def _apply_material(
         for video_id, video_path in videos.items():
             if not Path(str(video_path)).resolve().is_file():
                 raise WorkflowStepError(f"视频素材不存在：{video_id} -> {video_path}")
-        for shot in shots[1:]:
+        for shot in shots:
             shot["segment_path"] = str(Path(videos[shot["id"]]).resolve())
             shot["frame_path"] = str(Path(frames[shot["id"]]).resolve())
-        _ensure_clip_durations(shots[1:], cache_root, progress, _raw_source_hints(manifest, cache_root),
+        _ensure_clip_durations(shots, cache_root, progress, _raw_source_hints(manifest, cache_root),
                                manifest.get("raw_sources"), float(manifest.get("soft_blur_sigma") or 0))
-        first_video_id = shots[1]["id"]
+        first_video_id = shots[0]["id"]
         raw_sources = _raw_source_hints(manifest, cache_root)
         first_video = raw_sources.get(first_video_id)
         if first_video is None:
-            raise WorkflowStepError("第一段正文视频缺少原始下载素材，无法提取清晰片头首帧")
+            raise WorkflowStepError("片头视频缺少原始下载素材，无法提取清晰片头首帧")
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
             raise WorkflowStepError("找不到 ffmpeg，无法提取片头首帧")
@@ -172,9 +172,10 @@ def _apply_material(
         )
         if extracted.returncode or not resolved_intro_image.is_file():
             raise WorkflowStepError(f"提取原视频首帧失败：{extracted.stderr[-1500:]}")
+        shots[0]["intro_video_path"] = shots[0]["segment_path"]
         shots[0]["image_path"] = str(resolved_intro_image)
         shots[0]["frame_path"] = str(resolved_intro_image)
-        # 封面底图来自正文实拍视频帧，片头单独使用第一段原视频首帧。
+        # 片头与正文使用独立素材，封面底图仍取正文实拍视频帧。
         return True, [str(shot["frame_path"]) for shot in shots[1:]]
     images = manifest.get("images")
     expected_image_ids = {shot["id"] for shot in shots}
