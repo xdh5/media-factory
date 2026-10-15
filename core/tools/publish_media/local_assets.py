@@ -81,7 +81,7 @@ def _materialize_finance_publish_metadata(record: dict, output_dir: Path) -> Non
         return
 
     prefix = f"runs/finance/{_r2_dir_for_record(record)}"
-    for filename in ("title.txt", "short-title.txt", "publish-copy.txt"):
+    for filename in ("title.txt", "short-title.txt", "publish-copy.txt", "source-hook.txt"):
         destination = output_dir / filename
         if destination.is_file():
             continue
@@ -202,6 +202,7 @@ def enrich_local_publish_item(row: dict) -> dict | None:
     title_path = output_dir / "title.txt"
     short_title_path = output_dir / "short-title.txt"
     copy_path = output_dir / "publish-copy.txt"
+    source_hook_path = output_dir / "source-hook.txt"
     content_kind = str(row.get("content_kind") or "").strip()
     hashtags = str(row.get("hashtags") or "").strip()
     if content_kind.startswith(("en-ko", "en-zh")):
@@ -216,5 +217,6 @@ def enrich_local_publish_item(row: dict) -> dict | None:
         "title": title_path.read_text(encoding="utf-8").strip() if title_path.is_file() else title,
         "short_title": short_title_path.read_text(encoding="utf-8").strip() if short_title_path.is_file() else "",
         "publish_copy": publish_copy,
+        "source_hook": source_hook_path.read_text(encoding="utf-8").strip() if source_hook_path.is_file() else "",
         "hashtags": hashtags,
     }

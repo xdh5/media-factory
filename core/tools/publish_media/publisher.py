@@ -151,11 +151,18 @@ def _publish_copy(item: dict) -> str:
 
 def _target(item: dict, route: dict) -> dict:
     platform = str(route["platform"])
+    description = _publish_copy(item)
+    if item.get("business_line") == "finance" and platform == "youtube":
+        source_hook = str(item.get("source_hook") or "").strip()
+        hashtags = str(item.get("hashtags") or "").strip()
+        if not source_hook or not hashtags:
+            raise InvalidPublishRequestError("财经 YouTube 描述必须包含黄金钩子和 hashtag，请补齐 source-hook.txt 与成片标签")
+        description = f"{source_hook}\n\n{hashtags}"
     target = {
         "platform": platform,
         "account_key": str(route.get("account_key") or f"{platform}:{route['platform_account_id']}"),
         "title": str(item["title"]),
-        "description": _publish_copy(item),
+        "description": description,
         "file": str(item["local_path"]),
         "tags": str(item.get("hashtags") or "").strip(),
         "bt2": str(item.get("short_title") or "").strip(),

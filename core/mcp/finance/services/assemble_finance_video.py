@@ -213,9 +213,11 @@ def finish_finance_video(
     title_path = output_root / "title.txt"
     short_title_path = output_root / "short-title.txt"
     publish_copy_path = output_root / "publish-copy.txt"
+    source_hook_path = output_root / "source-hook.txt"
     title_path.write_text(metadata["title"] + "\n", encoding="utf-8")
     short_title_path.write_text(metadata["short_title"] + "\n", encoding="utf-8")
     publish_copy_path.write_text(publish_copy + "\n", encoding="utf-8")
+    source_hook_path.write_text(str(draft.get("source_hook") or "").strip() + "\n", encoding="utf-8")
     attribution_comment_path = _write_attributions(material_manifest, settings, output_root)
 
     created_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -240,6 +242,8 @@ def finish_finance_video(
         "short_title_path": str(short_title_path),
         "publish_copy": publish_copy,
         "publish_copy_path": str(publish_copy_path),
+        "source_hook": str(draft.get("source_hook") or "").strip(),
+        "source_hook_path": str(source_hook_path),
         "attribution_comment_path": attribution_comment_path,
         "stock_video_attributions": list(material_manifest.get("attributions") or []),
         "performance": {"materials_seconds": material_manifest.get("elapsed_seconds"),

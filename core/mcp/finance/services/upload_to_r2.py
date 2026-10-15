@@ -36,6 +36,7 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
         "title_path",
         "short_title_path",
         "publish_copy_path",
+        "source_hook_path",
         "attribution_comment_path",
     )
     uploaded_assets: dict[str, dict] = {}
