@@ -390,7 +390,8 @@ def _concat_reencode(
             command.extend(["-ss", f"{clip['start']:.3f}"])
         if not clip["full"]:
             command.extend(["-t", f"{clip['duration']:.3f}"])
-        command.extend(["-i", str(clip["path"])])
+        # 来源文件可能夹有少量损坏 AAC 包；保留可解码原声，仅跳过坏包。
+        command.extend(["-fflags", "+discardcorrupt", "-err_detect", "ignore_err", "-i", str(clip["path"])])
         duration = f"{clip['duration']:.3f}"
         video_index = int(clip["probe"]["video_stream_index"])
         filters.append(
@@ -409,7 +410,7 @@ def _concat_reencode(
         else:
             filters.append(
                 f"[{index}:{int(audio_index)}]asetpts=PTS-STARTPTS,"
-                f"aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,"
+                f"aresample=48000:async=1:first_pts=0,aformat=sample_fmts=fltp:channel_layouts=stereo,"
                 f"atrim=duration={duration},asetpts=PTS-STARTPTS,apad=whole_dur={duration}[a{index}]"
             )
     joined = "".join(f"[v{index}][a{index}]" for index in range(len(clips)))
@@ -461,7 +462,8 @@ def _concat_reencode_chunked(
                 command.extend(["-ss", f"{clip['start']:.3f}"])
             if not clip["full"]:
                 command.extend(["-t", duration])
-            command.extend(["-i", str(clip["path"])])
+            # 与整段编码保持一致：只丢弃损坏包，不静音整条来源。
+            command.extend(["-fflags", "+discardcorrupt", "-err_detect", "ignore_err", "-i", str(clip["path"])])
             video_index = int(clip["probe"]["video_stream_index"])
             video_filter = (
                 f"[0:{video_index}]setpts=PTS-STARTPTS,"
@@ -479,7 +481,7 @@ def _concat_reencode_chunked(
             else:
                 audio_filter = (
                     f"[0:{int(audio_index)}]asetpts=PTS-STARTPTS,"
-                    f"aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,"
+                    f"aresample=48000:async=1:first_pts=0,aformat=sample_fmts=fltp:channel_layouts=stereo,"
                     f"atrim=duration={duration},asetpts=PTS-STARTPTS,apad=whole_dur={duration}[aout]"
                 )
             command.extend([
