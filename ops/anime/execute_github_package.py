@@ -380,12 +380,6 @@ def execute_package(execution_id: str) -> dict:
         result.update({"execution_id": execution_id, "status": "succeeded", "run_url": run_url,
                        "selection_reason": package["selection_reason"]})
         save_json("result.json", result)
-        # 仅成功发布的新任务登记清理计划，历史对象及失败任务不自动删除。
-        from ops.anime.cleanup_execution_files import retention_policy
-        try:
-            save_json("retention.json", retention_policy(execution_id, manifest))
-        except Exception as retention_exc:
-            diagnostic("清理计划登记失败", error_type=type(retention_exc).__name__)
         summary = os.getenv("GITHUB_STEP_SUMMARY")
         if summary:
             with open(summary, "a", encoding="utf-8") as stream:

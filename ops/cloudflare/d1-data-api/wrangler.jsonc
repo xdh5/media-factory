@@ -10,14 +10,8 @@
     }
   ],
   "triggers": {
-    "crons": ["30 20 * * *"]
+    "crons": []
   },
-  "r2_buckets": [
-    {
-      "binding": "ANIME_EXECUTION_FILES",
-      "bucket_name": "language-learning"
-    }
-  ],
   "observability": {
     "logs": {
       "enabled": true,

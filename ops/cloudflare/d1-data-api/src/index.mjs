@@ -1,5 +1,3 @@
-import { cleanupExpiredAnimeExecutionFiles } from "./anime-execution-cleanup.mjs";
-
 const ACTIVE_STATUSES = ["reserved", "completed", "published", "used"];
 const PUBLICATION_BUSINESS_LINES = ["finance", "language_learning", "psychology_quiz", "anime"];
 const ACCOUNT_GROUP_BUSINESS_LINES = PUBLICATION_BUSINESS_LINES;
@@ -1586,9 +1584,6 @@ async function commitDouyinResearch(request, env) {
 }
 
 export default {
-  async scheduled(controller, env, ctx) {
-    ctx.waitUntil(cleanupExpiredAnimeExecutionFiles(env.ANIME_EXECUTION_FILES, controller.scheduledTime));
-  },
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
