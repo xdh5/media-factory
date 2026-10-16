@@ -10,6 +10,7 @@ import re
 import shutil
 import time
 import traceback
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from core.tools.media_files import download_public_file, upload_public_file
 from core.tools.media_files.storage import _client, _settings
 from core.tools.publish_media.accounts import resolve_account_group
 from download_video import download
-from ops.anime.download_checkpoint import persist_checkpoint, restore_checkpoint
+from ops.anime.download_checkpoint import CheckpointUploader
 
 
 def verify_authorization() -> None:
@@ -59,7 +60,7 @@ def verify_authorization() -> None:
 
 
 def execute_package(execution_id: str) -> dict:
-    """正常下载只写本地；失败时拼接来源前缀保存检查点，成片及发布回执持久化。"""
+    """后台分块保存下载进度，最终统一拼接；成片和回执持久化。"""
     if not re.fullmatch(r"[a-f0-9]{32}", execution_id):
         raise AnimeError("执行 ID 必须是 32 位十六进制")
     prefix = f"runs/anime/executions/{execution_id}"
@@ -90,6 +91,8 @@ def execute_package(execution_id: str) -> dict:
     restored_count = 0
     final_manifest_saved = False
     sources = []
+    checkpoints = None
+    progress_lock = threading.Lock()
 
     def diagnostic(event: str, **fields) -> None:
         record = {"timestamp": datetime.now(timezone.utc).isoformat(),
@@ -103,13 +106,15 @@ def execute_package(execution_id: str) -> dict:
     def progress(message: str) -> None:
         nonlocal last_progress_upload
         print(message, flush=True)
-        payload = {"execution_id": execution_id, "status": "running", "message": message,
-                   "run_url": run_url, "phase": phase, "completed_source_count": completed_count}
-        _write_json(directory / "result.json", payload)
-        # 状态最多每分钟上传一次，避免每个来源和每条拼接进度都请求 R2。
-        if time.monotonic() - last_progress_upload >= 60:
-            upload_public_file(directory / "result.json", f"{prefix}/result.json", content_type="application/json")
-            last_progress_upload = time.monotonic()
+        with progress_lock:
+            payload = {"execution_id": execution_id, "status": "running", "message": message,
+                       "run_url": run_url, "phase": phase, "completed_source_count": completed_count,
+                       "checkpoint_source_count": checkpoints.completed_count if checkpoints else 0}
+            _write_json(directory / "result.json", payload)
+            # 状态最多每分钟上传一次，检查点上传独立在后台执行。
+            if time.monotonic() - last_progress_upload >= 60:
+                upload_public_file(directory / "result.json", f"{prefix}/result.json", content_type="application/json")
+                last_progress_upload = time.monotonic()
 
     run_url = f"{os.getenv('GITHUB_SERVER_URL', 'https://github.com')}/{os.getenv('GITHUB_REPOSITORY', '')}/actions/runs/{os.getenv('GITHUB_RUN_ID', '')}"
     try:
@@ -122,6 +127,13 @@ def execute_package(execution_id: str) -> dict:
         if expected_id != execution_id or package["thumbnail_key"] != f"{prefix}/thumbnail.jpg":
             raise AnimeError("执行包内容摘要或封面对象路径不一致")
         validate_copy(package["titles"], package["descriptions"], package["tags"])
+        if exists(f"{prefix}/result.json"):
+            previous_path = directory / "previous-result.json"
+            download_public_file(f"{prefix}/result.json", previous_path)
+            previous = json.loads(previous_path.read_text(encoding="utf-8"))
+            if previous.get("status") == "succeeded" and previous.get("execution_id") == execution_id:
+                print("该执行已成功发布，复用结果，不重新下载或上传", flush=True)
+                return previous
         sources = package["sources"]
         if not sources or len({item["aweme_id"] for item in sources}) != len(sources):
             raise AnimeError("执行包来源为空或重复")
@@ -148,8 +160,10 @@ def execute_package(execution_id: str) -> dict:
             final_manifest_saved = True
         else:
             phase = "恢复下载检查点"
-            downloaded, restored_count = restore_checkpoint(
-                directory, prefix, execution_id, sources, exists, download_public_file, progress)
+            checkpoints = CheckpointUploader(
+                directory, prefix, execution_id, sources, exists, download_public_file, upload_public_file,
+                lambda message: print(message, flush=True))
+            restored_count = checkpoints.completed_count
             completed_count = restored_count
             for order, work in enumerate(sources[restored_count:], restored_count + 1):
                 phase = "下载来源"
@@ -176,9 +190,11 @@ def execute_package(execution_id: str) -> dict:
                 if expected <= 0 or abs(probe["duration"] - expected) > max(5, expected * 0.02):
                     raise AnimeError("来源实际时长与执行清单不符，交回 Agent 判断", {
                         **current_source, "actual_duration_seconds": probe["duration"]})
-                downloaded.append({**metadata, "path": path, "duration": probe["duration"], "probe": probe,
-                                   "order": order, "share_text": work["work_url"]})
+                checkpoints.add({**metadata, "path": path, "duration": probe["duration"], "probe": probe,
+                                 "order": order, "share_text": work["work_url"]}, order)
                 completed_count = order
+            downloaded = checkpoints.final_sources()
+            restored_count = checkpoints.completed_count
             current_source = {}
             phase = "拼接最终成片"
             if len(sources) == 1:
@@ -215,6 +231,12 @@ def execute_package(execution_id: str) -> dict:
         result.update({"execution_id": execution_id, "status": "succeeded", "run_url": run_url,
                        "selection_reason": package["selection_reason"]})
         save_json("result.json", result)
+        # 仅成功发布的新任务登记清理计划，历史对象及失败任务不自动删除。
+        from ops.anime.cleanup_execution_files import retention_policy
+        try:
+            save_json("retention.json", retention_policy(execution_id, manifest))
+        except Exception as retention_exc:
+            diagnostic("清理计划登记失败", error_type=type(retention_exc).__name__)
         summary = os.getenv("GITHUB_STEP_SUMMARY")
         if summary:
             with open(summary, "a", encoding="utf-8") as stream:
@@ -234,13 +256,12 @@ def execute_package(execution_id: str) -> dict:
         diagnostic("执行失败", error_type=type(exc).__name__, error=str(exc), details=safe_details)
         (directory / "failure-traceback.log").write_text(traceback.format_exc(), encoding="utf-8")
         checkpoint_error = None
-        if not final_manifest_saved and completed_count > restored_count and downloaded:
+        if not final_manifest_saved and checkpoints is not None:
             try:
                 phase = "保存失败检查点"
-                persist_checkpoint(directory, prefix, execution_id, sources, downloaded,
-                                   completed_count, upload_public_file, progress)
-                restored_count = completed_count
+                restored_count = checkpoints.finish()
             except Exception as checkpoint_exc:
+                restored_count = checkpoints.completed_count
                 checkpoint_error = str(checkpoint_exc)
                 (directory / "checkpoint-traceback.log").write_text(traceback.format_exc(), encoding="utf-8")
                 diagnostic("检查点保存失败", error_type=type(checkpoint_exc).__name__, error=checkpoint_error)
@@ -257,6 +278,9 @@ def execute_package(execution_id: str) -> dict:
         except Exception as result_exc:
             diagnostic("失败结果上传失败", error_type=type(result_exc).__name__)
         raise
+    finally:
+        if checkpoints is not None:
+            checkpoints.close()
 
 
 if __name__ == "__main__":

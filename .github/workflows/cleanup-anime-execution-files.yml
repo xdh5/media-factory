@@ -1,0 +1,46 @@
+name: 清理动漫任务到期视频
+
+on:
+  schedule:
+    - cron: "30 20 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 只读预览，不删除文件
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: cleanup-anime-execution-files
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: ghcr.io/xdh5/media-factory-runner:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: 清理成功任务的到期检查点和成片
+        shell: bash
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python -m ops.anime.cleanup_execution_files --dry-run
+          else
+            python -m ops.anime.cleanup_execution_files
+          fi

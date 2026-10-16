@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 from pathlib import Path
 from typing import Callable
 
@@ -291,6 +292,12 @@ def _render_part(clips: list[dict], output_path: Path, *, progress: Progress | N
             except AnimeError:
                 _report(progress, f"{label} 直接拼接失败，改为重新编码")
                 _concat_reencode(clips, temporary, progress=progress, label=label)
+        elif clips and all(_signature(clip["probe"]) == _signature(clips[0]["probe"]) for clip in clips):
+            try:
+                _concat_trimmed_boundaries(clips, temporary, progress=progress, label=label)
+            except AnimeError:
+                _report(progress, f"{label} 边界处理后格式不一致，改为统一编码")
+                _concat_reencode(clips, temporary, progress=progress, label=label)
         else:
             _concat_reencode(clips, temporary, progress=progress, label=label)
         if not temporary.is_file() or temporary.stat().st_size <= 0:
@@ -305,6 +312,28 @@ def _can_stream_copy(clips: list[dict]) -> bool:
         return False
     first = _signature(clips[0]["probe"])
     return all(_signature(clip["probe"]) == first for clip in clips)
+
+
+def _concat_trimmed_boundaries(clips, output_path, *, progress, label):
+    """完整块直接复用，只编码分段边界涉及的小块，避免整段长视频重复编码。"""
+    with tempfile.TemporaryDirectory(prefix=".boundary-", dir=output_path.parent) as temporary:
+        prepared = []
+        signature = _signature(clips[0]["probe"])
+        for index, clip in enumerate(clips):
+            if clip["full"]:
+                prepared.append(clip)
+                continue
+            _report(progress, f"{label} 仅处理分段边界 {index + 1}/{len(clips)}")
+            path = Path(temporary) / f"boundary-{index}.mp4"
+            _concat_reencode([clip], path, progress=progress, label=label)
+            probe = _probe(path)
+            if _signature(probe) != signature or abs(probe["duration"] - clip["duration"]) > 0.5:
+                raise AnimeError("边界视频的格式或时长不适合直接拼接")
+            prepared.append({"path": path, "probe": probe, "duration": probe["duration"], "full": True})
+        _concat_copy(prepared, output_path)
+        expected = sum(clip["duration"] for clip in clips)
+        if abs(_probe(output_path)["duration"] - expected) > max(0.5, len(clips) * 0.05):
+            raise AnimeError("边界处理后的成片时长不符")
 
 
 def _signature(probe: dict) -> tuple:
@@ -390,6 +419,7 @@ def _concat_reencode(
         "-filter_complex", graph,
         "-map", "[vout]", "-map", "[aout]",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-r", fps_token, "-fps_mode", "cfr",
         "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart",
         "-progress", "pipe:1", "-nostats",
