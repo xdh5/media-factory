@@ -10,6 +10,8 @@ MCP_ID = "anime"
 MAX_PART_SECONDS = 3 * 60 * 60
 
 SERVER_INSTRUCTIONS = (
+    "GitHub Action 以全部分段上传完成、取得视频 ID 且回执持久化为成功条件，不等待 YouTube 转码。"
+    "转码仍在处理中不能导致 Action 失败；回执齐全的重试只补写记录和成功结果，不重传视频。"
     "开始流程先调用 anime_get_production_config，只读取得部署配置或数据库中唯一启用的动漫 YouTube 账号组；"
     "不能因用户未填写账号组就直接追问，只有无可用组或多组无法确定时才询问。"
     "主页找剧并发布默认使用 GitHub Action：找齐并排序后 anime_start_prepare_execution，"

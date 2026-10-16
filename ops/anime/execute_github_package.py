@@ -88,6 +88,42 @@ def execute_package(execution_id: str) -> dict:
         upload_public_file(path, f"{prefix}/{name}", content_type="application/json")
 
     last_progress_upload = 0.0
+    def completed_upload_result(manifest, package):
+        """全部上传回执已持久化即完成，不等待 YouTube 后台转码。"""
+        from core.tools.media_records import commit_publication_records
+        parts = manifest.get("parts") or []
+        if not parts or len(parts) != int(manifest.get("part_count") or parts[0].get("part_count") or len(parts)):
+            return None
+        receipts = []
+        for part in parts:
+            path = directory / f"youtube-receipt-{part['part_index']}.json"
+            if not exists(f"{prefix}/{path.name}"):
+                return None
+            download_public_file(f"{prefix}/{path.name}", path)
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            uploaded = saved.get("result") or {}
+            if (saved.get("channel_id") != package["channel_id"]
+                    or saved.get("video_sha256") != part.get("sha256")
+                    or not uploaded.get("video_id") or not uploaded.get("video_url")):
+                raise AnimeError(f"第 {part['part_index']} 段上传回执与成片或频道不一致")
+            receipts.append((part, saved))
+        records = []
+        for part, saved in receipts:
+            run_id = f"anime-{saved['video_sha256']}"
+            records.append({"publication_id": run_id, "run_id": run_id, "business_line": "anime",
+                            "platform": "youtube", "connector": "youtube", "account_id": package["channel_id"],
+                            "content_part": part["part_index"], "title": saved["title"],
+                            "publish_mode": "immediate", "publish_at": datetime.now(timezone.utc).isoformat(),
+                            "status": "published", "external_id": saved["result"]["video_id"],
+                            "external_url": saved["result"]["video_url"]})
+        stored = commit_publication_records(records)["records"]
+        by_id = {item["external_id"]: item for item in stored}
+        return {"account_group": package["account_group"], "completion_basis": "youtube_upload_receipts",
+                "processing_verified": False,
+                "message": "全部分段上传完成且回执已保存；YouTube 后台转码不阻塞执行成功",
+                "published": [{"record": by_id[saved["result"]["video_id"]], "result": saved["result"]}
+                              for part, saved in receipts]}
+
     phase = "初始化"
     current_source = {}
     downloaded = []
@@ -179,6 +215,7 @@ def execute_package(execution_id: str) -> dict:
             progress("恢复已拼接成片")
             download_public_file(f"{prefix}/manifest.json", assembled)
             manifest = json.loads(assembled.read_text(encoding="utf-8"))
+            publish_result = completed_upload_result(manifest, package)
             for part in manifest["parts"]:
                 receipt_name = f"youtube-receipt-{part['part_index']}.json"
                 if exists(f"{prefix}/{receipt_name}"):
@@ -313,8 +350,8 @@ def execute_package(execution_id: str) -> dict:
             manifest["selection_reason"] = package["selection_reason"]
             save_json("manifest.json", manifest)
             final_manifest_saved = True
-            # 所有分段都已上传后统一核验；未处理完时重跑只复用回执，不重复上传。
-            publish_result = None
+            # 持久化的上传回执齐全即成功；平台转码与 Action 上传完成是两个阶段。
+            publish_result = completed_upload_result(manifest, package)
         if publish_result is None:
             phase = "发布 YouTube"
             for part in manifest["parts"]:
@@ -335,7 +372,10 @@ def execute_package(execution_id: str) -> dict:
                 receipt_saved=lambda receipt: upload_public_file(
                     receipt, f"{prefix}/{receipt.name}", content_type="application/json"),
                 playlist_title=package.get("series_name") or "",
-                require_completed=version >= 2)
+                require_completed=version >= 2, verify_processing=False)
+            publish_result = completed_upload_result(manifest, package)
+            if publish_result is None:
+                raise AnimeError("分段上传回执未保存完整，不能登记执行成功")
         result = publish_result
         result.update({"execution_id": execution_id, "status": "succeeded", "run_url": run_url,
                        "selection_reason": package["selection_reason"]})

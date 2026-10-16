@@ -58,7 +58,7 @@ cache/output/anime/run-*/
 1. `anime_start_prepare_execution(discovery_path, work_ids, selection_reason)`：冻结来源顺序，仅远程读取第一来源前60秒并转写，返回预览 `manifest_path`。轮询到完成。
 2. 宿主根据预览生成一套共用标题、描述和标签；标题、描述、搜索标签和 hashtag 都必须包含“已完结”。封面工具按预计分段数返回独立任务，每张封面自动带 `第N集（共M集）`。
 3. `anime_dispatch_github_execution(manifest_path, titles, descriptions, tags, account_group)`：上传执行包和全部分段封面至 R2，启动 main 上的 `publish-anime-youtube.yml`。标题和描述数组各一个元素。授权使用 `ANIME_GITHUB_TOKEN`，也可复用本机 gh 登录。
-4. Action 全量下载并核对 ID 和时长；每段拼好并上传完成、取得视频 ID、保存回执、设置该集封面及加入播放列表后，立即拼下一段，不等待 YouTube 转码。全部分段上传后统一核验平台结果并写回 D1；尚在处理时退出，重跑只核验回执，不重复上传。各段标题自动标明集数，并幂等加入以作品名命名的同一公开播放列表。Action 不配置 LLM、Groq 或生图密钥。账号组目标发生变化、来源不符或播放列表授权不足时停止。
+4. Action 全量下载并核对 ID 和时长；每段拼好并上传完成、取得视频 ID、保存回执、设置该集封面及加入播放列表后，立即拼下一段，不等待 YouTube 转码。全部分段上传完成、取得视频 ID 且回执持久化后写回 D1，立即成功退出，不等待平台转码。回执齐全的重试只补写记录和结果，不重复下载、拼接或上传；处理中不能导致 Action 失败。上传完成与转码完成分别报告。各段标题自动标明集数，并幂等加入以作品名命名的同一公开播放列表。Action 不配置 LLM、Groq 或生图密钥。账号组目标发生变化、来源不符或播放列表授权不足时停止。
 5. 返回执行 ID 和工作流链接，无需宿主持续在线。按需 `anime_get_github_execution_result(execution_id)` 查询；`dispatched` 不等于发布成功。
 
 执行包、失败时生成的下载检查点、完整成片、回执和结果保存在 `runs/anime/executions/{执行ID}/`。正常下载按约15分钟或128MB形成独立块，后台只上传新增块；重跑同一 ID 恢复已提交块后从下一条来源继续。每段成片完成后先持久化并发布，平台回执即时保存，下一段失败时不会重复上传已成功段。已有完整成片时直接恢复，复用回执核验，不重新生成文案或封面。GitHub 诊断 artifact 保存七天，R2 缓存不自动删除。托管 Runner 的磁盘和六小时执行时限仍适用，超限时保留已持久化进度并报告。
