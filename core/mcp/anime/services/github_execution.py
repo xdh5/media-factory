@@ -103,7 +103,7 @@ def _github_request(method: str, endpoint: str, payload: dict | None = None) -> 
 
 
 def dispatch_execution(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str],
-                       account_group: str) -> dict:
+                       account_group: str = "") -> dict:
     """上传不可变执行包并启动 Action；只在用户授权发布后调用。"""
     from core.tools.media_files import upload_public_file
     from core.tools.publish_media.accounts import resolve_account_group
@@ -116,8 +116,8 @@ def dispatch_execution(manifest_path: str, titles: list[str], descriptions: list
     intro = directory / "youtube-intro-1.json"
     if not intro.is_file():
         raise AnimeError("请先完成第一来源开头转写")
-    if not account_group.strip():
-        raise AnimeError("必须指定发布账号组")
+    from .accounts import production_config
+    account_group = production_config(account_group)["account_group"]
     routes = resolve_account_group(account_group, "anime", ["youtube"])
     if len(routes) != 1:
         raise AnimeError("目标账号组必须对应一个 YouTube 频道")

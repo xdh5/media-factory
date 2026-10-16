@@ -109,8 +109,18 @@ def anime_start_prepare_execution(discovery_path: str, work_ids: list[str], sele
 
 
 @mcp.tool()
+def anime_get_production_config(account_group: str = "") -> dict:
+    """只读取得动漫 Action 流程和默认账号组。未指定时自动读取部署配置或唯一启用的数据库动漫 YouTube 组，不要求用户重复提供。"""
+    from .services.accounts import production_config
+    try:
+        return production_config(account_group)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
+@mcp.tool()
 def anime_dispatch_github_execution(manifest_path: str, titles: list[str], descriptions: list[str],
-                                    tags: list[str], account_group: str) -> dict:
+                                    tags: list[str], account_group: str = "") -> dict:
     """获得用户发布授权后使用。上传执行包和共用封面并启动 GitHub Action，全量下载、拼接、上传全部由 Action 执行。返回 dispatched 不代表已发布成功。"""
     try:
         return dispatch_execution(manifest_path, titles, descriptions, tags, account_group)
@@ -154,7 +164,7 @@ def anime_save_youtube_thumbnails(context_path: str, images: list[dict]) -> dict
 
 
 @mcp.tool()
-def anime_start_publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str], account_group: str) -> dict:
+def anime_start_publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str], account_group: str = "") -> dict:
     """必须获得用户发布授权后使用。titles 和 descriptions 各只传一个元素。所有段共用文案和第一段封面，发布到指定动漫账号组的 YouTube。未生成封面时拒绝发布。"""
     directory, _ = load_manifest(manifest_path)
     return {**runner_submit_task(cache_dir=directory, run_id=str(directory), step="youtube-publish",

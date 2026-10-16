@@ -7,6 +7,10 @@ description: 从作者主页寻找指定动漫作品，按集序下载或复用�
 
 从当前工作区向上定位同时包含 `core/mcp/anime` 和 `.agents/skills` 的项目根目录，不假定用户名、磁盘盘符或检出位置。用户明确调用本技能、要求按此流程制作发布，或明确要求发布时，即授权将指定作品立即公开发布到用户指定账号组的 YouTube；不重复索要发布确认。仅要求下载、找剧或拼接时只生产，不推断发布授权。用户指定预约时，不能调用当前只支持即时公开发布的动漫工具。
 
+## 配置预检
+
+开始先调用 `anime_get_production_config`，自动取得部署配置 `ANIME_ACCOUNT_GROUP` 或数据库中唯一启用的动漫 YouTube 账号组。用户明确指定的账号组优先。已有唯一可用组时直接复用，不要求用户重复提供；只有无可用组、配置不匹配或多个候选无法确定时才询问。账号组配置不等于发布授权，仍按用户当前任务确定是否发布。
+
 ## 制作
 
 先读取项目根目录下的 `.agents/skills/produce-anime-video/SKILL.md`，只执行其中的扫描、找剧和必要片段取证，不调用本地拼接入口。标题描述、集数、发布时间和时长优先；必要时比较远程短片段口播；封面识别只作最后兜底。
@@ -33,7 +37,7 @@ description: 从作者主页寻找指定动漫作品，按集序下载或复用�
 
 ## 发布
 
-封面保存后，调用 `anime_dispatch_github_execution(manifest_path, titles, descriptions, tags, account_group)`；标题和描述数组各只传一个元素，所有分段共用文案和封面。必须从用户指令或部署配置取得账号组，缺失时询问。工具上传执行包和封面到 R2，再启动 main 上的 `publish-anime-youtube.yml`。GitHub 授权使用部署环境的 `ANIME_GITHUB_TOKEN` 或本机已登录的 gh；不把凭据写入执行包。
+封面保存后，调用 `anime_dispatch_github_execution(manifest_path, titles, descriptions, tags, account_group)`；标题和描述数组各只传一个元素，所有分段共用文案和封面。账号组使用配置预检结果，省略时工具自动解析，不因用户未填写而追问。工具上传执行包和封面到 R2，再启动 main 上的 `publish-anime-youtube.yml`。GitHub 授权使用部署环境的 `ANIME_GITHUB_TOKEN` 或本机已登录的 gh；不把凭据写入执行包。
 
 Action 不调用 LLM、Groq 或生图服务。它从清单中的原始作品链接重新解析临时下载地址，全量下载并核对作品 ID 和时长。单个现成合集保留原文件；多个来源按每段三小时上限均分拼接。随后逐段立即公开上传、设置共用封面、核验平台处理状态和实际时长，并写回 D1。来源失效、时长不符或账号组指向变化时停止，不自行替换来源。
 
@@ -49,3 +53,5 @@ Docker 触发 Action 时还需注入 `ANIME_GITHUB_TOKEN` 或 `GH_TOKEN`。本�
 
 Action 完成后交付 YouTube 链接、实际标题、频道和收录范围；触发阶段明确说明仍在后台执行。凭据不写入技能或 Git，不触发其他平台发布。
 
+
+扫描故障排查：空页但游标前进时由采集库继续翻页；字段不完整时只在同一游标有限重试，重试失败后报告 read_count、游标和字段摘要，不把部分扫描当完整结果。Docker MCP 与直接采集必须使用一致配置：保留显式环境变量，先加载采集库 `.env`，再用工厂 `.env` 补充缺项。修复后用正式 MCP 扫描入口验证，不只验证直接函数调用。

@@ -70,3 +70,5 @@ Action 所需 Secrets：已有 D1 和 R2 配置、`ANIME_PUBLISHING_CREDENTIALS_
 用户明确授权发布时，调用 `anime_start_transcribe_intro(manifest_path)`，抽取第一段成片前60秒并复用 Groq 转写。宿主根据转写生成独立发布文案，不覆盖来源文案。文案确定后调用 `anime_prepare_youtube_thumbnails(manifest_path, titles)`，titles 只传一个共用标题，工具只从第一段抽一帧作为画风参考。宿主查看这一帧后自己一次生成封面，画风与参考帧一致，标题和画面一起出图，再调用 `anime_save_youtube_thumbnails(context_path, images)`。然后调用 `anime_start_publish_youtube(manifest_path, titles, descriptions, tags, account_group)`，逐段即时公开发布到用户指定的动漫账号组，并上传已保存的封面。发布工具不代替宿主生图。目录从项目布局推导，频道身份与凭据引用从数据库和部署环境读取，不预置个人信息。耗时的转写和发布通过 `anime_poll_task` 轮询。封面准备和保存是同步工具。
 
 标题、描述数组各只传一个元素，所有分段共用文案和第一段封面，标题最多100字符，描述最多5000字符；标签预算420字符以内，给平台去重标记留空间。第一段前一分钟未转写时拒绝发布。工具按文件摘要和频道查询发布记录去重，保存本地平台回执并逐段写回 D1；数据库写回失败时重试复用回执。新增工具尚未在客户端加载时，可用 `ops/anime/run_mcp_tool.py` 通过 MCP stdio 调用。
+
+账号组预检使用 anime_get_production_config：显式账号组优先，其次 ANIME_ACCOUNT_GROUP，最后自动选择数据库中唯一启用且包含 YouTube 成员的动漫组。发布工具允许省略账号组并复用此解析逻辑；多个候选或无可用组时返回候选信息。Docker 调用先加载采集库配置再补充工厂配置，保留显式环境变量，避免同一主页在不同入口使用不同 Cookie。

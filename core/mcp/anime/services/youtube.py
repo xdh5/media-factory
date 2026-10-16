@@ -300,8 +300,8 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
     from platform_api.account_registry import account_context, verify_account
     from platform_api.youtube import publish_to_youtube
 
-    if not account_group.strip():
-        raise AnimeError("必须明确指定目标账号组")
+    from .accounts import production_config
+    account_group = production_config(account_group)["account_group"]
     routes = resolve_account_group(account_group, "anime", ["youtube"])
     if len(routes) != 1:
         raise AnimeError("目标账号组必须明确对应一个 YouTube 频道")

@@ -10,6 +10,8 @@ MCP_ID = "anime"
 MAX_PART_SECONDS = 3 * 60 * 60
 
 SERVER_INSTRUCTIONS = (
+    "开始流程先调用 anime_get_production_config，只读取得部署配置或数据库中唯一启用的动漫 YouTube 账号组；"
+    "不能因用户未填写账号组就直接追问，只有无可用组或多组无法确定时才询问。"
     "主页找剧并发布默认使用 GitHub Action：找齐并排序后 anime_start_prepare_execution，"
     "只读取第一来源开头60秒并转写，禁止先全量下载或拼接。"
     "以返回的预览 manifest_path 准备一套共用标题、描述、标签和一张宿主封面，"

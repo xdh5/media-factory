@@ -7,6 +7,8 @@ description: 生产动漫视频。通过动漫 MCP 从作者主页自主寻找�
 
 ## 作者主页找剧
 
+用户要求按动漫制作发布流程执行时，先调用 `anime_get_production_config` 自动取得已有动漫账号组，唯一可用组不重复询问。仅制作不自动发布。
+
 用户同时要求发布到 YouTube 时，只执行本节的发现、匹配和必要取证步骤，不执行第 6 步本地生产。改用 `publish-anime-youtube` 技能中的 `anime_start_prepare_execution`，由 GitHub Action 全量下载、拼接和上传。片段取证仅远程截取短片段，不下载完整来源。
 
 用户提供作者主页和作品名，即授权自主查找、下载与本地拼接，无需逐条让用户选链接。当前主页扫描复用 media-collector，仅支持抖音；其他平台主页不能冒充支持。

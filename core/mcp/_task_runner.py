@@ -216,6 +216,8 @@ def submit_task(
                 "type": type(extra).__name__,
                 "traceback": trace,
             }
+            if isinstance(getattr(extra, "details", None), dict):
+                data["error"]["details"] = extra.details
             _write_task(path, data)
         finally:
             with _registry_lock:
