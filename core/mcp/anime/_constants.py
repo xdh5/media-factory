@@ -17,6 +17,8 @@ SERVER_INSTRUCTIONS = (
     "以返回的预览 manifest_path 准备一套共用标题、描述、标签和一张宿主封面，"
     "保存封面后 anime_dispatch_github_execution 上传执行包并触发 Action。"
     "Action 全量下载、拼接、分段、上传和写回，不调用 LLM。"
+    "来源正常下载不逐条上传 R2；出错时拼接已完成来源保存检查点，下次从失败处继续，并把检查点与新增内容重新拼接。"
+    "错误日志记录阶段、来源序号及预期和实际 ID、标题、时长，不替换不匹配的来源。"
     "dispatched 仅代表已触发；无需持续轮询，按需 anime_get_github_execution_result 查询最终链接。"
     "用户明确指定已有本地完整成片发布时，可用 anime_start_transcribe_intro 只转写第一段成片前60秒，"
     "生成所有分段共用的YouTube标题、描述、标签后，调用 anime_prepare_youtube_thumbnails。"

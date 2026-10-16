@@ -8,6 +8,9 @@ import json
 import os
 import re
 import shutil
+import time
+import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 
 from core.mcp.anime._constants import OUTPUT_ROOT
@@ -19,6 +22,7 @@ from core.tools.media_files import download_public_file, upload_public_file
 from core.tools.media_files.storage import _client, _settings
 from core.tools.publish_media.accounts import resolve_account_group
 from download_video import download
+from ops.anime.download_checkpoint import persist_checkpoint, restore_checkpoint
 
 
 def verify_authorization() -> None:
@@ -55,7 +59,7 @@ def verify_authorization() -> None:
 
 
 def execute_package(execution_id: str) -> dict:
-    """来源及成片存入 R2；平台回执在上传后立即持久化，重跑继续核验。"""
+    """正常下载只写本地；失败时拼接来源前缀保存检查点，成片及发布回执持久化。"""
     if not re.fullmatch(r"[a-f0-9]{32}", execution_id):
         raise AnimeError("执行 ID 必须是 32 位十六进制")
     prefix = f"runs/anime/executions/{execution_id}"
@@ -78,10 +82,34 @@ def execute_package(execution_id: str) -> dict:
         _write_json(path, payload)
         upload_public_file(path, f"{prefix}/{name}", content_type="application/json")
 
+    last_progress_upload = 0.0
+    phase = "初始化"
+    current_source = {}
+    downloaded = []
+    completed_count = 0
+    restored_count = 0
+    final_manifest_saved = False
+    sources = []
+
+    def diagnostic(event: str, **fields) -> None:
+        record = {"timestamp": datetime.now(timezone.utc).isoformat(),
+                  "event": event, "execution_id": execution_id, "phase": phase,
+                  "source": current_source, **fields}
+        line = json.dumps(record, ensure_ascii=False, default=str)
+        print(line, flush=True)
+        with (directory / "execution-diagnostics.log").open("a", encoding="utf-8") as stream:
+            stream.write(line + "\n")
+
     def progress(message: str) -> None:
+        nonlocal last_progress_upload
         print(message, flush=True)
-        save_json("result.json", {"execution_id": execution_id, "status": "running", "message": message,
-                                   "run_url": run_url})
+        payload = {"execution_id": execution_id, "status": "running", "message": message,
+                   "run_url": run_url, "phase": phase, "completed_source_count": completed_count}
+        _write_json(directory / "result.json", payload)
+        # 状态最多每分钟上传一次，避免每个来源和每条拼接进度都请求 R2。
+        if time.monotonic() - last_progress_upload >= 60:
+            upload_public_file(directory / "result.json", f"{prefix}/result.json", content_type="application/json")
+            last_progress_upload = time.monotonic()
 
     run_url = f"{os.getenv('GITHUB_SERVER_URL', 'https://github.com')}/{os.getenv('GITHUB_REPOSITORY', '')}/actions/runs/{os.getenv('GITHUB_RUN_ID', '')}"
     try:
@@ -106,6 +134,7 @@ def execute_package(execution_id: str) -> dict:
         _write_json(directory / "youtube-intro-1.json", package["intro"])
         assembled = directory / "manifest.json"
         if exists(f"{prefix}/manifest.json"):
+            phase = "恢复最终成片"
             progress("恢复已拼接成片")
             download_public_file(f"{prefix}/manifest.json", assembled)
             manifest = json.loads(assembled.read_text(encoding="utf-8"))
@@ -116,34 +145,43 @@ def execute_package(execution_id: str) -> dict:
                     raise AnimeError("恢复成片摘要不一致")
                 part["video_path"] = str(path)
             _write_json(assembled, manifest)
+            final_manifest_saved = True
         else:
-            downloaded = []
-            for order, work in enumerate(sources, 1):
-                progress(f"下载或恢复来源 {order}/{len(sources)}")
+            phase = "恢复下载检查点"
+            downloaded, restored_count = restore_checkpoint(
+                directory, prefix, execution_id, sources, exists, download_public_file, progress)
+            completed_count = restored_count
+            for order, work in enumerate(sources[restored_count:], restored_count + 1):
+                phase = "下载来源"
+                current_source = {"order": order, "total": len(sources), "expected_id": str(work["aweme_id"]),
+                                  "work_url": work["work_url"], "expected_title": work.get("title"),
+                                  "expected_duration_seconds": work.get("duration_seconds")}
+                diagnostic("开始下载来源")
+                progress(f"下载来源 {order}/{len(sources)}")
                 path = directory / f"source-{order}.mp4"
                 metadata_path = path.with_suffix(".json")
-                key = f"{prefix}/{metadata_path.name}"
-                if exists(key):
-                    download_public_file(key, metadata_path)
-                    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-                    download_public_file(f"{prefix}/{path.name}", path)
-                    if _file_sha256(path) != metadata["sha256"]:
-                        raise AnimeError("恢复来源摘要不一致")
-                else:
-                    metadata = download(work["work_url"], path)
-                    if str(metadata["video_id"]) != str(work["aweme_id"]):
-                        raise AnimeError("下载来源 ID 与执行清单不一致，交回 Agent 判断")
-                    metadata["sha256"] = _file_sha256(path)
+                metadata = download(work["work_url"], path)
+                _write_json(metadata_path, metadata)
+                diagnostic("下载解析结果", actual_id=str(metadata.get("video_id")),
+                           actual_title=metadata.get("title"), local_file=path.name)
+                if str(metadata.get("video_id")) != str(work["aweme_id"]):
+                    raise AnimeError("下载来源 ID 与执行清单不一致，交回 Agent 判断", {
+                        **current_source, "actual_id": str(metadata.get("video_id")),
+                        "actual_title": metadata.get("title")})
+                phase = "校验来源时长"
                 probe = _probe(path)
                 expected = float(work["duration_seconds"])
+                diagnostic("来源时长校验", actual_duration_seconds=probe["duration"],
+                           actual_id=str(metadata.get("video_id")), actual_title=metadata.get("title"))
                 if expected <= 0 or abs(probe["duration"] - expected) > max(5, expected * 0.02):
-                    raise AnimeError("来源实际时长与执行清单不符，交回 Agent 判断")
-                if not exists(key):
-                    upload_public_file(path, f"{prefix}/{path.name}")
-                    save_json(metadata_path.name, metadata)
+                    raise AnimeError("来源实际时长与执行清单不符，交回 Agent 判断", {
+                        **current_source, "actual_duration_seconds": probe["duration"]})
                 downloaded.append({**metadata, "path": path, "duration": probe["duration"], "probe": probe,
                                    "order": order, "share_text": work["work_url"]})
-            if len(downloaded) == 1:
+                completed_count = order
+            current_source = {}
+            phase = "拼接最终成片"
+            if len(sources) == 1:
                 progress("单个现成合集直接复用原文件")
                 source = downloaded[0]
                 path = directory / "part-1.mp4"
@@ -152,14 +190,18 @@ def execute_package(execution_id: str) -> dict:
                             "video_path": str(path), "duration_seconds": source["duration"],
                             "title": source.get("title"), "description": source.get("description"),
                             "topics": source.get("topics") or []}]}
+                _write_json(assembled, manifest)
             else:
                 manifest = assemble_videos(downloaded, directory, progress=progress)
+            phase = "上传最终成片"
             for part in manifest["parts"]:
                 path = Path(part["video_path"])
                 part["sha256"] = _file_sha256(path)
                 upload_public_file(path, f"{prefix}/{path.name}")
             manifest["selection_reason"] = package["selection_reason"]
             save_json("manifest.json", manifest)
+            final_manifest_saved = True
+        phase = "发布 YouTube"
         first = manifest["parts"][0]
         _write_json(directory / "youtube-thumbnail-1.json", {
             "title": package["titles"][0], "video_sha256": _file_sha256(Path(first["video_path"]))})
@@ -182,9 +224,38 @@ def execute_package(execution_id: str) -> dict:
                     stream.write(f"- [{record['title']}]({record['external_url']})\n")
         return result
     except Exception as exc:
-        save_json("result.json", {"execution_id": execution_id, "status": "failed", "run_url": run_url,
+        # 只记录可定位问题的字段，不记录 Cookie、请求头或临时下载地址。
+        details = getattr(exc, "details", {}) or {}
+        safe_details = {key: details[key] for key in (
+            "expected_id", "actual_id", "actual_title", "actual_duration_seconds",
+            "video_id", "returned_ids", "returned_titles", "status_code",
+        ) if key in details}
+        failure_phase = phase
+        diagnostic("执行失败", error_type=type(exc).__name__, error=str(exc), details=safe_details)
+        (directory / "failure-traceback.log").write_text(traceback.format_exc(), encoding="utf-8")
+        checkpoint_error = None
+        if not final_manifest_saved and completed_count > restored_count and downloaded:
+            try:
+                phase = "保存失败检查点"
+                persist_checkpoint(directory, prefix, execution_id, sources, downloaded,
+                                   completed_count, upload_public_file, progress)
+                restored_count = completed_count
+            except Exception as checkpoint_exc:
+                checkpoint_error = str(checkpoint_exc)
+                (directory / "checkpoint-traceback.log").write_text(traceback.format_exc(), encoding="utf-8")
+                diagnostic("检查点保存失败", error_type=type(checkpoint_exc).__name__, error=checkpoint_error)
+        failure = {"execution_id": execution_id, "status": "failed", "run_url": run_url,
                                    "error": exc.message if isinstance(exc, AnimeError) else type(exc).__name__,
-                                   "message": "失败进度和已持久化回执保留；不自动替换来源，修复后重跑同一执行 ID"})
+                                   "phase": failure_phase, "source": current_source, "details": safe_details,
+                                   "completed_source_count": completed_count, "checkpoint_source_count": restored_count,
+                                   "resume_from_source_order": None if final_manifest_saved else restored_count + 1,
+                                   "recovery_mode": "final_manifest" if final_manifest_saved else "download_checkpoint",
+                                   "checkpoint_error": checkpoint_error,
+                                   "message": "失败进度和已持久化回执保留；不自动替换来源，修复后重跑同一执行 ID"}
+        try:
+            save_json("result.json", failure)
+        except Exception as result_exc:
+            diagnostic("失败结果上传失败", error_type=type(result_exc).__name__)
         raise
 
 
