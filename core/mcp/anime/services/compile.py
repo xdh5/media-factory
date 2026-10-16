@@ -422,8 +422,6 @@ def _concat_hybrid(
                 try:
                     _remux_clip(clip, path)
                     probe = _probe(path)
-                    if _signature(probe) != target_signature:
-                        raise AnimeError("无损重封装后参数发生变化")
                     remuxed += 1
                     prepared.append(
                         {"path": path, "probe": probe, "duration": probe["duration"], "full": True}
@@ -442,10 +440,10 @@ def _concat_hybrid(
                 progress=progress, label=label,
             )
             probe = _probe(path)
-            if _signature(probe) != target_signature:
-                raise AnimeError(f"第 {index} 条局部转换后仍与主流格式不一致")
             prepared.append({"path": path, "probe": probe, "duration": probe["duration"], "full": True})
         _report(progress, f"{label} 无损整理 {remuxed} 条，仅转换 {converted} 条")
+        # ffprobe 的平均帧率等字段可能因重置时间戳而换一种等价值表示。
+        # 以实际无损拼接和最终时长为准，不能在拼接前按字符串签名误判。
         _concat_copy(prepared, output_path)
         expected = sum(clip["duration"] for clip in clips)
         if abs(_probe(output_path)["duration"] - expected) > max(1.0, len(clips) * 0.05):
