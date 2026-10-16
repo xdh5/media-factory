@@ -16,24 +16,32 @@ import requests
 
 from .._constants import PROJECT_ROOT
 from .._errors import AnimeError
-from .compile import _write_json
+from .compile import _write_json, part_count
 from .discover import load_discovery
 from .preview import extract_remote_preview
-from .youtube import _file_sha256, _require_host_thumbnail, load_manifest, transcribe_intros
+from .youtube import _file_sha256, _part_title, _require_host_thumbnail, load_manifest, transcribe_intros
 
 WORKFLOW = "publish-anime-youtube.yml"
 
 
-def validate_copy(titles: list[str], descriptions: list[str], tags: list[str]) -> None:
+def validate_copy(titles: list[str], descriptions: list[str], tags: list[str],
+                  *, require_completed: bool = True) -> None:
     """执行包只接受一份共用发布文案。"""
-    if len(titles) != 1 or not titles[0].strip() or len(titles[0]) > 100:
-        raise AnimeError("请提供一个 1 到 100 字符的共用标题")
+    max_title_length = 80 if require_completed else 100
+    if len(titles) != 1 or not titles[0].strip() or len(titles[0]) > max_title_length:
+        raise AnimeError(f"请提供一个 1 到 {max_title_length} 字符的共用标题")
     if len(descriptions) != 1 or not descriptions[0].strip() or len(descriptions[0]) > 5000:
         raise AnimeError("请提供一个 1 到 5000 字符的共用描述")
     if not all(isinstance(tag, str) and tag.strip() and not tag.startswith("#") for tag in tags):
         raise AnimeError("标签必须为不带 # 的非空文字")
     if len(set(tags)) != len(tags) or sum(len(tag) + 3 for tag in tags) > 420:
         raise AnimeError("标签须去重，总预算不得超过 420 字符")
+    if require_completed and "已完结" not in titles[0]:
+        raise AnimeError("YouTube 标题关键词必须包含“已完结”")
+    if require_completed and "#已完结" not in descriptions[0]:
+        raise AnimeError("YouTube 描述底部 hashtag 必须包含 #已完结")
+    if require_completed and "已完结" not in {tag.strip().lstrip("#") for tag in tags}:
+        raise AnimeError("YouTube 搜索标签必须包含“已完结”")
 
 
 def prepare_execution(discovery_path: str, work_ids: list[str], selection_reason: str, progress) -> dict:
@@ -44,6 +52,8 @@ def prepare_execution(discovery_path: str, work_ids: list[str], selection_reason
         raise AnimeError("请选择发现记录中的不重复作品 ID，按最终播放顺序传入")
     if not selection_reason.strip():
         raise AnimeError("必须说明匹配、顺序、合集覆盖、去重、缺集和完结状态")
+    if "已完结" not in selection_reason:
+        raise AnimeError("发布执行清单必须明确说明作品已完结；仍在更新或证据不足时不能进入发布流程")
     selected = [works[item] for item in work_ids]
     if any(float(item.get("duration_seconds") or 0) <= 0 for item in selected):
         raise AnimeError("来源缺少有效时长，无法冻结执行清单")
@@ -63,7 +73,8 @@ def prepare_execution(discovery_path: str, work_ids: list[str], selection_reason
     }]})
     result = transcribe_intros(str(manifest), progress)
     return {**result, "preview_only": True, "selection_path": str(output / "selection.json"),
-            "source_count": len(selected), "next_step": "生成一套文案，再以此 manifest_path 准备并保存一张共用封面"}
+            "source_count": len(selected),
+            "next_step": "生成含已完结的一套文案，再以此 manifest_path 按预计分段数准备并保存对应封面"}
 
 
 def _repository() -> str:
@@ -121,18 +132,29 @@ def dispatch_execution(manifest_path: str, titles: list[str], descriptions: list
     routes = resolve_account_group(account_group, "anime", ["youtube"])
     if len(routes) != 1:
         raise AnimeError("目标账号组必须对应一个 YouTube 频道")
-    thumbnail = _require_host_thumbnail(directory, 1, titles[0], _file_sha256(Path(parts[0]["video_path"])))
-    package = {"version": 1, **selection, "titles": titles, "descriptions": descriptions, "tags": tags,
+    expected_part_count = part_count(sum(float(item["duration_seconds"]) for item in selection["sources"]))
+    preview_digest = _file_sha256(Path(parts[0]["video_path"]))
+    thumbnails = []
+    for index in range(1, expected_part_count + 1):
+        thumbnail = _require_host_thumbnail(
+            directory, index, _part_title(titles[0], index, expected_part_count), preview_digest)
+        thumbnails.append({"index": index, "sha256": _file_sha256(thumbnail)})
+    package = {"version": 2, **selection, "titles": titles, "descriptions": descriptions, "tags": tags,
                "account_group": account_group, "channel_id": routes[0]["platform_account_id"],
-               "intro": json.loads(intro.read_text(encoding="utf-8")), "thumbnail_sha256": _file_sha256(thumbnail)}
+               "intro": json.loads(intro.read_text(encoding="utf-8")), "thumbnails": thumbnails}
     execution_id = hashlib.sha256(json.dumps(package, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:32]
     prefix = f"runs/anime/executions/{execution_id}"
-    package.update({"execution_id": execution_id, "thumbnail_key": f"{prefix}/thumbnail.jpg"})
+    package.update({"execution_id": execution_id})
+    for item in package["thumbnails"]:
+        item["key"] = f"{prefix}/thumbnail-{item['index']}.jpg"
     package_file = directory / "execution-package.json"
     _write_json(package_file, package)
     repository = _repository()
     _github_request("GET", f"repos/{repository}/actions/workflows/{WORKFLOW}")
-    upload_public_file(thumbnail, package["thumbnail_key"], content_type="image/jpeg")
+    for item in package["thumbnails"]:
+        upload_public_file(
+            directory / f"youtube-thumbnail-{item['index']}.jpg",
+            item["key"], content_type="image/jpeg")
     key = f"{prefix}/package.json"
     upload_public_file(package_file, key, content_type="application/json")
     _github_request("POST", f"repos/{repository}/actions/workflows/{WORKFLOW}/dispatches",

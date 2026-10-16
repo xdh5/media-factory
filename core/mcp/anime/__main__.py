@@ -100,7 +100,7 @@ def anime_start_compile_series(discovery_path: str, work_ids: list[str], selecti
 
 @mcp.tool()
 def anime_start_prepare_execution(discovery_path: str, work_ids: list[str], selection_reason: str) -> dict:
-    """冻结选片顺序，只远程截取第一来源前60秒并转写。返回预览 manifest_path，用于共用文案和封面；不下载整部作品。"""
+    """仅接受已确认完结且无缺集的作品。冻结选片顺序，只远程截取第一来源前60秒并转写，返回文案和分段封面所需预览。"""
     directory, _ = load_discovery(discovery_path)
     task_id = f"prepare-execution-{time.time_ns()}"
     return {**runner_submit_task(cache_dir=directory / task_id, run_id=task_id, step="prepare-execution",
@@ -121,7 +121,7 @@ def anime_get_production_config(account_group: str = "") -> dict:
 @mcp.tool()
 def anime_dispatch_github_execution(manifest_path: str, titles: list[str], descriptions: list[str],
                                     tags: list[str], account_group: str = "") -> dict:
-    """获得用户发布授权后使用。上传执行包和共用封面并启动 GitHub Action，全量下载、拼接、上传全部由 Action 执行。返回 dispatched 不代表已发布成功。"""
+    """获得用户发布授权后使用。上传执行包和全部分段封面并启动 Action；各段标题标集数并加入作品同名播放列表。"""
     try:
         return dispatch_execution(manifest_path, titles, descriptions, tags, account_group)
     except Exception as exc:
@@ -147,7 +147,7 @@ def anime_start_transcribe_intro(manifest_path: str) -> dict:
 
 @mcp.tool()
 def anime_prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
-    """titles 只传一个共用标题；只抽第一段的一帧作为画风参考，返回一个宿主生图任务。宿主一次生成封面，标题和画面一起出图，禁止先出图再叠字。"""
+    """titles 只传一个共用标题；按预计分段数返回独立封面任务，每张标题自动标明第几集。只抽一帧作为共用画风参考。"""
     try:
         return prepare_youtube_thumbnails(manifest_path, titles)
     except Exception as exc:
@@ -156,7 +156,7 @@ def anime_prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> d
 
 @mcp.tool()
 def anime_save_youtube_thumbnails(context_path: str, images: list[dict]) -> dict:
-    """保存宿主生成的 YouTube 封面。images 每项包含 image_id 和 image_path；已缓存的共用封面可以不重复提交。"""
+    """保存宿主生成的分段 YouTube 封面。images 每项包含 image_id 和 image_path；已缓存的封面可以不重复提交。"""
     try:
         return save_youtube_thumbnails(context_path, images)
     except Exception as exc:
@@ -164,11 +164,15 @@ def anime_save_youtube_thumbnails(context_path: str, images: list[dict]) -> dict
 
 
 @mcp.tool()
-def anime_start_publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str], account_group: str = "") -> dict:
-    """必须获得用户发布授权后使用。titles 和 descriptions 各只传一个元素。所有段共用文案和第一段封面，发布到指定动漫账号组的 YouTube。未生成封面时拒绝发布。"""
+def anime_start_publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str],
+                                tags: list[str], account_group: str = "",
+                                playlist_title: str = "") -> dict:
+    """必须获得用户发布授权后使用。多段标题自动标明集数并使用各自封面；playlist_title 非空时创建或复用同名播放列表。"""
     directory, _ = load_manifest(manifest_path)
     return {**runner_submit_task(cache_dir=directory, run_id=str(directory), step="youtube-publish",
-            fn=lambda progress: publish_youtube(manifest_path, titles, descriptions, tags, account_group, progress)),
+            fn=lambda progress: publish_youtube(
+                manifest_path, titles, descriptions, tags, account_group, progress,
+                playlist_title=playlist_title)),
             "poll_tool": "anime_poll_task"}
 
 

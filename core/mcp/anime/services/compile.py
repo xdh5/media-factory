@@ -120,6 +120,7 @@ def assemble_videos(
     max_part_seconds: float = MAX_PART_SECONDS,
     progress: Progress | None = None,
     part_ready: Callable[[dict], None] | None = None,
+    completed_parts: dict[int, dict] | None = None,
 ) -> dict:
     """把来源按顺序均分拼接；每段完成后可立即交给调用方持久化或发布。"""
     if not sources:
@@ -146,14 +147,20 @@ def assemble_videos(
     ranges = part_ranges(total_seconds, max_part_seconds)
     parts: list[dict] = []
     width = len(str(len(ranges)))
+    completed_parts = completed_parts or {}
     for index, (start, end) in enumerate(ranges, start=1):
-        _report(progress, f"正在拼接第 {index}/{len(ranges)} 段")
         clips = _clips_for_range(timeline, start, end)
         if not clips:
             raise AnimeError(f"第 {index} 段没有可拼接的画面")
         video_path = output_dir / f"part-{index:0{width}d}.mp4"
-        _render_part(clips, video_path, progress=progress, label=f"第 {index}/{len(ranges)} 段")
-        actual = _probe(video_path)
+        resumed = index in completed_parts
+        if resumed:
+            _report(progress, f"根据 YouTube 回执跳过第 {index}/{len(ranges)} 段")
+            actual = {"duration": end - start}
+        else:
+            _report(progress, f"正在拼接第 {index}/{len(ranges)} 段")
+            _render_part(clips, video_path, progress=progress, label=f"第 {index}/{len(ranges)} 段")
+            actual = _probe(video_path)
         included = _sources_for_range(timeline, start, end)
         metadata = _combine_metadata(included)
         payload = {
@@ -166,11 +173,13 @@ def assemble_videos(
             **metadata,
             "sources": included,
         }
+        if resumed:
+            payload["sha256"] = completed_parts[index]["sha256"]
         metadata_path = video_path.with_suffix(".json")
         _write_json(metadata_path, payload)
         _write_text(video_path.with_suffix(".txt"), _metadata_text(payload))
         parts.append({**payload, "metadata_path": str(metadata_path)})
-        if part_ready:
+        if part_ready and not resumed:
             partial_manifest = {
                 "output_dir": str(output_dir.resolve()),
                 "total_duration_seconds": round(total_seconds, 3),

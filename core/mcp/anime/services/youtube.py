@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .._constants import OUTPUT_ROOT
 from .._errors import AnimeError
-from .compile import _executable, _subprocess_kwargs, _write_json
+from .compile import _executable, _subprocess_kwargs, _write_json, part_count
 
 
 def _local_path(raw: str) -> Path:
@@ -28,7 +28,7 @@ def _local_path(raw: str) -> Path:
     return Path(raw).resolve()
 
 
-def load_manifest(manifest_path: str) -> tuple[Path, list[dict]]:
+def load_manifest(manifest_path: str, *, require_video_files: bool = True) -> tuple[Path, list[dict]]:
     """仅接受动漫生产目录中的真实成片清单。"""
     path = _local_path(manifest_path)
     if not path.is_relative_to(OUTPUT_ROOT.resolve()) or path.name != "manifest.json":
@@ -38,7 +38,7 @@ def load_manifest(manifest_path: str) -> tuple[Path, list[dict]]:
         raise AnimeError("成片清单没有分段")
     for part in parts:
         video = _local_path(part["video_path"])
-        if not video.is_relative_to(OUTPUT_ROOT.resolve()) or not video.is_file():
+        if not video.is_relative_to(OUTPUT_ROOT.resolve()) or (require_video_files and not video.is_file()):
             raise AnimeError("成片文件不存在或不在动漫目录")
         part["video_path"] = str(video)
     return path.parent, parts
@@ -120,8 +120,17 @@ def _file_sha256(path: Path) -> str:
     return hasher.hexdigest()
 
 
+def _part_title(title: str, index: int, count: int) -> str:
+    """多段成片在标题末尾标明当前集数，单段保持原题。"""
+    text = str(title).strip()
+    if count <= 1:
+        return text[:100]
+    suffix = f"｜第{index}集（共{count}集）"
+    return f"{text[:100 - len(suffix)].rstrip()}{suffix}"
+
+
 def prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
-    """只抽一帧画风参考，交给宿主一次生成带标题的封面。"""
+    """只抽一帧画风参考，按预计分段数分别生成带集数标题的封面任务。"""
     from core.tools.generate_image import ImageGenerationError, prepare_agent_image_tasks
 
     directory, parts = load_manifest(manifest_path)
@@ -129,6 +138,13 @@ def prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
         raise AnimeError("只需提供一个共用封面标题")
     if any(not str(title).strip() for title in titles):
         raise AnimeError("封面标题不能为空")
+    selection_path = directory / "selection.json"
+    expected_part_count = len(parts)
+    if selection_path.is_file():
+        selection = json.loads(selection_path.read_text(encoding="utf-8"))
+        total_seconds = sum(float(item.get("duration_seconds") or 0) for item in selection.get("sources") or [])
+        if total_seconds > 0:
+            expected_part_count = part_count(total_seconds)
     prepared_tasks = []
     titles_by_image_id = {}
     digests = {}
@@ -136,12 +152,12 @@ def prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
     frame = directory / "youtube-style-frame.jpg"
     sample = parts[0]
     _extract_style_frame(Path(sample["video_path"]), frame, float(sample["duration_seconds"]))
-    for part, title in zip(parts[:1], titles):
-        index = part["part_index"]
+    preview_digest = _file_sha256(Path(sample["video_path"]))
+    for index in range(1, expected_part_count + 1):
         image_id = f"youtube-thumbnail-{index}"
-        text = str(title).strip()
+        text = _part_title(titles[0], index, expected_part_count)
         titles_by_image_id[image_id] = text
-        digests[image_id] = _file_sha256(Path(part["video_path"]))
+        digests[image_id] = preview_digest
         try:
             one = prepare_agent_image_tasks(
                 [{"image_id": image_id, "kind": "youtube-thumbnail", "prompt": _thumbnail_prompt(text)}],
@@ -274,25 +290,108 @@ def _verify_processed_video(route: dict, result: dict, expected_duration: float,
     raise AnimeError("YouTube 视频仍在处理；回执已保留，稍后重试将继续核验，不重复上传")
 
 
+def _ensure_playlist_video(route: dict, playlist_title: str, video_id: str,
+                           position: int, progress=None) -> dict | None:
+    """创建或复用频道播放列表，并幂等加入视频。普通频道凭 force-ssl 授权即可使用。"""
+    title = str(playlist_title or "").strip()[:150]
+    if not title:
+        return None
+    from googleapiclient.discovery import build
+    from platform_api.account_registry import account_context
+    from platform_api.youtube.publish_to_youtube import _load_credentials
+    from platform_api.youtube._transport import authorized_http
+
+    with account_context(route) as account:
+        with build("youtube", "v3", http=authorized_http(_load_credentials(route["platform_account_id"], account)),
+                   cache_discovery=False) as service:
+            playlist_id = ""
+            page_token = None
+            while True:
+                response = service.playlists().list(
+                    part="snippet,status", mine=True, maxResults=50, pageToken=page_token).execute()
+                matched = next((
+                    item for item in response.get("items") or []
+                    if str((item.get("snippet") or {}).get("title") or "").strip() == title
+                ), None)
+                if matched:
+                    playlist_id = str(matched["id"])
+                    break
+                page_token = response.get("nextPageToken")
+                if not page_token:
+                    break
+            if not playlist_id:
+                created = service.playlists().insert(
+                    part="snippet,status",
+                    body={"snippet": {"title": title}, "status": {"privacyStatus": "public"}},
+                ).execute()
+                playlist_id = str(created["id"])
+                if progress:
+                    progress(f"已创建 YouTube 播放列表：{title}")
+            page_token = None
+            while True:
+                response = service.playlistItems().list(
+                    part="snippet,contentDetails", playlistId=playlist_id,
+                    maxResults=50, pageToken=page_token).execute()
+                for item in response.get("items") or []:
+                    if str((item.get("contentDetails") or {}).get("videoId") or "") != video_id:
+                        continue
+                    snippet = item.get("snippet") or {}
+                    if int(snippet.get("position") or 0) != position:
+                        service.playlistItems().update(
+                            part="snippet",
+                            body={"id": item["id"], "snippet": {
+                                "playlistId": playlist_id,
+                                "position": position,
+                                "resourceId": {"kind": "youtube#video", "videoId": video_id},
+                            }},
+                        ).execute()
+                    return {"playlist_id": playlist_id,
+                            "playlist_url": f"https://www.youtube.com/playlist?list={playlist_id}"}
+                page_token = response.get("nextPageToken")
+                if not page_token:
+                    break
+            service.playlistItems().insert(
+                part="snippet",
+                body={"snippet": {
+                    "playlistId": playlist_id,
+                    "position": position,
+                    "resourceId": {"kind": "youtube#video", "videoId": video_id},
+                }},
+            ).execute()
+            if progress:
+                progress(f"已加入 YouTube 播放列表：{title}")
+            return {"playlist_id": playlist_id,
+                    "playlist_url": f"https://www.youtube.com/playlist?list={playlist_id}"}
+
+
 def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str],
-                    account_group: str, progress=None, receipt_saved=None) -> dict:
+                    account_group: str, progress=None, receipt_saved=None,
+                    playlist_title: str = "", require_completed: bool = True,
+                    verify_processing: bool = True) -> dict:
     """逐段即时公开发布到指定动漫账号组，按文件摘要去重并逐条写回发布记录。"""
     from core.tools.media_records import list_publication_records, commit_publication_records, delete_publication_records
     from core.tools.publish_media.accounts import resolve_account_group
     from core.tools.publish_media.publisher import _publishing
 
-    directory, parts = load_manifest(manifest_path)
+    directory, parts = load_manifest(manifest_path, require_video_files=False)
     if json.loads((directory / "manifest.json").read_text(encoding="utf-8")).get("preview_only"):
         raise AnimeError("预览片段不能发布，请调用 anime_dispatch_github_execution 由 Action 下载完整来源后发布")
     if len(titles) != 1 or len(descriptions) != 1:
         raise AnimeError("只需提供一个共用标题和描述")
-    if any(not title.strip() or len(title) > 100 for title in titles):
-        raise AnimeError("YouTube 标题须为 1 到 100 个字符")
+    max_title_length = 80 if require_completed else 100
+    if any(not title.strip() or len(title) > max_title_length for title in titles):
+        raise AnimeError(f"YouTube 共用标题须为 1 到 {max_title_length} 个字符")
     if any(not text.strip() or len(text) > 5000 for text in descriptions):
         raise AnimeError("YouTube 描述须为 1 到 5000 个字符")
     tags = list(dict.fromkeys(str(tag).strip().lstrip("#") for tag in tags if str(tag).strip()))
     if sum(len(tag) + 3 for tag in tags) > 420:
         raise AnimeError("标签总长度须留出系统去重标记空间，请控制在 420 字符以内")
+    if require_completed and "已完结" not in titles[0]:
+        raise AnimeError("YouTube 标题关键词必须包含“已完结”")
+    if require_completed and "#已完结" not in descriptions[0]:
+        raise AnimeError("YouTube 描述底部 hashtag 必须包含 #已完结")
+    if require_completed and "已完结" not in tags:
+        raise AnimeError("YouTube 搜索标签必须包含“已完结”")
     for part in parts[:1]:
         if not (directory / f"youtube-intro-{part['part_index']}.json").is_file():
             raise AnimeError("请先完成第一段前一分钟转写，再根据原文生成共用发布文案")
@@ -308,15 +407,17 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
     route = routes[0]
     verify_account(route)
     results = []
-    first_digest = _file_sha256(Path(parts[0]["video_path"]))
     for part in parts:
-        title, description = titles[0], descriptions[0]
+        index = part["part_index"]
+        title = _part_title(titles[0], index, int(part.get("part_count") or len(parts)))
+        description = descriptions[0]
         path = Path(part["video_path"])
-        hasher = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                hasher.update(chunk)
-        digest = hasher.hexdigest()
+        if path.is_file():
+            digest = _file_sha256(path)
+        else:
+            digest = str(part.get("sha256") or "")
+            if not digest:
+                raise AnimeError(f"第 {index} 段本地成片和摘要都不存在，无法复用上传回执")
         run_id = f"anime-{digest}"
         previous = list_publication_records(business_line="anime", platform="youtube", run_id=run_id)
         matching = [row for row in previous if row["account_id"] == route["platform_account_id"]]
@@ -336,9 +437,10 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
             live_record = row
             break
         if live_record:
-            results.append({"skipped": True, "record": live_record})
+            playlist = _ensure_playlist_video(
+                route, playlist_title, live_record["external_id"], index - 1, progress)
+            results.append({"skipped": True, "record": live_record, "playlist": playlist})
             continue
-        index = part["part_index"]
         receipt = directory / f"youtube-receipt-{index}.json"
         metadata = {"title": title, "description": description, "tags": tags,
                     "channel_id": route["platform_account_id"], "video_sha256": digest}
@@ -350,19 +452,24 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
         if saved.get("video_sha256") == digest and saved.get("channel_id") == route["platform_account_id"] and (saved.get("result") or {}).get("video_id"):
             result = saved["result"]
             publish_title = saved.get("title") or title
-            try:
-                _verify_processed_video(route, result, part["duration_seconds"], progress, stale=True)
-            except AnimeError as exc:
-                if not exc.details.get("reupload"):
-                    raise
-                receipt.unlink(missing_ok=True)
-                result = None
-                if progress:
-                    progress("本地回执中的 YouTube 视频已失效，重新上传")
+            if verify_processing:
+                try:
+                    _verify_processed_video(route, result, part["duration_seconds"], progress, stale=True)
+                except AnimeError as exc:
+                    if not exc.details.get("reupload"):
+                        raise
+                    receipt.unlink(missing_ok=True)
+                    result = None
+                    if progress:
+                        progress("本地回执中的 YouTube 视频已失效，重新上传")
         if result is None:
-            thumbnail = _require_host_thumbnail(directory, parts[0]["part_index"], title, first_digest)
+            if not path.is_file():
+                raise AnimeError(f"第 {index} 段没有本地成片且无可复用回执，无法上传")
+            thumbnail = _require_host_thumbnail(directory, index, title, digest)
             if progress:
-                progress(f"正在发布第 {index}/{len(parts)} 段到 {account_group} YouTube")
+                progress(
+                    f"正在发布第 {index}/{int(part.get('part_count') or len(parts))} 段"
+                    f"到 {account_group} YouTube")
             with account_context(route) as account:
                 result = publish_to_youtube(route["platform_account_id"], path, title,
                     description=description, tags=tags, account=account, privacy_status="public",
@@ -372,12 +479,26 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
             _write_json(receipt, {**metadata, "title": publish_title, "result": result})
             if receipt_saved:
                 receipt_saved(receipt)
-            _verify_processed_video(route, result, part["duration_seconds"], progress)
+            if verify_processing:
+                _verify_processed_video(route, result, part["duration_seconds"], progress)
+        if not verify_processing:
+            playlist = _ensure_playlist_video(
+                route, playlist_title, result["video_id"], index - 1, progress)
+            results.append({
+                "pending_processing": True,
+                "result": result,
+                "playlist": playlist,
+                "part_index": index,
+            })
+            continue
         record = {"publication_id": run_id, "run_id": run_id, "business_line": "anime",
                   "platform": "youtube", "connector": "youtube", "account_id": route["platform_account_id"],
                   "content_part": index, "title": publish_title, "publish_mode": "immediate",
                   "publish_at": datetime.now(timezone.utc).isoformat(), "status": "published",
                   "external_id": result["video_id"], "external_url": result["video_url"]}
         stored = commit_publication_records([record])["records"][0]
-        results.append({"record": stored, "result": result})
-    return {"account_group": account_group, "published": results}
+        playlist = _ensure_playlist_video(route, playlist_title, result["video_id"], index - 1, progress)
+        results.append({"record": stored, "result": result, "playlist": playlist})
+    playlists = [item["playlist"] for item in results if item.get("playlist")]
+    return {"account_group": account_group, "published": results,
+            "playlist": playlists[-1] if playlists else None}

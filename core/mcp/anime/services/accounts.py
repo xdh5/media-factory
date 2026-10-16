@@ -27,6 +27,11 @@ def production_config(account_group: str = "") -> dict:
         })
     return {"account_group": group["name"], "business_line": "anime", "platform": "youtube",
             "workflow": "publish-anime-youtube.yml", "execution_mode": "github_action",
+            "youtube_features": {
+                "playlists": True,
+                "playlist_scope": "https://www.googleapis.com/auth/youtube.force-ssl",
+                "playlist_strategy": "按作品名创建或复用公开播放列表，并按分段上传顺序加入",
+            },
             "channels": [{"display_name": item.get("display_name"),
                           "platform_account_id": item.get("platform_account_id")}
                          for item in members if item.get("group_code") == group["code"]
