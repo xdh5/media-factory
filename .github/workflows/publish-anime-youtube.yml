@@ -43,6 +43,7 @@ jobs:
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
       PUBLISHING_CREDENTIALS_JSON: ${{ secrets.ANIME_PUBLISHING_CREDENTIALS_JSON }}
+      DY_COOKIES: ${{ secrets.DY_COOKIES }}
     steps:
       - name: 检出执行代码
         uses: actions/checkout@v5
@@ -57,7 +58,7 @@ jobs:
         run: |
           for name in CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN \
             R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL \
-            PUBLISHING_CREDENTIALS_JSON; do
+            PUBLISHING_CREDENTIALS_JSON DY_COOKIES; do
             test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
           done
 
