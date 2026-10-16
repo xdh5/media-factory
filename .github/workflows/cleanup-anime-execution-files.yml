@@ -1,8 +1,6 @@
-name: 清理动漫任务到期视频
+name: 手动清理动漫任务到期视频
 
 on:
-  schedule:
-    - cron: "30 20 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
