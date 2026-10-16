@@ -320,14 +320,18 @@ def _render_part(clips: list[dict], output_path: Path, *, progress: Progress | N
                 _report(progress, f"{label} 边界处理后格式不一致，仅转换不兼容来源")
                 _concat_hybrid(clips, temporary, progress=progress, label=label)
         else:
-            try:
-                _report(progress, f"{label} 来源参数不一致，优先保留原始音画直接拼接")
-                _concat_packet_copy(clips, temporary)
-            except AnimeError:
-                _report(progress, f"{label} 直接拼接失败，仅转换不兼容来源")
-                _concat_hybrid(clips, temporary, progress=progress, label=label)
+            _report(progress, f"{label} 来源参数不一致，统一音频后拼接，兼容的视频不重新编码")
+            _concat_hybrid(clips, temporary, progress=progress, label=label)
         if not temporary.is_file() or temporary.stat().st_size <= 0:
             raise AnimeError(f"{label} 没有写出视频文件")
+        try:
+            _validate_audio(temporary)
+        except AnimeError:
+            if len(clips) == 1:
+                raise
+            _report(progress, f"{label} 直接拼接音轨解码失败，分别统一来源音频后重试")
+            _concat_hybrid(clips, temporary, progress=progress, label=label)
+            _validate_audio(temporary)
         os.replace(temporary, output_path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -417,10 +421,10 @@ def _concat_hybrid(
         remuxed = 0
         converted = 0
         for index, clip in enumerate(clips, start=1):
-            if clip["full"] and _signature(clip["probe"]) == target_signature:
+            if clip["full"] and _video_signature(clip["probe"]) == _video_signature(target_probe):
                 path = Path(temporary) / f"{index:03d}-remux.mp4"
                 try:
-                    _remux_clip(clip, path)
+                    _normalize_audio_clip(clip, path, sample_rate, channels)
                     probe = _probe(path)
                     remuxed += 1
                     prepared.append(
@@ -441,7 +445,7 @@ def _concat_hybrid(
             )
             probe = _probe(path)
             prepared.append({"path": path, "probe": probe, "duration": probe["duration"], "full": True})
-        _report(progress, f"{label} 无损整理 {remuxed} 条，仅转换 {converted} 条")
+        _report(progress, f"{label} 复用视频并统一音频 {remuxed} 条，转换视频 {converted} 条")
         # ffprobe 的平均帧率等字段可能因重置时间戳而换一种等价值表示。
         # 以实际无损拼接和最终时长为准，不能在拼接前按字符串签名误判。
         _concat_copy(prepared, output_path)
@@ -535,7 +539,39 @@ def _signature(probe: dict) -> tuple:
         probe.get("pix_fmt"),
         probe.get("sample_rate"),
         probe.get("channels"),
+        probe.get("audio_extradata_hash"),
     )
+
+
+def _video_signature(probe):
+    return tuple(probe.get(key) for key in ("width", "height", "vcodec", "fps_token", "pix_fmt"))
+
+
+def _normalize_audio_clip(clip, output_path, sample_rate, channels):
+    """在各来源自己的音频配置下解码，再编码成一致的 AAC，视频保持原样。"""
+    command = [_executable("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-xerror",
+               "-i", str(clip["path"]), "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy",
+               "-c:a", "aac", "-profile:a", "aac_low", "-ar", str(sample_rate), "-ac", str(channels),
+               "-b:a", "192k", "-af", "aresample=async=1:first_pts=0",
+               "-movflags", "+faststart", str(output_path)]
+    _run_ffmpeg(command, total_seconds=clip["duration"], progress=None, label="统一来源音频")
+
+
+def _validate_audio(path):
+    """完整解码音轨，阻止时长正常但 AAC 数据损坏的视频进入检查点或上传。"""
+    probe = _probe(Path(path))
+    if probe.get("audio_stream_index") is None:
+        return
+    log = Path(path).with_suffix(".audio-check.log")
+    command = [_executable("ffmpeg"), "-nostdin", "-v", "error", "-xerror", "-i", str(path),
+               "-map", "0:a:0", "-vn", "-f", "null", "-"]
+    with log.open("w", encoding="utf-8") as stream:
+        result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=stream,
+                                timeout=max(600, probe["duration"]), **_subprocess_kwargs())
+    if result.returncode:
+        detail = log.read_text(encoding="utf-8", errors="replace")[-1200:]
+        raise AnimeError("视频音轨完整解码失败，不能上传或用作检查点", {"file": Path(path).name, "audio_error": detail})
+    log.unlink(missing_ok=True)
 
 
 def _concat_copy(clips: list[dict], output_path: Path) -> None:
@@ -776,7 +812,8 @@ def _probe(path: Path) -> dict:
     command = [
         ffprobe, "-v", "error",
         "-show_entries",
-        "format=duration:stream=index,codec_type,codec_name,width,height,avg_frame_rate,pix_fmt,sample_rate,channels,disposition",
+        "format=duration:stream=index,codec_type,codec_name,width,height,avg_frame_rate,pix_fmt,sample_rate,channels,disposition,extradata_hash",
+        "-show_data_hash", "sha256",
         "-of", "json",
         str(path),
     ]
@@ -825,6 +862,7 @@ def _probe(path: Path) -> dict:
         "acodec": (audio or {}).get("codec_name") or "",
         "sample_rate": str((audio or {}).get("sample_rate") or ""),
         "channels": int((audio or {}).get("channels") or 0),
+        "audio_extradata_hash": (audio or {}).get("extradata_hash") or "",
         "audio_stream_index": None if audio is None else int(audio.get("index") or 0),
     }
 

@@ -240,7 +240,7 @@ def execute_package(execution_id: str) -> dict:
             for index in range(1, expected_part_count + 1):
                 receipt_name = f"youtube-receipt-{index}.json"
                 if not exists(f"{prefix}/{receipt_name}"):
-                    break
+                    continue
                 receipt = directory / receipt_name
                 download_public_file(f"{prefix}/{receipt_name}", receipt)
                 saved = json.loads(receipt.read_text(encoding="utf-8"))

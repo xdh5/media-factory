@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from core.mcp.anime._errors import AnimeError
-from core.mcp.anime.services.compile import _probe, _write_json, assemble_videos
+from core.mcp.anime.services.compile import _probe, _write_json, _validate_audio, assemble_videos
 from core.mcp.anime.services.youtube import _file_sha256
 
 CHECKPOINT_NAME = "block-checkpoint.json"
@@ -44,6 +44,16 @@ class CheckpointUploader:
                             raise AnimeError("检查点分块摘要不一致")
                         if abs(_probe(local)["duration"] - float(part["duration_seconds"])) > 1:
                             raise AnimeError("检查点分块实际时长不一致")
+                    if block.get("audio_validation") != 1:
+                        try:
+                            for part in block["parts"]:
+                                _validate_audio(self.directory / part["name"])
+                        except AnimeError:
+                            self.progress(f"检查点音频损坏，仅重建来源 {block['first_source_order']}—{block['last_source_order']}")
+                            self._repair_block(block)
+                        block["audio_validation"] = 1
+                        _write_json(path, self.checkpoint)
+                        upload(path, f"{prefix}/{CHECKPOINT_NAME}", content_type="application/json")
         except BaseException:
             self.executor.shutdown(wait=True)
             raise
@@ -51,6 +61,40 @@ class CheckpointUploader:
     @property
     def completed_count(self):
         return self.checkpoint["completed_source_count"]
+
+    def _repair_block(self, block):
+        """已损坏音轨无法靠重封装修复；按冻结来源重新下载这一块，其他块继续复用。"""
+        from download_video import download
+        first, last = block["first_source_order"], block["last_source_order"]
+        folder = self.directory / f"checkpoint-repair-{first}-{last}"
+        folder.mkdir(parents=True, exist_ok=True)
+        records = []
+        for order in range(first, last + 1):
+            source = self.sources[order - 1]
+            path = folder / f"source-{order}.mp4"
+            metadata = download(source["work_url"], path)
+            if str(metadata.get("video_id")) != str(source["aweme_id"]):
+                raise AnimeError("修复检查点时来源 ID 不一致", {"order": order, "expected_id": source["aweme_id"],
+                                                         "actual_id": metadata.get("video_id")})
+            probe = _probe(path)
+            expected = float(source["duration_seconds"])
+            if abs(probe["duration"] - expected) > max(5, expected * 0.02):
+                raise AnimeError("修复检查点时来源时长不一致")
+            records.append({**metadata, "path": path, "probe": probe, "duration": probe["duration"], "order": order})
+        manifest = assemble_videos(records, folder / "repaired", progress=self.progress)
+        parts = []
+        for index, part in enumerate(manifest["parts"], 1):
+            path = Path(part["video_path"])
+            _validate_audio(path)
+            digest = _file_sha256(path)
+            name = f"checkpoint-blocks/block-{first}-{last}-{index}-{digest[:16]}.mp4"
+            local = self.directory / name
+            local.parent.mkdir(exist_ok=True)
+            shutil.copy2(path, local)
+            self.upload(local, f"{self.prefix}/{name}")
+            parts.append({"name": name, "sha256": digest, "duration_seconds": part["duration_seconds"]})
+        block["parts"] = parts
+        self.progress(f"损坏检查点已按原来源重建：{first}—{last}")
 
     def _validate_index(self):
         value = self.checkpoint
@@ -124,6 +168,7 @@ class CheckpointUploader:
         saved = []
         for index, part in enumerate(parts, 1):
             path = Path(part["video_path"])
+            _validate_audio(path)
             digest = _file_sha256(path)
             name = f"checkpoint-blocks/block-{first}-{last}-{index}-{digest[:16]}.mp4"
             local = self.directory / name
@@ -135,7 +180,8 @@ class CheckpointUploader:
                  "next_source_order": last + 1,
                  "source_ids": [str(item["aweme_id"]) for item in self.sources[:last]],
                  "blocks": previous["blocks"] + [{"first_source_order": first,
-                                                   "last_source_order": last, "parts": saved}]}
+                                                   "last_source_order": last, "parts": saved,
+                                                   "audio_validation": 1}]}
         # 最后提交索引；硬终止最多留下未引用的块，不会指向未上传的视频。
         path = self.directory / CHECKPOINT_NAME
         _write_json(path, value)
