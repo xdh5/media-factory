@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import tempfile
+from collections import Counter
 from pathlib import Path
 from typing import Callable
 
@@ -310,21 +311,21 @@ def _render_part(clips: list[dict], output_path: Path, *, progress: Progress | N
             try:
                 _concat_copy(clips, temporary)
             except AnimeError:
-                _report(progress, f"{label} 直接拼接失败，改为重新编码")
-                _concat_reencode(clips, temporary, progress=progress, label=label)
+                _report(progress, f"{label} 直接拼接失败，仅转换不兼容来源")
+                _concat_hybrid(clips, temporary, progress=progress, label=label)
         elif clips and all(_signature(clip["probe"]) == _signature(clips[0]["probe"]) for clip in clips):
             try:
                 _concat_trimmed_boundaries(clips, temporary, progress=progress, label=label)
             except AnimeError:
-                _report(progress, f"{label} 边界处理后格式不一致，改为统一编码")
-                _concat_reencode(clips, temporary, progress=progress, label=label)
+                _report(progress, f"{label} 边界处理后格式不一致，仅转换不兼容来源")
+                _concat_hybrid(clips, temporary, progress=progress, label=label)
         else:
             try:
                 _report(progress, f"{label} 来源参数不一致，优先保留原始音画直接拼接")
                 _concat_packet_copy(clips, temporary)
             except AnimeError:
-                _report(progress, f"{label} 直接拼接失败，改为统一编码")
-                _concat_reencode(clips, temporary, progress=progress, label=label)
+                _report(progress, f"{label} 直接拼接失败，仅转换不兼容来源")
+                _concat_hybrid(clips, temporary, progress=progress, label=label)
         if not temporary.is_file() or temporary.stat().st_size <= 0:
             raise AnimeError(f"{label} 没有写出视频文件")
         os.replace(temporary, output_path)
@@ -387,6 +388,143 @@ def _concat_packet_copy(clips: list[dict], output_path: Path) -> None:
         actual = _probe(output_path)["duration"]
         if abs(actual - expected) > max(3.0, len(clips) * 0.1):
             raise AnimeError("直接拼接后的成片时长不符")
+
+
+def _concat_hybrid(
+    clips: list[dict],
+    output_path: Path,
+    *,
+    progress: Progress | None,
+    label: str,
+) -> None:
+    """复用主流格式原片，只转换格式不同或需要精确裁切的少数来源。"""
+    signatures = [_signature(clip["probe"]) for clip in clips]
+    target_signature = Counter(signatures).most_common(1)[0][0]
+    target_probe = next(clip["probe"] for clip in clips if _signature(clip["probe"]) == target_signature)
+    if target_probe.get("vcodec") != "h264" or target_probe.get("acodec") != "aac":
+        raise AnimeError("主流来源不是 H.264/AAC，无法局部统一后直接拼接")
+    width = _even(int(target_probe.get("width") or 0))
+    height = _even(int(target_probe.get("height") or 0))
+    fps_token = str(target_probe.get("fps_token") or "30")
+    sample_rate = int(target_probe.get("sample_rate") or 48000)
+    channels = int(target_probe.get("channels") or 2)
+    pixel_format = str(target_probe.get("pix_fmt") or "yuv420p")
+    if width < 2 or height < 2:
+        raise AnimeError("主流来源没有可用画面")
+
+    with tempfile.TemporaryDirectory(prefix=".hybrid-", dir=output_path.parent) as temporary:
+        prepared: list[dict] = []
+        remuxed = 0
+        converted = 0
+        for index, clip in enumerate(clips, start=1):
+            if clip["full"] and _signature(clip["probe"]) == target_signature:
+                path = Path(temporary) / f"{index:03d}-remux.mp4"
+                try:
+                    _remux_clip(clip, path)
+                    probe = _probe(path)
+                    if _signature(probe) != target_signature:
+                        raise AnimeError("无损重封装后参数发生变化")
+                    remuxed += 1
+                    prepared.append(
+                        {"path": path, "probe": probe, "duration": probe["duration"], "full": True}
+                    )
+                    continue
+                except AnimeError:
+                    path.unlink(missing_ok=True)
+                    _report(progress, f"{label} 第 {index}/{len(clips)} 条无损整理失败，仅转换这一条")
+            else:
+                _report(progress, f"{label} 仅转换第 {index}/{len(clips)} 条不兼容来源")
+            converted += 1
+            path = Path(temporary) / f"{index:03d}-normalized.mp4"
+            _normalize_clip(
+                clip, path, width=width, height=height, fps_token=fps_token,
+                pixel_format=pixel_format, sample_rate=sample_rate, channels=channels,
+                progress=progress, label=label,
+            )
+            probe = _probe(path)
+            if _signature(probe) != target_signature:
+                raise AnimeError(f"第 {index} 条局部转换后仍与主流格式不一致")
+            prepared.append({"path": path, "probe": probe, "duration": probe["duration"], "full": True})
+        _report(progress, f"{label} 无损整理 {remuxed} 条，仅转换 {converted} 条")
+        _concat_copy(prepared, output_path)
+        expected = sum(clip["duration"] for clip in clips)
+        if abs(_probe(output_path)["duration"] - expected) > max(1.0, len(clips) * 0.05):
+            raise AnimeError("局部转换后的成片时长不符")
+
+
+def _remux_clip(clip: dict, output_path: Path) -> None:
+    """不解码音视频，丢弃损坏数据包并重置单条来源的时间戳。"""
+    ffmpeg = _executable("ffmpeg")
+    command = [
+        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+        "-fflags", "+discardcorrupt", "-err_detect", "ignore_err",
+        "-i", str(clip["path"]),
+        "-map", f"0:{int(clip['probe']['video_stream_index'])}",
+    ]
+    audio_index = clip["probe"].get("audio_stream_index")
+    if audio_index is not None:
+        command.extend(["-map", f"0:{int(audio_index)}"])
+    command.extend([
+        "-c", "copy", "-avoid_negative_ts", "make_zero",
+        "-movflags", "+faststart", str(output_path),
+    ])
+    _run_ffmpeg(command, total_seconds=clip["duration"], progress=None, label="无损整理来源")
+
+
+def _normalize_clip(
+    clip: dict,
+    output_path: Path,
+    *,
+    width: int,
+    height: int,
+    fps_token: str,
+    pixel_format: str,
+    sample_rate: int,
+    channels: int,
+    progress: Progress | None,
+    label: str,
+) -> None:
+    """把单条不兼容来源转换为主流参数，其他来源不解码。"""
+    ffmpeg = _executable("ffmpeg")
+    duration = f"{clip['duration']:.3f}"
+    command = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+    if clip["start"] > 0.05:
+        command.extend(["-ss", f"{clip['start']:.3f}"])
+    if not clip["full"]:
+        command.extend(["-t", duration])
+    command.extend(["-fflags", "+discardcorrupt", "-err_detect", "ignore_err", "-i", str(clip["path"])])
+    video_index = int(clip["probe"]["video_stream_index"])
+    video_filter = (
+        f"[0:{video_index}]setpts=PTS-STARTPTS,"
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,"
+        f"setsar=1,fps={fps_token},format={pixel_format},"
+        f"trim=duration={duration},setpts=PTS-STARTPTS[vout]"
+    )
+    layout = "mono" if channels == 1 else "stereo"
+    audio_index = clip["probe"].get("audio_stream_index")
+    if audio_index is None:
+        audio_filter = (
+            f"anullsrc=channel_layout={layout}:sample_rate={sample_rate},"
+            f"atrim=duration={duration},asetpts=PTS-STARTPTS[aout]"
+        )
+    else:
+        audio_filter = (
+            f"[0:{int(audio_index)}]asetpts=PTS-STARTPTS,"
+            f"aresample={sample_rate}:async=1:first_pts=0,"
+            f"aformat=sample_fmts=fltp:channel_layouts={layout},"
+            f"atrim=duration={duration},asetpts=PTS-STARTPTS,"
+            f"apad=whole_dur={duration}[aout]"
+        )
+    command.extend([
+        "-filter_complex", f"{video_filter};{audio_filter}",
+        "-map", "[vout]", "-map", "[aout]",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-r", fps_token, "-fps_mode", "cfr",
+        "-c:a", "aac", "-b:a", "192k", "-ar", str(sample_rate), "-ac", str(channels),
+        "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(output_path),
+    ])
+    _run_ffmpeg(command, total_seconds=clip["duration"], progress=progress, label=label)
 
 
 def _signature(probe: dict) -> tuple:
