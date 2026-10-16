@@ -41,6 +41,11 @@ def discover_series(profile_url: str, series_name: str, limit: int, directory: P
     return {
         "discovery_path": str(path), "series_name": series_name,
         "scan_limit": limit, "scope": "仅保证已读取范围，不能据此宣称全主页或全剧完整",
+        "matching_guidance": (
+            "请由宿主 LLM 复核全部作品标题，主动识别人物名别称、改名和误标集号；"
+            "关键词筛选不能作为最终排除依据。发现缺号时回查完整列表的对应集号及相邻发布时间，"
+            "结合人物、剧情和集序判断，必要时只取短片段。疑似别名未核实前不能直接报告缺集。"
+        ),
         "works": [{key: item.get(key) for key in (
             "aweme_id", "title", "published_at", "duration_seconds",
         )} for item in works],

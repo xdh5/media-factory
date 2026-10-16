@@ -64,7 +64,7 @@ def anime_start_compile(share_texts: list[str]) -> dict:
 
 @mcp.tool()
 def anime_start_discover(profile_url: str, series_name: str, limit: int = 300) -> dict:
-    """复用 media-collector 扫描抖音主页。轮询后由宿主根据标题描述、集数和发布时间找剧；不明确再取证。"""
+    """扫描并保留主页完整候选。宿主 LLM 需识别人物名别称、改名及误标集号；报告缺集前回查完整列表，不能只按原剧名筛选。不明确再取短片段。"""
     if not profile_url.strip() or not series_name.strip():
         raise WorkflowStepError("必须提供作者主页和目标作品名称")
     if isinstance(limit, bool) or not 1 <= limit <= 1000:
