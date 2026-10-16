@@ -120,7 +120,8 @@ async function loadLanguagePacks() {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message || "读取失败");
     const filters = [...document.querySelectorAll("[data-pack-status]")];
-    let selectedStatus = "";
+    let selectedStatus = "ready";
+    const unusedCount = payload.packs.filter((pack) => pack.status === "ready").length;
     const renderFiltered = () => {
       const packs = payload.packs.filter((pack) => !selectedStatus || pack.status === selectedStatus);
       mountLazyList(
@@ -134,7 +135,7 @@ async function loadLanguagePacks() {
       filters.forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
       renderFiltered();
     }));
-    status.textContent = "";
+    status.textContent = `还剩 ${unusedCount} 篇未使用词包`;
     renderFiltered();
   } catch (error) {
     renderEmpty("语言词包暂时无法显示。");
