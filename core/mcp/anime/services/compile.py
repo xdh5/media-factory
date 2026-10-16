@@ -119,8 +119,9 @@ def assemble_videos(
     *,
     max_part_seconds: float = MAX_PART_SECONDS,
     progress: Progress | None = None,
+    part_ready: Callable[[dict], None] | None = None,
 ) -> dict:
-    """把已落盘的来源按顺序均分拼接，并照搬每段涉及的标题、描述、话题。"""
+    """把来源按顺序均分拼接；每段完成后可立即交给调用方持久化或发布。"""
     if not sources:
         raise AnimeError("没有可拼接的视频")
     output_dir = Path(output_dir)
@@ -169,6 +170,16 @@ def assemble_videos(
         _write_json(metadata_path, payload)
         _write_text(video_path.with_suffix(".txt"), _metadata_text(payload))
         parts.append({**payload, "metadata_path": str(metadata_path)})
+        if part_ready:
+            partial_manifest = {
+                "output_dir": str(output_dir.resolve()),
+                "total_duration_seconds": round(total_seconds, 3),
+                "part_count": len(ranges),
+                "max_part_seconds": max_part_seconds,
+                "parts": parts,
+            }
+            _write_json(output_dir / "manifest.json", partial_manifest)
+            part_ready(partial_manifest)
 
     manifest = {
         "output_dir": str(output_dir.resolve()),
@@ -299,7 +310,12 @@ def _render_part(clips: list[dict], output_path: Path, *, progress: Progress | N
                 _report(progress, f"{label} 边界处理后格式不一致，改为统一编码")
                 _concat_reencode(clips, temporary, progress=progress, label=label)
         else:
-            _concat_reencode(clips, temporary, progress=progress, label=label)
+            try:
+                _report(progress, f"{label} 来源参数不一致，优先保留原始音画直接拼接")
+                _concat_packet_copy(clips, temporary)
+            except AnimeError:
+                _report(progress, f"{label} 直接拼接失败，改为统一编码")
+                _concat_reencode(clips, temporary, progress=progress, label=label)
         if not temporary.is_file() or temporary.stat().st_size <= 0:
             raise AnimeError(f"{label} 没有写出视频文件")
         os.replace(temporary, output_path)
@@ -334,6 +350,34 @@ def _concat_trimmed_boundaries(clips, output_path, *, progress, label):
         expected = sum(clip["duration"] for clip in clips)
         if abs(_probe(output_path)["duration"] - expected) > max(0.5, len(clips) * 0.05):
             raise AnimeError("边界处理后的成片时长不符")
+
+
+def _concat_packet_copy(clips: list[dict], output_path: Path) -> None:
+    """不解码音视频；只对分段边界做关键帧裁切，再按原始数据包拼接。"""
+    ffmpeg = _executable("ffmpeg")
+    with tempfile.TemporaryDirectory(prefix=".packet-copy-", dir=output_path.parent) as temporary:
+        prepared: list[dict] = []
+        for index, clip in enumerate(clips):
+            if clip["full"]:
+                prepared.append(clip)
+                continue
+            path = Path(temporary) / f"boundary-{index}.mp4"
+            command = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+            if clip["start"] > 0.05:
+                command.extend(["-ss", f"{clip['start']:.3f}"])
+            command.extend([
+                "-i", str(clip["path"]), "-t", f"{clip['duration']:.3f}",
+                "-map", "0:v:0", "-map", "0:a?", "-c", "copy",
+                "-avoid_negative_ts", "make_zero", str(path),
+            ])
+            _run_ffmpeg(command, total_seconds=clip["duration"], progress=None, label="边界直接裁切")
+            probe = _probe(path)
+            prepared.append({"path": path, "probe": probe, "duration": probe["duration"], "full": True})
+        _concat_copy(prepared, output_path)
+        expected = sum(clip["duration"] for clip in clips)
+        actual = _probe(output_path)["duration"]
+        if abs(actual - expected) > max(3.0, len(clips) * 0.1):
+            raise AnimeError("直接拼接后的成片时长不符")
 
 
 def _signature(probe: dict) -> tuple:

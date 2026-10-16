@@ -60,7 +60,7 @@ def verify_authorization() -> None:
 
 
 def execute_package(execution_id: str) -> dict:
-    """后台分块保存下载进度，最终统一拼接；成片和回执持久化。"""
+    """后台分块保存下载进度，每段拼好后立即持久化并发布。"""
     if not re.fullmatch(r"[a-f0-9]{32}", execution_id):
         raise AnimeError("执行 ID 必须是 32 位十六进制")
     prefix = f"runs/anime/executions/{execution_id}"
@@ -90,6 +90,7 @@ def execute_package(execution_id: str) -> dict:
     completed_count = 0
     restored_count = 0
     final_manifest_saved = False
+    publish_result = None
     sources = []
     checkpoints = None
     progress_lock = threading.Lock()
@@ -197,6 +198,34 @@ def execute_package(execution_id: str) -> dict:
             restored_count = checkpoints.completed_count
             current_source = {}
             phase = "拼接最终成片"
+
+            def publish_ready_part(partial_manifest: dict) -> None:
+                """每段拼好后立即持久化并发布，回执保证重跑时不会重复上传。"""
+                nonlocal phase, publish_result
+                part = partial_manifest["parts"][-1]
+                path = Path(part["video_path"])
+                part["sha256"] = _file_sha256(path)
+                phase = f"上传第 {part['part_index']}/{part['part_count']} 段成片"
+                progress(phase)
+                upload_public_file(path, f"{prefix}/{path.name}")
+                _write_json(assembled, partial_manifest)
+                if part["part_index"] == 1:
+                    _write_json(directory / "youtube-thumbnail-1.json", {
+                        "title": package["titles"][0], "video_sha256": part["sha256"]})
+                for ready in partial_manifest["parts"]:
+                    name = f"youtube-receipt-{ready['part_index']}.json"
+                    receipt = directory / name
+                    if not receipt.is_file() and exists(f"{prefix}/{name}"):
+                        download_public_file(f"{prefix}/{name}", receipt)
+                phase = f"发布第 {part['part_index']}/{part['part_count']} 段到 YouTube"
+                publish_result = publish_youtube(
+                    str(assembled), package["titles"], package["descriptions"], package["tags"],
+                    package["account_group"], progress,
+                    receipt_saved=lambda receipt: upload_public_file(
+                        receipt, f"{prefix}/{receipt.name}", content_type="application/json"),
+                )
+                phase = "拼接最终成片"
+
             if len(sources) == 1:
                 progress("单个现成合集直接复用原文件")
                 source = downloaded[0]
@@ -208,26 +237,32 @@ def execute_package(execution_id: str) -> dict:
                             "topics": source.get("topics") or []}]}
                 _write_json(assembled, manifest)
             else:
-                manifest = assemble_videos(downloaded, directory, progress=progress)
+                manifest = assemble_videos(
+                    downloaded, directory, progress=progress, part_ready=publish_ready_part)
             phase = "上传最终成片"
-            for part in manifest["parts"]:
-                path = Path(part["video_path"])
-                part["sha256"] = _file_sha256(path)
-                upload_public_file(path, f"{prefix}/{path.name}")
+            if publish_result is None:
+                for part in manifest["parts"]:
+                    path = Path(part["video_path"])
+                    part["sha256"] = _file_sha256(path)
+                    upload_public_file(path, f"{prefix}/{path.name}")
             manifest["selection_reason"] = package["selection_reason"]
             save_json("manifest.json", manifest)
             final_manifest_saved = True
-        phase = "发布 YouTube"
-        first = manifest["parts"][0]
-        _write_json(directory / "youtube-thumbnail-1.json", {
-            "title": package["titles"][0], "video_sha256": _file_sha256(Path(first["video_path"]))})
-        for part in manifest["parts"]:
-            name = f"youtube-receipt-{part['part_index']}.json"
-            if exists(f"{prefix}/{name}"):
-                download_public_file(f"{prefix}/{name}", directory / name)
-        result = publish_youtube(str(assembled), package["titles"], package["descriptions"], package["tags"],
-                                 package["account_group"], progress,
-                                 receipt_saved=lambda path: upload_public_file(path, f"{prefix}/{path.name}", content_type="application/json"))
+        if publish_result is None:
+            phase = "发布 YouTube"
+            first = manifest["parts"][0]
+            _write_json(directory / "youtube-thumbnail-1.json", {
+                "title": package["titles"][0], "video_sha256": _file_sha256(Path(first["video_path"]))})
+            for part in manifest["parts"]:
+                name = f"youtube-receipt-{part['part_index']}.json"
+                if exists(f"{prefix}/{name}"):
+                    download_public_file(f"{prefix}/{name}", directory / name)
+            publish_result = publish_youtube(
+                str(assembled), package["titles"], package["descriptions"], package["tags"],
+                package["account_group"], progress,
+                receipt_saved=lambda receipt: upload_public_file(
+                    receipt, f"{prefix}/{receipt.name}", content_type="application/json"))
+        result = publish_result
         result.update({"execution_id": execution_id, "status": "succeeded", "run_url": run_url,
                        "selection_reason": package["selection_reason"]})
         save_json("result.json", result)

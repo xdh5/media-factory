@@ -58,10 +58,10 @@ cache/output/anime/run-*/
 1. `anime_start_prepare_execution(discovery_path, work_ids, selection_reason)`：冻结来源顺序，仅远程读取第一来源前60秒并转写，返回预览 `manifest_path`。轮询到完成。
 2. 宿主根据预览生成一套共用标题、描述和标签，调用现有封面准备和保存工具，以预览清单为输入，只生成一张封面。
 3. `anime_dispatch_github_execution(manifest_path, titles, descriptions, tags, account_group)`：上传执行包和封面至 R2，启动 main 上的 `publish-anime-youtube.yml`。标题和描述数组各一个元素。授权使用 `ANIME_GITHUB_TOKEN`，也可复用本机 gh 登录。
-4. Action 全量下载、核对 ID 和时长、拼接分段、上传 YouTube、设置共用封面、核验平台结果并写回 D1。Action 不配置 LLM、Groq 或生图密钥。账号组目标发生变化或来源不符时停止。
+4. Action 全量下载并核对 ID 和时长；每段拼好后立即上传 YouTube、设置共用封面、核验平台结果并写回 D1，再拼下一段。Action 不配置 LLM、Groq 或生图密钥。账号组目标发生变化或来源不符时停止。
 5. 返回执行 ID 和工作流链接，无需宿主持续在线。按需 `anime_get_github_execution_result(execution_id)` 查询；`dispatched` 不等于发布成功。
 
-执行包、失败时生成的拼接检查点、完整成片、回执和结果保存在 `runs/anime/executions/{执行ID}/`。正常下载按约15分钟或128MB形成独立块，后台只上传新增块；重跑同一 ID 恢复已提交块后从下一条来源继续，最终统一拼接。已有完整成片时直接恢复，复用回执核验，不重新生成文案或封面。GitHub 诊断 artifact 保存七天，R2 缓存不自动删除。托管 Runner 的磁盘和六小时执行时限仍适用，超限时保留已持久化进度并报告。
+执行包、失败时生成的下载检查点、完整成片、回执和结果保存在 `runs/anime/executions/{执行ID}/`。正常下载按约15分钟或128MB形成独立块，后台只上传新增块；重跑同一 ID 恢复已提交块后从下一条来源继续。每段成片完成后先持久化并发布，平台回执即时保存，下一段失败时不会重复上传已成功段。已有完整成片时直接恢复，复用回执核验，不重新生成文案或封面。GitHub 诊断 artifact 保存七天，R2 缓存不自动删除。托管 Runner 的磁盘和六小时执行时限仍适用，超限时保留已持久化进度并报告。
 
 Action 所需 Secrets：已有 D1 和 R2 配置、`ANIME_PUBLISHING_CREDENTIALS_JSON`（仅动漫账号组引用的 OAuth 客户端和 refresh token）。不覆盖其他业务共用的发布凭据 Secret。手动运行工作流时可选 `verify_auth_only=true`，只读核验 Secret 的 OAuth、频道身份和上传权限，不下载或发布视频。
 
