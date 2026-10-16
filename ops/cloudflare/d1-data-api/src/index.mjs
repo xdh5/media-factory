@@ -135,11 +135,39 @@ function languageLearningPackRecord(row) {
 
 async function commitLanguageLearningPack(request, env) {
   const pack = languageLearningPack((await request.json()).pack);
-  const row = await env.DB.prepare(
+  const entries = validateWordEntries(pack.words["en-zh"].map((word, index) => {
+    const english = requiredText(word.english, "english", 200);
+    const normalized = english.normalize("NFKC").toLowerCase().replaceAll("’", "'").replace(/\s+/g, " ").trim();
+    const korean = pack.words["en-ko"][index];
+    if (String(korean?.english || "").normalize("NFKC").toLowerCase().trim() !== normalized) throw new Error("双语词表必须按相同英语单词排序");
+    return { english, normalized_english: normalized, word_json: JSON.stringify({ english, normalized_english: normalized, modes: { "en-zh": word, "en-ko": korean } }) };
+  }));
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const recent = await env.DB.prepare(
+    `SELECT COUNT(DISTINCT normalized_english) AS count FROM language_learning_words
+     WHERE created_at >= ? AND run_id <> ? AND normalized_english IN
+     (SELECT json_extract(value, '$.normalized_english') FROM json_each(?))`,
+  ).bind(cutoffTimestamp(100), pack.packId, JSON.stringify(entries)).first();
+  if (Number(recent?.count || 0) > 5) return errorResponse("VOCABULARY_REUSE_LIMIT", "词包最近 100 天重复单词超过 5 个，请重新选词", 409);
+  const results = await env.DB.batch([env.DB.prepare(
     `INSERT INTO language_learning_packs(pack_id, topic, words_json, image_urls_json, status) VALUES (?, ?, ?, ?, 'ready')
      ON CONFLICT(pack_id) DO UPDATE SET topic = excluded.topic, words_json = excluded.words_json, image_urls_json = excluded.image_urls_json, status = 'ready', run_id = NULL, publish_date = NULL, claimed_at = NULL, updated_at = CURRENT_TIMESTAMP
      WHERE language_learning_packs.status = 'ready' RETURNING *`,
-  ).bind(pack.packId, pack.topic, JSON.stringify(pack.words), JSON.stringify(pack.imageUrls)).first();
+  ).bind(pack.packId, pack.topic, JSON.stringify(pack.words), JSON.stringify(pack.imageUrls)),
+  // 预制词包仅建立词库关联记录，不占用正式成片话题。
+  env.DB.prepare(`INSERT INTO topic_history(workflow, topic, fingerprint, status, publication_id, created_at, updated_at)
+    SELECT 'language_learning', ?, ?, 'prepared', ?, ?, ?
+    WHERE EXISTS (SELECT 1 FROM language_learning_packs WHERE pack_id = ? AND status = 'ready')
+    ON CONFLICT(publication_id) WHERE publication_id IS NOT NULL DO UPDATE SET topic = excluded.topic, updated_at = excluded.updated_at`)
+    .bind(pack.topic, pack.packId, pack.packId, now, now, pack.packId),
+  env.DB.prepare(`DELETE FROM language_learning_words WHERE run_id = ?
+    AND EXISTS (SELECT 1 FROM language_learning_packs WHERE pack_id = ? AND status = 'ready')`).bind(pack.packId, pack.packId),
+  env.DB.prepare(`INSERT INTO language_learning_words(run_id, topic_record_id, topic, english, normalized_english, word_json, created_at)
+    SELECT ?, (SELECT id FROM topic_history WHERE publication_id = ?), ?,
+    json_extract(value, '$.english'), json_extract(value, '$.normalized_english'), json_extract(value, '$.word_json'), ?
+    FROM json_each(?) WHERE EXISTS (SELECT 1 FROM language_learning_packs WHERE pack_id = ? AND status = 'ready')`)
+    .bind(pack.packId, pack.packId, pack.topic, now, JSON.stringify(entries), pack.packId)]);
+  const row = results[0]?.results?.[0];
   if (!row) return errorResponse("LANGUAGE_PACK_ALREADY_CLAIMED", "词包已经被 GitHub 领取，不能覆盖", 409, { pack_id: pack.packId });
   return jsonResponse({ pack: languageLearningPackRecord(row) }, 201);
 }
@@ -276,10 +304,11 @@ async function commitPublication(request, env) {
       `SELECT DISTINCT normalized_english
        FROM language_learning_words
        WHERE created_at >= ?
+       AND NOT EXISTS (SELECT 1 FROM language_learning_packs p WHERE p.pack_id = language_learning_words.run_id AND ('language_learning:' || p.run_id) = ?)
        AND normalized_english IN (
          SELECT json_extract(value, '$.normalized_english') FROM json_each(?)
        )`,
-    ).bind(cutoffTimestamp(historyDays), entriesJson).all();
+    ).bind(cutoffTimestamp(historyDays), publicationId, entriesJson).all();
     const repeatedSet = new Set((recent.results || []).map((row) => row.normalized_english));
     const repeatedWords = entries.filter((entry) => repeatedSet.has(entry.normalized_english)).map((entry) => entry.english);
     if (entries.length - repeatedWords.length < minimumNewWords) {
