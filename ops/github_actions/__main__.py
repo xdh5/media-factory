@@ -17,6 +17,7 @@ def main() -> None:
             "finance_preflight",
             "finance",
             "language_learning_preflight",
+            "language_learning_release_pack",
             "language_learning_words",
             "language_learning_cards",
             "language_learning_videos",
@@ -68,6 +69,16 @@ def main() -> None:
                     stream.write(f"existing_run_id={payload['existing_run_id']}\n")
                     stream.write(f"pending_targets={','.join(payload['pending_targets'])}\n")
                 stream.write(f"skip_reason={payload['skip_reason']}\n")
+    elif arguments.workflow == "language_learning_release_pack":
+        from datetime import date
+        from ._mcp import ProjectMCP
+        from ._shared import PROJECT_ROOT
+
+        async def _release_pack():
+            async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+                return await mcp.call("language_learning_release_pack", {"publish_date": date.fromisoformat(arguments.publish_date).isoformat()})
+
+        payload = asyncio.run(_release_pack())
     elif arguments.workflow == "finance":
         from .finance import run as run_finance
 

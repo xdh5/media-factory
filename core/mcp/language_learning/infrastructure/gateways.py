@@ -6,6 +6,7 @@ from core.mcp._task_runner import submit_task as runner_submit_task
 from core.tools.media_records import (
     MediaRecordsError,
     claim_language_learning_pack,
+    release_language_learning_pack,
     commit_language_learning_pack,
     list_production_outputs,
     list_publication_records,

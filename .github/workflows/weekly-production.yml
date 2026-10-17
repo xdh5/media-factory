@@ -119,6 +119,12 @@ jobs:
           --publish-date "$PUBLISH_DATE"
           --finance-only "$FINANCE_ONLY"
 
+      - name: 归还失败或取消任务占用的语言词包
+        if: ${{ (failure() || cancelled()) && !inputs.finance_only }}
+        env:
+          PUBLISH_DATE: ${{ matrix.publish_date }}
+        run: python -m ops.github_actions language_learning_release_pack --publish-date "$PUBLISH_DATE"
+
       - name: 保存配音失败诊断
         if: failure()
         uses: actions/upload-artifact@v4

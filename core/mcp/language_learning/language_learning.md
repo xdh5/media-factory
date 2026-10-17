@@ -123,6 +123,8 @@ language_learning_poll_task(task_path)
 
 ## 目录
 
+晨间补齐永久覆盖财经与语言生产。语言按统一配置检查中英、韩英的普通版两段及问答版一段，只生产缺失槽位。词包开始时进入 reserved 临时锁定，期限七小时，覆盖六小时 Job 上限；六条成片上传 R2 并写入产物记录后才成为 used。失败或取消时释放临时锁，下次领取也会回收过期锁，不要求重试沿用原主题。补产清单保留已交付视频的 R2 地址与原分段编号，不重复上传成功文件。补产结束再次预检，仍有缺项时返回失败。
+
 - 缓存：`cache/language_learning/{run_id}/`
 - 预制词包验收缓存：`cache/language_learning/packs/{pack_id}/subject-cutouts/`
 - 成片：`cache/output/language_learning/run-YYYYMMDD/`，日期为北京时间计划发布日期

@@ -8,6 +8,7 @@ import re
 import uuid
 import warnings
 from copy import deepcopy
+from datetime import date
 from pathlib import Path
 
 os.environ.setdefault("DASHSCOPE_BUSINESS_LINE", "language_learning")
@@ -24,6 +25,7 @@ from ..infrastructure import (
     RunnerTaskNotFoundError,
     TopicDedupError,
     claim_language_learning_pack,
+    release_language_learning_pack,
     commit_language_learning_pack,
     generate_qwen_image,
     get_topic,
@@ -47,6 +49,9 @@ from ..config import (
     MINIMUM_NEW_WORDS,
     TOPIC_DEDUPLICATION_DAYS,
     WORD_HISTORY_DAYS,
+    WORDS_PER_TASK,
+    WORDS_PER_VIDEO,
+    video_content_kind,
     WORKFLOW_ID,
     pack_cutout_cache_dir,
     production_dirs,
@@ -115,10 +120,21 @@ def language_learning_get_automation_plan(publish_date: str) -> dict:
             target for target in targets
             if any((str(row.get("title") or "").strip(), target, int(row.get("content_part") or 1)) not in published for row in publishable)
         ]
-        should_generate = not outputs and not publications
+        expected = [
+            {"learning_mode": mode, "video_format": video_format, "content_part": part}
+            for mode in DEFAULT_PRODUCTION_CONFIG["learning_modes"]
+            for video_format in DEFAULT_PRODUCTION_CONFIG["video_formats"]
+            for part in range(1, (WORDS_PER_TASK + WORDS_PER_VIDEO - 1) // WORDS_PER_VIDEO + 1 if video_format == "standard" else 2)
+        ]
+        existing_parts = {(str(row.get("content_kind") or ""), int(row.get("content_part") or 1)) for row in outputs}
+        pending_outputs = [item for item in expected if (video_content_kind(item["learning_mode"], item["video_format"]), item["content_part"]) not in existing_parts]
+        should_generate = bool(pending_outputs)
         return {
             "publish_date": normalized_date,
             "should_generate": should_generate,
+            "pending_outputs": pending_outputs,
+            "completed_outputs": github_outputs,
+            "desired_output_count": len(expected),
             "should_resume_publish": not should_generate and bool(existing_run_id) and bool(pending),
             "existing_run_id": existing_run_id,
             "pending_targets": pending,
@@ -448,6 +464,15 @@ def language_learning_claim_pack(publish_date: str) -> dict:
         raise _map_error(exc) from exc
 
 
+def language_learning_release_pack(publish_date: str) -> dict:
+    """失败或中断时归还词包；已经完整交付的生产保留使用记录。"""
+    try:
+        normalized_date = date.fromisoformat(str(publish_date).strip()).isoformat()
+        return release_language_learning_pack(run_id=f"run-{normalized_date.replace('-', '')}", publish_date=normalized_date)
+    except Exception as exc:
+        raise _map_error(exc) from exc
+
+
 def language_learning_prepare_images(
     topic: str,
     words: list[dict],
@@ -739,6 +764,7 @@ def language_learning_start_create_videos(
     countdown_audio_path: str | None = None,
     record_production_outputs: bool = True,
     question_voices: dict[str, str] | None = None,
+    pending_outputs: list[dict] | None = None,
 ) -> dict:
     """启动 TTS + 出片；立即返回 task_path，用 language_learning_poll_task 轮询至 done=true。"""
     try:
@@ -766,6 +792,7 @@ def language_learning_start_create_videos(
                     if isinstance(config, dict)
                 },
                 progress=progress,
+                pending_outputs=pending_outputs,
             )
             return attach_publish_manifest(result, words_by_mode, publish_config)
 

@@ -68,11 +68,12 @@ def _hashtags(tags: list[str]) -> str:
 
 def _video_parts(video: dict, fallback_title: str, *, empty_error: str) -> list[dict]:
     parts = []
-    for part in video.get("video_parts") or []:
+    for index, part in enumerate(video.get("video_parts") or [], 1):
         path = Path(part["output_path"]).resolve()
         if not path.is_file():
             raise PublishError(f"待发布视频不存在：{path}")
         parts.append({
+            "content_part": int(part.get("part") or index),
             "output_path": str(path),
             "title": str(part.get("title") or fallback_title),
             "word_start": part.get("word_start"),
@@ -177,6 +178,10 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
             previous = {}
         for item in previous.get("items") or []:
             if _item_key(item) in new_keys:
+                replacement = next(row for row in delivery_items if _item_key(row) == _item_key(item))
+                merged = {int(video.get("content_part") or index): video for index, video in enumerate(item.get("videos") or [], 1)}
+                merged.update({int(video["content_part"]): video for video in replacement["videos"]})
+                replacement["videos"] = [merged[part] for part in sorted(merged)]
                 continue
             kept_items.append(item)
     items = [*kept_items, *delivery_items]
@@ -201,7 +206,8 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
             "entries": build_database_word_entries(words_by_mode),
         },
     }
-    manifest["database_commit_result"] = _commit_manifest_database(manifest)
+    if manifest["production_source"] == "local_mcp":
+        manifest["database_commit_result"] = _commit_manifest_database(manifest)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return {
         **video_result,
@@ -246,6 +252,10 @@ def upload_publish_assets_to_r2(
         video_format = _video_format(item)
         content_kind = video_content_kind(mode, video_format)
         for index, video in enumerate(item.get("videos") or [], 1):
+            index = int(video.get("content_part") or index)
+            if video.get("video_url"):
+                uploaded.append({"kind": "video", "source_name": Path(str(video.get("r2_key") or "")).name, "learning_mode": mode, "video_format": video_format, "url": video["video_url"], "key": video["r2_key"]})
+                continue
             video_path = Path(str(video.get("output_path") or "")).resolve()
             stored = upload_public_file(
                 video_path,
@@ -283,6 +293,8 @@ def upload_publish_assets_to_r2(
         uploaded.append({"kind": "subject_sheet", "source_name": sheet_path.name, **stored})
     manifest["r2_uploaded"] = True
     manifest["production_outputs"] = commit_production_outputs(output_records) if output_records else []
+    if production_source == "github_workflow":
+        manifest["database_commit_result"] = _commit_manifest_database(manifest)
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     stored_manifest = upload_public_file(
         path,

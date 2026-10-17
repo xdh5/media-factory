@@ -20,12 +20,14 @@ from .language_learning import (
     upload_handoff,
 )
 
-async def _run_language_produce(publish_date: str, work_dir: Path) -> dict:
+async def _run_language_produce(publish_date: str, work_dir: Path, plan: dict) -> dict:
     state_path = work_dir / "language-learning-state.json"
     handoff_dir = work_dir / "handoff"
     diagnostics_dir = work_dir / "diagnostics"
 
-    await generate_words("", ["en-zh", "en-ko"], state_path, publish_date)
+    modes = list(dict.fromkeys(item["learning_mode"] for item in plan["pending_outputs"]))
+    await generate_words("", modes, state_path, publish_date,
+                         pending_outputs=plan["pending_outputs"], completed_outputs=plan["completed_outputs"])
     await generate_cards(state_path, diagnostics_dir)
     await generate_videos(state_path, handoff_dir)
     result = await upload_handoff(handoff_dir)
@@ -109,11 +111,19 @@ async def run_day(
     try:
         print(f"[{publish_date}] 开始语言生产", flush=True)
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
-        upload_result = await _run_language_produce(publish_date, work_dir)
+        upload_result = await _run_language_produce(publish_date, work_dir, lang_preflight)
         run_id = str(upload_result["run_id"])
         results["language"] = {"status": "produced", "run_id": run_id}
     except Exception as exc:
         results["language"] = {"status": "produce_failed", "error": str(exc)}
+
+    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as language_mcp:
+        remaining = await language_mcp.call("language_learning_get_automation_plan", {"publish_date": publish_date})
+        if remaining["should_generate"]:
+            await language_mcp.call("language_learning_release_pack", {"publish_date": publish_date})
+    if remaining["should_generate"]:
+        results["language"]["status"] = "produce_failed"
+        results["language"]["pending_outputs"] = remaining["pending_outputs"]
 
     return results
 

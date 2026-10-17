@@ -260,6 +260,11 @@ def claim_language_learning_pack(*, run_id: str, publish_date: str) -> dict:
     return payload["pack"]
 
 
+def release_language_learning_pack(*, run_id: str, publish_date: str) -> dict:
+    """归还失败生产任务占用的语言词包。"""
+    return _request("POST", "/v1/language-learning-packs/release", body={"run_id": run_id, "publish_date": publish_date})
+
+
 def validate_and_record_words(
     *,
     workflow: str,

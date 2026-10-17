@@ -184,6 +184,7 @@ def _one_mode(
     language_pause: float,
     word_pause: float,
     voices: dict[str, str],
+    content_parts: list[int] | None = None,
 ) -> dict:
     rows, cards = _items(words), _load_cards(card_dir, words)
     target_key = "chinese" if mode == "en-zh" else "korean"
@@ -197,6 +198,8 @@ def _one_mode(
     cursor = 0.0
     part_count = (len(rows) + WORDS_PER_VIDEO - 1) // WORDS_PER_VIDEO
     for part, start in enumerate(range(0, len(rows), WORDS_PER_VIDEO), 1):
+        if content_parts is not None and part not in content_parts:
+            continue
         part_words = rows[start:start + WORDS_PER_VIDEO]
         part_cards = cards[start:start + WORDS_PER_VIDEO]
         title = build_video_title(mode, topic, part_words, part=part, part_count=part_count)
@@ -441,6 +444,7 @@ def create_vocabulary_videos(
     question_voices: dict[str, str] | None = None,
     hashtags_by_mode: dict[str, list[str]] | None = None,
     progress=None,
+    pending_outputs: list[dict] | None = None,
 ) -> dict:
     try:
         language_pause, word_pause = max(0.0, float(language_pause)), max(0.0, float(word_pause))
@@ -467,9 +471,17 @@ def create_vocabulary_videos(
     output_root.mkdir(parents=True, exist_ok=True)
     results_by_key: dict[tuple[str, str], dict] = {}
     configured_question_voices = question_voices or voices
+    requested = None if pending_outputs is None else {
+        (item["learning_mode"], item["video_format"]): [
+            int(row["content_part"]) for row in pending_outputs
+            if row["learning_mode"] == item["learning_mode"] and row["video_format"] == item["video_format"]
+        ] for item in pending_outputs
+    }
     total_jobs = sum(1 for mode in modes if "standard" in formats) + sum(
         1 for mode in modes if "quiz" in formats and resolved_countdown_audio is not None
     )
+    if requested is not None:
+        total_jobs = len(requested)
     if progress is not None:
         progress(f"开始出片：{modes} × {formats}，共 {total_jobs} 条")
     # 出片已在 MCP 后台线程中运行，按顺序做，避免进程退出时再开线程池。
@@ -477,7 +489,7 @@ def create_vocabulary_videos(
         card_dir = Path(card_dirs[mode]).resolve()
         words = words_by_mode.get(mode) or []
         mode_cache = cache_root / mode
-        if "standard" in formats:
+        if "standard" in formats and (requested is None or (mode, "standard") in requested):
             results_by_key[(mode, "standard")] = _one_mode(
                 mode,
                 card_dir,
@@ -488,10 +500,11 @@ def create_vocabulary_videos(
                 language_pause,
                 word_pause,
                 voices,
+                None if requested is None else requested[(mode, "standard")],
             )
             if progress is not None:
                 progress(f"已完成出片 {mode}/standard（{len(results_by_key)}/{total_jobs}）")
-        if "quiz" in formats and resolved_countdown_audio is not None:
+        if "quiz" in formats and resolved_countdown_audio is not None and (requested is None or (mode, "quiz") in requested):
             results_by_key[(mode, "quiz")] = _one_quiz_mode(
                 mode,
                 card_dir,
@@ -510,6 +523,7 @@ def create_vocabulary_videos(
         results_by_key[(mode, video_format)]
         for mode in modes
         for video_format in formats
+        if (mode, video_format) in results_by_key
     ]
     publish_date = publish_date_from_run_id(run_id)
     payload = {

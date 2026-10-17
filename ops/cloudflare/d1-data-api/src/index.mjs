@@ -132,7 +132,7 @@ function languageLearningPack(value) {
 }
 
 function languageLearningPackRecord(row) {
-  return { ...row, words: JSON.parse(row.words_json || "{}"), image_urls: JSON.parse(row.image_urls_json || "[]"), words_json: undefined, image_urls_json: undefined };
+  return { ...row, status: row.used_at ? 'used' : row.status === 'claimed' ? 'reserved' : 'ready', words: JSON.parse(row.words_json || "{}"), image_urls: JSON.parse(row.image_urls_json || "[]"), words_json: undefined, image_urls_json: undefined };
 }
 
 async function commitLanguageLearningPack(request, env) {
@@ -178,14 +178,32 @@ async function claimLanguageLearningPack(request, env) {
   const body = await request.json();
   const runId = requiredText(body.run_id, "run_id", 100);
   const publishDate = productionDate(body.publish_date);
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  await env.DB.prepare(
+    "UPDATE language_learning_packs SET status = 'ready', run_id = NULL, publish_date = NULL, claimed_at = NULL, reservation_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'claimed' AND used_at IS NULL AND reservation_expires_at <= ?",
+  ).bind(now).run();
+  const existing = await env.DB.prepare(
+    "SELECT * FROM language_learning_packs WHERE run_id = ? AND publish_date = ? ORDER BY claimed_at, pack_id LIMIT 1",
+  ).bind(runId, publishDate).first();
+  if (existing) return jsonResponse({ pack: languageLearningPackRecord(existing) });
   const selected = await env.DB.prepare("SELECT * FROM language_learning_packs WHERE status = 'ready' AND json_array_length(image_urls_json) = 10 ORDER BY created_at, pack_id LIMIT 1").first();
   if (!selected) return errorResponse("LANGUAGE_PACKS_EMPTY", "没有可用的已验收语言词包，请先让 Agent 生成并提交词包", 409);
-  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const expiresAt = new Date(Date.now() + 7 * 3600000).toISOString().replace(/\.\d{3}Z$/, "Z");
   const claimed = await env.DB.prepare(
-    `UPDATE language_learning_packs SET status = 'claimed', run_id = ?, publish_date = ?, claimed_at = ?, updated_at = CURRENT_TIMESTAMP WHERE pack_id = ? AND status = 'ready' RETURNING *`,
-  ).bind(runId, publishDate, now, selected.pack_id).first();
+    `UPDATE language_learning_packs SET status = 'claimed', run_id = ?, publish_date = ?, claimed_at = ?, reservation_expires_at = ?, updated_at = CURRENT_TIMESTAMP WHERE pack_id = ? AND status = 'ready' AND NOT EXISTS (SELECT 1 FROM language_learning_packs WHERE run_id = ? AND publish_date = ?) RETURNING *`,
+  ).bind(runId, publishDate, now, expiresAt, selected.pack_id, runId, publishDate).first();
   if (!claimed) return errorResponse("LANGUAGE_PACK_CLAIM_CONFLICT", "词包刚被其他生产任务领取，请重试", 409);
   return jsonResponse({ pack: languageLearningPackRecord(claimed) });
+}
+
+async function releaseLanguageLearningPack(request, env) {
+  const body = await request.json();
+  const runId = requiredText(body.run_id, "run_id", 100);
+  const publishDate = productionDate(body.publish_date);
+  const result = await env.DB.prepare(
+    "UPDATE language_learning_packs SET status = 'ready', run_id = NULL, publish_date = NULL, claimed_at = NULL, reservation_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE run_id = ? AND publish_date = ? AND status = 'claimed' AND used_at IS NULL RETURNING pack_id",
+  ).bind(runId, publishDate).all();
+  return jsonResponse({ released_pack_ids: (result.results || []).map(row => row.pack_id) });
 }
 
 function cutoffTimestamp(days) {
@@ -1229,8 +1247,20 @@ async function commitProductionOutputs(request, env) {
       contentPart, title, hashtags, source, localPath, r2Url, r2ExpiresAt,
     );
   });
+  const languageRuns = [...new Set(records.filter(row => row.business_line === 'language_learning' && row.source === 'github_workflow').map(row => row.run_id))];
+  for (const runId of languageRuns) {
+    statements.push(env.DB.prepare(
+      `UPDATE language_learning_packs SET used_at = COALESCE(used_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), reservation_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE run_id = ? AND status = 'claimed' AND (
+         SELECT COUNT(DISTINCT content_kind || ':' || content_part) FROM production_outputs
+         WHERE business_line = 'language_learning' AND source = 'github_workflow' AND run_id = ? AND r2_url IS NOT NULL
+           AND ((content_kind IN ('en-zh', 'en-ko') AND content_part IN (1, 2))
+             OR (content_kind IN ('en-zh-quiz', 'en-ko-quiz') AND content_part = 1))
+       ) = 6`,
+    ).bind(runId, runId));
+  }
   const results = await env.DB.batch(statements);
-  return jsonResponse({ records: results.map((result) => result.results?.[0]).filter(Boolean) }, 201);
+  return jsonResponse({ records: results.slice(0, records.length).map((result) => result.results?.[0]).filter(Boolean) }, 201);
 }
 
 function financeSourceAuthor(row) {
@@ -1677,6 +1707,7 @@ export default {
       if (request.method === "POST" && url.pathname === "/v1/words/validate-and-record") return await validateAndRecordWords(request, env);
       if (request.method === "POST" && url.pathname === "/v1/language-learning-packs/commit") return await commitLanguageLearningPack(request, env);
       if (request.method === "POST" && url.pathname === "/v1/language-learning-packs/claim") return await claimLanguageLearningPack(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/language-learning-packs/release") return await releaseLanguageLearningPack(request, env);
       if (request.method === "GET" && url.pathname === "/v1/finance-generated-images") return await listFinanceGeneratedImages(request, env);
       if (request.method === "POST" && url.pathname === "/v1/finance-generated-images/commit") return await commitFinanceGeneratedImages(request, env);
       if (request.method === "GET" && url.pathname === "/v1/scenario-quiz-questions") return await listScenarioQuizQuestions(request, env);

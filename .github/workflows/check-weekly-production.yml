@@ -34,8 +34,7 @@ jobs:
               return;
             }
             if (run.status !== 'completed') {
-              core.info(`生产状态：${run.status}，结果：${run.conclusion}`);
-              return;
+              core.info(`原任务状态为 ${run.status}，补齐任务通过周生产并发组等待，不中断原任务`);
             }
             const scheduledDate = new Date(Date.parse(run.created_at) + 8 * 3600000);
             const daysUntilMonday = (8 - scheduledDate.getUTCDay()) % 7 || 7;

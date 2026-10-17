@@ -36,6 +36,9 @@ async def generate_words(
     modes: list[str],
     state_path: str | Path,
     publish_date: str = "",
+    *,
+    pending_outputs: list[dict] | None = None,
+    completed_outputs: list[dict] | None = None,
 ) -> dict:
     """第一段：从已验收词包库存领取主题与双语词表。"""
     if not str(publish_date or "").strip():
@@ -46,6 +49,7 @@ async def generate_words(
         topic, words, run_id = str(pack["topic"]), dict(pack["words"]), str(claimed["run_id"])
         learning_modes = list(modes or ["en-zh", "en-ko"])
     state = {
+        "pending_outputs": pending_outputs,
         "topic": topic,
         "learning_modes": learning_modes,
         "publish_date": publish_date,
@@ -54,8 +58,34 @@ async def generate_words(
         "pack_id": pack["pack_id"],
         "pack_subject_urls": list(pack["image_urls"]),
     }
+    if completed_outputs:
+        config = await _production_config(topic, [])
+        items = {}
+        for row in completed_outputs:
+            if row["run_id"] != run_id:
+                continue
+            kind = str(row["content_kind"])
+            mode = kind.removesuffix("-quiz")
+            video_format = "quiz" if kind.endswith("-quiz") else "standard"
+            item = items.setdefault(kind, {
+                "learning_mode": mode, "video_format": video_format,
+                "title": row["title"], "tags": str(row.get("hashtags") or "").split(),
+                "short_title": config["publish_config"].get(mode, {}).get("short_title", ""), "videos": [],
+            })
+            item["videos"].append({
+                "content_part": int(row.get("content_part") or 1), "title": row["title"],
+                "output_path": "", "video_url": row["r2_url"],
+                "r2_key": unquote(urlparse(row["r2_url"]).path).lstrip("/"),
+            })
+        manifest_path = Path(claimed["output_dir"]) / "publish-manifest.json"
+        _write_state(manifest_path, {"items": list(items.values())})
     _write_state(state_path, state)
     return state
+
+
+async def _production_config(topic: str, modes: list[str]) -> dict:
+    async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as mcp:
+        return await mcp.call("language_learning_get_production_config", {"topic": topic, "learning_modes": modes})
 
 
 async def generate_cards(
@@ -115,6 +145,7 @@ async def generate_videos(state_path: str | Path, handoff_dir: str | Path) -> di
                 "word_pause": config["word_pause"],
                 "production_source": "github_workflow",
                 "video_formats": config["video_formats"],
+                "pending_outputs": state.get("pending_outputs"),
             },
         )
         manifest = await mcp.poll("language_learning_poll_task", started["task_path"])
@@ -169,7 +200,6 @@ async def upload_handoff(handoff_dir: str | Path) -> dict:
                 "manifest_path": manifest["manifest_path"],
                 "run_id": str(handoff["run_id"]),
                 "subject_sheet_path": str(subject_sheet_path) if subject_sheet_path else None,
-                "learning_modes": list(handoff["learning_modes"]),
             },
         )
         remote = await mcp.poll("language_learning_poll_task", started["task_path"])

@@ -7,6 +7,7 @@ from .gateways import (
     RunnerTaskNotFoundError,
     TopicDedupError,
     claim_language_learning_pack,
+    release_language_learning_pack,
     commit_language_learning_pack,
     generate_qwen_image,
     get_topic,
