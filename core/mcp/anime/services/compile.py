@@ -1,4 +1,4 @@
-"""按顺序下载分享链接，均分拼接成每段最长 3 小时的本地视频。"""
+"""按顺序拼接完整剧集，在剧集边界附近按时长均衡分段。"""
 
 from __future__ import annotations
 
@@ -60,17 +60,27 @@ def part_count(total_seconds: float, max_part_seconds: float = MAX_PART_SECONDS)
 
 
 def part_ranges(
-    total_seconds: float,
+    episode_durations: list[float],
     max_part_seconds: float = MAX_PART_SECONDS,
 ) -> list[tuple[float, float]]:
-    """把总时长均分成若干段，每段都不超过上限。"""
-    count = part_count(total_seconds, max_part_seconds)
-    span = total_seconds / count
+    """以三小时估算段数，再选择最接近均分目标的完整剧集边界。"""
+    if not episode_durations or any(not math.isfinite(value) or value <= 0 for value in episode_durations):
+        raise AnimeError("分段需要有效的完整剧集时长")
+    boundaries = [0.0]
+    for duration in episode_durations:
+        boundaries.append(boundaries[-1] + duration)
+    total_seconds = boundaries[-1]
+    count = min(len(episode_durations), part_count(total_seconds, max_part_seconds))
     ranges: list[tuple[float, float]] = []
-    for index in range(count):
-        start = 0.0 if index == 0 else span * index
-        end = total_seconds if index == count - 1 else span * (index + 1)
-        ranges.append((start, end))
+    previous = 0
+    for index in range(1, count):
+        # 为后续每段至少留一集；切点只能取整集边界，允许为保全剧集略超三小时。
+        target = boundaries[previous] + (total_seconds - boundaries[previous]) / (count - index + 1)
+        latest = len(episode_durations) - (count - index)
+        selected = min(range(previous + 1, latest + 1), key=lambda end: abs(boundaries[end] - target))
+        ranges.append((boundaries[previous], boundaries[selected]))
+        previous = selected
+    ranges.append((boundaries[previous], total_seconds))
     return ranges
 
 
@@ -123,7 +133,7 @@ def assemble_videos(
     part_ready: Callable[[dict], None] | None = None,
     completed_parts: dict[int, dict] | None = None,
 ) -> dict:
-    """把来源按顺序均分拼接；每段完成后可立即交给调用方持久化或发布。"""
+    """按完整剧集边界均衡拼接，每段完成后立即持久化或发布。"""
     if not sources:
         raise AnimeError("没有可拼接的视频")
     output_dir = Path(output_dir)
@@ -145,7 +155,16 @@ def assemble_videos(
         })
         total_seconds += duration
 
-    ranges = part_ranges(total_seconds, max_part_seconds)
+    episode_durations = []
+    episode_seconds = 0.0
+    for source in timeline:
+        episode_seconds += source["duration"]
+        if source.get("episode_boundary_after", True):
+            episode_durations.append(episode_seconds)
+            episode_seconds = 0.0
+    if episode_seconds:
+        raise AnimeError("检查点缺少完整剧集结束边界，不能按时间硬切")
+    ranges = part_ranges(episode_durations, max_part_seconds)
     parts: list[dict] = []
     width = len(str(len(ranges)))
     completed_parts = completed_parts or {}

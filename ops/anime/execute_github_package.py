@@ -16,7 +16,7 @@ from pathlib import Path
 
 from core.mcp.anime._constants import OUTPUT_ROOT
 from core.mcp.anime._errors import AnimeError
-from core.mcp.anime.services.compile import _probe, _write_json, assemble_videos, part_count
+from core.mcp.anime.services.compile import _probe, _write_json, assemble_videos, part_ranges
 from core.mcp.anime.services.github_execution import validate_copy
 from core.mcp.anime.services.youtube import _file_sha256, _part_title, publish_youtube
 from core.tools.media_files import download_public_file, upload_public_file
@@ -273,7 +273,7 @@ def execute_package(execution_id: str) -> dict:
             current_source = {}
             phase = "拼接最终成片"
             completed_parts: dict[int, dict] = {}
-            expected_part_count = part_count(sum(float(item["duration"]) for item in downloaded))
+            expected_part_count = len(part_ranges([float(item["duration_seconds"]) for item in sources]))
             for index in range(1, expected_part_count + 1):
                 receipt_name = f"youtube-receipt-{index}.json"
                 if not exists(f"{prefix}/{receipt_name}"):

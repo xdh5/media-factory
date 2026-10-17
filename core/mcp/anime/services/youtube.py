@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .._constants import OUTPUT_ROOT
 from .._errors import AnimeError
-from .compile import _executable, _subprocess_kwargs, _write_json, part_count
+from .compile import _executable, _subprocess_kwargs, _write_json, part_ranges
 
 
 def _local_path(raw: str) -> Path:
@@ -144,7 +144,7 @@ def prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
         selection = json.loads(selection_path.read_text(encoding="utf-8"))
         total_seconds = sum(float(item.get("duration_seconds") or 0) for item in selection.get("sources") or [])
         if total_seconds > 0:
-            expected_part_count = part_count(total_seconds)
+            expected_part_count = len(part_ranges([float(item["duration_seconds"]) for item in selection["sources"]]))
     prepared_tasks = []
     titles_by_image_id = {}
     digests = {}

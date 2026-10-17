@@ -16,7 +16,7 @@ import requests
 
 from .._constants import PROJECT_ROOT
 from .._errors import AnimeError
-from .compile import _write_json, part_count
+from .compile import _write_json, part_ranges
 from .discover import load_discovery
 from .preview import extract_remote_preview
 from .youtube import _file_sha256, _part_title, _require_host_thumbnail, load_manifest, transcribe_intros
@@ -132,14 +132,14 @@ def dispatch_execution(manifest_path: str, titles: list[str], descriptions: list
     routes = resolve_account_group(account_group, "anime", ["youtube"])
     if len(routes) != 1:
         raise AnimeError("目标账号组必须对应一个 YouTube 频道")
-    expected_part_count = part_count(sum(float(item["duration_seconds"]) for item in selection["sources"]))
+    expected_part_count = len(part_ranges([float(item["duration_seconds"]) for item in selection["sources"]]))
     preview_digest = _file_sha256(Path(parts[0]["video_path"]))
     thumbnails = []
     for index in range(1, expected_part_count + 1):
         thumbnail = _require_host_thumbnail(
             directory, index, _part_title(titles[0], index, expected_part_count), preview_digest)
         thumbnails.append({"index": index, "sha256": _file_sha256(thumbnail)})
-    package = {"version": 2, **selection, "titles": titles, "descriptions": descriptions, "tags": tags,
+    package = {"version": 2, "segmentation": "episode-boundaries-v1", **selection, "titles": titles, "descriptions": descriptions, "tags": tags,
                "account_group": account_group, "channel_id": routes[0]["platform_account_id"],
                "intro": json.loads(intro.read_text(encoding="utf-8")), "thumbnails": thumbnails}
     execution_id = hashlib.sha256(json.dumps(package, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:32]

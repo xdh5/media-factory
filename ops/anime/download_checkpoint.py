@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from core.mcp.anime._errors import AnimeError
-from core.mcp.anime.services.compile import _probe, _write_json, _validate_audio, assemble_videos
+from core.mcp.anime.services.compile import _probe, _write_json, _validate_audio, assemble_videos, part_ranges
 from core.mcp.anime.services.youtube import _file_sha256
 
 CHECKPOINT_NAME = "block-checkpoint.json"
@@ -19,6 +19,14 @@ class CheckpointUploader:
                  block_seconds=900, block_bytes=128 * 1024 * 1024):
         self.directory = Path(directory)
         self.prefix, self.execution_id, self.sources = prefix, execution_id, sources
+        durations = [float(source["duration_seconds"]) for source in sources]
+        planned_ends = {round(end, 6) for _, end in part_ranges(durations)}
+        elapsed = 0.0
+        self.part_end_orders = set()
+        for order, duration in enumerate(durations, 1):
+            elapsed += duration
+            if round(elapsed, 6) in planned_ends:
+                self.part_end_orders.add(order)
         self.upload, self.progress = upload, progress
         self.block_seconds, self.block_bytes = block_seconds, block_bytes
         self.pending = []
@@ -140,7 +148,7 @@ class CheckpointUploader:
         self.pending.append(source)
         self.pending_seconds += float(source["duration"])
         self.pending_bytes += Path(source["path"]).stat().st_size
-        if self.pending_seconds >= self.block_seconds or self.pending_bytes >= self.block_bytes:
+        if order in self.part_end_orders or self.pending_seconds >= self.block_seconds or self.pending_bytes >= self.block_bytes:
             self._submit_pending()
 
     def _submit_pending(self):
@@ -207,11 +215,12 @@ class CheckpointUploader:
         self.finish()
         records = []
         for block in self.checkpoint["blocks"]:
-            for part in block["parts"]:
+            for part_index, part in enumerate(block["parts"]):
                 path = self.directory / part["name"]
                 probe = _probe(path)
                 records.append({"path": path, "probe": probe, "duration": probe["duration"],
-                                "order": len(records) + 1, "title": "已验证来源分块", "topics": []})
+                                "order": len(records) + 1, "title": "已验证来源分块", "topics": [],
+                                "episode_boundary_after": part_index == len(block["parts"]) - 1})
         return records
 
     def close(self):
