@@ -1,4 +1,4 @@
-"""按日期串行生产；财经成片上传 R2 并预约 YouTube，语言成片交付 R2。"""
+"""按日期串行生产；财经和语言成片交付 R2。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from ._shared import (
     PROJECT_ROOT,
 )
 from .finance import run as run_finance
-from .finance_publication import schedule_publication
 from ._mcp import ProjectMCP
 from .language_learning import (
     generate_cards,
@@ -83,27 +82,11 @@ async def run_day(
             "produced": produced,
             "failed": failed,
         }
-        # 当天已有成片不在本次制作范围内，制作循环不会上传它们。
-        needs_youtube_backfill = len(finance_preflight["pending_content_parts"]) < int(
-            finance_preflight["desired_output_count"]
-        )
     else:
         results["finance"] = {
             "status": "skipped",
             "reason": finance_preflight["skip_reason"],
         }
-        needs_youtube_backfill = True
-
-    if needs_youtube_backfill:
-        try:
-            print(f"[{publish_date}] 检查已有财经成片并补齐 YouTube 预约", flush=True)
-            publication = await schedule_publication(publish_date)
-            results["finance"]["publication"] = publication
-            if results["finance"]["status"] == "skipped" and not publication.get("skipped"):
-                results["finance"]["status"] = "published"
-        except Exception as exc:
-            results["finance"]["status"] = "publish_failed"
-            results["finance"]["error"] = str(exc)
 
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as language_mcp:
         lang_preflight = await language_mcp.call(

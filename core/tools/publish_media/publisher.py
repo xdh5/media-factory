@@ -17,7 +17,6 @@ from ._errors import DuplicatePublicationError, InvalidPublishRequestError, Medi
 from .accounts import resolve_account_group
 from .content import local_publish_items, normalize_platforms, normalize_publish_date
 from .finance_schedule import plan_finance_publications
-from .thumbnails import resolve_youtube_thumbnail
 
 
 def _publishing():
@@ -158,12 +157,6 @@ def _publish_copy(item: dict) -> str:
 def _target(item: dict, route: dict) -> dict:
     platform = str(route["platform"])
     description = _publish_copy(item)
-    if item.get("business_line") == "finance" and platform == "youtube":
-        source_hook = str(item.get("source_hook") or "").strip()
-        hashtags = str(item.get("hashtags") or "").strip()
-        if not source_hook or not hashtags:
-            raise InvalidPublishRequestError("财经 YouTube 描述必须包含黄金钩子和 hashtag，请补齐 source-hook.txt 与成片标签")
-        description = f"{source_hook}\n\n{hashtags}"
     target = {
         "platform": platform,
         "account_key": str(route.get("account_key") or f"{platform}:{route['platform_account_id']}"),
@@ -178,8 +171,6 @@ def _target(item: dict, route: dict) -> dict:
     }
     if platform in PUBLIC_URL_PLATFORMS:
         target["video_url"] = _public_video_url(item)
-    if item.get("business_line") == "finance" and platform == "youtube":
-        target["thumbnail_path"] = str(item.get("thumbnail_path") or resolve_youtube_thumbnail(item["local_path"]))
     return target
 
 
