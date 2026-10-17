@@ -62,8 +62,6 @@ def prepare_video_searches(
     searches = []
     # 片头也独立选片，避免借用下一镜头后再次从头播放。
     stock_shots = shots
-    if len(stock_shots) < 2:
-        raise WorkflowStepError("分镜至少需要两个镜头：片头动画后必须有正文视频素材")
     def search_shot(shot):
         search = search_stock_videos(
             str(shot["prompt"]),
