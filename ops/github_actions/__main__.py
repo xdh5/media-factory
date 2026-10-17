@@ -113,7 +113,11 @@ def main() -> None:
     elif arguments.workflow == "weekly_plan":
         from ._dates import compute_next_week_dates
 
-        dates = compute_next_week_dates(arguments.week_start)
+        if arguments.publish_date:
+            from ._dates import resolve_publish_date
+            dates = [resolve_publish_date(arguments.publish_date)]
+        else:
+            dates = compute_next_week_dates(arguments.week_start)
         payload = {"dates": dates}
         output_path = os.getenv("GITHUB_OUTPUT", "").strip()
         if output_path:

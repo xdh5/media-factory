@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import shutil
+import json
+import subprocess
 import tempfile
 import threading
 import wave
@@ -220,6 +222,26 @@ def synthesize_pipeline(
                 _concat_wavs(ffmpeg, pieces, line_path, f"第 {index} 行拼接停顿失败")
             frames = wav_frames(line_path)
             if frames <= 0:
+                diagnostics = output_path.parent / "tts-diagnostics"
+                diagnostics.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(raw_path, diagnostics / raw_path.name)
+                shutil.copy2(line_path, diagnostics / line_path.name)
+                probe = subprocess.run(
+                    [shutil.which("ffprobe") or "ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", str(raw_path)],
+                    capture_output=True, text=True, timeout=30,
+                )
+                volume = subprocess.run(
+                    [ffmpeg, "-hide_banner", "-i", str(raw_path), "-af", "volumedetect", "-f", "null", "-"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                details = {"服务": provider, "行号": index, "文本": line["text"], "音色": line["voice"],
+                           "原音频字节": raw_path.stat().st_size, "处理后帧数": frames,
+                           "裁剪尾部静音": trim_trailing, "静音阈值": TTS_SILENCE_THRESHOLD_DB,
+                           "原音频信息": probe.stdout, "探测错误": probe.stderr,
+                           "原音频音量": volume.stderr[-4000:]}
+                diagnostic_text = json.dumps(details, ensure_ascii=False, indent=2)
+                (diagnostics / f"line-{index:04d}.json").write_text(diagnostic_text, encoding="utf-8")
+                print(f"配音空音频诊断：{diagnostic_text}", flush=True)
                 raise AudioProcessingError(f"第 {index} 行处理后没有可用音频")
             return {"audio_path": str(line_path), "frames": frames}
 

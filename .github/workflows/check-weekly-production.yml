@@ -1,0 +1,45 @@
+name: 周六早晨检查生产结果
+
+on:
+  schedule:
+    - cron: "0 0 * * 6"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: check-weekly-production
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: 检查凌晨生产并重试失败任务
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: 查找本次周任务
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const now = Date.now();
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              ...context.repo, workflow_id: 'weekly-production.yml',
+              branch: 'main', event: 'schedule', per_page: 20
+            });
+            const run = data.workflow_runs.find(item => now - Date.parse(item.created_at) < 16 * 3600000);
+            if (!run) {
+              core.info('没有找到本次周生产任务');
+              return;
+            }
+            if (run.status !== 'completed' || !['failure', 'timed_out'].includes(run.conclusion)) {
+              core.info(`生产状态：${run.status}，结果：${run.conclusion}`);
+              return;
+            }
+            if (run.run_attempt > 1) {
+              core.info('该任务已经重试过一次');
+              return;
+            }
+            await github.rest.actions.reRunWorkflowFailedJobs({ ...context.repo, run_id: run.id });
+            await core.summary.addRaw(`已重试失败任务：${run.html_url}`).write();

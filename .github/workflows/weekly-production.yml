@@ -2,12 +2,15 @@ name: 每周六生产下周内容
 
 on:
   schedule:
-    - cron: "0 12 * * 6"
-      timezone: Asia/Shanghai
+    - cron: "0 16 * * 5"
   workflow_dispatch:
     inputs:
       week_start:
         description: 可选；目标周起始周一 YYYY-MM-DD，留空检查并补齐下周缺失内容
+        required: false
+        type: string
+      publish_date:
+        description: 可选；只补齐指定计划发布日期 YYYY-MM-DD
         required: false
         type: string
 
@@ -38,7 +41,8 @@ jobs:
         id: plan
         env:
           INPUT_WEEK_START: ${{ inputs.week_start }}
-        run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START"
+          INPUT_PUBLISH_DATE: ${{ inputs.publish_date }}
+        run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START" --publish-date "$INPUT_PUBLISH_DATE"
 
   produce-day:
     name: 生产财经及语言 ${{ matrix.publish_date }}
@@ -99,6 +103,15 @@ jobs:
         run: >-
           python -m ops.github_actions weekly_day
           --publish-date "$PUBLISH_DATE"
+
+      - name: 保存配音失败诊断
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tts-diagnostics-${{ matrix.publish_date }}-${{ github.run_attempt }}
+          path: cache/**/tts-diagnostics/**
+          if-no-files-found: ignore
+          retention-days: 7
 
   publish-chinese:
     name: 发布学中文视频 ${{ matrix.publish_date }}
