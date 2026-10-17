@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 from ..infrastructure import (
     MediaRecordsError,
     PublishMediaError,
@@ -17,6 +19,8 @@ from ..infrastructure import (
 
 from ..config import CACHE_ROOT
 from ..errors import PublishingError, PublishingRequestError, PublishingTaskNotFoundError
+
+_publication_lock = threading.Lock()
 
 
 def _map_error(exc: Exception) -> PublishingError:
@@ -107,18 +111,21 @@ def publishing_start_publish(
         task_run_id = f"{run_id}-{business_line}"
 
         def _work(progress=None) -> dict:
-            return publish_local_outputs(
-                business_line,
-                date_text,
-                account_group,
-                platforms,
-                publish_mode,
-                publish_at,
-                content_kind=content_kind,
-                production_id=production_id,
-                publish_at_by_platform=publish_at_by_platform,
-                progress=progress,
-            )
+            if progress:
+                progress("等待发布队列；当前发布任务结束后继续")
+            with _publication_lock:
+                return publish_local_outputs(
+                    business_line,
+                    date_text,
+                    account_group,
+                    platforms,
+                    publish_mode,
+                    publish_at,
+                    content_kind=content_kind,
+                    production_id=production_id,
+                    publish_at_by_platform=publish_at_by_platform,
+                    progress=progress,
+                )
 
         started = runner_submit_task(
             cache_dir=CACHE_ROOT / run_id / business_line,

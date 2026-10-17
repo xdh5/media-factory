@@ -25,6 +25,8 @@ python -m core.mcp.publishing
 
 ## 工具
 
+发布任务在后台串行执行，排队时返回等待状态。抖音、快手扫码成功需要真实发布页验证通过；页面加载异常不能归为登录失效。发布页面连续五分钟无进展时结束并释放浏览器，进度仍在变化时继续等待。超时或渲染进程退出属于结果待核对，先检查平台作品管理再决定是否重发。
+
 - `publishing_list_account_groups`：列数据库账号组，并尽量附带 media-publisher 本机登录账号。
 - `publishing_preview`：只读查看产物、路由和重复项。
 - `publishing_start_login`：抖音、快手、头条或视频号登录失效时启动扫码，并返回二维码图片路径。

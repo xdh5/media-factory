@@ -176,6 +176,7 @@ def run_publisher_cli(arguments: list[str]) -> dict | list:
     prefix, cwd = _publisher_command()
     env = dict(os.environ)
     env.pop("ELECTRON_RUN_AS_NODE", None)
+    env["MEDIA_PUBLISHER_PARENT_PID"] = str(os.getpid())
     log_path = _latest_publisher_log()
     log_offset = log_path.stat().st_size if log_path else 0
     try:
@@ -379,6 +380,7 @@ def start_publisher_login(
         command.append("--force")
     env = dict(os.environ)
     env.pop("ELECTRON_RUN_AS_NODE", None)
+    env["MEDIA_PUBLISHER_PARENT_PID"] = str(os.getpid())
     try:
         process = subprocess.Popen(
             command,
@@ -413,7 +415,11 @@ def start_publisher_login(
         if payload["status"] != "starting":
             return payload
         time.sleep(0.4)
-    process.terminate()
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+    else:
+        process.terminate()
+    process.wait(timeout=10)
     _LOGIN_SESSIONS.pop(login_id, None)
     raise MediaPublisherCommandError("90 秒内没有提取到登录二维码", {"platform": normalized, "account_ref": target["account_ref"]})
 
