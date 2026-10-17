@@ -20,6 +20,7 @@ from ..services.agent_tasks import validate_source_hook_response
 from ..services.agent_tasks import validate_topic_response
 from ..services.agent_tasks import build_article_linebreak_prompt, validate_article_linebreak_response, build_visual_metadata_prompt, validate_visual_metadata_response
 from .common import _map_error
+from ..services.editorial import list_editorial_drafts
 
 def finance_get_production_config() -> dict:
     """返回财经生产唯一标准配置，供 Agent 与 GitHub Runner 共用。"""
@@ -239,6 +240,13 @@ def finance_save_draft(
     """
     try:
         if draft_path is None:
+            stored = next((row["editorial"] for row in list_editorial_drafts(False)["records"]
+                           if row["aweme_id"] == source_aweme_id), None)
+            incoming = {"topic": topic, "article": article, "title": title, "short_title": short_title,
+                        "hashtags": hashtags, "cover_lines": cover_lines, "cover_highlights": cover_highlights,
+                        "source_hook": source_hook, "db_source_hook": db_source_hook}
+            if stored is None or any(stored.get(key) != value for key, value in incoming.items()):
+                raise WorkflowStepError("生产内容必须与稿库定稿一致，请先完成宿主定稿")
             clean_topic = str(topic or "").strip()
             recent = get_topic(MCP_ID, TOPIC_DEDUPLICATION_DAYS)
             if clean_topic.casefold() in {

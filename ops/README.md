@@ -10,3 +10,9 @@
 
 
 本目录只放授权、部署和 Runner 运维入口；业务代码继续放在 `core/`，第三方发布项目继续放在 `integrations/`。
+
+## 财经稿件定稿与生产
+
+采集审核由宿主 Agent 完成正文改写、品牌替换、连载指涉改写、字幕断行、黄金钩子、话题、长短标题、四个标签、封面断行和重点词，正常稿件提交 `finance_submit_copy_reviews` 时附带 `editorial`。原始转写与校对原稿保留，定稿写入 `finance_editorial_drafts`。
+
+未使用旧稿通过 `finance_list_editorial_drafts` 读取、`finance_save_editorial_drafts` 定稿；已使用记录不能修改。缺少有效定稿的文章计入待编辑，不进入生产队列。Action 只读取已定稿内容，调用 `finance_save_draft` 固定到具体计划日期和分片，再生成分镜、配音、素材及成片并交付 R2。

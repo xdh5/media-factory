@@ -24,7 +24,7 @@ https://www.douyin.com/user/MS4wLjABAAAA... 显示名
 
 1. 调用 `finance_start_collect_copy`，原样传入 `share_text`，并固定传入 `collection_name="财经"`。
 2. 使用返回的 `task_path` 调用 `finance_poll_task`，直到 `done=true`。不得为同一请求重复启动任务。
-3. 成功后读取 `result.pending` 和 `prompt`，由宿主 Agent 逐篇改正明显错别字、补标点、按需修改措辞并审核广告，禁止调用外部文本 LLM。调用 `finance_submit_copy_reviews(context_path, response_text)` 提交结果后才会入库。
+3. 成功后读取 `result.pending` 和 `prompt`，由宿主 Agent 逐篇校对和审核广告，再完成下述定稿，禁止调用外部文本 LLM。正常审核结果必须附带 `editorial`，调用 `finance_submit_copy_reviews(context_path, response_text)` 校验并保存原稿及定稿后才算入库完成。
 4. 正常内容中的插入广告填写原文 `ad_segments` 并删除；整篇广告标记 `ad`，不入库。展示最终审核文本、分类及入库结果。
 
 ## 作者名单
@@ -45,3 +45,13 @@ https://www.douyin.com/user/MS4wLjABAAAA... 显示名
 完成后展示入库篇数、每位作者的取稿数量、跳过的重复和广告，以及失败原因。
 
 禁止改用浏览器或临时脚本完成下载、转写或入库。MCP 未连接、进程退出或调用失败时，报告具体错误并停止。作者作品列表需要 `.env` 中的 `DY_COOKIES`，缺少时报告该错误，不要改去抓搜索页。
+
+## 内容定稿
+
+宿主 Agent 在存稿时完成，GitHub Action 直接读取定稿制作。
+
+1. 从校对原稿开头连续复制完整黄金钩子为 `db_source_hook`。调用钩子、正文分段改写、断句、话题、标题标签、封面视觉的现有 Prompt 和校验工具；原稿和定稿分开保存。正文保持结构、顺序、观点、数字及信息量；按措辞级改写规则处理，品牌统一为财富研习岛，改写连载指涉，每行最多36字。品牌替换表放入 `replacements`，处理后的钩子为 `source_hook`。
+2. 提供 `topic`、12～26字的 `title`、6～16字的 `short_title`、四个不重复且不带井号的 `hashtags`、一至三行 `cover_lines` 和来自标题的 `cover_highlights`。封面断行拼接必须等于标题。话题结合 `finance_get_topics` 和 `finance_list_editorial_drafts(missing_only=false)` 查重。
+3. 正常审核记录格式为 `{"aweme_id":"作品ID","kind":"normal","text":"校对原稿","ad_segments":[],"reason":"审核理由","editorial":{"article":"完整断行正文","db_source_hook":"原文钩子","source_hook":"处理后钩子","replacements":[],"topic":"话题","title":"长标题","short_title":"短标题","hashtags":["标签一","标签二","标签三","标签四"],"cover_lines":["标题第一行","标题第二行"],"cover_highlights":["标题重点词"]}}`。
+4. 正常原稿缺少定稿时不能作为生产库存。正文不足以成篇时保留待编辑状态，不扩写编造内容。
+5. 补齐未使用旧稿使用 `finance_list_editorial_drafts` 只读获取原文，宿主逐篇编辑后用 `finance_save_editorial_drafts(records)` 提交；不得改动已使用稿件。

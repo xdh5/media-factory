@@ -1,109 +1,12 @@
-"""财经 GitHub Action：仅由千问执行模型调用，其余逻辑以 Finance MCP 为准。"""
+"""财经 GitHub Action：读取宿主定稿，生成分镜素材并制作成片。"""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 
 from ._mcp import MCPCallError, ProjectMCP
 from ._shared import PROJECT_ROOT, qwen, write_summary
-
-
-async def _generate_checked(mcp, prompt_tool, validate_tool, prompt_args, validate_args, *, attempts=3, max_tokens=1000, json_output=False):
-    feedback = ""
-    for _ in range(attempts):
-        prompt = await mcp.call(prompt_tool, {**prompt_args, "feedback": feedback})
-        response = qwen(prompt["system_prompt"], prompt["user_prompt"], json_output=json_output, max_tokens=max_tokens)["text"]
-        try:
-            return await mcp.call(validate_tool, {**validate_args, "response_text": response}), response
-        except MCPCallError as exc:
-            feedback = str(exc)
-    raise RuntimeError(f"{validate_tool} 连续 {attempts} 次校验失败：{feedback}")
-
-
-async def _source_hook(mcp, source_text, attempts):
-    result, _ = await _generate_checked(
-        mcp, "finance_get_source_hook_prompt", "finance_validate_source_hook_response",
-        {"source_text": source_text}, {"source_text": source_text},
-        attempts=attempts, max_tokens=500, json_output=True,
-    )
-    return str(result["source_hook"])
-
-
-async def _article(mcp, source_text, source_hook, attempts):
-    plan = await mcp.call("finance_get_article_chunk_plan", {
-        "source_text": source_text, "source_hook": source_hook,
-    })
-    articles, replacements, corrections = [], [], []
-    for chunk in plan["chunks"]:
-        feedback, previous = "", ""
-        chunk_index = int(chunk["index"])
-        chunk_text = str(chunk["source_text"])
-        chunk_hook = source_hook if bool(chunk["is_hook"]) else ""
-        for _ in range(attempts):
-            prompt = await mcp.call("finance_get_article_chunk_generation_prompt", {
-                "source_chunk": chunk_text,
-                "source_hook": chunk_hook,
-                "feedback": feedback,
-                "previous_response": previous,
-                "source_text": source_text,
-                "previous_chunk": plan["chunks"][chunk_index - 2]["source_text"] if chunk_index > 1 else "",
-                "next_chunk": plan["chunks"][chunk_index]["source_text"] if chunk_index < len(plan["chunks"]) else "",
-                "brand_replacements": replacements,
-            })
-            previous = qwen(prompt["system_prompt"], prompt["user_prompt"], json_output=True, max_tokens=3000)["text"]
-            try:
-                result = await mcp.call("finance_validate_article_chunk_response", {
-                    "source_chunk": chunk_text,
-                    "source_hook": chunk_hook,
-                    "response_text": previous,
-                })
-                rewritten = str(result["article"])
-                linebroken, _ = await _generate_checked(
-                    mcp, "finance_get_article_linebreak_prompt", "finance_validate_article_linebreak_response",
-                    {"article": rewritten}, {"article": rewritten},
-                    attempts=attempts, max_tokens=3000, json_output=True,
-                )
-                articles.append(str(linebroken["article"]))
-                replacements.extend(result.get("replacements") or [])
-                corrections.extend(result.get("corrections") or [])
-                break
-            except MCPCallError as exc:
-                feedback = str(exc)
-        else:
-            raise RuntimeError(f"财经正文第 {chunk_index} 段连续 {attempts} 次不合格：{feedback}")
-    response = json.dumps({
-        "article": "\n".join(articles),
-        "replacements": replacements,
-        "corrections": corrections,
-    }, ensure_ascii=False)
-    result = await mcp.call("finance_validate_article_response", {
-        "source_text": source_text, "source_hook": source_hook, "response_text": response,
-    })
-    return str(result["article"]), str(result["source_hook"])
-
-
-async def _topic(mcp, article, recent_topics, requested_topic, attempts):
-    result, _ = await _generate_checked(
-        mcp, "finance_get_topic_generation_prompt", "finance_validate_topic_response",
-        {"article": article, "recent_topics": recent_topics, "requested_topic": requested_topic},
-        {"recent_topics": recent_topics}, attempts=attempts, max_tokens=100,
-    )
-    return str(result["topic"])
-
-
-async def _metadata(mcp, article, attempts):
-    result, _ = await _generate_checked(
-        mcp, "finance_get_metadata_generation_prompt", "finance_validate_metadata_response",
-        {"article": article}, {}, attempts=attempts, max_tokens=800, json_output=True,
-    )
-    visual, _ = await _generate_checked(
-        mcp, "finance_get_visual_metadata_prompt", "finance_validate_visual_metadata_response",
-        {"article": article, "title": result["title"]}, {"title": result["title"]},
-        attempts=attempts, max_tokens=800, json_output=True,
-    )
-    return {**result, **visual}
 
 
 async def _storyboard(mcp, draft, config, attempts):
@@ -131,10 +34,8 @@ async def _storyboard(mcp, draft, config, attempts):
 
 
 async def run(
-    requested_topic: str = "",
     publish_date: str = "",
     content_part: int = 1,
-    additional_recent_topics: list[str] | None = None,
 ) -> dict:
     if not str(publish_date or "").strip():
         raise ValueError("GitHub 财经生产必须明确传入 publish_date")
@@ -146,23 +47,14 @@ async def run(
 
         selected = await mcp.call("finance_get_source_script")
         source, reservation = selected["source"], selected["reservation"]
-        source_text = str(source["transcript"]).strip()
-        hook = await _source_hook(mcp, source_text, int(retries["source_hook"]))
-        article, processed_hook = await _article(mcp, source_text, hook, int(retries["article"]))
-        topics = await mcp.call("finance_get_topics")
-        recent_topics = list(topics.get("recent_topics") or [])
-        for recent_topic in additional_recent_topics or []:
-            normalized_topic = str(recent_topic or "").strip()
-            if normalized_topic and normalized_topic not in recent_topics:
-                recent_topics.append(normalized_topic)
-        topic = await _topic(mcp, article, recent_topics, requested_topic, int(retries["topic"]))
-        metadata = await _metadata(mcp, article, int(retries["metadata"]))
+        editorial = source["editorial"]
+        topic = editorial["topic"]
+        print(f"财经定稿：来源={source['aweme_id']} 标题={editorial['title']} 话题={topic}", flush=True)
         draft = await mcp.call("finance_save_draft", {
-            "topic": topic, "article": article, "source_aweme_id": str(source["aweme_id"]),
+            **{key: editorial[key] for key in ("topic", "article", "title", "short_title", "hashtags", "cover_lines", "cover_highlights", "source_hook", "db_source_hook")},
+            "source_aweme_id": str(source["aweme_id"]),
             "source_reservation_token": str(reservation["reservation_token"]),
-            "source_hook": processed_hook, "db_source_hook": hook,
-            "publish_date": publish_date,
-            "content_part": content_part, **metadata,
+            "publish_date": publish_date, "content_part": content_part,
         })
 
         storyboard, prepared = await _storyboard(mcp, draft, config, int(retries["storyboard"]))

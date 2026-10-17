@@ -146,6 +146,8 @@ async function loadLanguagePacks() {
 function articleSearchText(article) {
   return [
     article.caption,
+    article.title,
+    article.topic,
     article.article,
     article.author_name,
     ...(article.search_keywords || []),
@@ -156,7 +158,7 @@ function renderFinanceArticle(article) {
   const details = element("details", "article-card");
   const heading = element("summary", "article-summary");
   const main = element("div", "article-summary-main");
-  const title = String(article.caption || "").replace(/#[^\s#]+/gu, "").replace(/\s+/gu, " ").trim();
+  const title = String(article.title || article.caption || "").replace(/#[^\s#]+/gu, "").replace(/\s+/gu, " ").trim();
   main.append(element("h2", "", title || "未命名文章"));
   heading.append(main);
   heading.append(element("span", "details-hint", "展开正文"));
@@ -198,7 +200,7 @@ async function loadFinanceArticles() {
     const response = await fetch(`${API_BASE_URL}/v1/dashboard/finance-articles`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message || "读取失败");
-    document.querySelector("#inventoryNote").textContent = `还剩 ${payload.summary.ready} 篇未使用文章`;
+    document.querySelector("#inventoryNote").textContent = `还剩 ${payload.summary.ready} 篇可生产文章，${payload.summary.pending_editorial} 篇待编辑`;
     status.textContent = "";
     const rerender = () => renderFinanceArticles(payload.articles);
     document.querySelector("#searchInput").addEventListener("input", rerender);

@@ -1,3 +1,5 @@
+import { listFinanceEditorialDrafts, commitFinanceEditorialDrafts } from "./finance-editorial.mjs";
+
 const ACTIVE_STATUSES = ["reserved", "completed", "published", "used"];
 const PUBLICATION_BUSINESS_LINES = ["finance", "language_learning", "psychology_quiz", "anime"];
 const ACCOUNT_GROUP_BUSINESS_LINES = PUBLICATION_BUSINESS_LINES;
@@ -973,14 +975,20 @@ async function dashboardLanguagePacks(env) {
 
 async function dashboardFinanceArticles(env) {
   const result = await env.DB.prepare(
-    `SELECT c.aweme_id, c.author_name, c.caption, c.transcript_corrected AS article,
+    `SELECT c.aweme_id, c.author_name, c.caption,
+            COALESCE(json_extract(e.content_json, '$.article'), c.transcript_corrected) AS article,
+            json_extract(e.content_json, '$.title') AS title,
+            json_extract(e.content_json, '$.topic') AS topic,
+            json_extract(e.content_json, '$.source_hook') AS source_hook,
+            json_extract(e.content_json, '$.short_title') AS short_title,
             c.aweme_url, c.cover_url, c.created_at,
             GROUP_CONCAT(DISTINCT d.search_keyword) AS search_keywords,
-            COALESCE(u.status, 'ready') AS status,
+            COALESCE(u.status, CASE WHEN e.aweme_id IS NULL THEN 'pending_editorial' ELSE 'ready' END) AS status,
             u.reserved_at, u.used_at, u.run_id
      FROM douyin_research_contents c
      JOIN douyin_research_discoveries d
        ON d.aweme_id = c.aweme_id AND d.collection_code = 'finance'
+     LEFT JOIN finance_editorial_drafts e ON e.aweme_id = c.aweme_id AND e.source_transcript = c.transcript_corrected
      LEFT JOIN douyin_research_script_usage u
        ON u.aweme_id = c.aweme_id AND u.workflow = 'finance'
      GROUP BY c.aweme_id
@@ -1001,6 +1009,7 @@ async function dashboardFinanceArticles(env) {
     summary: {
       total: articles.length,
       ready: articles.filter((item) => item.status === "ready").length,
+      pending_editorial: articles.filter((item) => item.status === "pending_editorial").length,
       reserved: articles.filter((item) => item.status === "reserved").length,
       used: articles.filter((item) => item.status === "used").length,
     },
@@ -1352,22 +1361,27 @@ async function getDouyinResearchScriptStats(request, env) {
     `SELECT
        COUNT(DISTINCT c.aweme_id) AS total_count,
        COUNT(DISTINCT CASE WHEN u.status = 'used' THEN c.aweme_id END) AS used_count,
+       COUNT(DISTINCT CASE WHEN (u.aweme_id IS NULL OR (u.status = 'reserved' AND u.reserved_at < ?)) AND NOT EXISTS (
+         SELECT 1 FROM finance_editorial_drafts e WHERE e.aweme_id = c.aweme_id AND e.source_transcript = c.transcript_corrected
+       ) THEN c.aweme_id END) AS pending_editorial_count,
        COUNT(DISTINCT CASE
          WHEN u.status = 'reserved' AND u.reserved_at >= ? THEN c.aweme_id
        END) AS reserved_count
      FROM douyin_research_contents c
      JOIN douyin_research_discoveries d ON d.aweme_id = c.aweme_id AND d.collection_code = ?
      LEFT JOIN douyin_research_script_usage u ON u.aweme_id = c.aweme_id AND u.workflow = ?`,
-  ).bind(expiredBefore, collectionCode, workflow).first();
+  ).bind(expiredBefore, expiredBefore, collectionCode, workflow).first();
   const totalCount = Number(stats?.total_count || 0);
   const usedCount = Number(stats?.used_count || 0);
   const reservedCount = Number(stats?.reserved_count || 0);
+  const pendingEditorialCount = Number(stats?.pending_editorial_count || 0);
   return jsonResponse({
     collection_code: collectionCode,
     workflow,
     reservation_minutes: reservationMinutes,
     total_count: totalCount,
-    available_count: Math.max(0, totalCount - usedCount - reservedCount),
+    available_count: Math.max(0, totalCount - usedCount - reservedCount - pendingEditorialCount),
+    pending_editorial_count: pendingEditorialCount,
     reserved_count: reservedCount,
     used_count: usedCount,
     checked_at: checkedAt,
@@ -1387,8 +1401,9 @@ async function reserveDouyinResearchScript(request, env) {
   ).bind(workflow, expiredBefore).run();
 
   const candidates = await env.DB.prepare(
-    `SELECT c.aweme_id, c.caption, c.transcript_corrected, c.aweme_url, c.created_at
+    `SELECT c.aweme_id, c.caption, c.transcript_corrected, c.aweme_url, c.created_at, e.content_json
      FROM douyin_research_contents c
+     JOIN finance_editorial_drafts e ON e.aweme_id = c.aweme_id AND e.source_transcript = c.transcript_corrected
      WHERE EXISTS (
        SELECT 1 FROM douyin_research_discoveries d
        WHERE d.aweme_id = c.aweme_id AND d.collection_code = ?
@@ -1396,6 +1411,12 @@ async function reserveDouyinResearchScript(request, env) {
      AND NOT EXISTS (
        SELECT 1 FROM douyin_research_script_usage u
        WHERE u.aweme_id = c.aweme_id AND u.workflow = ?
+     )
+     AND NOT EXISTS (
+       SELECT 1 FROM topic_history t WHERE t.workflow = 'finance'
+       AND t.topic = json_extract(e.content_json, '$.topic')
+       AND t.status IN ('reserved', 'completed', 'published', 'used')
+       AND t.created_at >= datetime('now', '-30 days')
      )
      ORDER BY RANDOM()
      LIMIT 20`,
@@ -1416,6 +1437,7 @@ async function reserveDouyinResearchScript(request, env) {
           aweme_id: String(candidate.aweme_id),
           caption: String(candidate.caption || ""),
           transcript: String(candidate.transcript_corrected || ""),
+          editorial: JSON.parse(candidate.content_json),
           aweme_url: String(candidate.aweme_url || ""),
           collection_code: collectionCode,
         },
@@ -1666,6 +1688,8 @@ export default {
       if (request.method === "GET" && url.pathname === "/v1/production-outputs") return await listProductionOutputs(request, env);
       if (request.method === "DELETE" && url.pathname === "/v1/production-outputs") return await deleteProductionOutputs(request, env);
       if (request.method === "POST" && url.pathname === "/v1/production-outputs/commit") return await commitProductionOutputs(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/finance-editorial-drafts") return await listFinanceEditorialDrafts(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/finance-editorial-drafts") return await commitFinanceEditorialDrafts(request, env);
       if (request.method === "GET" && url.pathname === "/v1/finance-source-authors") {
         return await listFinanceSourceAuthors(env);
       }

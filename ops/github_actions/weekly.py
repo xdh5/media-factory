@@ -60,16 +60,13 @@ async def run_day(
     if finance_preflight["should_generate"]:
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"
         produced, failed = [], []
-        generated_topics: list[str] = []
         for content_part in finance_preflight["pending_content_parts"]:
             try:
                 print(f"[{publish_date}] 开始财经生产 part={content_part}", flush=True)
                 finance_result = await run_finance(
                     publish_date=publish_date,
                     content_part=int(content_part),
-                    additional_recent_topics=generated_topics,
                 )
-                generated_topics.append(str(finance_result["manifest"]["topic"]))
                 produced.append({
                     "content_part": int(content_part),
                     "run_id": str(finance_result["manifest"]["run_id"]),

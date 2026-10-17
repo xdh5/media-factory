@@ -58,10 +58,6 @@ DEFAULT_PRODUCTION_CONFIG = {
         "shot_stickers": ["rec"],
     },
     "runner_retry_config": {
-        "source_hook": 3,
-        "article": 5,
-        "topic": 3,
-        "metadata": 3,
         "storyboard": 3,
         "stock_video_selection": 3,
     },

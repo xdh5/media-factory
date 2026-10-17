@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..errors import WorkflowStepError
 from ..infrastructure.source_scripts import remember_rejected_ad_video, save_transcribed_scripts
+from .editorial import validate_editorial, save_editorial_drafts
 
 _ROOT = Path(__file__).resolve().parents[4] / "cache" / "collect_finance_copy"
 _PROMPT = Path(__file__).resolve().parents[1] / "prompts" / "copy-host-review.md"
@@ -85,6 +86,8 @@ def submit_copy_reviews(context_path: str, response_text: str) -> dict:
     if len(by_id) != len(reviews) or set(by_id) != pending_ids:
         raise WorkflowStepError("审核结果必须与当前待审作品逐条对应，不得重复或遗漏")
     validated = {r["aweme_id"]: _validate_review(r["transcript_raw"], by_id[r["aweme_id"]]) for r in context["pending"]}
+    editorials = {aweme_id: validate_editorial(review["text"], by_id[aweme_id].get("editorial"))
+                  for aweme_id, review in validated.items() if review["kind"] == "normal"}
     for record in list(context["pending"]):
         reviewed = validated[record["aweme_id"]]
         if reviewed["kind"] == "ad":
@@ -94,6 +97,7 @@ def submit_copy_reviews(context_path: str, response_text: str) -> dict:
             saved = {k: v for k, v in record.items() if k != "sec_user_id"}
             saved["transcript_corrected"] = reviewed["text"]
             save_transcribed_scripts([saved])
+            save_editorial_drafts([{"aweme_id": record["aweme_id"], "editorial": editorials[record["aweme_id"]]}])
             context["saved_count"] += 1
             for author in context.get("authors", []):
                 if author["sec_user_id"] == record.get("sec_user_id"):

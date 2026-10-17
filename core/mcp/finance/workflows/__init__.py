@@ -1,5 +1,6 @@
 """财经工作流与稳定工具清单。"""
 
+from .editorial import finance_list_editorial_drafts, finance_save_editorial_drafts
 from .articles import (
     finance_get_production_config,
     finance_get_article_linebreak_prompt,
@@ -54,6 +55,8 @@ from .source_authors import (
 )
 
 ALL_TOOLS = (
+    finance_list_editorial_drafts,
+    finance_save_editorial_drafts,
     finance_get_production_config,
     finance_get_article_linebreak_prompt,
     finance_validate_article_linebreak_response,
