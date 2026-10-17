@@ -130,7 +130,8 @@ def main() -> None:
     print(json.dumps(payload, ensure_ascii=False))
     if arguments.workflow == "weekly_day":
         failed = any(
-            str(payload.get(name, {}).get("status", "")).endswith("failed")
+            payload.get(name, {}).get("failed")
+            or payload.get(name, {}).get("status") in {"produce_failed", "publish_failed", "partially_produced"}
             for name in ("finance", "language")
         )
         if failed:
