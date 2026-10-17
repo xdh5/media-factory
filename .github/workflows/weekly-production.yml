@@ -13,6 +13,14 @@ on:
         description: 可选；只补齐指定计划发布日期 YYYY-MM-DD
         required: false
         type: string
+      publish_dates:
+        description: 可选；只补齐这些计划发布日期，使用英文逗号分隔
+        required: false
+        type: string
+      finance_only:
+        description: 仅补齐财经成片，不生产语言内容或启动发布
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -36,13 +44,16 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
 
       - name: 生成周一至周日日期列表
         id: plan
         env:
           INPUT_WEEK_START: ${{ inputs.week_start }}
           INPUT_PUBLISH_DATE: ${{ inputs.publish_date }}
-        run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START" --publish-date "$INPUT_PUBLISH_DATE"
+          INPUT_PUBLISH_DATES: ${{ inputs.publish_dates }}
+        run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START" --publish-date "$INPUT_PUBLISH_DATE" --publish-dates "$INPUT_PUBLISH_DATES"
 
   produce-day:
     name: 生产财经及语言 ${{ matrix.publish_date }}
@@ -80,6 +91,8 @@ jobs:
     steps:
       - name: 检出生产代码
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
 
       - name: 检出采集与发布服务
         run: |
@@ -100,9 +113,11 @@ jobs:
       - name: 按日期生产并交付 R2
         env:
           PUBLISH_DATE: ${{ matrix.publish_date }}
+          FINANCE_ONLY: ${{ inputs.finance_only && 'true' || 'false' }}
         run: >-
           python -m ops.github_actions weekly_day
           --publish-date "$PUBLISH_DATE"
+          --finance-only "$FINANCE_ONLY"
 
       - name: 保存配音失败诊断
         if: failure()
@@ -116,7 +131,7 @@ jobs:
   publish-chinese:
     name: 发布学中文视频 ${{ matrix.publish_date }}
     needs: [plan, produce-day]
-    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && !inputs.finance_only }}
     strategy:
       matrix:
         publish_date: ${{ fromJSON(needs.plan.outputs.dates_json) }}

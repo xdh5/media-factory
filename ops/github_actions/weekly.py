@@ -36,6 +36,7 @@ async def run_day(
     publish_date: str,
     *,
     cache_scope: str = "daily",
+    finance_only: bool = False,
 ) -> dict:
     planned_date = date.fromisoformat(publish_date)
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
@@ -84,6 +85,17 @@ async def run_day(
             "status": "skipped",
             "reason": finance_preflight["skip_reason"],
         }
+
+    async with ProjectMCP("core.mcp.finance", PROJECT_ROOT) as finance_mcp:
+        remaining = await finance_mcp.call("finance_get_automation_plan", {"publish_date": publish_date})
+    if remaining["should_generate"]:
+        results["finance"]["status"] = "produce_failed"
+        results["finance"]["pending_content_parts"] = remaining["pending_content_parts"]
+        print(f"[{publish_date}] 财经仍有缺失分片：{remaining['pending_content_parts']}", flush=True)
+
+    if finance_only:
+        results["language"] = {"status": "skipped", "reason": "本次仅补齐财经成片"}
+        return results
 
     async with ProjectMCP("core.mcp.language_learning", PROJECT_ROOT) as language_mcp:
         lang_preflight = await language_mcp.call(

@@ -34,6 +34,8 @@ def main() -> None:
     parser.add_argument("--run-id", default="")
     parser.add_argument("--targets", default="")
     parser.add_argument("--publish-date", default="")
+    parser.add_argument("--publish-dates", default="")
+    parser.add_argument("--finance-only", choices=("true", "false"), default="false")
     parser.add_argument("--default-days-ahead", type=int, choices=(0, 1), default=0)
     parser.add_argument("--week-start", default="")
     arguments = parser.parse_args()
@@ -113,7 +115,15 @@ def main() -> None:
     elif arguments.workflow == "weekly_plan":
         from ._dates import compute_next_week_dates
 
-        if arguments.publish_date:
+        if arguments.publish_dates:
+            from ._dates import resolve_publish_date
+            if arguments.publish_date or arguments.week_start:
+                parser.error("publish_dates 不能同时指定 publish_date 或 week_start")
+            values = [value.strip() for value in arguments.publish_dates.split(",") if value.strip()]
+            if not values:
+                parser.error("publish_dates 必须包含至少一个日期")
+            dates = list(dict.fromkeys(resolve_publish_date(value) for value in values))
+        elif arguments.publish_date:
             from ._dates import resolve_publish_date
             dates = [resolve_publish_date(arguments.publish_date)]
         else:
@@ -126,7 +136,7 @@ def main() -> None:
     elif arguments.workflow == "weekly_day":
         from .weekly import run_day
 
-        payload = asyncio.run(run_day(arguments.publish_date))
+        payload = asyncio.run(run_day(arguments.publish_date, finance_only=arguments.finance_only == "true"))
     print(json.dumps(payload, ensure_ascii=False))
     if arguments.workflow == "weekly_day":
         failed = any(

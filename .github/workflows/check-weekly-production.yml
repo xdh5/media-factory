@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   check:
-    name: 检查凌晨生产并重试失败任务
+    name: 使用最新代码检查并补齐周生产
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -33,13 +33,16 @@ jobs:
               core.info('没有找到本次周生产任务');
               return;
             }
-            if (run.status !== 'completed' || !['failure', 'timed_out'].includes(run.conclusion)) {
+            if (run.status !== 'completed') {
               core.info(`生产状态：${run.status}，结果：${run.conclusion}`);
               return;
             }
-            if (run.run_attempt > 1) {
-              core.info('该任务已经重试过一次');
-              return;
-            }
-            await github.rest.actions.reRunWorkflowFailedJobs({ ...context.repo, run_id: run.id });
-            await core.summary.addRaw(`已重试失败任务：${run.html_url}`).write();
+            const scheduledDate = new Date(Date.parse(run.created_at) + 8 * 3600000);
+            const daysUntilMonday = (8 - scheduledDate.getUTCDay()) % 7 || 7;
+            scheduledDate.setUTCDate(scheduledDate.getUTCDate() + daysUntilMonday);
+            const weekStart = scheduledDate.toISOString().slice(0, 10);
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo, workflow_id: 'weekly-production.yml', ref: 'main',
+              inputs: { week_start: weekStart }
+            });
+            await core.summary.addRaw(`已启动最新 main 补齐 ${weekStart} 当周缺失内容；原任务：${run.html_url}`).write();

@@ -146,6 +146,8 @@ finance_poll_task(task_path)
 
 ## 目录
 
+GitHub 周生产按 `finance_get_automation_plan` 的缺失分片补齐每日两条，结束后再次查询生产记录；仍缺分片时返回失败。晨间检查启动最新 `main` 的新任务，即使原任务显示成功也检查实际缺项，不使用沿用旧提交的失败 Job 重跑。手动补产可在周生产工作流填写 `publish_dates`（英文逗号分隔日期）并启用 `finance_only`，只补财经，不启动语言生产和发布。
+
 - 缓存：`cache/finance/{run_id}/`
 - 成片：`cache/output/finance/run-YYYYMMDD/`，日期为北京时间计划发布日期
 - 产物记录：成片成功后自动写入 D1 `production_outputs`
