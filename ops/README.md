@@ -2,6 +2,7 @@
 
 - `cloudflare/d1-data-api/`：Cloudflare D1 数据接口、迁移与 Worker 部署配置。
 - `github_actions/`：GitHub Runner 的视频创建、发布编排与预构建镜像。
+- `clean_mcp_processes.py`：清理宿主重复拉起的 `core.mcp.*` 残留进程。从进程外部无法区分"宿主正在用的连接"和"泄漏的连接"，因此只在退出宿主后运行；检测到宿主仍在运行时拒绝执行，需加 `--force` 才强制清理。
 
 每周生产工作流完成各日期的生产后，自动逐日调用语言学习发布工作流，将 R2 中的学中文（`en-zh`）成片预约到计划发布日期北京时间 16:00，使用 `chinese` 账号组发布到 YouTube、TikTok、Instagram、Facebook。调用时继承仓库 Secrets，发布需要配置 `PUBLISHING_CREDENTIALS_JSON` 和现有 D1、R2 凭据。
 
