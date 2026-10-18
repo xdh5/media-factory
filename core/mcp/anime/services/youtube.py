@@ -331,42 +331,37 @@ def _ensure_playlist_video(route: dict, playlist_title: str, video_id: str,
                 playlist_id = str(created["id"])
                 if progress:
                     progress(f"已创建 YouTube 播放列表：{title}")
-            page_token = None
-            while True:
-                # 新建列表可能尚未同步到列表内容接口，只重试明确的列表未就绪错误。
-                for attempt in range(7):
-                    try:
-                        response = service.playlistItems().list(
-                            part="snippet,contentDetails", playlistId=playlist_id,
-                            maxResults=50, pageToken=page_token).execute()
-                        break
-                    except HttpError as exc:
-                        errors = json.loads(exc.content).get("error", {}).get("errors", [])
-                        if (exc.resp.status != 404
-                                or not any(item.get("reason") == "playlistNotFound" for item in errors)
-                                or attempt == 6):
-                            raise
-                        if progress:
-                            progress(f"YouTube 播放列表尚未就绪，5 秒后重试（{attempt + 1}/6）")
-                        time.sleep(5)
-                for item in response.get("items") or []:
-                    if str((item.get("contentDetails") or {}).get("videoId") or "") != video_id:
-                        continue
-                    snippet = item.get("snippet") or {}
-                    if int(snippet.get("position") or 0) != position:
-                        service.playlistItems().update(
-                            part="snippet",
-                            body={"id": item["id"], "snippet": {
-                                "playlistId": playlist_id,
-                                "position": position,
-                                "resourceId": {"kind": "youtube#video", "videoId": video_id},
-                            }},
-                        ).execute()
-                    return {"playlist_id": playlist_id,
-                            "playlist_url": f"https://www.youtube.com/playlist?list={playlist_id}"}
-                page_token = response.get("nextPageToken")
-                if not page_token:
+            # 按视频 ID 精确查重，避免遍历列表时使用平台返回的失效分页令牌。
+            for attempt in range(7):
+                try:
+                    response = service.playlistItems().list(
+                        part="snippet,contentDetails", playlistId=playlist_id,
+                        videoId=video_id, maxResults=50).execute()
                     break
+                except HttpError as exc:
+                    errors = json.loads(exc.content).get("error", {}).get("errors", [])
+                    if (exc.resp.status != 404
+                            or not any(item.get("reason") == "playlistNotFound" for item in errors)
+                            or attempt == 6):
+                        raise
+                    if progress:
+                        progress(f"YouTube 播放列表查询返回 404，5 秒后重试（{attempt + 1}/6）")
+                    time.sleep(5)
+            for item in response.get("items") or []:
+                if str((item.get("contentDetails") or {}).get("videoId") or "") != video_id:
+                    continue
+                snippet = item.get("snippet") or {}
+                if int(snippet.get("position") or 0) != position:
+                    service.playlistItems().update(
+                        part="snippet",
+                        body={"id": item["id"], "snippet": {
+                            "playlistId": playlist_id,
+                            "position": position,
+                            "resourceId": {"kind": "youtube#video", "videoId": video_id},
+                        }},
+                    ).execute()
+                return {"playlist_id": playlist_id,
+                        "playlist_url": f"https://www.youtube.com/playlist?list={playlist_id}"}
             service.playlistItems().insert(
                 part="snippet",
                 body={"snippet": {
