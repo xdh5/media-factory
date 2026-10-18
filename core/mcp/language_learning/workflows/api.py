@@ -27,6 +27,7 @@ from ..infrastructure import (
     claim_language_learning_pack,
     release_language_learning_pack,
     commit_language_learning_pack,
+    list_language_learning_pack_topics,
     generate_qwen_image,
     get_topic,
     list_production_outputs,
@@ -219,7 +220,7 @@ def _run_qwen_fallback(context_path: str, failures: list, images: list) -> None:
 
 
 def language_learning_get_topics() -> dict:
-    """返回最近 30 天已占用主题。"""
+    """返回最近 30 天已占用主题及所有已入库预制图包主题。"""
     try:
         recent = get_topic(WORKFLOW_ID, TOPIC_DEDUPLICATION_DAYS)
         recent_words = list_recent_words()
@@ -227,6 +228,7 @@ def language_learning_get_topics() -> dict:
             "workflow": WORKFLOW_ID,
             "deduplication_days": TOPIC_DEDUPLICATION_DAYS,
             "recent_topics": [item["topic"] for item in recent],
+            "pack_topics": list_language_learning_pack_topics(),
             "recent_words": recent_words,
             "word_history_days": WORD_HISTORY_DAYS,
             "minimum_new_words": MINIMUM_NEW_WORDS,
@@ -347,9 +349,18 @@ def language_learning_parse_vocabulary_response(
         raise _map_error(exc) from exc
 
 
+def _require_new_pack_topic(topic: str) -> str:
+    """在生成词表前查询 D1，拒绝已有图包主题。"""
+    clean_topic = str(topic or "").strip()
+    if clean_topic.casefold() in {item.strip().casefold() for item in list_language_learning_pack_topics()}:
+        raise LanguageLearningError(f"预制图包主题 {clean_topic} 已存在，请更换新主题")
+    return clean_topic
+
+
 def language_learning_prepare_pack(topic: str) -> dict:
     """返回预制词包的双语词表 Prompt；供任意宿主 Agent 生成后提交。"""
     try:
+        topic = _require_new_pack_topic(topic)
         return {
             "pack_id": f"language-pack-{uuid.uuid4().hex}",
             "topic": topic,
@@ -365,6 +376,7 @@ def language_learning_validate_pack_words(pack_id: str, topic: str, response_tex
     try:
         if not re.fullmatch(r"language-pack-[a-f0-9]{32}", str(pack_id or "")):
             raise LanguageLearningError("pack_id 格式不正确，请使用 prepare_pack 返回的值")
+        topic = _require_new_pack_topic(topic)
         words = parse_vocabulary_response(response_text, ["en-zh", "en-ko"])
         if str(words.get("_topic_english") or "").casefold() != str(topic or "").strip().casefold():
             raise LanguageLearningError("词包英文主题必须与 topic 完全一致")

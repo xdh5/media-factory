@@ -241,6 +241,14 @@ def list_recent_words(days: int) -> list[str]:
     return [str(item) for item in payload["words"]]
 
 
+def list_language_learning_pack_topics() -> list[str]:
+    """读取 D1 中所有已入库预制图包的主题。"""
+    payload = _request("GET", "/v1/language-learning-packs/topics")
+    if not isinstance(payload, dict) or not isinstance(payload.get("topics"), list):
+        raise MediaRecordsRequestError("语言词包主题接口缺少 topics 数组")
+    return payload["topics"]
+
+
 def commit_language_learning_pack(pack: dict) -> dict:
     """写入一个已验收的语言学习词包。"""
     payload = _request("POST", "/v1/language-learning-packs/commit", body={"pack": pack})

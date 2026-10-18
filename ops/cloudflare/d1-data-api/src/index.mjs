@@ -962,6 +962,13 @@ async function dashboardAnime(env) {
   return dashboardResponse({ contents: [...contents.values()] });
 }
 
+async function listLanguageLearningPackTopics(env) {
+  const result = await env.DB.prepare(
+    "SELECT DISTINCT lower(trim(topic)) AS topic FROM language_learning_packs ORDER BY topic",
+  ).all();
+  return jsonResponse({ topics: result.results.map((row) => row.topic) });
+}
+
 async function dashboardLanguagePacks(env) {
   const result = await env.DB.prepare(
     `SELECT pack_id, topic, words_json, image_urls_json, status,
@@ -1705,6 +1712,7 @@ export default {
       if (request.method === "POST" && url.pathname === "/v1/publications/commit") return await commitPublication(request, env);
       if (request.method === "GET" && url.pathname === "/v1/words/recent") return await listRecentWords(request, env);
       if (request.method === "POST" && url.pathname === "/v1/words/validate-and-record") return await validateAndRecordWords(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/language-learning-packs/topics") return await listLanguageLearningPackTopics(env);
       if (request.method === "POST" && url.pathname === "/v1/language-learning-packs/commit") return await commitLanguageLearningPack(request, env);
       if (request.method === "POST" && url.pathname === "/v1/language-learning-packs/claim") return await claimLanguageLearningPack(request, env);
       if (request.method === "POST" && url.pathname === "/v1/language-learning-packs/release") return await releaseLanguageLearningPack(request, env);

@@ -8,6 +8,7 @@ from core.tools.media_records import (
     claim_language_learning_pack,
     release_language_learning_pack,
     commit_language_learning_pack,
+    list_language_learning_pack_topics,
     list_production_outputs,
     list_publication_records,
 )

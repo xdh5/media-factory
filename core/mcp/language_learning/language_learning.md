@@ -15,6 +15,7 @@ language_learning_get_topic_generation_prompt / language_learning_validate_topic
 ```
 language_learning_get_topics
 └─ topic_dedup.get_topic
+└─ media_records.list_language_learning_pack_topics（所有已入库图包主题，返回 pack_topics）
 └─ services.vocabulary.list_recent_words（最近 100 天）
 
 language_learning_occupy_topic(topic, learning_modes, publish_date)
@@ -35,6 +36,7 @@ language_learning_parse_vocabulary_response(response_text, learning_modes, topic
 
 预制词包路径：
 language_learning_prepare_pack / language_learning_validate_pack_words
+└─ 先查询 D1 图包主题，忽略大小写和首尾空白，已有主题直接拒绝；查询失败不生成词表
 └─ 复用同一套词表 Prompt、解析器和最近 100 天重复规则
 
 [宿主 Agent 生成一张真实 Alpha 透明主题图，并按共用视觉 Prompt 提交十个主体框]
