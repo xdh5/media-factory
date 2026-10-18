@@ -54,4 +54,5 @@ https://www.douyin.com/user/MS4wLjABAAAA... 显示名
 2. 提供 `topic`、12～26字的 `title`、6～16字的 `short_title`、四个不重复且不带井号的 `hashtags`、一至三行 `cover_lines` 和来自标题的 `cover_highlights`。封面断行拼接必须等于标题。话题结合 `finance_get_topics` 和 `finance_list_editorial_drafts(missing_only=false)` 查重。
 3. 正常审核记录格式为 `{"aweme_id":"作品ID","kind":"normal","text":"校对原稿","ad_segments":[],"reason":"审核理由","editorial":{"article":"完整断行正文","db_source_hook":"原文钩子","source_hook":"处理后钩子","replacements":[],"topic":"话题","title":"长标题","short_title":"短标题","hashtags":["标签一","标签二","标签三","标签四"],"cover_lines":["标题第一行","标题第二行"],"cover_highlights":["标题重点词"]}}`。
 4. 正常原稿缺少定稿时不能作为生产库存。正文不足以成篇时保留待编辑状态，不扩写编造内容。
-5. 补齐未使用旧稿使用 `finance_list_editorial_drafts` 只读获取原文，宿主逐篇编辑后用 `finance_save_editorial_drafts(records)` 提交；不得改动已使用稿件。
+5. 定稿提交前逐篇通读，由你自己判断两件事：原稿的推销、导流、拉群、卖课内容是否全部删干净（包括没写进 `ad_segments` 的软植入）；作者名、账号名、机构名、课程名、外号是否全部换成财富研习岛。有残留就改定稿再提交，不要用关键词清单或脚本代替判断。
+6. 补齐未使用旧稿使用 `finance_list_editorial_drafts` 只读获取原文，宿主逐篇编辑后用 `finance_save_editorial_drafts(records)` 提交；不得改动已使用稿件。
