@@ -300,6 +300,7 @@ def _ensure_playlist_video(route: dict, playlist_title: str, video_id: str,
     if not title:
         return None
     from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
     from platform_api.account_registry import account_context
     from platform_api.youtube.publish_to_youtube import _load_credentials
     from platform_api.youtube._transport import authorized_http
@@ -332,9 +333,22 @@ def _ensure_playlist_video(route: dict, playlist_title: str, video_id: str,
                     progress(f"已创建 YouTube 播放列表：{title}")
             page_token = None
             while True:
-                response = service.playlistItems().list(
-                    part="snippet,contentDetails", playlistId=playlist_id,
-                    maxResults=50, pageToken=page_token).execute()
+                # 新建列表可能尚未同步到列表内容接口，只重试明确的列表未就绪错误。
+                for attempt in range(7):
+                    try:
+                        response = service.playlistItems().list(
+                            part="snippet,contentDetails", playlistId=playlist_id,
+                            maxResults=50, pageToken=page_token).execute()
+                        break
+                    except HttpError as exc:
+                        errors = json.loads(exc.content).get("error", {}).get("errors", [])
+                        if (exc.resp.status != 404
+                                or not any(item.get("reason") == "playlistNotFound" for item in errors)
+                                or attempt == 6):
+                            raise
+                        if progress:
+                            progress(f"YouTube 播放列表尚未就绪，5 秒后重试（{attempt + 1}/6）")
+                        time.sleep(5)
                 for item in response.get("items") or []:
                     if str((item.get("contentDetails") or {}).get("videoId") or "") != video_id:
                         continue
@@ -426,6 +440,9 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
         matching = [row for row in previous if row["account_id"] == route["platform_account_id"]]
         live_record = None
         for row in matching:
+            if not verify_processing:
+                live_record = row
+                break
             try:
                 _verify_processed_video(route, {"video_id": row["external_id"]}, part["duration_seconds"], progress, stale=True)
             except AnimeError as exc:
