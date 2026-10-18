@@ -1,7 +1,8 @@
-"""只读取远程短片段，供宿主取证和准备发布素材。"""
+"""只读取远程短片段和容器信息，供宿主取证和准备发布素材。"""
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -9,6 +10,26 @@ from download_video._extractor import parse_share_text
 
 from .._errors import AnimeError
 from .compile import _executable, _probe, _subprocess_kwargs
+
+
+def _remote_headers(resolved) -> str:
+    return "".join(f"{key}: {value}\r\n" for key, value in resolved.headers.items())
+
+
+def probe_remote_duration(resolved) -> float:
+    """只读远程流容器的时长，不下载整部长视频。"""
+    command = [_executable("ffprobe"), "-v", "error", "-rw_timeout", "30000000",
+               "-headers", _remote_headers(resolved), "-show_entries", "format=duration",
+               "-of", "json", resolved.video_url]
+    completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=180, **_subprocess_kwargs())
+    if completed.returncode != 0:
+        detail = (completed.stderr or "").strip()[-500:]
+        raise AnimeError(f"读取远程视频时长失败：{detail or 'ffprobe 没有返回结果'}")
+    duration = float((json.loads(completed.stdout or "{}").get("format") or {}).get("duration") or 0)
+    if duration <= 0:
+        raise AnimeError("远程视频时长无效，不能制定拆分计划")
+    return duration
 
 
 def extract_remote_preview(work: dict, destination: Path, start: float = 0, seconds: float = 60) -> dict:
@@ -20,7 +41,7 @@ def extract_remote_preview(work: dict, destination: Path, start: float = 0, seco
         raise AnimeError("预览来源 ID 与选定作品不一致")
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.stem + ".partial.mp4")
-    headers = "".join(f"{key}: {value}\r\n" for key, value in resolved.headers.items())
+    headers = _remote_headers(resolved)
     command = [_executable("ffmpeg"), "-v", "error", "-y"]
     for url in [resolved.video_url] + ([resolved.audio_url] if resolved.audio_url else []):
         command.extend(["-rw_timeout", "30000000", "-headers", headers, "-ss", str(start), "-i", url])

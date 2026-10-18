@@ -12,9 +12,9 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 
-from .._constants import OUTPUT_ROOT
+from .._constants import OUTPUT_ROOT, SEGMENTATION_DURATION
 from .._errors import AnimeError
-from .compile import _executable, _subprocess_kwargs, _write_json, part_ranges
+from .compile import _executable, _subprocess_kwargs, _write_json, part_ranges, split_ranges
 
 
 def _local_path(raw: str) -> Path:
@@ -142,9 +142,12 @@ def prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
     expected_part_count = len(parts)
     if selection_path.is_file():
         selection = json.loads(selection_path.read_text(encoding="utf-8"))
-        total_seconds = sum(float(item.get("duration_seconds") or 0) for item in selection.get("sources") or [])
-        if total_seconds > 0:
-            expected_part_count = len(part_ranges([float(item["duration_seconds"]) for item in selection["sources"]]))
+        durations = [float(item["duration_seconds"]) for item in selection.get("sources") or []]
+        if durations and sum(durations) > 0:
+            if selection.get("segmentation") == SEGMENTATION_DURATION:
+                expected_part_count = len(split_ranges(sum(durations)))
+            else:
+                expected_part_count = len(part_ranges(durations))
     prepared_tasks = []
     titles_by_image_id = {}
     digests = {}

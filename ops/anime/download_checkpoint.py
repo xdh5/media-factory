@@ -5,8 +5,16 @@ import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from core.mcp.anime._constants import SEGMENTATION_DURATION, SEGMENTATION_EPISODES
 from core.mcp.anime._errors import AnimeError
-from core.mcp.anime.services.compile import _probe, _write_json, _validate_audio, assemble_videos, part_ranges
+from core.mcp.anime.services.compile import (
+    _probe,
+    _validate_audio,
+    _write_json,
+    assemble_videos,
+    part_ranges,
+    split_ranges,
+)
 from core.mcp.anime.services.youtube import _file_sha256
 
 CHECKPOINT_NAME = "block-checkpoint.json"
@@ -16,11 +24,13 @@ class CheckpointUploader:
     """最多一个后台块加一个当前批次，上传落后时等待，限制未保存数据量。"""
 
     def __init__(self, directory, prefix, execution_id, sources, exists, fetch, upload, progress,
-                 block_seconds=900, block_bytes=128 * 1024 * 1024):
+                 block_seconds=900, block_bytes=128 * 1024 * 1024, segmentation=SEGMENTATION_EPISODES):
         self.directory = Path(directory)
         self.prefix, self.execution_id, self.sources = prefix, execution_id, sources
         durations = [float(source["duration_seconds"]) for source in sources]
-        planned_ends = {round(end, 6) for _, end in part_ranges(durations)}
+        planned_ranges = (split_ranges(sum(durations)) if segmentation == SEGMENTATION_DURATION
+                          else part_ranges(durations))
+        planned_ends = {round(end, 6) for _, end in planned_ranges}
         elapsed = 0.0
         self.part_end_orders = set()
         for order, duration in enumerate(durations, 1):

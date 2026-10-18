@@ -14,10 +14,10 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core.mcp.anime._constants import OUTPUT_ROOT
+from core.mcp.anime._constants import OUTPUT_ROOT, SEGMENTATION_DURATION, SEGMENTATION_EPISODES
 from core.mcp.anime._errors import AnimeError
-from core.mcp.anime.services.compile import _probe, _write_json, assemble_videos, part_ranges
-from core.mcp.anime.services.github_execution import validate_copy
+from core.mcp.anime.services.compile import _probe, _write_json, assemble_videos
+from core.mcp.anime.services.github_execution import planned_part_count, validate_copy
 from core.mcp.anime.services.youtube import _file_sha256, _part_title, publish_youtube
 from core.tools.media_files import download_public_file, upload_public_file
 from core.tools.media_files.storage import _client, _settings
@@ -163,7 +163,7 @@ def execute_package(execution_id: str) -> dict:
         download_public_file(f"{prefix}/package.json", directory / "package.json")
         package = json.loads((directory / "package.json").read_text(encoding="utf-8"))
         version = int(package.get("version") or 0)
-        if version not in {1, 2} or package.get("execution_id") != execution_id:
+        if version not in {1, 2, 3} or package.get("execution_id") != execution_id:
             raise AnimeError("执行包版本或执行 ID 不一致")
         content = {key: value for key, value in package.items() if key not in {"execution_id", "thumbnail_key"}}
         if version == 2:
@@ -187,6 +187,7 @@ def execute_package(execution_id: str) -> dict:
         sources = package["sources"]
         if not sources or len({item["aweme_id"] for item in sources}) != len(sources):
             raise AnimeError("执行包来源为空或重复")
+        segmentation = package.get("segmentation") or SEGMENTATION_EPISODES
         routes = resolve_account_group(package["account_group"], "anime", ["youtube"])
         if len(routes) != 1 or routes[0]["platform_account_id"] != package["channel_id"]:
             raise AnimeError("账号组目标频道发生变化，停止执行并交回 Agent 判断")
@@ -237,7 +238,7 @@ def execute_package(execution_id: str) -> dict:
             phase = "恢复下载检查点"
             checkpoints = CheckpointUploader(
                 directory, prefix, execution_id, sources, exists, download_public_file, upload_public_file,
-                lambda message: print(message, flush=True))
+                lambda message: print(message, flush=True), segmentation=segmentation)
             restored_count = checkpoints.completed_count
             completed_count = restored_count
             for order, work in enumerate(sources[restored_count:], restored_count + 1):
@@ -273,7 +274,7 @@ def execute_package(execution_id: str) -> dict:
             current_source = {}
             phase = "拼接最终成片"
             completed_parts: dict[int, dict] = {}
-            expected_part_count = len(part_ranges([float(item["duration_seconds"]) for item in sources]))
+            expected_part_count = planned_part_count(sources, segmentation)
             for index in range(1, expected_part_count + 1):
                 receipt_name = f"youtube-receipt-{index}.json"
                 if not exists(f"{prefix}/{receipt_name}"):
@@ -324,7 +325,7 @@ def execute_package(execution_id: str) -> dict:
                 )
                 phase = "拼接最终成片"
 
-            if len(sources) == 1:
+            if len(sources) == 1 and segmentation != SEGMENTATION_DURATION:
                 progress("单个现成合集直接复用原文件")
                 source = downloaded[0]
                 path = directory / "part-1.mp4"
@@ -337,7 +338,7 @@ def execute_package(execution_id: str) -> dict:
             else:
                 manifest = assemble_videos(
                     downloaded, directory, progress=progress, part_ready=publish_ready_part,
-                    completed_parts=completed_parts)
+                    completed_parts=completed_parts, segmentation=segmentation)
             phase = "上传最终成片"
             if not parts_persisted:
                 for part in manifest["parts"]:

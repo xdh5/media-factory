@@ -18,12 +18,15 @@ from typing import Callable
 
 from download_video import DownloadError, download, extract_urls
 
-from .._constants import MAX_PART_SECONDS
+from .._constants import MAX_PART_SECONDS, SEGMENTATION_DURATION, SEGMENTATION_EPISODES
 from .._errors import AnimeError
 
 Progress = Callable[[str], None]
 
 _TIME_RE = re.compile(r"(\d+):(\d+):(\d+(?:\.\d+)?)")
+
+# 关键帧裁切允许的时间偏差；超出才转码这一段。
+_SPLIT_TOLERANCE_SECONDS = 10.0
 
 
 def normalize_share_texts(share_texts: list[str] | str) -> list[str]:
@@ -84,6 +87,16 @@ def part_ranges(
     return ranges
 
 
+def split_ranges(total_seconds: float, max_part_seconds: float = MAX_PART_SECONDS) -> list[tuple[float, float]]:
+    """长视频按时间线均分成每段不超过三小时，切点可以落在来源中间。"""
+    if not math.isfinite(total_seconds) or total_seconds <= 0:
+        raise AnimeError("拆分需要有效的视频总时长")
+    count = part_count(total_seconds, max_part_seconds)
+    each = total_seconds / count
+    return [(index * each, (index + 1) * each if index + 1 < count else total_seconds)
+            for index in range(count)]
+
+
 def compile_videos(
     share_texts: list[str],
     output_dir: Path,
@@ -132,8 +145,9 @@ def assemble_videos(
     progress: Progress | None = None,
     part_ready: Callable[[dict], None] | None = None,
     completed_parts: dict[int, dict] | None = None,
+    segmentation: str = SEGMENTATION_EPISODES,
 ) -> dict:
-    """按完整剧集边界均衡拼接，每段完成后立即持久化或发布。"""
+    """按完整剧集边界均衡拼接，或按时间线均分长视频；每段完成后立即持久化或发布。"""
     if not sources:
         raise AnimeError("没有可拼接的视频")
     output_dir = Path(output_dir)
@@ -155,16 +169,19 @@ def assemble_videos(
         })
         total_seconds += duration
 
-    episode_durations = []
-    episode_seconds = 0.0
-    for source in timeline:
-        episode_seconds += source["duration"]
-        if source.get("episode_boundary_after", True):
-            episode_durations.append(episode_seconds)
-            episode_seconds = 0.0
-    if episode_seconds:
-        raise AnimeError("检查点缺少完整剧集结束边界，不能按时间硬切")
-    ranges = part_ranges(episode_durations, max_part_seconds)
+    if segmentation == SEGMENTATION_DURATION:
+        ranges = split_ranges(total_seconds, max_part_seconds)
+    else:
+        episode_durations = []
+        episode_seconds = 0.0
+        for source in timeline:
+            episode_seconds += source["duration"]
+            if source.get("episode_boundary_after", True):
+                episode_durations.append(episode_seconds)
+                episode_seconds = 0.0
+        if episode_seconds:
+            raise AnimeError("检查点缺少完整剧集结束边界，不能按时间硬切")
+        ranges = part_ranges(episode_durations, max_part_seconds)
     parts: list[dict] = []
     width = len(str(len(ranges)))
     completed_parts = completed_parts or {}
@@ -179,7 +196,8 @@ def assemble_videos(
             actual = {"duration": end - start}
         else:
             _report(progress, f"正在拼接第 {index}/{len(ranges)} 段")
-            _render_part(clips, video_path, progress=progress, label=f"第 {index}/{len(ranges)} 段")
+            _render_part(clips, video_path, progress=progress, label=f"第 {index}/{len(ranges)} 段",
+                         segmentation=segmentation)
             actual = _probe(video_path)
         included = _sources_for_range(timeline, start, end)
         metadata = _combine_metadata(included)
@@ -320,11 +338,27 @@ def _source_payload(record: dict) -> dict:
     }
 
 
-def _render_part(clips: list[dict], output_path: Path, *, progress: Progress | None, label: str) -> None:
+def _render_split(clips: list[dict], output_path: Path, *, progress: Progress | None, label: str) -> None:
+    """按时间线无损裁切长视频；关键帧偏差过大时才转码这一段，避免整部重编码。"""
+    if len(clips) == 1 and clips[0]["full"]:
+        shutil.copy2(clips[0]["path"], output_path)
+        return
+    try:
+        _concat_packet_copy(clips, output_path,
+                            tolerance=max(_SPLIT_TOLERANCE_SECONDS, len(clips) * 0.5))
+    except AnimeError:
+        _report(progress, f"{label} 关键帧裁切时长偏差过大，改为转码这一段")
+        _concat_reencode(clips, output_path, progress=progress, label=label)
+
+
+def _render_part(clips: list[dict], output_path: Path, *, progress: Progress | None, label: str,
+                 segmentation: str = SEGMENTATION_EPISODES) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = output_path.with_name(f".{output_path.stem}.tmp.mp4")
     try:
-        if len(clips) == 1 and clips[0]["full"]:
+        if segmentation == SEGMENTATION_DURATION:
+            _render_split(clips, temporary, progress=progress, label=label)
+        elif len(clips) == 1 and clips[0]["full"]:
             shutil.copy2(clips[0]["path"], temporary)
         elif _can_stream_copy(clips):
             try:
@@ -385,7 +419,7 @@ def _concat_trimmed_boundaries(clips, output_path, *, progress, label):
             raise AnimeError("边界处理后的成片时长不符")
 
 
-def _concat_packet_copy(clips: list[dict], output_path: Path) -> None:
+def _concat_packet_copy(clips: list[dict], output_path: Path, tolerance: float | None = None) -> None:
     """不解码音视频；只对分段边界做关键帧裁切，再按原始数据包拼接。"""
     ffmpeg = _executable("ffmpeg")
     with tempfile.TemporaryDirectory(prefix=".packet-copy-", dir=output_path.parent) as temporary:
@@ -409,7 +443,7 @@ def _concat_packet_copy(clips: list[dict], output_path: Path) -> None:
         _concat_copy(prepared, output_path)
         expected = sum(clip["duration"] for clip in clips)
         actual = _probe(output_path)["duration"]
-        if abs(actual - expected) > max(3.0, len(clips) * 0.1):
+        if abs(actual - expected) > (max(3.0, len(clips) * 0.1) if tolerance is None else tolerance):
             raise AnimeError("直接拼接后的成片时长不符")
 
 

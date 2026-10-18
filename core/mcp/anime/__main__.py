@@ -22,7 +22,7 @@ from ._errors import AnimeError, TaskNotFoundError, WorkflowStepError
 from .services.compile import compile_videos, normalize_share_texts
 from .services.discover import discover_series, inspect_works, compile_selection, load_discovery
 from .services.youtube import load_manifest, transcribe_intros, publish_youtube, prepare_youtube_thumbnails, save_youtube_thumbnails
-from .services.github_execution import prepare_execution, dispatch_execution, read_execution_result
+from .services.github_execution import prepare_execution, prepare_split_execution, dispatch_execution, read_execution_result
 
 mcp = FastMCP("media-factory-anime", instructions=SERVER_INSTRUCTIONS)
 
@@ -109,6 +109,16 @@ def anime_start_prepare_execution(discovery_path: str, work_ids: list[str], sele
 
 
 @mcp.tool()
+def anime_start_prepare_split_execution(share_texts: list[str], series_name: str, selection_reason: str) -> dict:
+    """用户直接给出长视频链接时使用。只远程读取第一来源开头60秒并转写，不下载整部视频；冻结来源后由 Action 下载并按三小时拆分。series_name 用作播放列表名，selection_reason 必须写明已完结。"""
+    run_id = f"split-{time.time_ns()}"
+    directory = OUTPUT_ROOT / run_id
+    return {**runner_submit_task(cache_dir=directory, run_id=run_id, step="prepare-split-execution",
+            fn=lambda progress: prepare_split_execution(share_texts, series_name, selection_reason, progress)),
+            "poll_tool": "anime_poll_task", "output_dir": str(directory)}
+
+
+@mcp.tool()
 def anime_get_production_config(account_group: str = "") -> dict:
     """只读取得动漫 Action 流程和默认账号组。未指定时自动读取部署配置或唯一启用的数据库动漫 YouTube 组，不要求用户重复提供。"""
     from .services.accounts import production_config
@@ -121,7 +131,7 @@ def anime_get_production_config(account_group: str = "") -> dict:
 @mcp.tool()
 def anime_dispatch_github_execution(manifest_path: str, titles: list[str], descriptions: list[str],
                                     tags: list[str], account_group: str = "") -> dict:
-    """获得用户发布授权后使用。上传执行包和全部分段封面并启动 Action；各段标题标集数并加入作品同名播放列表。"""
+    """获得用户发布授权后使用。上传执行包和全部分段封面并启动 Action；各段标题标集数并加入作品同名播放列表。长视频拆分清单按时间线切分后同样适用。"""
     try:
         return dispatch_execution(manifest_path, titles, descriptions, tags, account_group)
     except Exception as exc:

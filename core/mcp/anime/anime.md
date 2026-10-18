@@ -65,6 +65,17 @@ cache/output/anime/run-*/
 
 Action 所需 Secrets：已有 D1 和 R2 配置、`ANIME_PUBLISHING_CREDENTIALS_JSON`（仅动漫账号组引用的 OAuth 客户端和 refresh token）。不覆盖其他业务共用的发布凭据 Secret。手动运行工作流时可选 `verify_auth_only=true`，只读核验 Secret 的 OAuth、频道身份和上传权限，不下载或发布视频。
 
+### 长视频直发：按时间线拆分
+
+用户直接给出一条或多条长视频链接时，不下载整部视频，只远程读取第一来源开头一分钟：
+
+1. `anime_start_prepare_split_execution(share_texts, series_name, selection_reason)`：`share_texts` 按播放顺序给出同一作品的链接；`series_name` 是作品名，同时作为 YouTube 播放列表名；`selection_reason` 必须写明已完结。工具解析每条链接、远程探测时长，返回预览 `manifest_path`、`split_plan`（总时长、段数、每段区间）和来源原标题描述话题。轮询到完成。
+2. 宿主依据来源文案和开头转写编写一套共用标题、描述和标签，规则与主页找剧发布一致；标题、描述、搜索标签和 hashtag 都必须包含“已完结”。封面按 `split_plan` 的段数分别生成，标题自动带 `第N集（共M集）`。
+3. `anime_dispatch_github_execution` 同样适用：工具按 `selection.json` 里的 `segmentation=duration-split-v1` 生成版本 3 执行包并触发同一工作流。
+4. Action 全量下载后按时间线均分成每段不超过三小时，逐段上传、设置封面并加入 `series_name` 播放列表。不同作品分别执行一次，各自进入各自的合集。
+
+段数按总时长除以三小时向上取整，各段等长；切点可以落在来源中间，优先关键帧无损裁切，偏差过大才转码该段。
+
 ### 用户指定已有本地完整成片
 
 用户明确授权发布时，调用 `anime_start_transcribe_intro(manifest_path)`，抽取第一段成片前60秒并复用 Groq 转写。宿主根据转写生成独立发布文案，不覆盖来源文案。文案确定后调用 `anime_prepare_youtube_thumbnails(manifest_path, titles)`，titles 只传一个共用标题，工具只从第一段抽一帧作为画风参考。宿主查看这一帧后自己一次生成封面，画风与参考帧一致，标题和画面一起出图，再调用 `anime_save_youtube_thumbnails(context_path, images)`。然后调用 `anime_start_publish_youtube(manifest_path, titles, descriptions, tags, account_group)`，逐段即时公开发布到用户指定的动漫账号组，并上传已保存的封面。发布工具不代替宿主生图。目录从项目布局推导，频道身份与凭据引用从数据库和部署环境读取，不预置个人信息。耗时的转写和发布通过 `anime_poll_task` 轮询。封面准备和保存是同步工具。
