@@ -166,7 +166,7 @@ def execute_package(execution_id: str) -> dict:
         if version not in {1, 2, 3} or package.get("execution_id") != execution_id:
             raise AnimeError("执行包版本或执行 ID 不一致")
         content = {key: value for key, value in package.items() if key not in {"execution_id", "thumbnail_key"}}
-        if version == 2:
+        if version >= 2:
             content["thumbnails"] = [
                 {key: value for key, value in item.items() if key != "key"}
                 for item in package.get("thumbnails") or []
