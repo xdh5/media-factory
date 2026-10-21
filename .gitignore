@@ -8,6 +8,8 @@ dist/
 
 # 虚拟环境
 .venv/
+.venv-agent/
+.venv-desktop/
 venv/
 env/
 .env

@@ -1,6 +1,9 @@
 # 版本库与本地产物，不进镜像
 .git
 .gitignore
+.venv/
+.venv-agent/
+.venv-desktop/
 .env
 **/.env
 integrations/*/data/

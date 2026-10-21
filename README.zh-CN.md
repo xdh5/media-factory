@@ -20,6 +20,10 @@ Media Factory 将这些环节设计为一个有状态、可恢复的工作流，
 
 ### Agent 编排的生产流程
 
+项目提供可独立调用 LLM API 的 [LangGraph Agent 模块](core/agent/README.md)，支持工具调用、检查点恢复、暂停与人工审批，可与现有 Codex + MCP 工作方式并行使用。
+
+[Windows 绿色版客户端](desktop/README.md) 使用原版 Open WebUI 与 Electron，提供多轮聊天、流式工具调用、人工审批、视频预览、故障 RAG、长期记忆和 Tracing/Evals 管理入口。
+
 每条业务工作流都作为独立的 MCP Server 暴露。AI Agent 可以通过结构化工具调用检查素材、准备内容、启动耗时任务、验收生成资源并继续后续流程。
 
 图片生成和 FFmpeg 渲染等耗时操作统一采用“启动任务 + 轮询状态”的异步模式，避免 MCP 客户端被长时间阻塞。

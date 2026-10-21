@@ -31,3 +31,17 @@ dependencies = [
 
 [tool.setuptools]
 packages = []
+
+[project.optional-dependencies]
+agent = [
+    "langgraph>=1.0,<2",
+    "langgraph-checkpoint-sqlite>=3,<4",
+    "httpx>=0.28,<1",
+    "filelock>=3.16,<5",
+    "jsonschema>=4.23,<5",
+]
+desktop = [
+    "media-factory[agent]",
+    "open-webui==0.12.3",
+    "tzdata>=2025.2",
+]

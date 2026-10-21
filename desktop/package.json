@@ -1,0 +1,9 @@
+{
+  "name": "media-factory-desktop",
+  "productName": "Media Factory",
+  "version": "0.1.0",
+  "description": "Media Factory 绿色版桌面客户端",
+  "main": "main.cjs",
+  "private": true,
+  "license": "MIT"
+}

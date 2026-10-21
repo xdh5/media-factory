@@ -1,0 +1,76 @@
+{
+  "model": "deepseek-v4-pro",
+  "method": "真实 LLM + 历史真实工具返回重放；不重新下载或转写，不是新的完整生产耗时评测",
+  "source_task": "chat-2f0cdee73a71e66735c89b395551461845a7b75a1f3ce84505b986c52dc442d2",
+  "historical_progress_count": 28,
+  "historical_payload_sha256": "accdf6fb6e4bc24de77fa797ffa9594ffb8e544218d3827ccb9b4dce2d306f33",
+  "original_task": {
+    "llm_calls": 34,
+    "input_tokens": 800277,
+    "output_tokens": 5555
+  },
+  "poll_llm_counts": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "measured": {
+    "llm_calls": 2,
+    "input_tokens": 42577,
+    "output_tokens": 244,
+    "poll_calls": 28,
+    "llm_calls_during_wait": 0,
+    "elapsed_seconds": 143.53
+  },
+  "live_mcp_check": {
+    "done": true,
+    "status": "succeeded"
+  },
+  "status": "passed",
+  "incurred_usage": {
+    "recorded_llm_calls": 2,
+    "input_tokens": 42577,
+    "output_tokens": 244
+  },
+  "comparison": {
+    "original_task_total_tokens": 805832,
+    "measured_wait_scenario_total_tokens": 42821,
+    "token_reduction_percent": 94.69,
+    "scope": "原始完整任务与历史等待阶段重放的对照，不是完整生产任务的同条件 A/B；没有重跑下载与转写。"
+  },
+  "measurement_cost": {
+    "successful_run_tokens": 42821,
+    "failed_measurement_tokens": 50956,
+    "total_tokens": 93777,
+    "total_recorded_llm_calls": 5
+  },
+  "evidence": {
+    "passed": "cache/desktop-verification/tokens-6d299008879e41109a2d3e59f91bef5d/report.json",
+    "failed": "cache/desktop-verification/tokens-09e026c361ef4d84a509861218a37b6e/report.json"
+  }
+}

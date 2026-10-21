@@ -1,0 +1,84 @@
+{
+  "evaluated_at": 1792507557.0513806,
+  "case_count": 4,
+  "k": 1,
+  "models": {
+    "embedding": "text-embedding-v3",
+    "rerank": "qwen-plus",
+    "diagnosis": "qwen-plus"
+  },
+  "recall_at_k": 1.0,
+  "retrieval_relevance": 1.0,
+  "diagnosis_method": "关键词组命中单独统计；本次生成答案尚未经过独立人工复核，诊断准确率为 null。",
+  "split": "查询来自历史失败任务；索引只收录项目诊断文档，评估查询与标签不得入索引。",
+  "cases": [
+    {
+      "id": "OrphanTaskError",
+      "provenance": {
+        "path": "cache/finance/run-20260924/tasks/task-22722ac4b5ae.json",
+        "sha256": "9c80b2292e397f17c249e11747d806d0860e930adc01566af9e978be8e08618b",
+        "status": "failed",
+        "error_type": "OrphanTaskError"
+      },
+      "sources": [
+        "docs/diagnostics/mcp-background-task.md"
+      ],
+      "recall_at_k": 1.0,
+      "retrieval_relevance": 1.0,
+      "diagnosis_label_match": true,
+      "answer": "根据提供的诊断文档和当前错误信息，分析如下：\n\n---\n\n### 🔍 **故障原因**  \n错误 `MCP 已重启，后台任务中断。请重新 start 该步骤，不要继续 poll 此任务。` 对应的底层异常是 **`OrphanTaskError`**，其根本原因是：  \n✅ **MCP 进程已退出或重启** → 导致原后台 worker 线程终止；  \n❌ 但任务状态文件仍标记为 `running`（未被及时清理）；  \n❌ `poll_task` 机制无法复活已消失的线程（LangGraph 检查点仅保存编排状态，**不保存运行中媒体计算线程的执行上下文**）；  \n⚠️ 继续 `poll` 该任务将无效，且可能引发重复副作用（如重复上传、重复转码、重复发布等）。\n\n> 📌 **依据来源**：  \n> `docs/diagnostics/mcp-background-task.md` 明确指出：  \n> > “这是原本后台线程所属的 MCP 进程退出或重启导致的，不能靠重复 poll 使旧线程恢复。”  \n> > “已经完成的副作用不能重复执行。确认步骤未完成后，再经人工审批重新 start 相应步骤。”\n\n---\n\n### ✅ **正确修复步骤**（需严格按序执行）\n\n| 步骤 | 操作 | 说明 | 依据 |\n|------|------|------|------|\n| **1. 停止轮询** | ❌ 立即停止对该任务 ID 的任何 `poll` 请求 | 防止客户端误判为“任务仍在进行”，避免逻辑冲突或重试风暴 | 文档明确要求：“不要继续 poll 此任务” |\n| **2. 状态核查** | ✅ 检查三项内容：<br>• 本地任务状态文件（如 `tasks/{task_id}/state.json`）是否仍为 `\"status\": \"running\"`<br>• 对应产物目录（如 `outputs/{task_id}/`）是否存在**完整、校验通过**的输出文件<br>• 发布记录（如 `publish/log/{task_id}.json` 或数据库 `publish_events` 表）是否已存在成功条目 | 判断任务是否**实际已完成但状态未更新**（即“幽灵完成”），避免重复执行 | 文档：“先检查任务文件、已生成产物和发布记录” |\n| **3. 远端验证（如适用）** | ✅ 若该任务触发了 GitHub Action（如 `media-publish` workflow），需手动访问对应仓库的 Actions 页面，用 `task_id` 或 commit hash 查询远端执行结果 | 因 MCP 重启可能导致 webhook 丢失或回调失败，远端可能已成功但本地未收到通知 | 文档：“有远端 GitHub Action 时单独查询远端结果” |\n| **4. 人工审批确认** | ✅ 由 Media Factory 运维/负责人确认：<br>• 所有检查项均表明**该步骤尚未完成**（产物缺失 / 发布失败 / 远端超时）<br>• 无并发或依赖冲突风险（例如上游步骤已被跳过或覆盖） | 必须人工介入，禁止自动重试——这是安全边界设计 | 文档：“确认步骤未完成后，再经人工审批重新 start 相应步骤” |\n| **5. 重新启动步骤** | ✅ 调用 `mcp start --step <step_name> --task-id <task_id>`（或通过桌面端 UI 点击「重试」） | 新建任务实例，绑定新 worker 线程；旧 `running` 文件将被忽略或自动归档 | 文档隐含逻辑：`start` 是唯一合法的恢复入口 |\n\n---\n\n### ⚠️ 特别注意（常见误区）\n- **❌ 不要删除 `running` 状态文件后手动 `poll`**：`poll_task` 无恢复能力，只会报错或空转；  \n- **❌ 不要重启桌面端期望“自动续跑”**：客户端关闭后本地线程必然终止，LangGraph 检查点**不包含线程堆栈或 GPU 上下文**；  \n- **✅ 桌面端长驻仅保障会话可用性**：审批暂停期间保持连接，但不维持已死线程；  \n- **⏰ 当前时间参考**：`2026-10-20T22:43:43+08:00` —— 所有日志/检查时间戳应以此为基准比对，**不接受未来时间伪造**（如 `2026-10-21` 的日志需警惕时钟异常）。\n\n---\n\n如需进一步协助，请提供：  \n🔹 具体 `task_id`（用于定位产物路径）  \n🔹 是否涉及 GitHub Action（提供仓库名及 workflow 名）  \n🔹 产物目录是否存在、`publish/log/` 中对应条目状态  \n\n我可帮你逐项核查并生成审批确认话术。"
+    },
+    {
+      "id": "AgentOutputFormatError",
+      "provenance": {
+        "path": "cache/finance/run-20260924/tasks/task-b8b7a98974e3.json",
+        "sha256": "97887d86ab06b71b4168719ee915a86264f33ebcaed4f6e2a42cbd770e36a3c7",
+        "status": "failed",
+        "error_type": "AgentOutputFormatError"
+      },
+      "sources": [
+        "docs/diagnostics/storyboard-line-coverage.md"
+      ],
+      "recall_at_k": 1.0,
+      "retrieval_relevance": 1.0,
+      "diagnosis_label_match": true,
+      "answer": "该错误属于 **结构化分镜数据校验失败**，具体为 `AgentOutputFormatError`，核心问题是：\n\n> **分镜片段（shot）未按原始台词顺序、不重复、不遗漏地覆盖全部台词 ID。**\n\n---\n\n### ✅ 原因分析（依据提供资料）\n\n- **根本原因**：分镜输出的 `passages` 中缺失、重复或错序了某些台词 ID（如 `\"6026f419...:0\"`），导致与原始输入台词列表的 ID 序列不一致。\n- **非外部故障**：明确排除素材下载失败、TTS 语音生成异常、网络或存储问题（见原文：“不是素材下载或语音故障”）。\n- **校验逻辑来源**：由 `core/mcp/finance/services/storyboard.py` 实现，该模块在提交分镜前强制校验：\n  - 所有原始台词 ID 必须 **全部出现且仅出现一次**；\n  - 出现顺序必须 **严格等于原始台词列表的索引顺序**（即 `0, 1, 2, ..., n-1`）。\n\n> 📌 注：当前时间是 **2026-10-20T22:44:21.222351+08:00**，该时间点下所有诊断均基于已存档文档（`docs/diagnostics/storyboard-line-coverage.md`），**不涉及重跑历史任务或修改生产视频**。\n\n---\n\n### 🔧 修复步骤（必须严格执行）\n\n| 步骤 | 操作 | 依据 |\n|------|------|------|\n| **1. 获取原始台词 ID 列表** | 从原始输入 payload（如 `script.json` 或 `dialogue_segments`）中提取完整、有序的台词 ID 数组，例如：<br>`[\"id_a:0\", \"id_b:1\", \"id_c:2\", ...]` | 文档强调“读取原始台词列表，按原顺序逐项核对” |\n| **2. 提取当前分镜 passage ID 序列** | 从 `passages` 数组中按顺序提取 `id` 字段，构成当前输出序列：<br>`[\"id_a:0\", \"id_c:2\", \"id_b:1\"]` → 发现乱序+漏 `:1`？需比对 |\n| **3. 三重校验并修正** | • **不漏**：对每个原始 ID，检查是否存在于 `passages.id` 中；<br>• **不重**：统计每个 ID 出现次数，>1 即违规；<br>• **不乱**：`passages` 索引 `i` 处的 `id` 必须等于原始列表索引 `i` 处的 ID。<br>→ 修正方式：**仅调整 `passages` 数组结构**（增删/重排元素），**禁止修改 ID 字符串本身或跳过校验**。 | “补齐漏项、删除重复项、纠正乱序后重新提交校验”；“不要通过改动台词 ID 或跳过校验来继续渲染” |\n| **4. 重新提交校验** | 将修正后的 `passages` 作为新 payload 提交至 storyboard 校验服务（调用 `storyboard.py` 的 `validate_shot_coverage()`） | 校验逻辑内置于服务，必须通过方可进入后续渲染 |\n\n---\n\n### ⚠️ 注意事项（关键约束）\n\n- ❌ **禁止** 修改任何台词 ID 字符串（如重命名 `:0` → `:001`），ID 是唯一锚点，关联语音、字幕、时间轴；\n- ❌ **禁止** 注释/绕过校验逻辑（如 patch `storyboard.py` 或设 `skip_validation=True`）；\n- ❌ **禁止** 假设“少一个 ID 不影响渲染”而强行提交——系统会拒绝并中断 pipeline；\n- ✅ **允许** 补充空分镜（如 `{\"id\": \"xxx:5\", \"content\": \"\"}`）以占位补漏，只要 ID 正确、顺序合规。\n\n---\n\n如需进一步协助，请提供：\n- 原始台词 ID 完整列表（按顺序）；\n- 当前 `passages` 全量数组（含所有 `id` 字段）；  \n我可帮你自动比对缺口、重复与错序位置，并生成合规修正版 `passages`。"
+    },
+    {
+      "id": "QwenVisionConfigurationError",
+      "provenance": {
+        "path": "cache/output/anime/run-1792089988216301700/inspect-1792090236896332800/tasks/task-903bc7fd0b3b.json",
+        "sha256": "4fde5917fd190ea1b20371fd83183888b894905304144ea0ed2e4bdc51b6cd06",
+        "status": "failed",
+        "error_type": "QwenVisionConfigurationError"
+      },
+      "sources": [
+        "docs/diagnostics/model-key.md"
+      ],
+      "recall_at_k": 1.0,
+      "retrieval_relevance": 1.0,
+      "diagnosis_label_match": true,
+      "answer": "根据提供的诊断资料，当前故障原因及修复步骤如下：\n\n---\n\n### ✅ **故障原因**  \n**`QwenVisionConfigurationError`：缺少 `DASHSCOPE_API_KEY` 环境变量**  \n- 系统尝试初始化千问视觉模型时，未能读取到必需的 API 密钥。  \n- 依据文档 `docs/diagnostics/model-key.md`，密钥加载逻辑为：  \n  - 若配置了 `DASHSCOPE_BUSINESS_LINE`（如 `finance` 或 `language_learning`），则优先读取对应业务线密钥（如 `DASHSCOPE_API_KEY_FINANCE`）；  \n  - 若未配置业务线，则**必须提供通用密钥 `DASHSCOPE_API_KEY`**。  \n- 当前错误明确提示“缺少 `DASHSCOPE_API_KEY`”，说明既未设置通用密钥，也未正确配置业务线及其专属密钥。\n\n> ⚠️ 注意：该错误与模型、视频、网络或服务重启无关，**纯属环境配置缺失**；且本次测试仅调用只读工具，无需写入或重下载资源。\n\n---\n\n### 🛠️ **修复步骤**  \n\n1. **确认业务线配置**  \n   检查当前运行环境是否已设置 `DASHSCOPE_BUSINESS_LINE`（例如通过 `echo $DASHSCOPE_BUSINESS_LINE` 或查看配置文件）。  \n   - 若已设为 `finance` → 需配置 `DASHSCOPE_API_KEY_FINANCE`；  \n   - 若已设为 `language_learning` → 需配置 `DASHSCOPE_API_KEY_LANGUAGE`；  \n   - **若未设置或设为空/无效值 → 必须配置 `DASHSCOPE_API_KEY`（通用密钥）**。\n\n2. **安全注入密钥**  \n   - ✅ **推荐方式（生产/CI）**：在 GitHub Secrets 中添加对应密钥（如 `DASHSCOPE_API_KEY` 或 `DASHSCOPE_API_KEY_FINANCE`）；  \n   - ✅ **本地开发**：在项目根目录 `.env` 文件中添加（确保 `.env` 已被加载，且**不提交至 Git**）：  \n     ```env\n     DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n     # 或（若启用业务线）\n     DASHSCOPE_BUSINESS_LINE=finance\n     DASHSCOPE_API_KEY_FINANCE=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n     ```\n\n3. **验证配置有效性**  \n   - 在不启动完整服务的前提下，**先执行只读连接验证**（例如运行 `python -m core.tools.qwen_text.qwen_text --dry-run` 或类似健康检查脚本），确认密钥解析与模型客户端初始化成功。  \n   - ✅ 验证通过后，再重启相关 MCP 服务（如 `mcp-vision-service`）。\n\n4. **禁止行为（依据文档强调）**  \n   - ❌ 不得将密钥硬编码、写入任务参数、日志输出或评估样本；  \n   - ❌ 不得用“重新下载视频”“更换模型版本”等无关操作替代密钥配置；  \n   - ❌ 不得跳过业务线密钥匹配逻辑而强行复用通用密钥（若业务线已配置但密钥名不匹配，仍会失败）。\n\n---\n\n### 📌 依据来源  \n- 文档 `docs/diagnostics/model-key.md` 明确说明：  \n  > “财经可选择 `finance` 并配置 `DASHSCOPE_API_KEY_FINANCE`，语言学习可选择 `language_learning` 并配置 `DASHSCOPE_API_KEY_LANGUAGE`；没有选择业务线时读取通用 `DASHSCOPE_API_KEY`。”  \n  > “更改客户端业务配置后重启相关 MCP 服务，并**先用只读配置检查验证模型连接**。”\n\n---\n\n如完成上述步骤后仍报错，请提供：  \n- `DASHSCOPE_BUSINESS_LINE` 的实际值（或是否未设置）；  \n- `.env` 或 Secrets 中配置的密钥变量名与值（**脱敏后**，如 `DASHSCOPE_API_KEY=sk-abc...xyz` → `DASHSCOPE_API_KEY=sk-***`）；  \n- 验证脚本的执行日志（不含密钥明文）。  \n我将进一步协助定位密钥加载路径问题。"
+    },
+    {
+      "id": "InvalidPublishRequestError",
+      "provenance": {
+        "path": "cache/publishing/run-20260925/finance/tasks/task-b42835e4b12e.json",
+        "sha256": "62010c40e8164277082512f76b1e857fa3b688c62d0863af0087d0a016dbf3cb",
+        "status": "failed",
+        "error_type": "InvalidPublishRequestError"
+      },
+      "sources": [
+        "docs/diagnostics/publish-time.md"
+      ],
+      "recall_at_k": 1.0,
+      "retrieval_relevance": 1.0,
+      "diagnosis_label_match": true,
+      "answer": "根据提供的诊断资料，当前错误原因及修复步骤如下：\n\n---\n\n### ✅ **错误原因**  \n`InvalidPublishRequestError`：**预约发布时间（`publish_at`）已早于当前北京时间（2026-10-20T22:45:41.089949+08:00）**，即请求中指定的发布时刻为过去时间，系统拒绝执行。  \n依据文档 `docs/diagnostics/publish-time.md` 明确指出：  \n> “预约发布时间已经过去……不能通过修改历史生产记录绕过校验。”\n\n该校验在 `core/tools/publish_media` 模块中强制执行，属于发布工作流的前置安全检查，**非临时绕过项，且本次未实际触发发布**。\n\n---\n\n### ✅ **修复步骤**\n\n| 场景 | 操作 | 说明 | 依据 |\n|------|------|------|------|\n| **需立即发布** | 设置 `publish_mode=immediate` 且 `publish_at=now`（字符串字面量 `\"now\"`，非时间戳） | 系统将忽略 `publish_at` 时间解析，转为即时触发审批流程（仍需人工审批） | 文档明确：“使用 `publish_mode=immediate` 与 `publish_at=now`” |\n| **仍需预约发布** | 设置 `publish_mode=scheduled`，并提供 **带时区的未来 ISO 8601 时间**（如 `\"2026-10-21T09:00:00+08:00\"`） | 时间必须严格晚于当前时刻 `2026-10-20T22:45:41.089949+08:00`；推荐使用 UTC+8 显式时区，避免歧义 | 文档要求：“提供带时区的未来 ISO 8601 时间” |\n| **前置检查（必做）** | 查询现有 `publication_records`，确认目标产物 **未处于 `published` 或 `scheduled` 状态** | 避免重复提交导致冲突；系统会拒绝已存在有效发布记录的目标 | 文档强调：“发布前继续查询现有 publication_records，已发布或已预约成功的目标不能重复发布” |\n\n---\n\n### ⚠️ 注意事项  \n- ❌ **禁止** 修改历史 `publication_records` 或伪造时间字段绕过校验——该行为违反工作流设计原则，且已被日志监控（历史失败任务已归档同类错误）。  \n- ✅ 所有真正发布操作（无论 immediate 或 scheduled）**均需人工审批**，API 仅提交待审请求，不自动执行发布。  \n- 📅 示例时间必须符合当前上下文：如需预约，最早合法时间为 `2026-10-20T22:45:42+08:00`（即当前时间 +1 秒），但建议预留至少 30 秒缓冲以规避时钟微偏移。\n\n如需生成合规的 `publish_at` 值，可提供目标日期/时间，我可协助格式化为 ISO 8601 带时区字符串。"
+    }
+  ],
+  "diagnosis_label_match_rate": 1.0,
+  "diagnosis_accuracy": null,
+  "diagnosis_reviewed_count": 0,
+  "metric_update_note": "保留实际模型输出和检索结果，区分规则命中与人工复核准确率；原始报告在 cache/desktop-build/rag-evaluation-top1.json。"
+}

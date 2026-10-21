@@ -28,8 +28,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # 只先拷贝依赖声明：pyproject.toml 不变时此层缓存命中，改代码不重装依赖；
 # 变动重装时 wheel 从本机 pip 缓存读，不再联网下载
 COPY pyproject.toml ./
+ARG INSTALL_AGENT=false
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple .
+    if [ "$INSTALL_AGENT" = "true" ]; then \
+        pip install -i https://pypi.tuna.tsinghua.edu.cn/simple '.[agent]'; \
+    else \
+        pip install -i https://pypi.tuna.tsinghua.edu.cn/simple .; \
+    fi
 
 # ---- 层 3：项目代码与静态资源 ----
 # 日常改动只重建这一层（含根 static/bgm BGM 曲库与 static/sfx 提示音效）
