@@ -15,7 +15,7 @@ script = directory / "parent.py"
 script.write_text('''import sys, subprocess, time, json
 from pathlib import Path
 sys.path.insert(0, sys.argv[2])
-from core.desktop.supervisor import windows_job
+from desktop.supervisor import windows_job
 job = windows_job()
 child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
 Path(sys.argv[1]).write_text(json.dumps({"parent": __import__("os").getpid(), "child": child.pid}))

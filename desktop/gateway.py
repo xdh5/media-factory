@@ -16,11 +16,11 @@ from dotenv import dotenv_values
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
 
-from core.agent.diagnostics.knowledge import KnowledgeBase
-from core.agent.diagnostics.redaction import redact
-from core.agent.diagnostics.tracing import TraceStore
-from core.agent.journal import CallJournal
-from core.agent.settings import ROOT, SERVERS, llm_configuration
+from agent.diagnostics.knowledge import KnowledgeBase
+from agent.diagnostics.redaction import redact
+from agent.diagnostics.tracing import TraceStore
+from agent.journal import CallJournal
+from agent.settings import ROOT, SERVERS, llm_configuration
 from .runtime import AgentRuntime
 
 HOME = Path(os.getenv("MEDIA_FACTORY_HOME", ROOT / "data/desktop")).resolve()
@@ -158,6 +158,7 @@ async def chat(request: Request):
     identity = "chatcmpl-" + uuid.uuid4().hex
     async def fragments():
         has_tokens = False
+        last_progress = {}
         while True:
             event = await events.get()
             if event["kind"] == "done":
@@ -166,6 +167,18 @@ async def chat(request: Request):
                 has_tokens = True
                 yield event["text"]
             elif event["kind"] == "tool":
+                if event["name"] == "agent_load_tools":
+                    continue
+                if event["name"].endswith("_poll_task"):
+                    payload = event.get("payload", {})
+                    result = payload.get("result", {})
+                    if isinstance(result, dict) and result.get("done") is False and event["status"] == "ok":
+                        task = json.dumps(payload.get("arguments", {}), sort_keys=True)
+                        progress = result.get("progress") or "任务执行中，正在等待处理结果。"
+                        if last_progress.get(task) != progress:
+                            last_progress[task] = progress
+                            yield f"\n\n> {progress}\n\n"
+                        continue
                 yield f"\n\n> 工具 `{event['name']}`：{event['status']}\n\n"
                 paths = media_links(event.get("artifacts", []), request)
                 for link in paths:
@@ -274,7 +287,7 @@ async def ingest(request: Request):
 async def import_project():
     knowledge = KnowledgeBase(DATABASE)
     documents = []
-    paths = list((WORKSPACE / "docs").rglob("*.md")) + list((WORKSPACE / "core/agent").glob("*.md"))
+    paths = list((WORKSPACE / "docs").rglob("*.md")) + list((WORKSPACE / "agent").glob("*.md"))
     for path in paths:
         documents.append(await knowledge.ingest(str(path.relative_to(WORKSPACE)), path.read_text(encoding="utf-8")))
     return {"imported": len(documents)}
@@ -296,7 +309,7 @@ async def label(run_id: str, request: Request):
 
 @app.post("/api/evals/{kind}", dependencies=[Depends(authenticated)])
 async def evaluate(kind: str, request: Request):
-    from core.agent.diagnostics.evaluation import agent_metrics, evaluate_rag
+    from agent.diagnostics.evaluation import agent_metrics, evaluate_rag
     body = await request.json()
     if kind == "agent":
         report = agent_metrics(runtime.store)

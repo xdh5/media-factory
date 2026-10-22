@@ -43,3 +43,30 @@
 使用真实 deepseek-v4-pro 和原任务记录的 27 条运行中、1 条完成进度重放，经过 143.53 秒，28 次程序进度读取期间新增模型请求为零。场景总共两次真实模型请求，输入 42,577 Token、输出 244 Token，总计 42,821。通过真实 stdio MCP 查询原任务，确认 done=true、status=succeeded。该测试没有重新下载或转写，不等同于新任务全流程消耗。
 
 原任务总计 805,832 Token；等待场景重放相比该历史总量低 94.69%，两者范围不同，不能作为完整生产任务的固定节省比例。首次测量脚本错误消耗 50,956 Token，失败证据保留，本轮两次测量累计实际消耗 93,777 Token、五次模型请求。详见 `desktop/token-measurement-results.json` 及其证据路径。
+
+## 审批关闭与根目录模块
+
+工具审批默认关闭，统一扩展入口为 `agent/approval_policy.py`，缺少业务信息仍可询问。副作用结果不确定时交回 Agent 查询核对，不自动重复执行，也不再要求人工授权重试。真实 MCP 查询验证了新任务直接执行和旧待审批检查点恢复，模型调用次数为零。证据：`cache/desktop-verification/no-approval-798397f976a24cd3a3e43139d1e0ecdf/report.json`。
+
+Python 模块位于项目根目录 `agent/` 与 `desktop/`；独立入口为 `python -m agent`，桌面监督服务为 `python -m desktop.supervisor`。根目录路径、导入与 CLI 启动检查通过。
+
+迁移后的真实绿色版 EXE 启动与退出验收通过：仅一个 Open WebUI 聊天窗口、模型列表正常、服务退出清理成功，未调用 LLM。证据：`cache/desktop-verification/portable-7ac7d0cd28e9443ab991016687b9cb25/desktop-verification.json`。
+
+## 首页标题
+
+真实 EXE 窗口验证：首页大标题为 Media Factory，模型名称仍为 deepseek-v4-pro，只有一个聊天窗口，退出清理通过；未调用 LLM。证据：`cache/desktop-verification/portable-39ba2f07d8ab42d88879ffe4b04ab2ab/desktop-verification.json`。
+# 2026-10-22 请求上下文与审核参数验收
+
+真实失败任务 `762fa8ed885b4957918f21e57c1c1aa3` 的已记录消耗为输入 134296、输出 22850，共 157146 Token（5 次 Agent 请求及 1 次故障候选重排）。两次审核提交在业务写入前因内层 JSON 解析失败，随后出现免费额度耗尽错误。
+
+复用该任务消息及实际四个 MCP 服务发现的工具定义进行离线验收：最后一轮消息从 53536 字符减少到 37565 字符，确定财经业务后工具定义从 50554 字符减少到 25794 字符。审核参数采用对象，由程序序列化后传给原 MCP，原 MCP 接口不变。模型请求失败时直接报告，不再调用诊断模型。
+
+报告：`cache/desktop-verification/token-context-fix/report.json`。本次验收模型调用为 0；字符统计不代表实际 Token 统计，尚未进行修复后的付费模型端到端测量。代码已同步绿色版及外部运行目录，重启客户端后生效。
+
+# 2026-10-22 Token 浪费链路检查
+
+使用真实四个 stdio MCP 服务发现、LangGraph SQLite 检查点、本地 HTTP 协议服务和真实历史工具结果回放验收。19 项检查通过，包括工具按需加载及持久化、启动后自动轮询、等待期间不请求模型、完整回执保留、旧待审原文替换、本地重排、JSON 与额度错误跳过诊断、流中断及读取超时不重发、额度拒绝不重试，以及消耗阈值阻止后续请求。流式与非流式输出达到长度上限时均停止，不执行截断参数或自动重发。
+
+工具定义序列化字符数：全部工具 50877，第一轮目录 10930，加载财经采集四个工具后 12921。回放中 3 次进度查询时，本地协议请求次数始终为 2（加载工具与启动决策），完成后再请求一次汇总。此数据不是供应商 Token 测量，也不是十篇稿件改写成功率评估。没有请求真实 LLM、Embedding 或执行真实生产写入。报告：`cache/desktop-verification/token-audit/report.json`。
+
+本轮同步绿色版后实际启动 EXE 验收通过：`cache/desktop-verification/portable-db7243cad3c64ba3a4a5bfb2df103a81/desktop-verification.json`。首页、真实模型名称、单聊天窗口及关闭后的进程清理通过；未执行模型对话。

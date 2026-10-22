@@ -65,7 +65,7 @@ async def evaluate_rag(knowledge, cases, k=5):
                      "diagnosis_label_match": correct, "answer": answer})
     return {"evaluated_at": time.time(), "case_count": len(rows), "k": k,
             "models": {"embedding": knowledge.model_configuration()["model"],
-                       "rerank": os.getenv("AGENT_RERANK_MODEL", llm_configuration()["model"]),
+                       "rerank": os.getenv("AGENT_RERANK_MODEL") or "local_term_coverage",
                        "diagnosis": os.getenv("AGENT_DIAGNOSTIC_MODEL", llm_configuration()["model"])},
             "recall_at_k": sum(row["recall_at_k"] for row in rows) / len(rows),
             "retrieval_relevance": sum(row["retrieval_relevance"] for row in rows) / len(rows),

@@ -1,4 +1,4 @@
-"""命令行任务入口：python -m core.agent。"""
+"""命令行任务入口：python -m agent。"""
 
 import argparse
 import asyncio
@@ -33,6 +33,7 @@ def parser():
             action.add_argument("--run-timeout", type=float, default=1800)
             action.add_argument("--llm-timeout", type=float, default=180)
             action.add_argument("--max-attempts", type=int, default=3)
+            action.add_argument("--max-llm-tokens", type=int, default=100000)
         if name == "run":
             action.add_argument("task", help="自然语言任务")
             action.add_argument("--servers", nargs="+", choices=list(SERVERS), default=["finance"])
@@ -54,7 +55,7 @@ def snapshot_output(snapshot):
 async def execute_command(arguments):
     settings = AgentSettings(database=arguments.database.resolve(), **{
         name: getattr(arguments, name) for name in (
-            "tool_timeout", "run_timeout", "llm_timeout", "max_steps", "max_attempts")
+            "tool_timeout", "run_timeout", "llm_timeout", "max_steps", "max_attempts", "max_llm_tokens")
         if hasattr(arguments, name)})
     settings.database.parent.mkdir(parents=True, exist_ok=True)
     journal = CallJournal(settings.database)
@@ -95,15 +96,18 @@ async def execute_command(arguments):
                 else:
                     pending = [item for task in snapshot.tasks for item in task.interrupts]
                     if pending:
-                        if arguments.response is None:
-                            raise ValueError("任务等待人工输入，请使用 --response 提供 JSON")
-                        response = json.loads(arguments.response)
                         kind = pending[0].value["kind"]
+                        from .approval_policy import requires_approval
+                        if kind == "approval" and not requires_approval(pending[0].value["tool"], pending[0].value.get("arguments", {}), False):
+                            response = {"approved": True}
+                        elif kind == "uncertain":
+                            response = {}
+                        else:
+                            if arguments.response is None:
+                                raise ValueError("任务等待人工输入，请使用 --response 提供 JSON")
+                            response = json.loads(arguments.response)
                         if kind == "approval" and (not isinstance(response, dict) or type(response.get("approved")) is not bool):
                             raise ValueError('审批格式为 {"approved": true} 或 {"approved": false}')
-                        if kind == "uncertain" and (not isinstance(response, dict) or (
-                                "result" not in response and response.get("retry") is not True)):
-                            raise ValueError("核对格式须包含 result 或 retry=true")
                         graph_input = Command(resume={pending[0].id: response})
                     else:
                         if arguments.response is not None:

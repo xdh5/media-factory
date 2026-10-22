@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=False)
+load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
 
 SENSITIVE = re.compile(r"(?i)(api.?key|token|secret|password|authorization|cookie|credential)")
 

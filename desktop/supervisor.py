@@ -82,8 +82,8 @@ def main():
     (home / "logs").mkdir(exist_ok=True)
     (home / "open-webui").mkdir(exist_ok=True)
     sys.path.insert(0, str(workspace))
-    import core
-    core.__path__ = [str(workspace / "core")]
+    import desktop
+    desktop.__path__ = [str(workspace / "desktop")]
     from dotenv import dotenv_values
     # 项目内运行直接复用原配置；绿色版搬离项目后仍使用外部持久化配置。
     project_root = next((parent for parent in args.bundle.resolve().parents
@@ -106,7 +106,7 @@ def main():
                               "AGENT_BASE_URL": configuration.get("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1",
                               "AGENT_MODEL": configuration.get("AGENT_MODEL") or "deepseek-v4-pro"})
     os.environ.update(configuration)
-    from core.agent.diagnostics.redaction import redact
+    from agent.diagnostics.redaction import redact
     (home / "shutdown.request").unlink(missing_ok=True)
     os.environ.update({"MEDIA_FACTORY_HOME": str(home), "MEDIA_FACTORY_WORKSPACE": str(workspace),
                        "MEDIA_FACTORY_AGENT_DATABASE": str(home / "agent.sqlite"), "PYTHONPATH": str(workspace),
@@ -127,6 +127,8 @@ def main():
              "ENABLE_FORWARD_USER_INFO_HEADERS": "true", "ENABLE_OLLAMA_API": "false", "OFFLINE_MODE": "true",
              "HF_HUB_OFFLINE": "1", "RAG_EMBEDDING_ENGINE": "openai", "ENABLE_TITLE_GENERATION": "false",
              "ENABLE_TAGS_GENERATION": "false", "ENABLE_FOLLOW_UP_GENERATION": "false", "ANONYMIZED_TELEMETRY": "false",
+             "ENABLE_AUTOCOMPLETE_GENERATION": "false", "ENABLE_SEARCH_QUERY_GENERATION": "false",
+             "ENABLE_RETRIEVAL_QUERY_GENERATION": "false", "ENABLE_IMAGE_PROMPT_GENERATION": "false",
              "DO_NOT_TRACK": "true", "SCARF_NO_ANALYTICS": "true", "WEBUI_SECRET_KEY": webui_secret_file.read_text(encoding="utf-8")}
     webui.update({"RAG_EMBEDDING_MODEL_AUTO_UPDATE": "false", "RAG_RERANKING_MODEL_AUTO_UPDATE": "false",
                   "WHISPER_MODEL_AUTO_UPDATE": "false", "ENABLE_VERSION_UPDATE_CHECK": "false"})
@@ -137,7 +139,7 @@ def main():
                 stream.write(redact(line))
                 stream.flush()
     try:
-        for name, module, environment, port in (("agent", "core.desktop.gateway:app", common, ports["agent"]),
+        for name, module, environment, port in (("agent", "desktop.gateway:app", common, ports["agent"]),
                                                   ("open-webui", "open_webui.main:app", webui, ports["webui"])):
             command = ([sys.executable, "-m", "uvicorn", module, "--host", "127.0.0.1", "--port", str(port), "--no-access-log"]
                        if name == "agent" else [sys.executable, "-c", f"from open_webui import serve; serve(host='127.0.0.1', port={port})"])
@@ -189,7 +191,7 @@ if __name__ == "__main__":
         main()
     except Exception:
         import traceback
-        from core.agent.diagnostics.redaction import redact
+        from agent.diagnostics.redaction import redact
         log_root = Path(sys.argv[sys.argv.index("--home") + 1]) / "logs"
         log_root.mkdir(parents=True, exist_ok=True)
         (log_root / "supervisor.log").write_text(redact(traceback.format_exc()), encoding="utf-8")

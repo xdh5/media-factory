@@ -11,14 +11,15 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import START
 from langgraph.types import Command
 
-from core.agent.__main__ import snapshot_output
-from core.agent.diagnostics.knowledge import KnowledgeBase
-from core.agent.diagnostics.tracing import RunObserver, TraceStore
-from core.agent.journal import CallJournal
-from core.agent.llm import ToolCallingLLM
-from core.agent.mcp_client import MCPTools
-from core.agent.settings import AgentSettings, SERVERS
-from core.agent.workflow import build_graph, initial_state
+from agent.__main__ import snapshot_output
+from agent.diagnostics.knowledge import KnowledgeBase
+from agent.diagnostics.tracing import RunObserver, TraceStore
+from agent.journal import CallJournal
+from agent.llm import ToolCallingLLM
+from agent.mcp_client import MCPTools
+from agent.settings import AgentSettings, SERVERS
+from agent.workflow import build_graph, initial_state
+from agent.approval_policy import requires_approval
 
 
 class AgentRuntime:
@@ -92,6 +93,11 @@ class AgentRuntime:
                 pending = [item for task in snapshot.tasks for item in task.interrupts]
                 if pending:
                     current = pending[0]
+                    if current.value["kind"] == "approval" and not requires_approval(
+                        current.value["tool"], current.value.get("arguments", {}), False):
+                        response, interrupt_id = {"approved": True}, current.id
+                    if current.value["kind"] == "uncertain":
+                        response, interrupt_id = {}, current.id
                     if current.value["kind"] == "approval" and response is None:
                         answer = text.strip().rstrip("。！!.")
                         if answer in {"同意", "批准", "确认", "确认执行", "可以", "好的", "执行吧", "同意执行", "确认发布", "可以发布"}:
@@ -109,8 +115,6 @@ class AgentRuntime:
                     kind = current.value["kind"]
                     if kind == "approval" and (not isinstance(response, dict) or type(response.get("approved")) is not bool):
                         raise ValueError("审批必须包含明确的 approved 布尔值")
-                    if kind == "uncertain" and (not isinstance(response, dict) or ("result" not in response and response.get("retry") is not True)):
-                        raise ValueError("请提交核对后的 result，或明确授权 retry=true")
                     await observer.event("human", kind, {"interrupt_id": current.id, "response": response})
                     graph_input = Command(resume={current.id: response})
                 elif response is not None:
@@ -134,6 +138,7 @@ class AgentRuntime:
                         return self.output(snapshot)
                     await graph.aupdate_state(config, {"messages": snapshot.values["messages"] + [{"role": "user", "content": text}],
                         "pending": [], "status": "running", "operation_scope": uuid.uuid4().hex,
+                        "loaded_tools": [],
                         "max_steps": snapshot.values["steps"] + settings.max_steps}, as_node=START)
                     graph_input = None
                 try:

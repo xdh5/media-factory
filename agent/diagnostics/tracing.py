@@ -107,6 +107,7 @@ class TraceStore:
 class RunObserver:
     def __init__(self, store, run_id, emit=None, knowledge=None):
         self.store, self.run_id, self.emit, self.knowledge = store, run_id, emit, knowledge
+        self.diagnoses = {}
 
     async def event(self, kind, name, payload, started=None, status="ok", usage=None):
         self.store.add(self.run_id, kind, name, started or time.time(), status, payload, usage)
@@ -122,9 +123,20 @@ class RunObserver:
     async def diagnose(self, error):
         if not self.knowledge:
             return []
+        clean = redact(error)
+        # 参数解析错误由调用方修正，额度错误直接报告，无需 Embedding 或模型诊断。
+        text = json.dumps(clean, ensure_ascii=False, default=str)
+        if any(marker in text for marker in ("JSONDecodeError", "Expecting ',' delimiter", "AllocationQuota.", "Free quota exhausted")):
+            return []
+        query = text[:4000]
+        if query in self.diagnoses:
+            return self.diagnoses[query]
         try:
             await self.knowledge.ensure_project_documents()
-            return await self.knowledge.search(str(redact(error)), k=4)
+            result = await self.knowledge.search(query, k=4)
+            self.diagnoses[query] = result
+            return result
         except Exception as exc:
+            self.diagnoses[query] = []
             await self.event("retrieval", "故障检索失败", {"error": str(exc)}, status="error")
             return []

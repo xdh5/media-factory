@@ -16,12 +16,12 @@ sys.path.insert(0, str(ROOT))
 
 from dotenv import dotenv_values
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from core.agent.diagnostics.tracing import RunObserver, TraceStore
-from core.agent.journal import CallJournal
-from core.agent.llm import ToolCallingLLM
-from core.agent.mcp_client import MCPTools
-from core.agent.settings import AgentSettings, SERVERS, llm_configuration
-from core.agent.workflow import build_graph, initial_state
+from agent.diagnostics.tracing import RunObserver, TraceStore
+from agent.journal import CallJournal
+from agent.llm import ToolCallingLLM
+from agent.mcp_client import MCPTools
+from agent.settings import AgentSettings, SERVERS, llm_configuration
+from agent.workflow import build_graph, initial_state
 
 
 async def main():
@@ -69,6 +69,9 @@ async def main():
             def definitions(self):
                 return actual.definitions()
 
+            def instructions_for(self, names):
+                return actual.instructions_for(names)
+
             def schema(self, name):
                 if name != "finance_poll_task":
                     raise ValueError("本次实测只允许读取既有任务")
@@ -97,7 +100,9 @@ async def main():
                 graph = build_graph(MeasuredLLM(settings, observer, streaming=True), tools, journal, saver, settings, task_id, observer)
                 task = (f"只使用 finance_poll_task 查询现有任务 {task_file}，一直等待 done=true，然后用一句话报告 saved_count。"
                         "禁止启动任务、下载、转写或调用任何其他工具；不要复述文案。")
-                result = await asyncio.wait_for(graph.ainvoke(initial_state(task, tools, list(SERVERS), settings),
+                state = initial_state(task, tools, list(SERVERS), settings)
+                state["loaded_tools"] = ["finance_poll_task"]
+                result = await asyncio.wait_for(graph.ainvoke(state,
                     {"configurable": {"thread_id": task_id}, "recursion_limit": 1000}, durability="sync"), settings.run_timeout)
             spans = [span for span in store.chain(run_id) if span["kind"] == "llm"]
             assert result["status"] == "completed" and tools.index == 28

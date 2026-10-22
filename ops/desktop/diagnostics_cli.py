@@ -9,10 +9,10 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from core.agent.diagnostics.evaluation import agent_metrics, evaluate_rag
-from core.agent.diagnostics.knowledge import KnowledgeBase
-from core.agent.diagnostics.tracing import TraceStore
-from core.agent.settings import ROOT as PROJECT_ROOT
+from agent.diagnostics.evaluation import agent_metrics, evaluate_rag
+from agent.diagnostics.knowledge import KnowledgeBase
+from agent.diagnostics.tracing import TraceStore
+from agent.settings import ROOT as PROJECT_ROOT
 
 
 async def main():

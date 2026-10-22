@@ -18,11 +18,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import httpx
-from core.agent.diagnostics.redaction import redact
+from agent.diagnostics.redaction import redact
 
 
 def main():
-    from core.desktop.supervisor import windows_job
+    from desktop.supervisor import windows_job
     process_job = windows_job()
     home = ROOT / "cache/desktop-verification" / uuid.uuid4().hex
     home.mkdir(parents=True)
@@ -32,7 +32,7 @@ def main():
         port = listener.getsockname()[1]
     environment = {**os.environ, "MEDIA_FACTORY_HOME": str(home), "MEDIA_FACTORY_SESSION_TOKEN": token,
                    "DASHSCOPE_BUSINESS_LINE": "finance", "PYTHONUTF8": "1"}
-    process = subprocess.Popen([sys.executable, "-m", "uvicorn", "core.desktop.gateway:app", "--host", "127.0.0.1", "--port", str(port), "--no-access-log"],
+    process = subprocess.Popen([sys.executable, "-m", "uvicorn", "desktop.gateway:app", "--host", "127.0.0.1", "--port", str(port), "--no-access-log"],
                                cwd=ROOT, env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     report = {"database": str(home / "agent.sqlite"), "backend_pid": process.pid, "checks": []}
     base = f"http://127.0.0.1:{port}"
@@ -69,8 +69,8 @@ def main():
             async def reach_execution_limit():
                 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
                 from langgraph.graph import START
-                from core.agent.workflow import build_graph
-                from core.agent.settings import AgentSettings
+                from agent.workflow import build_graph
+                from agent.settings import AgentSettings
                 async with AsyncSqliteSaver.from_conn_string(str(home / "agent.sqlite")) as saver:
                     graph = build_graph(None, None, None, saver, AgentSettings(), task_id)
                     config = {"configurable": {"thread_id": task_id}}
@@ -87,23 +87,15 @@ def main():
             second = client.post("/v1/chat/completions", json={"model": "qwen-plus", "stream": False,
                 "messages": [{"role": "user", "content": "上一轮查询的素材方案是什么？不要再次调用工具，只根据记忆用一句话回答。"}]}).json()
             checked("多轮会话可继续", bool(second["choices"][0]["message"]["content"]))
-            approval_headers = {**headers, "X-OpenWebUI-Chat-Id": "approval-integration-chat"}
-            response = client.post("/v1/chat/completions", headers=approval_headers, json={"model": "qwen-plus", "stream": False,
-                "messages": [{"role": "user", "content": "请调用 finance_get_source_script 获取稿件；先等待人工审批，不要生产或发布。"}]})
+            automatic_headers = {**headers, "X-OpenWebUI-Chat-Id": "automatic-tool-integration-chat"}
+            response = client.post("/v1/chat/completions", headers=automatic_headers, json={"model": "qwen-plus", "stream": False,
+                "messages": [{"role": "user", "content": "只调用一次 finance_get_topics 查询已占用话题，回复话题条数。不要写库、生产或发布。"}]})
             response.raise_for_status()
             run = client.get("/api/overview").json()["runs"][0]
             state = client.get("/api/tasks/" + run["task_id"]).json()
-            pending = state["interrupts"][0]
-            checked("敏感工具在执行前等待审批", state["status"] == "paused" and pending["kind"] == "approval")
-            declined = client.post("/v1/chat/completions", headers=approval_headers, json={"model": "qwen-plus", "stream": False,
-                "messages": [{"role": "user", "content": "取消"}]})
-            declined.raise_for_status()
-            for _ in range(120):
-                state = client.get("/api/tasks/" + run["task_id"]).json()
-                if state["status"] == "completed":
-                    break
-                time.sleep(0.5)
-            checked("人工拒绝后恢复完成", state["status"] == "completed")
+            checked("原需审批工具直接执行且无人工中断", state["status"] == "completed" and not state["interrupts"])
+            spans = client.get("/api/traces/" + run["id"]).json()
+            checked("真实查询工具已执行", any(span["kind"] == "tool" and span["name"] == "finance_get_topics" and span["status"] == "ok" for span in spans))
             first_run = runs[0]["id"]
             client.post("/api/runs/" + first_run + "/label", json={"success": True,
                 "evidence": "本次真实模型只读配置查询返回有效配置，SSE 完成，SQLite 工具回执和链路齐全。"}).raise_for_status()
@@ -121,7 +113,7 @@ def main():
             checked("无效视频签名被拒绝", client.get(f"/media/{encoded}?signature=invalid").status_code == 403)
             process.terminate()
             process.wait(timeout=15)
-            process = subprocess.Popen([sys.executable, "-m", "uvicorn", "core.desktop.gateway:app", "--host", "127.0.0.1", "--port", str(port), "--no-access-log"],
+            process = subprocess.Popen([sys.executable, "-m", "uvicorn", "desktop.gateway:app", "--host", "127.0.0.1", "--port", str(port), "--no-access-log"],
                 cwd=ROOT, env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             for _ in range(60):
                 try:

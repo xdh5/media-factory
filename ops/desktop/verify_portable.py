@@ -40,6 +40,8 @@ record = home / "desktop-verification.json"
 if not record.is_file():
     raise RuntimeError("绿色版没有完成窗口验收，请查看 " + str(home / "logs"))
 report = json.loads(record.read_text(encoding="utf-8"))
+if report.get("homeTitle") != "Media Factory" or not report.get("modelName"):
+    raise RuntimeError("首页应用标题或实际模型名称不符合预期")
 if report["modelCount"] != 1 or report.get("webuiModelCount") != 1 or report.get("chatWindowCount") != 1 or "127.0.0.1" not in report["url"] or len(report["visibleText"]) < 30 or not (home / "desktop-window.png").is_file():
     raise RuntimeError("Open WebUI 窗口或模型发现不符合预期")
 if "--with-model" in sys.argv and (report.get("relayStatus") != 200 or not report.get("relayReply")):

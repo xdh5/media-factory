@@ -27,6 +27,12 @@ function openWindow(url, existing) {
     const parsed = new URL(target);
     if (parsed.hostname !== '127.0.0.1' || ![String(ports.agent), String(ports.webui)].includes(parsed.port)) event.preventDefault();
   });
+  view.webContents.on('dom-ready', () => {
+    const page = new URL(view.webContents.getURL());
+    if (page.hostname === '127.0.0.1' && page.port === String(ports.webui)) {
+      view.webContents.executeJavaScript(fs.readFileSync(path.join(bundle, 'branding.js'), 'utf8'));
+    }
+  });
   view.loadURL(url);
   return view;
 }
@@ -40,7 +46,7 @@ async function start() {
   window.on('closed', () => app.quit());
   const python = path.join(bundle, 'python', 'python.exe');
   if (!fs.existsSync(python)) throw new Error('缺少内嵌 Python，请运行完整构建脚本。');
-  backend = spawn(python, ['-m', 'core.desktop.supervisor', '--home', dataRoot, '--bundle', bundle,
+  backend = spawn(python, ['-m', 'desktop.supervisor', '--home', dataRoot, '--bundle', bundle,
     '--parent-pid', String(process.pid), '--ready-file', readyFile], {
     cwd: path.join(bundle, 'project'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
     env: {...process.env, MEDIA_FACTORY_SESSION_TOKEN: token, PYTHONUTF8: '1',
@@ -84,6 +90,8 @@ async function start() {
           title: window.webContents.getTitle(), url: window.webContents.getURL(),
           visibleText: text.slice(0, 1500), modelCount: models.data.length,
           webuiModelCount: webuiModels.data?.length || 0,
+          modelName: models.data[0]?.name,
+          homeTitle: await window.webContents.executeJavaScript(`document.querySelector('[class~="max-w-[58rem]"] [class~="text-2xl"][class~="line-clamp-1"] span.line-clamp-1')?.textContent`),
           backendPid: backend.pid, agentPort: ports.agent, webuiPort: ports.webui
         };
         if (process.env.MEDIA_FACTORY_VERIFY_REAL_MODEL === '1') {

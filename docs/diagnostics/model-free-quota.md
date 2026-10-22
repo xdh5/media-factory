@@ -8,4 +8,4 @@
 
 401、403 不应被无限重试。保留当前检查点，修复模型配置后恢复相同任务，已经完成的 MCP 操作继续复用回执。
 
-依据：本次真实接口返回的 AllocationQuota.FreeTierOnly 及 core/agent/llm.py 的有限重试策略；没有修改账户付费设置。
+依据：本次真实接口返回的 AllocationQuota.FreeTierOnly 及 agent/llm.py 的有限重试策略；没有修改账户付费设置。

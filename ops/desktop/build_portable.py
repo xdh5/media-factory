@@ -62,12 +62,12 @@ def main():
         (output / "electron_wer.dll").replace(output / "MediaFactory_wer.dll")
     application = output / "resources/app"
     application.mkdir(parents=True, exist_ok=True)
-    for name in ("main.cjs", "package.json"):
+    for name in ("main.cjs", "package.json", "branding.js"):
         shutil.copy2(ROOT / "desktop" / name, application / name)
     project = application / "project"
     project.mkdir(exist_ok=True)
     ignored = shutil.ignore_patterns(".git", "node_modules", "__pycache__", ".env", "data", "cache", "*.sqlite*", "*.db", "*.log", "client_secret*.json", "*token.json")
-    for name in ("core", "integrations", "static", "docs"):
+    for name in ("core", "agent", "desktop", "integrations", "static", "docs"):
         shutil.copytree(ROOT / name, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
     (project / "ops").mkdir(exist_ok=True)
     shutil.copy2(ROOT / "ops/__init__.py", project / "ops/__init__.py")
@@ -106,11 +106,11 @@ def main():
     if not args.reuse_runtime:
         subprocess.run([sys.executable, "-m", "pip", "install", "--no-compile", "--timeout", "120", "--retries", "4", "--target", str(runtime / "Lib/site-packages"),
                         "--upgrade", "--only-binary=:all:", "-r", str(requirements), str(ROOT) + "[desktop]"], env=environment, check=True)
-    for name in ("core", "docs"):
+    for name in ("core", "agent", "desktop", "docs"):
         shutil.copytree(ROOT / name, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
     shutil.copy2(ROOT / "desktop/main.cjs", application / "main.cjs")
     (CACHE / "build-check-webui").mkdir(parents=True, exist_ok=True)
-    subprocess.run([str(runtime / "python.exe"), "-c", "import open_webui.main; import core.desktop.gateway; import core.mcp.finance.server; import core.mcp.language_learning.server; import core.mcp.anime.__main__; import core.mcp.publishing.server"],
+    subprocess.run([str(runtime / "python.exe"), "-c", "import open_webui.main; import desktop.gateway; import core.mcp.finance.server; import core.mcp.language_learning.server; import core.mcp.anime.__main__; import core.mcp.publishing.server"],
                    cwd=project, env={**environment, "DATA_DIR": str(CACHE / "build-check-webui"), "OFFLINE_MODE": "true",
                                      "HF_HUB_OFFLINE": "1", "RAG_EMBEDDING_ENGINE": "openai", "FROM_INIT_PY": "true",
                                      "CORS_ALLOW_ORIGIN": "http://127.0.0.1",

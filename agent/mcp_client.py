@@ -1,11 +1,13 @@
 """复用项目 stdio 客户端，动态发现业务工具和服务说明。"""
 
 from contextlib import AsyncExitStack
+from copy import deepcopy
+import json
 
 from core.mcp.client import ProjectMCP
 from .settings import ROOT, SERVERS
 
-# 只列经业务代码确认无写入的查询，选稿等 get 工具仍需审批。
+# 只列经业务代码确认无写入的查询，用于重试和回执去重。
 READ_ONLY = {
     "finance_get_production_config", "finance_get_source_stats",
     "finance_list_source_authors", "finance_list_editorial_drafts",
@@ -44,18 +46,40 @@ class MCPTools:
         await self.stack.aclose()
 
     def definitions(self):
-        return [{"type": "function", "function": {
+        definitions = [{"type": "function", "function": {
             "name": tool.name, "description": tool.description or "",
             "parameters": tool.inputSchema,
         }} for _, tool in self.tools.values()]
+        for definition in definitions:
+            if definition["function"]["name"] == "finance_submit_copy_reviews":
+                schema = deepcopy(definition["function"]["parameters"])
+                schema["properties"]["response_text"] = {
+                    "type": "object", "description": "审核对象，直接提供 reviews 数组，无需编码成 JSON 字符串",
+                    "properties": {"reviews": {"type": "array", "minItems": 1, "items": {
+                        "type": "object", "properties": {"aweme_id": {"type": "string"},
+                            "kind": {"type": "string", "enum": ["normal", "ad"]},
+                            "text": {"type": "string"}, "reason": {"type": "string"},
+                            "ad_segments": {"type": "array", "items": {"type": "string"}},
+                            "editorial": {"type": "object"}},
+                        "required": ["aweme_id", "kind", "text", "reason"]}}},
+                    "required": ["reviews"],
+                }
+                definition["function"]["parameters"] = schema
+        return definitions
+
+    def instructions_for(self, names):
+        return [instructions for server, instructions in zip(self.servers, self.instructions)
+                if any(name.startswith(server + "_") for name in names)]
 
     def read_only(self, name):
         return name in READ_ONLY
 
     def schema(self, name):
-        return self.tools[name][1].inputSchema
+        return next(item["function"]["parameters"] for item in self.definitions() if item["function"]["name"] == name)
 
     async def call(self, name, arguments, timeout):
+        if name == "finance_submit_copy_reviews" and isinstance(arguments.get("response_text"), dict):
+            arguments = {**arguments, "response_text": json.dumps(arguments["response_text"], ensure_ascii=False)}
         return await self.tools[name][0].call(name, arguments, read_timeout_seconds=timeout)
 
     def scoped(self, servers):
@@ -71,6 +95,9 @@ class ScopedTools:
 
     def definitions(self):
         return [definition for definition in self.parent.definitions() if definition["function"]["name"] in self.names]
+
+    def instructions_for(self, names):
+        return self.parent.instructions_for(names)
 
     def schema(self, name):
         if name not in self.names:
