@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from datetime import date
 
-from core.tools.media_records import list_production_outputs
-
 from ._constants import BUSINESS_LINES, PLATFORM_ALIASES, SUPPORTED_PLATFORMS
 from ._errors import InvalidPublishRequestError, PublishContentNotFoundError
 from .local_assets import (
@@ -48,12 +46,7 @@ def local_publish_items(
     if business_line not in BUSINESS_LINES:
         raise InvalidPublishRequestError(f"business_line 必须从 {BUSINESS_LINES} 中选择")
     normalized_date = normalize_publish_date(publish_date)
-    ensure_local_publish_items(business_line, normalized_date, content_kind=content_kind)
-    rows = list_production_outputs(
-        publish_date=normalized_date,
-        business_line=business_line,
-        source="local_mcp",
-    )
+    rows = ensure_local_publish_items(business_line, normalized_date, content_kind=content_kind)
     wanted_kinds = matching_content_kinds(content_kind)
     if wanted_kinds is not None:
         rows = [item for item in rows if str(item.get("content_kind") or "") in wanted_kinds]

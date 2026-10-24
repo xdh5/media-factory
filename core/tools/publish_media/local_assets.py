@@ -139,7 +139,7 @@ def ensure_local_publish_items(
     publish_date: str,
     *,
     content_kind: str | None = None,
-) -> None:
+) -> list[dict]:
     """若 local_mcp 缺失或本地文件不存在，则从 R2 拉回 github_workflow 成片。"""
     wanted_kinds = matching_content_kinds(content_kind)
     local_rows = list_production_outputs(
@@ -156,21 +156,21 @@ def ensure_local_publish_items(
         return current.is_file() or local_video_path(row).is_file()
 
     # 本地产物已有 R2 地址时，仅在本地文件缺失后恢复该文件。
-    for row in local_rows:
+    for index, row in enumerate(local_rows):
         if not _is_valid(row) and row.get("r2_url"):
-            materialize_github_workflow_output(row)
+            local_rows[index] = materialize_github_workflow_output(row)
 
     valid_local_rows = [row for row in local_rows if _is_valid(row)]
     valid_kinds = {str(row.get("content_kind") or "") for row in valid_local_rows}
     if wanted_kinds is None:
         if valid_local_rows:
-            return
+            return valid_local_rows
         missing_kinds = None
     else:
         missing_kinds = wanted_kinds - valid_kinds
         if valid_local_rows:
             if not missing_kinds:
-                return
+                return valid_local_rows
 
     github_rows = list_production_outputs(
         publish_date=publish_date,
@@ -182,7 +182,8 @@ def ensure_local_publish_items(
     elif wanted_kinds is not None:
         github_rows = [item for item in github_rows if str(item.get("content_kind") or "") in wanted_kinds]
     for row in github_rows:
-        materialize_github_workflow_output(row)
+        valid_local_rows.append(materialize_github_workflow_output(row))
+    return valid_local_rows
 
 
 def enrich_local_publish_item(row: dict) -> dict | None:

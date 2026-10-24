@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from pathlib import Path
 
 from core.tools.media_records import (
@@ -17,6 +20,14 @@ from ._errors import DuplicatePublicationError, InvalidPublishRequestError, Medi
 from .accounts import resolve_account_group
 from .content import local_publish_items, normalize_platforms, normalize_publish_date
 from .finance_schedule import plan_finance_publications
+
+_PREPARED_PREVIEWS: dict[tuple, tuple[float, list, list]] = {}
+
+
+def _measure_query(fn, *args, **kwargs):
+    started = time.monotonic()
+    value = fn(*args, **kwargs)
+    return value, round(time.monotonic() - started, 3)
 
 
 def _publishing():
@@ -90,16 +101,31 @@ def preview_publication(
     *,
     content_kind: str | None = None,
     production_id: str | None = None,
+    reuse_prepared: bool = False,
 ) -> dict:
+    started = time.monotonic()
     normalized_date = normalize_publish_date(publish_date)
     normalized_platforms = normalize_platforms(platforms)
-    items = local_publish_items(business_line, normalized_date, content_kind=content_kind)
+    cache_key = (business_line, normalized_date, account_group, tuple(normalized_platforms), content_kind, production_id)
+    cached = _PREPARED_PREVIEWS.get(cache_key) if reuse_prepared else None
+    reused = bool(cached and time.monotonic() - cached[0] < 300
+                  and all(Path(item["local_path"]).is_file() for item in cached[1]))
+    with ThreadPoolExecutor(max_workers=3) as queries:
+        duplicate_query = queries.submit(_measure_query, _existing_keys, business_line, normalized_date)
+        if reused:
+            items, routes = deepcopy(cached[1:])
+            item_seconds = route_seconds = 0.0
+        else:
+            item_query = queries.submit(_measure_query, local_publish_items, business_line, normalized_date, content_kind=content_kind)
+            route_query = queries.submit(_measure_query, resolve_account_group, str(account_group).strip(), business_line, normalized_platforms)
+            items, item_seconds = item_query.result()
+            routes, route_seconds = route_query.result()
+        existing, duplicate_seconds = duplicate_query.result()
     if production_id:
         items = [item for item in items if item["production_id"] == production_id]
         if not items:
             raise InvalidPublishRequestError(f"找不到指定成片：{production_id}")
-    routes = resolve_account_group(str(account_group).strip(), business_line, normalized_platforms)
-    existing = _existing_keys(business_line, normalized_date)
+    _PREPARED_PREVIEWS[cache_key] = (time.monotonic(), deepcopy(items), deepcopy(routes))
     tasks = []
     for item in items:
         for route in routes:
@@ -128,6 +154,9 @@ def preview_publication(
              "publish_mode": t["publish_mode"], "publish_at": t["publish_at"]} for t in default_plan
         ],
         "default_schedule_skipped": default_skipped,
+        "timings_seconds": {"items": item_seconds, "accounts": route_seconds, "duplicates": duplicate_seconds,
+                            "total": round(time.monotonic() - started, 3)},
+        "reused_prepared": reused,
     }
 
 
@@ -174,6 +203,30 @@ def _target(item: dict, route: dict) -> dict:
     return target
 
 
+def _save_publication(task: dict, sent: dict, business_line: str) -> dict:
+    item, route = task["item"], task["route"]
+    result = sent.get("result") if isinstance(sent.get("result"), dict) else {}
+    external_id = str(result.get("video_id") or result.get("post_id") or result.get("id") or "")
+    external_url = str(result.get("video_url") or result.get("platform_url") or result.get("url") or "")
+    record = {
+        "publication_id": str(item["production_id"]),
+        "run_id": str(item["run_id"]),
+        "business_line": business_line,
+        "platform": str(route["platform"]),
+        "connector": str(route["connector"]),
+        "account_id": str(route["platform_account_id"]),
+        "content_part": int(item.get("content_part") or 1),
+        "title": str(item["title"]),
+        "publish_mode": sent["publish_mode"],
+        "publish_at": sent["publish_at"],
+        "status": "scheduled" if sent["publish_mode"] == "scheduled" else "published",
+        "external_id": external_id or None,
+        "external_url": external_url or None,
+    }
+    saved = commit_publication_records([record])["records"][0]
+    return {"record": saved, "result": result}
+
+
 def publish_local_outputs(
     business_line: str,
     publish_date: str,
@@ -190,6 +243,7 @@ def publish_local_outputs(
     preview = preview_publication(
         business_line, publish_date, account_group, platforms, content_kind=content_kind,
         production_id=production_id,
+        reuse_prepared=True,
     )
     pending = [task for task in preview["tasks"] if not task["already_published"]]
     skipped = [
@@ -220,7 +274,10 @@ def publish_local_outputs(
         )[task["route"]["platform"]]
     publish_batch, _, _ = _publishing()
     outcome = {"published": [], "failed": [], "publish_timings": {}}
+    published = []
+    target_timings = []
     for index, task in enumerate(pending, start=1):
+        target_started = time.monotonic()
         try:
             route = task["route"]
             if progress:
@@ -239,43 +296,20 @@ def publish_local_outputs(
             outcome["published"].extend(batch_outcome["published"])
             outcome["failed"].extend(batch_outcome["failed"])
             outcome["publish_timings"].update(batch_outcome["publish_timings"])
+            for sent in batch_outcome["published"]:
+                published.append(_save_publication(task, sent, business_line))
         except Exception as exc:
             outcome["failed"].append({"platform": task["route"]["platform"], "title": task["item"]["title"], "error": str(exc)})
-    published_by_key = {
-        (str(item.get("client_ref") or ""), str(item.get("platform") or ""), str(item.get("platform_account_id") or "")): item
-        for item in outcome["published"]
-    }
-    published = []
-    for task in pending:
-        item, route = task["item"], task["route"]
-        sent = published_by_key.get((str(item["production_id"]), str(route["platform"]), str(route["platform_account_id"])))
-        if sent is None:
-            continue
-        result = sent.get("result") if isinstance(sent.get("result"), dict) else {}
-        external_id = str(result.get("video_id") or result.get("post_id") or result.get("id") or "")
-        external_url = str(result.get("video_url") or result.get("platform_url") or result.get("url") or "")
-        record = {
-            "publication_id": str(item["production_id"]),
-            "run_id": str(item["run_id"]),
-            "business_line": business_line,
-            "platform": str(route["platform"]),
-            "connector": str(route["connector"]),
-            "account_id": str(route["platform_account_id"]),
-            "content_part": int(item.get("content_part") or 1),
-            "title": str(item["title"]),
-            "publish_mode": sent["publish_mode"],
-            "publish_at": sent["publish_at"],
-            "status": "scheduled" if sent["publish_mode"] == "scheduled" else "published",
-            "external_id": external_id or None,
-            "external_url": external_url or None,
-        }
-        saved = commit_publication_records([record])["records"][0]
-        published.append({"record": saved, "result": result})
+        finally:
+            target_timings.append({"platform": task["route"]["platform"], "production_id": task["item"]["production_id"],
+                                   "seconds": round(time.monotonic() - target_started, 3)})
     if outcome["failed"]:
         detail = "；".join(
             f"{item.get('platform')} {item.get('title')}：{item.get('error')}" for item in outcome["failed"]
         )
-        raise MediaPublisherCommandError(f"部分平台发布失败：{detail}")
+        raise MediaPublisherCommandError(f"部分平台发布失败：{detail}",
+                                         {"published": published, "failed": outcome["failed"],
+                                          "timings_seconds": {"preview": preview["timings_seconds"], "targets": target_timings}})
     timings = {
         platform: {
             "publish_mode": item["publish_mode"],
@@ -301,4 +335,6 @@ def publish_local_outputs(
         ],
         "published": published,
         "skipped": skipped,
+        "timings_seconds": {"preview": preview["timings_seconds"], "reused_prepared": preview["reused_prepared"],
+                            "targets": target_timings},
     }

@@ -27,12 +27,12 @@ python -m core.mcp.publishing
 
 发布任务在后台串行执行，排队时返回等待状态。抖音、快手扫码成功需要真实发布页验证通过；页面加载异常不能归为登录失效。发布页面连续五分钟无进展时结束并释放浏览器，进度仍在变化时继续等待。超时或渲染进程退出属于结果待核对，先检查平台作品管理再决定是否重发。
 
-- `publishing_list_account_groups`：列数据库账号组，并尽量附带 media-publisher 本机登录账号。
-- `publishing_preview`：只读查看产物、路由和重复项。
+- `publishing_list_account_groups`：按 `business_line`、`account_group` 筛选账号，只检测相关浏览器账号一次。默认返回摘要，`detailed=true` 返回完整字段。
+- `publishing_preview`：并行读取产物、账号路由和重复项，返回精简清单及各阶段耗时。正式发布在五分钟内复用产物与路由，并重新读取发布记录去重；本地文件缺失时重新预检。账号登录快照最多复用两分钟，扫码后清除，正式上传仍验证真实发布页。
 - `publishing_start_login`：抖音、快手、头条或视频号登录失效时启动扫码，并返回二维码图片路径。
 - `publishing_login_status`：轮询扫码结果；等待中继续返回二维码，成功后重新预检或发布。
 - `publishing_start_publish`：启动后台发布任务。
-- `publishing_poll_task`：轮询后台任务。
+- `publishing_poll_task`：每 15～30 秒轮询后台任务，将上次的 `revision` 传为 `after_revision`，无变化时仅返回简短状态。默认省略堆栈和重复明细，`detailed=true` 读取完整任务。结果包含预检与各条发布耗时。
 
 ## 工程分层
 

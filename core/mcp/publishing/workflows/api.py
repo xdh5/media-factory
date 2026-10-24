@@ -19,6 +19,7 @@ from ..infrastructure import (
 
 from ..config import CACHE_ROOT
 from ..errors import PublishingError, PublishingRequestError, PublishingTaskNotFoundError
+from .responses import account_groups_summary, preview_summary, task_summary
 
 _publication_lock = threading.Lock()
 
@@ -33,10 +34,11 @@ def _map_error(exc: Exception) -> PublishingError:
     raise exc
 
 
-def publishing_list_account_groups(business_line: str | None = None) -> dict:
-    """列出数据库账号组，并尽量附带 media-publisher 当前可见的本机账号。"""
+def publishing_list_account_groups(business_line: str | None = None, account_group: str | None = None, detailed: bool = False) -> dict:
+    """核实账号组和登录状态；可按账号组筛选，默认返回摘要，detailed=true 读取完整字段。"""
     try:
-        return list_account_groups(business_line)
+        payload = list_account_groups(business_line, account_group)
+        return payload if detailed else account_groups_summary(payload)
     except Exception as exc:
         raise _map_error(exc) from exc
 
@@ -48,10 +50,11 @@ def publishing_preview(
     platforms: list[str],
     content_kind: str | None = None,
     production_id: str | None = None,
+    detailed: bool = False,
 ) -> dict:
-    """只读预检指定日期的本地产物、账号路由和数据库重复记录，不执行发布。"""
+    """预检产物及重复项，默认返回精简清单和分阶段耗时；detailed=true 读取完整字段。"""
     try:
-        return preview_publication(
+        payload = preview_publication(
             business_line,
             publish_date,
             account_group,
@@ -59,6 +62,7 @@ def publishing_preview(
             content_kind=content_kind,
             production_id=production_id,
         )
+        return payload if detailed else preview_summary(payload)
     except Exception as exc:
         raise _map_error(exc) from exc
 
@@ -138,9 +142,10 @@ def publishing_start_publish(
         raise _map_error(exc) from exc
 
 
-def publishing_poll_task(task_path: str) -> dict:
-    """轮询发布任务；done=true 后检查 status、result 或 error。"""
+def publishing_poll_task(task_path: str, after_revision: str | None = None, detailed: bool = False) -> dict:
+    """每15～30秒轮询；回传 revision 作为 after_revision，仅返回状态变化。detailed=true 读取完整明细。"""
     try:
-        return runner_poll_task(task_path=task_path)
+        payload = runner_poll_task(task_path=task_path)
+        return payload if detailed else task_summary(payload, after_revision)
     except RunnerTaskNotFoundError as exc:
         raise PublishingTaskNotFoundError(str(exc), {"task_path": task_path}) from exc

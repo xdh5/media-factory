@@ -28,6 +28,8 @@ from ._errors import MediaPublisherCommandError, PublishAccountGroupError
 
 
 _LOGIN_SESSIONS: dict[str, dict] = {}
+_ACCOUNT_ROWS_CACHE: dict[str, tuple[float, list]] = {}
+_ACCOUNT_ROWS_LOCK = threading.Lock()
 
 
 def _publisher_command() -> tuple[list[str], Path]:
@@ -216,18 +218,24 @@ def run_publisher_cli(arguments: list[str]) -> dict | list:
     return payload
 
 
-def _publisher_account_rows() -> list:
+def _publisher_account_rows(account_refs: list[str] | None = None, *, refresh: bool = False) -> list:
     rows = []
-    for group in ("finance", "korean"):
-        payload = run_publisher_cli(["accounts", "--json", "--phone", group])
-        chunk = payload if isinstance(payload, list) else payload.get("accounts", [])
-        if isinstance(chunk, list):
-            rows.extend(chunk)
+    for group in account_refs if account_refs is not None else ("finance", "korean"):
+        with _ACCOUNT_ROWS_LOCK:
+            cached = _ACCOUNT_ROWS_CACHE.get(group)
+            if not refresh and cached and time.monotonic() - cached[0] < 120:
+                rows.extend(cached[1])
+                continue
+            payload = run_publisher_cli(["accounts", "--json", "--phone", group])
+            chunk = payload if isinstance(payload, list) else payload.get("accounts", [])
+            if isinstance(chunk, list):
+                _ACCOUNT_ROWS_CACHE[group] = (time.monotonic(), chunk)
+                rows.extend(chunk)
     return rows
 
 
-def list_publisher_accounts() -> list[dict]:
-    rows = _publisher_account_rows()
+def list_publisher_accounts(account_refs: list[str] | None = None, *, rows: list | None = None) -> list[dict]:
+    rows = _publisher_account_rows(account_refs) if rows is None else rows
     accounts = []
     for item in rows:
         if not isinstance(item, dict):
@@ -251,9 +259,9 @@ def list_publisher_accounts() -> list[dict]:
     return accounts
 
 
-def list_publisher_login_states() -> list[dict]:
+def list_publisher_login_states(*, rows: list | None = None) -> list[dict]:
     """返回 media-publisher 对 Cookie 的实时检查结果，包含已失效账号。"""
-    rows = _publisher_account_rows()
+    rows = _publisher_account_rows() if rows is None else rows
     states = []
     for item in rows:
         if not isinstance(item, dict):
@@ -361,6 +369,7 @@ def start_publisher_login(
     if normalized not in {"douyin", "kuaishou", "toutiao", "wechat_channels"}:
         raise PublishAccountGroupError("扫码登录只支持抖音、快手、头条和视频号", {"platform": platform})
     target = _publisher_login_target(business_line, account_group, normalized)
+    _ACCOUNT_ROWS_CACHE.pop(target["account_ref"], None)
     login_id = uuid.uuid4().hex
     qr_path = Path(tempfile.gettempdir()) / f"media-publisher-login-{login_id}.png"
     prefix, cwd = _publisher_command()
@@ -431,6 +440,7 @@ def publisher_login_status(login_id: str) -> dict:
         raise MediaPublisherCommandError("找不到扫码登录会话，请重新启动登录", {"login_id": login_id})
     payload = _login_payload(session)
     if payload["status"] in {"success", "failed"}:
+        _ACCOUNT_ROWS_CACHE.pop(session["account_ref"], None)
         _LOGIN_SESSIONS.pop(session["login_id"], None)
     return payload
 
@@ -446,14 +456,19 @@ def _database_groups(business_line: str | None = None) -> list[dict]:
     ]
 
 
-def list_account_groups(business_line: str | None = None) -> dict:
+def list_account_groups(business_line: str | None = None, account_group: str | None = None) -> dict:
     """返回 D1 账号组，并尽量合并 media-publisher 当前已登录账号组。"""
-    groups = _database_groups(business_line)
-    all_database_names = {str(item["name"]) for item in _database_groups(None)}
+    database = _database_groups(None)
+    all_database_names = {str(item["name"]) for item in database}
+    groups = [item for item in database if (not business_line or item["business_line"] == business_line)
+              and (not account_group or item["name"] == account_group)]
+    account_refs = sorted({member["account_ref"] for group in groups for member in group["members"]
+                           if member["connector"] == "media-publisher"})
     matrix_error = None
     try:
-        matrix_accounts = list_publisher_accounts()
-        matrix_login_states = list_publisher_login_states()
+        rows = _publisher_account_rows(account_refs, refresh=True)
+        matrix_accounts = list_publisher_accounts(rows=rows)
+        matrix_login_states = list_publisher_login_states(rows=rows)
     except MediaPublisherCommandError as exc:
         matrix_accounts = []
         matrix_login_states = []
@@ -549,19 +564,21 @@ def _official_members(member: dict) -> list[dict]:
 
 def resolve_account_group(account_group: str, business_line: str, platforms: list[str]) -> list[dict]:
     requested = set(platforms)
-    database = _database_groups(business_line)
-    selected = next((item for item in database if str(item["name"]) == account_group), None)
+    database = _database_groups(None)
     known_group = next(
-        (item for item in _database_groups(None) if str(item["name"]) == account_group),
+        (item for item in database if str(item["name"]) == account_group),
         None,
     )
+    selected = known_group if known_group and known_group["business_line"] == business_line else None
     if selected is None and known_group is not None:
         raise PublishAccountGroupError(
             f"账号组“{account_group}”属于 {known_group['business_line']}，不能用于 {business_line}",
             {"account_group": account_group, "expected_business_line": known_group["business_line"]},
         )
     try:
-        live_matrix = list_publisher_accounts()
+        account_refs = sorted({member["account_ref"] for member in selected["members"]
+                               if member["platform"] in requested and member["connector"] == "media-publisher"}) if selected else []
+        live_matrix = list_publisher_accounts(account_refs)
     except MediaPublisherCommandError:
         live_matrix = []
     if selected:
