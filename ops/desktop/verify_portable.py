@@ -22,7 +22,7 @@ if "--with-model" in sys.argv:
     from dotenv import dotenv_values
     configuration = dotenv_values(ROOT / ".env")
     selected = {name: configuration[name] for name in ("DASHSCOPE_API_KEY_FINANCE", "DASHSCOPE_BASE_URL") if configuration.get(name)}
-    selected.update({"DASHSCOPE_BUSINESS_LINE": "finance", "DASHSCOPE_MODEL": "qwen-plus"})
+    selected.update({"DASHSCOPE_BUSINESS_LINE": "finance", "DASHSCOPE_MODEL": "qwen3.7-plus"})
     home.mkdir(parents=True)
     (home / "config.env").write_text("\n".join(name + "=" + json.dumps(value) for name, value in selected.items()), encoding="utf-8")
     environment["MEDIA_FACTORY_VERIFY_REAL_MODEL"] = "1"

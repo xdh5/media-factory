@@ -12,6 +12,7 @@ _ENUMERATION = re.compile(
 )
 _STRONG_BREAK = set("。！？；!?")
 _COMMA_BREAK = set("，,")
+_SENTENCE_SUFFIX = set("。！？；!?，,、：:;.…\u201d\u2019」』）》】\"'")
 _TRAILING_PUNCTUATION = re.compile(r"[，。！？、；：,.!?;:…]+$")
 
 
@@ -109,26 +110,40 @@ def _split_by_breaks(text: str) -> list[str]:
     buf: list[str] = []
     ranges = _enumeration_ranges(text)
     for index, char in enumerate(text):
+        if not buf and pieces and char in _SENTENCE_SUFFIX:
+            pieces[-1] += char
+            continue
         buf.append(char)
         if _inside_enumeration(index, ranges):
             continue
         if char in _STRONG_BREAK or char in _COMMA_BREAK:
             piece = "".join(buf).strip()
-            if piece:
+            if bare_text(piece):
                 pieces.append(piece)
-            buf = []
+                buf = []
     tail = "".join(buf).strip()
     if tail:
-        pieces.append(tail)
+        if not bare_text(tail) and pieces:
+            pieces[-1] += tail
+        else:
+            pieces.append(tail)
     return pieces or ([text.strip()] if text.strip() else [])
 
 
 def split_narration_lines(article: str) -> list[str]:
     """把正文切成 TTS 一句一条：先按行，再按句读标点。"""
     lines: list[str] = []
+    prefix = ""
     for raw in str(article or "").splitlines():
         block = raw.strip()
         if not block:
             continue
-        lines.extend(_split_by_breaks(block))
+        for piece in _split_by_breaks(block):
+            if bare_text(piece):
+                lines.append(prefix + piece)
+                prefix = ""
+            elif lines:
+                lines[-1] += piece
+            else:
+                prefix += piece
     return lines

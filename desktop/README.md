@@ -4,7 +4,7 @@
 
 完整交付目录包含 `MediaFactory.exe`、Electron 资源、内嵌 Python、原版 Open WebUI、项目源码和 FFmpeg。无需安装 Python、Node.js 或 Docker，不创建服务，不修改系统环境变量，不需要管理员权限。不要只复制 EXE，必须保留同目录资源。
 
-双击 `MediaFactory.exe` 会先显示启动提示，随后打开原版 Open WebUI。项目内启动自动读取现有 `.env`，不弹配置窗口；模型列表显示实际使用的 `deepseek-v4-pro`，同一个 Agent 自主调用财经、语言学习、动漫及发布工具即可。关闭主聊天窗口会退出客户端并回收它启动的服务、MCP、浏览器发布进程和 FFmpeg；不会终止其他软件启动的 Python 进程。
+双击 `MediaFactory.exe` 会先显示启动提示，随后打开原版 Open WebUI。项目内启动自动读取现有 `.env`，不弹配置窗口；模型列表显示实际使用的 `qwen3.7-plus`，同一个 Agent 自主调用财经、语言学习、动漫及发布工具即可。关闭主聊天窗口会退出客户端并回收它启动的服务、MCP、浏览器发布进程和 FFmpeg；不会终止其他软件启动的 Python 进程。
 
 默认数据目录为 `%APPDATA%\MediaFactory`，与程序目录分离。可通过启动进程的 `MEDIA_FACTORY_HOME` 指定另一个可写目录。升级时替换程序目录，保留数据目录。
 
@@ -79,8 +79,8 @@ powershell -ExecutionPolicy Bypass -File ops/desktop/build_portable.ps1
 
 实现依据：[Open WebUI 配置](https://docs.openwebui.com/reference/env-configuration/)、[Electron 手动分发](https://github.com/electron/electron/blob/main/docs/tutorial/application-distribution.md)、[Python 内嵌发行版](https://www.python.org/downloads/release/python-31210/)。
 
-桌面 Agent 默认复用项目已有百炼密钥，使用 `deepseek-v4-pro`，通过独立 `AGENT_*` 配置绑定真实模型，不改变各业务工具的生产模型配置。业务 MCP 不作为模型显示；Agent 可调用全部现有 MCP 工具，工具审批当前关闭。
+桌面 Agent 默认复用项目已有百炼密钥，使用 `qwen3.7-plus`，通过独立 `AGENT_*` 配置绑定真实模型，不改变各业务工具的生产模型配置。业务 MCP 不作为模型显示；Agent 可调用全部现有 MCP 工具，工具审批当前关闭。
 
-新聊天首页的大标题显示“Media Factory”；模型选择器保留真实模型名，例如 `deepseek-v4-pro`。该显示由桌面容器的 `branding.js` 定制，不修改原版 Open WebUI 的核心前端文件或模型标识。
+新聊天首页的大标题显示“Media Factory”；模型选择器保留真实模型名，例如 `qwen3.7-plus`。该显示由桌面容器的 `branding.js` 定制，不修改原版 Open WebUI 的核心前端文件或模型标识。
 
 Agent 工具定义按需加载；后台每 15 秒查询进度，等待期间不调用模型。每轮已记录用量达到 100000 Token 时停止后续模型请求并保存检查点；单次响应可能越过阈值。标题、标签、推荐追问、自动补全及查询改写的自动模型请求均关闭。

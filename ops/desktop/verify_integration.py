@@ -51,8 +51,8 @@ def main():
                 time.sleep(0.5)
         with httpx.Client(base_url=base, headers=headers, timeout=180) as client:
             checked("未授权请求被拒绝", httpx.get(base + "/api/overview").status_code == 401)
-            checked("真实千问模型可发现", [item["id"] for item in client.get("/v1/models").json()["data"]] == ["qwen-plus"])
-            body = {"model": "qwen-plus", "stream": True,
+            checked("真实千问模型可发现", [item["id"] for item in client.get("/v1/models").json()["data"]] == ["qwen3.7-plus"])
+            body = {"model": "qwen3.7-plus", "stream": True,
                     "messages": [{"role": "user", "content": "只调用一次 finance_get_production_config，然后用一句中文概括素材方案。不要生产、写库或发布。"}]}
             parts = []
             with client.stream("POST", "/v1/chat/completions", json=body) as response:
@@ -77,18 +77,18 @@ def main():
                     snapshot = await graph.aget_state(config)
                     await graph.aupdate_state(config, {"status": "limit_reached", "max_steps": snapshot.values["steps"]}, as_node=START)
             asyncio.run(reach_execution_limit())
-            continued = client.post("/v1/chat/completions", json={"model": "qwen-plus", "stream": False,
+            continued = client.post("/v1/chat/completions", json={"model": "qwen3.7-plus", "stream": False,
                 "messages": [{"role": "user", "content": "继续。只概括刚才查询到的配置，不要调用工具。"}]})
             continued.raise_for_status()
             checked("达到执行上限后原聊天可恢复", client.get("/api/tasks/" + task_id).json()["status"] == "completed")
             chain = client.get("/api/traces/" + runs[0]["id"]).json()
             checked("链路包含 LLM、工具与执行节点", {"llm", "tool", "node"}.issubset({span["kind"] for span in chain}))
             checked("真实 Token 用量被记录", any(span["prompt_tokens"] for span in chain if span["kind"] == "llm"))
-            second = client.post("/v1/chat/completions", json={"model": "qwen-plus", "stream": False,
+            second = client.post("/v1/chat/completions", json={"model": "qwen3.7-plus", "stream": False,
                 "messages": [{"role": "user", "content": "上一轮查询的素材方案是什么？不要再次调用工具，只根据记忆用一句话回答。"}]}).json()
             checked("多轮会话可继续", bool(second["choices"][0]["message"]["content"]))
             automatic_headers = {**headers, "X-OpenWebUI-Chat-Id": "automatic-tool-integration-chat"}
-            response = client.post("/v1/chat/completions", headers=automatic_headers, json={"model": "qwen-plus", "stream": False,
+            response = client.post("/v1/chat/completions", headers=automatic_headers, json={"model": "qwen3.7-plus", "stream": False,
                 "messages": [{"role": "user", "content": "只调用一次 finance_get_topics 查询已占用话题，回复话题条数。不要写库、生产或发布。"}]})
             response.raise_for_status()
             run = client.get("/api/overview").json()["runs"][0]

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import shutil
+import sys
 import json
 import subprocess
 import tempfile
@@ -241,7 +242,7 @@ def synthesize_pipeline(
                            "原音频音量": volume.stderr[-4000:]}
                 diagnostic_text = json.dumps(details, ensure_ascii=False, indent=2)
                 (diagnostics / f"line-{index:04d}.json").write_text(diagnostic_text, encoding="utf-8")
-                print(f"配音空音频诊断：{diagnostic_text}", flush=True)
+                print(f"配音空音频诊断：{diagnostic_text}", file=sys.stderr, flush=True)
                 raise AudioProcessingError(f"第 {index} 行处理后没有可用音频")
             return {"audio_path": str(line_path), "frames": frames}
 

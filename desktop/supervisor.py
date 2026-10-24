@@ -104,7 +104,7 @@ def main():
     if not configuration.get("AGENT_API_KEY") and configuration.get("DASHSCOPE_API_KEY_FINANCE"):
         configuration.update({"AGENT_API_KEY": configuration["DASHSCOPE_API_KEY_FINANCE"],
                               "AGENT_BASE_URL": configuration.get("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                              "AGENT_MODEL": configuration.get("AGENT_MODEL") or "deepseek-v4-pro"})
+                              "AGENT_MODEL": configuration.get("AGENT_MODEL") or "qwen3.7-plus"})
     os.environ.update(configuration)
     from agent.diagnostics.redaction import redact
     (home / "shutdown.request").unlink(missing_ok=True)
