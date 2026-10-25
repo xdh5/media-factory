@@ -40,6 +40,14 @@ Thumbs.db
 /tmp/
 /.wrangler/
 
+# 本地运行、评估和验收记录
+/desktop/*-results.json
+/desktop/verification.md
+/agent/verification.md
+/docs/*-observation-*.md
+/docs/diagnostics/
+/evals/diagnostics/historical_cases.json
+
 # 本地 OAuth 凭据，不进入版本库
 data/youtube/tokens/
 ops/youtube/client_secret.json

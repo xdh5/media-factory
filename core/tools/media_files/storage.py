@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import shutil
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
 
 import boto3
+import requests
 from botocore.config import Config
 
 from ._constants import R2_DOWNLOAD_TIMEOUT_SECONDS, R2_REGION, R2_REQUIRED_ENV, R2_UPLOAD_TIMEOUT_SECONDS, load_project_env
@@ -94,24 +99,58 @@ def download_public_file(object_key: str, destination_path: str | Path) -> dict:
         )
     destination.parent.mkdir(parents=True, exist_ok=True)
     settings = _settings()
-    client = boto3.client(
-        "s3",
-        endpoint_url=f"https://{settings['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
-        aws_access_key_id=settings["R2_ACCESS_KEY_ID"],
-        aws_secret_access_key=settings["R2_SECRET_ACCESS_KEY"],
-        region_name=R2_REGION,
-        config=Config(
-            signature_version="s3v4",
-            connect_timeout=30,
-            read_timeout=R2_DOWNLOAD_TIMEOUT_SECONDS,
-        ),
-    )
+    url = f"{settings['R2_PUBLIC_BASE_URL'].rstrip('/')}/{quote(key, safe='/')}"
     temporary = destination.with_name(f"{destination.name}.part")
     try:
-        client.download_file(settings["R2_BUCKET"], key, str(temporary))
+        with requests.head(url, timeout=(15, R2_DOWNLOAD_TIMEOUT_SECONDS)) as response:
+            response.raise_for_status()
+            total_size = int(response.headers["Content-Length"])
+            etag = response.headers["ETag"]
+        # 每段单独保存，断线只重试该段；对象版本变化时不复用旧片段。
+        segment_size = 2 * 1024 * 1024
+        version = hashlib.sha256(etag.encode()).hexdigest()[:16]
+        segments = destination.with_name(f"{destination.name}.parts-{version}")
+        segments.mkdir(exist_ok=True)
+
+        def download_segment(start: int) -> Path:
+            end = min(start + segment_size, total_size) - 1
+            segment = segments / str(start)
+            expected_size = end - start + 1
+            if segment.is_file() and segment.stat().st_size == expected_size:
+                return segment
+            for attempt in range(4):
+                try:
+                    with requests.get(
+                        url, headers={"Range": f"bytes={start}-{end}", "If-Match": etag,
+                                      "Accept-Encoding": "identity"},
+                        stream=True, timeout=(15, R2_DOWNLOAD_TIMEOUT_SECONDS),
+                    ) as response:
+                        response.raise_for_status()
+                        if response.status_code != 206 or response.headers.get("Content-Range") != f"bytes {start}-{end}/{total_size}":
+                            raise OSError("下载服务器返回的分段范围不符")
+                        with segment.open("wb") as output:
+                            for chunk in response.iter_content(256 * 1024):
+                                output.write(chunk)
+                    if segment.stat().st_size != expected_size:
+                        raise OSError("下载片段长度不完整")
+                    return segment
+                except (requests.RequestException, OSError):
+                    segment.unlink(missing_ok=True)
+                    if attempt == 3:
+                        raise
+                    time.sleep(attempt + 1)
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            completed = list(executor.map(download_segment, range(0, total_size, segment_size)))
+        with temporary.open("wb") as output:
+            for segment in completed:
+                with segment.open("rb") as source:
+                    shutil.copyfileobj(source, output)
+        if temporary.stat().st_size != total_size:
+            raise OSError("下载文件长度不完整")
         temporary.replace(destination)
+        shutil.rmtree(segments)
     except Exception as exc:
-        temporary.unlink(missing_ok=True)
         raise DownloadError(
             f"下载媒体文件失败：{exc}",
             {"bucket": settings["R2_BUCKET"], "key": key, "destination_path": str(destination)},

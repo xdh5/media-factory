@@ -8,12 +8,18 @@ from hashlib import blake2b
 
 def account_groups_summary(payload: dict) -> dict:
     selected = {(member["platform"], member["account_ref"]) for group in payload["groups"] for member in group["members"]}
+    required = {(group["name"], member["platform"], member["account_ref"])
+                for group in payload["groups"] for member in group["members"]}
+    verified = {(group["name"], account["platform"], account["account_ref"])
+                for group in payload["groups"] for account in group["publisher_accounts"]
+                if account["login_status"] == "connected"}
+    ready = bool(required) and required.issubset(verified) and payload["publisher_error"] is None
     return {
+        "all_accounts_ready": ready,
+        "notice": "全部账号已登录，开始发布" if ready else "账号尚未全部通过，请先处理登录或检测问题",
         "groups": [
             {"name": group["name"], "business_line": group["business_line"], "enabled": group["enabled"],
-             "platforms": [member["platform"] for member in group["members"]],
-             "accounts": [{key: row.get(key) for key in ("platform", "account_ref", "login_status")}
-                          for row in group["publisher_accounts"]]}
+             "platforms": [member["platform"] for member in group["members"]]}
             for group in payload["groups"]
         ],
         "login_states": [state for state in payload["publisher_login_states"]
@@ -28,8 +34,6 @@ def preview_summary(payload: dict) -> dict:
                                        "publishable_count", "duplicate_count", "timings_seconds", "reused_prepared")},
         "items": [{key: item[key] for key in ("production_id", "title", "content_kind", "content_part")}
                   for item in payload["items"]],
-        "tasks": [{"production_id": task["item"]["production_id"], "platform": task["route"]["platform"],
-                   "already_published": task["already_published"]} for task in payload["tasks"]],
         "default_publication_plan": payload["default_publication_plan"],
         "default_schedule_skipped": payload["default_schedule_skipped"],
     }

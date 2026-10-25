@@ -123,8 +123,6 @@ def main():
     (output / "构建信息.json").write_text(json.dumps({"electron": version, "python": "3.12.10", "open_webui": "0.12.3",
         "entry": "MediaFactory.exe", "dependencies_verified": True}, ensure_ascii=False, indent=2), encoding="utf-8")
     shutil.copy2(ROOT / "desktop/README.md", output / "使用说明.md")
-    shutil.copy2(ROOT / "evals/diagnostics/historical_cases.json", output / "真实故障评估集.json")
-    shutil.copy2(ROOT / "desktop/rag-evaluation-results.json", output / "RAG实际评估结果.json")
     (output / "electron.exe").replace(executable)
     (output / "MediaFactory.incomplete.exe").unlink(missing_ok=True)
     print("绿色版构建完成：" + str(executable), flush=True)

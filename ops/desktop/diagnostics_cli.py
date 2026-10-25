@@ -19,7 +19,8 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["index", "rag-eval", "agent-eval", "import-errors"])
     parser.add_argument("--database", type=Path, default=ROOT / "data/desktop/agent.sqlite")
-    parser.add_argument("--cases", type=Path, default=ROOT / "evals/diagnostics/historical_cases.json")
+    parser.add_argument("--cases", type=Path, default=ROOT / "cache/diagnostics/cases.json")
+    parser.add_argument("--documents", type=Path, default=ROOT / "cache/diagnostics/documents")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--k", type=int, default=5)
     args = parser.parse_args()
@@ -28,8 +29,8 @@ async def main():
     store = TraceStore(args.database)
     if args.command == "index":
         report = {"documents": []}
-        for path in (ROOT / "docs/diagnostics").glob("*.md"):
-            identity = await knowledge.ingest(path.relative_to(ROOT).as_posix(), path.read_text(encoding="utf-8"))
+        for path in args.documents.glob("*.md"):
+            identity = await knowledge.ingest(path.resolve().as_posix(), path.read_text(encoding="utf-8"))
             report["documents"].append(identity)
     elif args.command == "import-errors":
         report = {"imported": 0}

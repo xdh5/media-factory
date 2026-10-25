@@ -132,7 +132,6 @@ class RunObserver:
         if query in self.diagnoses:
             return self.diagnoses[query]
         try:
-            await self.knowledge.ensure_project_documents()
             result = await self.knowledge.search(query, k=4)
             self.diagnoses[query] = result
             return result

@@ -60,10 +60,12 @@ Agent Evals 区分任务完成率和有证据的验收成功率；没有验收�
 源码运行示例：
 
 ```powershell
-python ops/desktop/diagnostics_cli.py index --database cache/rag-eval.sqlite
-python ops/desktop/diagnostics_cli.py rag-eval --database cache/rag-eval.sqlite --output cache/rag-evaluation.json
+python ops/desktop/diagnostics_cli.py index --database cache/rag-eval.sqlite --documents cache/diagnostics/documents
+python ops/desktop/diagnostics_cli.py rag-eval --database cache/rag-eval.sqlite --cases cache/diagnostics/cases.json --output cache/rag-evaluation.json
 python ops/desktop/verify_integration.py
 ```
+
+诊断文档和评估案例由本地提供，仓库与绿色版不携带历史知识、运行日志或验收结果。运行前将自己的文档和案例放入上述缓存路径，或通过参数指定位置。
 
 ## 从源码构建
 

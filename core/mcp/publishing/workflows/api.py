@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 
 from ..infrastructure import (
     MediaRecordsError,
@@ -34,10 +35,11 @@ def _map_error(exc: Exception) -> PublishingError:
     raise exc
 
 
-def publishing_list_account_groups(business_line: str | None = None, account_group: str | None = None, detailed: bool = False) -> dict:
-    """核实账号组和登录状态；可按账号组筛选，默认返回摘要，detailed=true 读取完整字段。"""
+def publishing_list_account_groups(business_line: str | None = None, account_group: str | None = None,
+                                    detailed: bool = False, platforms: list[str] | None = None) -> dict:
+    """只检测指定账号组和本次发布平台的真实会话；需要登录与检测失败分开返回。默认返回摘要。"""
     try:
-        payload = list_account_groups(business_line, account_group)
+        payload = list_account_groups(business_line, account_group, platforms)
         return payload if detailed else account_groups_summary(payload)
     except Exception as exc:
         raise _map_error(exc) from exc
@@ -142,10 +144,18 @@ def publishing_start_publish(
         raise _map_error(exc) from exc
 
 
-def publishing_poll_task(task_path: str, after_revision: str | None = None, detailed: bool = False) -> dict:
-    """每15～30秒轮询；回传 revision 作为 after_revision，仅返回状态变化。detailed=true 读取完整明细。"""
+def publishing_poll_task(task_path: str, after_revision: str | None = None, detailed: bool = False,
+                         wait_seconds: int = 0) -> dict:
+    """回传 revision 并设置 wait_seconds=25，最多等待25秒的状态变化；完整明细用 detailed=true。"""
     try:
-        payload = runner_poll_task(task_path=task_path)
-        return payload if detailed else task_summary(payload, after_revision)
+        deadline = time.monotonic() + min(25, max(0, wait_seconds))
+        while True:
+            payload = runner_poll_task(task_path=task_path)
+            if detailed:
+                return payload
+            summary = task_summary(payload, after_revision)
+            if summary["changed"] or summary["done"] or time.monotonic() >= deadline:
+                return summary
+            time.sleep(min(1, max(0, deadline - time.monotonic())))
     except RunnerTaskNotFoundError as exc:
         raise PublishingTaskNotFoundError(str(exc), {"task_path": task_path}) from exc

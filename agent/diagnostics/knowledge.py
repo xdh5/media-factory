@@ -190,14 +190,6 @@ class KnowledgeBase:
             return [dict(row) for row in connection.execute(
                 "SELECT id, source, kind, evidence, created FROM diagnostic_documents ORDER BY created DESC")]
 
-    async def ensure_project_documents(self):
-        root = Path(__file__).resolve().parents[2]
-        existing = {document["source"] for document in self.list_documents()}
-        for path in (root / "docs/diagnostics").glob("*.md"):
-            source = path.relative_to(root).as_posix()
-            if source not in existing:
-                await self.ingest(source, path.read_text(encoding="utf-8"))
-
     async def reindex(self):
         with self.connect() as connection:
             rows = connection.execute("SELECT id, content FROM diagnostic_chunks").fetchall()

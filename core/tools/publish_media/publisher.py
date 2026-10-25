@@ -21,7 +21,7 @@ from .accounts import resolve_account_group
 from .content import local_publish_items, normalize_platforms, normalize_publish_date
 from .finance_schedule import plan_finance_publications
 
-_PREPARED_PREVIEWS: dict[tuple, tuple[float, list, list]] = {}
+_PREPARED_PREVIEWS: dict[tuple, tuple[float, list]] = {}
 
 
 def _measure_query(fn, *args, **kwargs):
@@ -110,22 +110,22 @@ def preview_publication(
     cached = _PREPARED_PREVIEWS.get(cache_key) if reuse_prepared else None
     reused = bool(cached and time.monotonic() - cached[0] < 300
                   and all(Path(item["local_path"]).is_file() for item in cached[1]))
-    with ThreadPoolExecutor(max_workers=3) as queries:
+    # 所有目标账号通过真实页面检测后，才读取或恢复成片。
+    routes, route_seconds = _measure_query(resolve_account_group, str(account_group).strip(), business_line, normalized_platforms)
+    with ThreadPoolExecutor(max_workers=2) as queries:
         duplicate_query = queries.submit(_measure_query, _existing_keys, business_line, normalized_date)
         if reused:
-            items, routes = deepcopy(cached[1:])
-            item_seconds = route_seconds = 0.0
+            items = deepcopy(cached[1])
+            item_seconds = 0.0
         else:
             item_query = queries.submit(_measure_query, local_publish_items, business_line, normalized_date, content_kind=content_kind)
-            route_query = queries.submit(_measure_query, resolve_account_group, str(account_group).strip(), business_line, normalized_platforms)
             items, item_seconds = item_query.result()
-            routes, route_seconds = route_query.result()
         existing, duplicate_seconds = duplicate_query.result()
     if production_id:
         items = [item for item in items if item["production_id"] == production_id]
         if not items:
             raise InvalidPublishRequestError(f"找不到指定成片：{production_id}")
-    _PREPARED_PREVIEWS[cache_key] = (time.monotonic(), deepcopy(items), deepcopy(routes))
+    _PREPARED_PREVIEWS[cache_key] = (time.monotonic(), deepcopy(items))
     tasks = []
     for item in items:
         for route in routes:
