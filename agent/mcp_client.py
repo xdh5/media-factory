@@ -14,7 +14,7 @@ READ_ONLY = {
     "finance_poll_task", "language_learning_get_production_config",
     "language_learning_poll_task", "anime_get_production_config",
     "anime_poll_task", "publishing_list_account_groups",
-    "publishing_preview", "publishing_poll_task",
+    "publishing_preview", "publishing_poll_task", "publishing_batch_status",
 }
 
 

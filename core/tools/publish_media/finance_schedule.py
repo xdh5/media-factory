@@ -1,6 +1,6 @@
 """财经公共发布排期：北京时间 14 点、18 点，每个时段一篇。"""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from ._constants import PLATFORM_ALIASES
@@ -54,6 +54,8 @@ def plan_finance_publications(
             chosen = {}
             for index, task in enumerate(group[:2]):
                 hour = 18 if len(group) == 1 or index == 1 else 14
+                if platform == "toutiao" and hour == 18 and publish_date == (current.date() + timedelta(days=7)).isoformat():
+                    hour = 17
                 slot = datetime.fromisoformat(f"{publish_date}T{hour:02d}:00:00").replace(tzinfo=timezone)
                 if slot > current:
                     chosen[task["item"]["production_id"]] = ("scheduled", slot.isoformat())

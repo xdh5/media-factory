@@ -17,7 +17,7 @@ description: 使用统一发布 MCP 把指定计划发布日期的韩语学习�
 ## 执行与交付
 
 1. 先调用 `publishing_list_account_groups`，同时指定本次 `platforms`。有账号需要登录或检测失败时立即提示并展示可用的登录入口，处理完成后重新预检。只有 `all_accounts_ready=true` 才先用醒目粗体通知“**全部账号已登录，开始发布**”，再自动继续，无需用户确认。账号未全部通过前不恢复成片或发布。随后调用 `publishing_preview`，检查待发布的原版、问答版及数据库重复项。没有可发布内容时说明原因并停止。
-2. 根据上述时间规则调用 `publishing_start_publish`，用 `publishing_poll_task` 每 15～30 秒轮询同一任务至完成，回传上次 `revision` 作为 `after_revision`，只展示状态变化；客户端超时不重复启动。预检和轮询保持默认摘要，只有诊断具体问题时才读取 `detailed=true`。
+2. 多日期发布使用共享的 `publishing_start_batch` 一次提交；`publications` 每项填写 `publish_date`、`content_kind="en-ko"` 及按上述规则确定的 `publish_mode`、`publish_at`。返回批次路径后结束模型等待，后台程序独立执行。`publishing_batch_status` 仅在用户查询、登录恢复或核对结果时调用，不每分钟唤醒模型、读取空终端或重复汇报。单日交互诊断仍可用 `publishing_start_publish` 和 `publishing_poll_task`。完整明细仅在诊断时读取。
 3. 登录检测失败时按 MCP 返回值恢复。抖音、快手、头条或视频号需要扫码时，调用登录工具；二维码不能只留在工具输出，必须用 `qr_path` 展示 Markdown 图片并附可点击文件链接。轮询扫码成功后重新预检再发布。
 4. 展示逐平台成功、预约或失败结果，不重复手工入库。
 5. 查找工具时只筛选 `publishing` 名称，先输出名称，再读取所需工具说明，不输出其他业务线的工具描述。

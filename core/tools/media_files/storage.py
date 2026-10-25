@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -111,6 +112,8 @@ def download_public_file(object_key: str, destination_path: str | Path) -> dict:
         version = hashlib.sha256(etag.encode()).hexdigest()[:16]
         segments = destination.with_name(f"{destination.name}.parts-{version}")
         segments.mkdir(exist_ok=True)
+        connections = threading.local()
+        sessions = []
 
         def download_segment(start: int) -> Path:
             end = min(start + segment_size, total_size) - 1
@@ -118,10 +121,15 @@ def download_public_file(object_key: str, destination_path: str | Path) -> dict:
             expected_size = end - start + 1
             if segment.is_file() and segment.stat().st_size == expected_size:
                 return segment
+            if not hasattr(connections, "session"):
+                connections.session = requests.Session()
+                sessions.append(connections.session)
             for attempt in range(4):
                 try:
-                    with requests.get(
-                        url, headers={"Range": f"bytes={start}-{end}", "If-Match": etag,
+                    segment_started = time.monotonic()
+                    with connections.session.get(
+                        url, params={"download_part": start, "attempt": attempt} if attempt else None,
+                        headers={"Range": f"bytes={start}-{end}", "If-Match": etag,
                                       "Accept-Encoding": "identity"},
                         stream=True, timeout=(15, R2_DOWNLOAD_TIMEOUT_SECONDS),
                     ) as response:
@@ -129,7 +137,9 @@ def download_public_file(object_key: str, destination_path: str | Path) -> dict:
                         if response.status_code != 206 or response.headers.get("Content-Range") != f"bytes {start}-{end}/{total_size}":
                             raise OSError("下载服务器返回的分段范围不符")
                         with segment.open("wb") as output:
-                            for chunk in response.iter_content(256 * 1024):
+                            for chunk in response.iter_content(64 * 1024):
+                                if time.monotonic() - segment_started > 45:
+                                    raise OSError("下载片段超过45秒，保留其他完整片段并重试")
                                 output.write(chunk)
                     if segment.stat().st_size != expected_size:
                         raise OSError("下载片段长度不完整")
@@ -140,8 +150,12 @@ def download_public_file(object_key: str, destination_path: str | Path) -> dict:
                         raise
                     time.sleep(attempt + 1)
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            completed = list(executor.map(download_segment, range(0, total_size, segment_size)))
+        try:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                completed = list(executor.map(download_segment, range(0, total_size, segment_size)))
+        finally:
+            for connection in sessions:
+                connection.close()
         with temporary.open("wb") as output:
             for segment in completed:
                 with segment.open("rb") as source:

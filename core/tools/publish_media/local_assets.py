@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -156,9 +157,11 @@ def ensure_local_publish_items(
         return current.is_file() or local_video_path(row).is_file()
 
     # 本地产物已有 R2 地址时，仅在本地文件缺失后恢复该文件。
-    for index, row in enumerate(local_rows):
-        if not _is_valid(row) and row.get("r2_url"):
-            local_rows[index] = materialize_github_workflow_output(row)
+    missing = [(index, row) for index, row in enumerate(local_rows) if not _is_valid(row) and row.get("r2_url")]
+    with ThreadPoolExecutor(max_workers=2) as downloads:
+        restored = downloads.map(materialize_github_workflow_output, [row for _, row in missing])
+        for (index, _), row in zip(missing, restored):
+            local_rows[index] = row
 
     valid_local_rows = [row for row in local_rows if _is_valid(row)]
     valid_kinds = {str(row.get("content_kind") or "") for row in valid_local_rows}
@@ -181,8 +184,8 @@ def ensure_local_publish_items(
         github_rows = [item for item in github_rows if str(item.get("content_kind") or "") in missing_kinds]
     elif wanted_kinds is not None:
         github_rows = [item for item in github_rows if str(item.get("content_kind") or "") in wanted_kinds]
-    for row in github_rows:
-        valid_local_rows.append(materialize_github_workflow_output(row))
+    with ThreadPoolExecutor(max_workers=2) as downloads:
+        valid_local_rows.extend(downloads.map(materialize_github_workflow_output, github_rows))
     return valid_local_rows
 
 

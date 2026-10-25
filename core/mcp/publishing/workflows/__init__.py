@@ -8,8 +8,11 @@ from .api import (
     publishing_start_publish,
     publishing_poll_task,
 )
+from .batch_api import publishing_start_batch, publishing_batch_status
 
 ALL_TOOLS = (
+    publishing_start_batch,
+    publishing_batch_status,
     publishing_list_account_groups,
     publishing_preview,
     publishing_start_login,
