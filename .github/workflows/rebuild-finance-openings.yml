@@ -1,0 +1,82 @@
+name: 重制财经首幕
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_dates:
+        description: 需要重制的计划日期，英文逗号分隔
+        type: string
+        required: true
+      hook_title_lines:
+        description: 可选；以运行目录为键的首幕语义分行 JSON
+        type: string
+        default: '{}'
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: rebuild-finance-openings
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: 核对重制日期
+    runs-on: ubuntu-24.04
+    outputs:
+      dates: ${{ steps.dates.outputs.dates_json }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: dates
+        env:
+          PUBLISH_DATES: ${{ inputs.publish_dates }}
+        run: python -m ops.github_actions weekly_plan --publish-dates "$PUBLISH_DATES"
+
+  rebuild:
+    name: 重制首幕 ${{ matrix.publish_date }}
+    needs: plan
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        publish_date: ${{ fromJSON(needs.plan.outputs.dates) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    container:
+      image: ghcr.io/xdh5/media-factory-runner:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
+      CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      HOOK_TITLE_LINES: ${{ inputs.hook_title_lines }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: 检出依赖
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init integrations/media-collector integrations/media-publisher
+      - name: 重制并交付成片
+        env:
+          PUBLISH_DATE: ${{ matrix.publish_date }}
+        run: python -m ops.github_actions.rebuild_finance_openings --publish-date "$PUBLISH_DATE"
+      - name: 保存首幕检查图和结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finance-opening-${{ matrix.publish_date }}
+          path: |
+            cache/finance/rebuild-openings/**/opening-preview.png
+            cache/finance-rebuild-results/*.json
+          if-no-files-found: ignore
+          retention-days: 7

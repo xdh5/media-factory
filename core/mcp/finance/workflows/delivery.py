@@ -3,12 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from ..infrastructure.gateways import mark_source_script_used
 from ..infrastructure.gateways import runner_submit_task
-from ..config.settings import MCP_ID
+from ..config.settings import MCP_ID, PROJECT_CACHE_ROOT, normalize_publish_date
 from ..errors import WorkflowStepError
 from ..services.assemble_finance_video import finish_finance_video
 from ..services.save_draft import save_source_usage
 from ..services.upload_to_r2 import upload_finance_assets_to_r2
 from ..services.save_draft import load_draft
+from ..services.rebuild_openings import rebuild_finance_openings
 from .common import _map_error
 
 def _finish_video_and_commit_source_usage(
@@ -119,4 +120,17 @@ def finance_start_upload_r2(manifest_path: str, run_id: str) -> dict:
         return {**started, "poll_tool": "finance_poll_task"}
     except Exception as exc:
         raise _map_error(exc) from exc
+
+
+def finance_start_rebuild_openings(publish_date: str, title_lines_by_part: dict,
+                                   production_config: dict, video_config: dict) -> dict:
+    """重制指定日期原成片的首幕，不选新稿、不生成新配音、不发布；按原清单恢复素材并验证音轨一致。"""
+    date = normalize_publish_date(publish_date)
+    run_id = f"run-{date.replace('-', '')}"
+    started = runner_submit_task(
+        cache_dir=PROJECT_CACHE_ROOT / MCP_ID / "rebuild-openings" / run_id,
+        run_id=run_id, step="rebuild_openings",
+        fn=lambda progress=None: rebuild_finance_openings(date, title_lines_by_part, production_config, video_config, progress),
+    )
+    return {**started, "poll_tool": "finance_poll_task"}
 

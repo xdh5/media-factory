@@ -212,19 +212,9 @@ def _split_title_parts(text: str) -> list[str]:
     return parts
 
 
-def _split_title_lines(text: str, max_chars: int) -> list[str]:
-    """标题按标点断行（标点不入行）；断不开的超宽行再按宽度硬切。"""
-    text = str(text or "").strip()
-    if not text:
-        return []
-    lines: list[str] = []
-    for part in _split_title_parts(text):
-        while len(part) > max_chars:
-            lines.append(part[:max_chars])
-            part = part[max_chars:]
-        if part:
-            lines.append(part)
-    return lines
+def _split_title_lines(text: str) -> list[str]:
+    """只按句读断行；没有语义断点的长句保留完整，由排版层缩小字号。"""
+    return _split_title_parts(text)
 
 
 def _hook_title_layers(
@@ -246,20 +236,13 @@ def _hook_title_layers(
         font_size = max(1, int(title_style.get("font_size") or 110))
     except (TypeError, ValueError):
         font_size = 110
-    override_lines = settings.get("hook_title_lines")
-    if override_lines:
-        # 宿主 LLM 已语义断行：直接用传入的行，超宽时缩字号保住整行不拆词。
-        longest = max(len(line) for line in override_lines)
-        if longest > 0:
-            fit_size = int(canvas_width * 0.8 // longest)
-            if fit_size >= 1:
-                font_size = min(font_size, fit_size)
-        lines = list(override_lines)
-    else:
-        max_chars = max(1, int(canvas_width * 0.8 // font_size))
-        lines = _split_title_lines(title_text, max_chars)
+    override_lines = title_lines or settings.get("hook_title_lines")
+    lines = list(override_lines) if override_lines else _split_title_lines(title_text)
     if not lines:
         return []
+    # 完整保留语义行，不能为了字号把词语尾字拆到下一行。
+    longest = max(len(line) for line in lines)
+    font_size = min(font_size, max(1, int(canvas_width * 0.8 // longest)))
     multi = len(lines) > 1
     line_height = round(font_size * float(settings["hook_title_line_height"]))
     base_position = dict(settings["hook_title_position"])

@@ -158,7 +158,7 @@ def _production_config(config: dict) -> dict:
         "hook_subtitle_position": hook_subtitle_position,
         "hook_title_text": str(config.get("hook_title_text") or "").strip(),
         # 2026-09-24 用户要求标题换行由宿主 LLM 语义决定：传了就用传入的行，
-        # 不传才回退到按标点/宽度的算法断行。
+        # 不传时只按句读断行，超宽保留完整词句并缩小字号。
         "hook_title_lines": _hook_title_lines_override(config.get("hook_title_lines")),
         "hook_title_style": hook_title_style,
         "hook_title_position": hook_title_position,
