@@ -138,8 +138,8 @@ def download_public_file(object_key: str, destination_path: str | Path) -> dict:
                             raise OSError("下载服务器返回的分段范围不符")
                         with segment.open("wb") as output:
                             for chunk in response.iter_content(64 * 1024):
-                                if time.monotonic() - segment_started > 45:
-                                    raise OSError("下载片段超过45秒，保留其他完整片段并重试")
+                                if time.monotonic() - segment_started > 180:
+                                    raise OSError("下载片段超过180秒，保留其他完整片段并重试")
                                 output.write(chunk)
                     if segment.stat().st_size != expected_size:
                         raise OSError("下载片段长度不完整")
