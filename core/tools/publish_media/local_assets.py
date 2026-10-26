@@ -16,6 +16,8 @@ from ._errors import InvalidPublishRequestError
 
 def _record_local_path(record: dict) -> Path:
     """容器挂载工作区时读取宿主登记的本地成片路径。"""
+    if _r2_asset_subdirectory(record):
+        return local_video_path(record)
     value = str(record.get("local_path") or "")
     normalized = value.replace("\\", "/")
     marker = "/cache/output/"
@@ -54,6 +56,16 @@ def _r2_dir_for_record(record: dict) -> str:
     return run_id if part <= 1 else f"{run_id}-part{part}"
 
 
+def _r2_asset_subdirectory(record: dict) -> str:
+    """保留云端产物版本目录，避免新版成片复用同名旧文件。"""
+    key = unquote(urlparse(str(record.get("r2_url") or "")).path.lstrip("/"))
+    prefix = f"runs/{record.get('business_line')}/{_r2_dir_for_record(record)}/"
+    if not key.startswith(prefix):
+        return ""
+    parent = str(Path(key[len(prefix):]).parent)
+    return "" if parent == "." else parent
+
+
 def local_video_path(record: dict) -> Path:
     """本地成片路径：cache/output/{业务线}/{run_id}[-partN]/{R2对象名}。"""
     business_line = str(record.get("business_line") or "").strip()
@@ -61,7 +73,7 @@ def local_video_path(record: dict) -> Path:
     if not business_line or not run_id:
         raise InvalidPublishRequestError("production_outputs 缺少 business_line 或 run_id")
     filename = stored_video_filename(record)
-    relative_dirs = (Path(business_line) / _r2_dir_for_record(record),)
+    relative_dirs = (Path(business_line) / _r2_dir_for_record(record) / _r2_asset_subdirectory(record),)
     # 新成片写在 cache/output；根目录 output 只用于读取尚未迁走的旧文件。
     roots = (PROJECT_ROOT / "cache" / "output", PROJECT_ROOT / "output")
     for root in roots:
