@@ -1,6 +1,7 @@
 """按请求执行共享发布批次；此模块不调用语言模型。"""
 
 import json
+import os
 from pathlib import Path
 import sys
 import time
@@ -11,6 +12,7 @@ from ..infrastructure.batch_jobs import account_batch_lock, write_batch
 
 def run_batch(path: Path) -> None:
     data = json.loads(path.read_text(encoding="utf-8"))
+    os.environ["MEDIA_PUBLISHER_INTERACTION_PATH"] = str(path.with_suffix(".interaction.json"))
     request = data["request"]
     reports = path.with_suffix(".jsonl")
     started = time.monotonic()

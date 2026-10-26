@@ -88,10 +88,15 @@ def read_batch(job_path: str) -> dict:
 
 
 def batch_summary(data: dict) -> dict:
-    return {key: data.get(key) for key in (
+    interaction = Path(data["job_path"]).with_suffix(".interaction.json")
+    summary = {key: data.get(key) for key in (
         "job_id", "job_path", "status", "current_date", "completed_dates", "scheduled_count",
         "duplicate_count", "progress", "error", "prepare_only", "updated_at",
     )}
+    if data["status"] in ACTIVE_STATUSES and interaction.is_file():
+        summary["interaction"] = json.loads(interaction.read_text(encoding="utf-8"))
+        summary["progress"] = summary["interaction"]["message"]
+    return summary
 
 
 def start_worker(path: Path, env: dict) -> int:
