@@ -48,11 +48,9 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
         if not asset_path.is_file():
             raise WorkflowStepError(f"财经生产清单中的资产不存在：{field}={asset_path}")
         content_type = mimetypes.guess_type(asset_path.name)[0] or "application/octet-stream"
-        revision = str(manifest.get("video_revision") or "").strip()
-        asset_dir = f"{r2_dir}/{revision}" if field == "video_path" and revision else r2_dir
         uploaded_assets[field] = upload_public_file(
             asset_path,
-            f"runs/{MCP_ID}/{asset_dir}/{asset_path.name}",
+            f"runs/{MCP_ID}/{r2_dir}/{asset_path.name}",
             content_type=content_type,
         )
     video = uploaded_assets["video_path"]

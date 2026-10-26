@@ -44,7 +44,6 @@ from .delivery import (
     finance_finish_video,
     finance_start_finish_video,
     finance_start_upload_r2,
-    finance_start_rebuild_openings,
 )
 from .collect_copy import finance_start_collect_copy
 from .collect_author_copies import finance_start_collect_author_copies
@@ -103,5 +102,4 @@ ALL_TOOLS = (
     finance_finish_video,
     finance_start_finish_video,
     finance_start_upload_r2,
-    finance_start_rebuild_openings,
 )
