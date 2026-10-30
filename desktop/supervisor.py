@@ -132,6 +132,10 @@ def main():
              "DO_NOT_TRACK": "true", "SCARF_NO_ANALYTICS": "true", "WEBUI_SECRET_KEY": webui_secret_file.read_text(encoding="utf-8")}
     webui.update({"RAG_EMBEDDING_MODEL_AUTO_UPDATE": "false", "RAG_RERANKING_MODEL_AUTO_UPDATE": "false",
                   "WHISPER_MODEL_AUTO_UPDATE": "false", "ENABLE_VERSION_UPDATE_CHECK": "false"})
+    # 界面与 Agent 分别加载自己的 LangChain 依赖。
+    agent_environment = {**common, "MEDIA_FACTORY_AGENT_PACKAGES": str(args.bundle / "agent-packages")}
+    webui["LANGSMITH_TRACING"] = "false"
+    webui["LANGCHAIN_TRACING_V2"] = "false"
     children = []
     def log_output(process, name):
         with (home / "logs" / (name + ".log")).open("a", encoding="utf-8") as stream:
@@ -139,7 +143,7 @@ def main():
                 stream.write(redact(line))
                 stream.flush()
     try:
-        for name, module, environment, port in (("agent", "desktop.gateway:app", common, ports["agent"]),
+        for name, module, environment, port in (("agent", "desktop.gateway:app", agent_environment, ports["agent"]),
                                                   ("open-webui", "open_webui.main:app", webui, ports["webui"])):
             command = ([sys.executable, "-m", "uvicorn", module, "--host", "127.0.0.1", "--port", str(port), "--no-access-log"]
                        if name == "agent" else [sys.executable, "-c", f"from open_webui import serve; serve(host='127.0.0.1', port={port})"])

@@ -12,11 +12,19 @@ from .redaction import redact
 
 def tracing_settings():
     load_dotenv(ROOT / ".env", override=False)
+    endpoint = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com").rstrip("/")
+    web_url = {
+        "https://api.smith.langchain.com": "https://smith.langchain.com",
+        "https://apac.api.smith.langchain.com": "https://apac.smith.langchain.com",
+        "https://eu.api.smith.langchain.com": "https://eu.smith.langchain.com",
+        "https://aws.api.smith.langchain.com": "https://aws.smith.langchain.com",
+    }.get(endpoint, endpoint.removesuffix("/api"))
     return {
+        "endpoint": endpoint,
         "enabled": os.getenv("LANGSMITH_TRACING", "false").lower() == "true",
         "configured": bool(os.getenv("LANGSMITH_API_KEY")),
         "project": os.getenv("LANGSMITH_PROJECT", "media-factory"),
-        "url": "https://smith.langchain.com",
+        "url": web_url,
     }
 
 

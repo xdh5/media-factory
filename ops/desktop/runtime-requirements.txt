@@ -1,12 +1,5 @@
-# 桌面端的固定上游版本；只分发原版 Open WebUI。
+# 界面运行时的固定上游版本；Agent 依赖单独安装到 agent-packages。
 open-webui==0.12.3
-deepagents>=0.7.32,<0.8
-langchain-openai>=1.7.3,<2
-langsmith>=0.14.16,<1
-langgraph>=1.0,<2
-langgraph-checkpoint-sqlite>=3,<4
-filelock>=3.16,<5
-jsonschema>=4.23,<5
 tzdata>=2025.2
 edge-tts>=7.2
 google-api-python-client>=2.140

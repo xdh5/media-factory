@@ -1,6 +1,7 @@
 """构建免安装目录；构建机需要 Windows x64 Python 3.12，成品不需要。"""
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -38,7 +39,7 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "dist/MediaFactory")
     parser.add_argument("--electron-version", default="42.11.16")
     parser.add_argument("--prepare-only", action="store_true", help="只准备运行时及项目资源，不视为完整构建")
-    parser.add_argument("--reuse-runtime", action="store_true", help="复用构建目录已安装依赖，仍执行全部导入验证")
+    parser.add_argument("--reuse-runtime", action="store_true", help="复用已安装的界面依赖，仍安装 Agent 依赖并执行导入检查")
     args = parser.parse_args()
     if sys.platform != "win32" or sys.version_info[:2] != (3, 12):
         raise RuntimeError("请使用 Windows x64 Python 3.12 构建")
@@ -88,9 +89,17 @@ def main():
     with zipfile.ZipFile(python_archive) as source:
         source.extractall(runtime)
     (runtime / "python312._pth").write_text("python312.zip\n.\nLib/site-packages\n../project\nimport site\n", encoding="utf-8")
+    agent_packages = application / "agent-packages"
+    agent_packages.mkdir(exist_ok=True)
     site = runtime / "Lib/site-packages"
     site.mkdir(parents=True, exist_ok=True)
-    (site / "sitecustomize.py").write_text('"""从外部持久化目录加载工作区。"""\nimport os, sys\nroot = os.getenv("MEDIA_FACTORY_WORKSPACE")\nif root:\n    sys.path.insert(0, root)\n', encoding="utf-8")
+    (site / "sitecustomize.py").write_text(
+        '\"\"\"加载外部工作区与进程专用依赖。\"\"\"\n'
+        'import os, sys\n'
+        'root = os.getenv("MEDIA_FACTORY_WORKSPACE")\n'
+        'if root:\n    sys.path.insert(0, root)\n'
+        'packages = os.getenv("MEDIA_FACTORY_AGENT_PACKAGES")\n'
+        'if packages:\n    sys.path.insert(0, packages)\n', encoding="utf-8")
     binaries = application / "bin"
     binaries.mkdir(exist_ok=True)
     ffmpeg = shutil.which("ffmpeg")
@@ -106,21 +115,36 @@ def main():
     if not args.reuse_runtime:
         subprocess.run([sys.executable, "-m", "pip", "install", "--no-compile", "--timeout", "120", "--retries", "4", "--target", str(runtime / "Lib/site-packages"),
                         "--upgrade", "--only-binary=:all:", "-r", str(requirements), str(ROOT) + "[desktop]"], env=environment, check=True)
+    subprocess.run([sys.executable, "-m", "pip", "install", "--no-compile", "--timeout", "120", "--retries", "4",
+                    "--target", str(agent_packages), "--upgrade", "--only-binary=:all:", str(ROOT) + "[agent]"],
+                   env=environment, check=True)
     for name in ("core", "agent", "desktop", "docs"):
         shutil.copytree(ROOT / name, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
     shutil.copy2(ROOT / "desktop/main.cjs", application / "main.cjs")
     (CACHE / "build-check-webui").mkdir(parents=True, exist_ok=True)
-    subprocess.run([str(runtime / "python.exe"), "-c", "import open_webui.main; import desktop.gateway; import core.mcp.finance.server; import core.mcp.language_learning.server; import core.mcp.anime.__main__; import core.mcp.publishing.server"],
-                   cwd=project, env={**environment, "DATA_DIR": str(CACHE / "build-check-webui"), "OFFLINE_MODE": "true",
-                                     "HF_HUB_OFFLINE": "1", "RAG_EMBEDDING_ENGINE": "openai", "FROM_INIT_PY": "true",
-                                     "CORS_ALLOW_ORIGIN": "http://127.0.0.1",
-                                     "STATIC_DIR": str(CACHE / "build-check-webui/static"),
-                                     "WEBUI_SECRET_KEY": "0" * 64,
-                                     "MEDIA_FACTORY_HOME": str(CACHE / "gateway-check"),
-                                     "MEDIA_FACTORY_AGENT_DATABASE": str(CACHE / "gateway-check/agent.sqlite")}, check=True)
+    check_environment = {**environment, "DATA_DIR": str(CACHE / "build-check-webui"), "OFFLINE_MODE": "true",
+                         "HF_HUB_OFFLINE": "1", "RAG_EMBEDDING_ENGINE": "openai", "FROM_INIT_PY": "true",
+                         "CORS_ALLOW_ORIGIN": "http://127.0.0.1",
+                         "STATIC_DIR": str(CACHE / "build-check-webui/static"), "WEBUI_SECRET_KEY": "0" * 64,
+                         "MEDIA_FACTORY_HOME": str(CACHE / "gateway-check"),
+                         "MEDIA_FACTORY_AGENT_DATABASE": str(CACHE / "gateway-check/agent.sqlite")}
+    subprocess.run([str(runtime / "python.exe"), "-c", "import open_webui.main"],
+                   cwd=project, env=check_environment, check=True)
+    agent_environment = {**check_environment, "MEDIA_FACTORY_AGENT_PACKAGES": str(agent_packages)}
+    subprocess.run([str(runtime / "python.exe"), "-c",
+                    "import desktop.gateway; import core.mcp.finance.server; import core.mcp.language_learning.server; "
+                    "import core.mcp.anime.__main__; import core.mcp.publishing.server"],
+                   cwd=project, env=agent_environment, check=True)
     with (output / "依赖版本.txt").open("w", encoding="utf-8") as versions:
-        subprocess.run([str(runtime / "python.exe"), "-c", "import importlib.metadata as m; print(*sorted(d.metadata['Name']+'=='+d.version for d in m.distributions()), sep=chr(10))"], stdout=versions, check=True)
+        for label, version_environment in (("界面依赖", check_environment), ("Agent 依赖", agent_environment)):
+            versions.write(label + "\n")
+            versions.flush()
+            subprocess.run([str(runtime / "python.exe"), "-c",
+                "import importlib.metadata as m; print(*(name+'=='+m.version(name) for name in "
+                "sorted({d.metadata['Name'] for d in m.distributions()})), sep=chr(10))"],
+                stdout=versions, env=version_environment, check=True)
     (output / "构建信息.json").write_text(json.dumps({"electron": version, "python": "3.12.10", "open_webui": "0.12.3",
+        "built_at": datetime.now(timezone.utc).isoformat(), "agent_dependencies": "resources/app/agent-packages",
         "entry": "MediaFactory.exe", "dependencies_verified": True}, ensure_ascii=False, indent=2), encoding="utf-8")
     shutil.copy2(ROOT / "desktop/README.md", output / "使用说明.md")
     (output / "electron.exe").replace(executable)

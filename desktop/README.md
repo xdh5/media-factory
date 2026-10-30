@@ -2,7 +2,7 @@
 
 ## 运行与持久化
 
-完整交付目录包含 `MediaFactory.exe`、Electron 资源、内嵌 Python、原版 Open WebUI、项目源码和 FFmpeg。无需安装 Python、Node.js 或 Docker，不创建服务，不修改系统环境变量，不需要管理员权限。不要只复制 EXE，必须保留同目录资源。
+完整交付目录包含 `MediaFactory.exe`、Electron 资源、内嵌 Python、原版 Open WebUI、独立 Agent 依赖、项目源码和 FFmpeg。无需安装 Python、Node.js 或 Docker，不创建服务，不修改系统环境变量，不需要管理员权限。不要只复制 EXE，必须保留同目录资源。
 
 双击 `MediaFactory.exe` 会先显示启动提示，随后打开原版 Open WebUI。项目内启动自动读取现有 `.env`，不弹配置窗口；模型列表显示实际使用的 `qwen3.7-plus`，同一个 Agent 自主调用财经、语言学习、动漫及发布工具即可。关闭主聊天窗口会退出客户端并回收它启动的服务、MCP、浏览器发布进程和 FFmpeg；不会终止其他软件启动的 Python 进程。
 
@@ -32,7 +32,7 @@ AGENT_EMBEDDING_MODEL=text-embedding-v3
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=你的LangSmith密钥
 LANGSMITH_PROJECT=media-factory
-LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+LANGSMITH_ENDPOINT=https://apac.api.smith.langchain.com
 ```
 
 故障知识需要 Embedding 接口，默认复用百炼密钥和兼容接口；其他模型服务可配置 `AGENT_EMBEDDING_API_KEY`、`AGENT_EMBEDDING_BASE_URL` 和 `AGENT_EMBEDDING_MODEL`。重排默认使用本地检索词覆盖度，设置 `AGENT_RERANK_MODEL` 后才调用指定兼容模型。首次导入知识和正常模型请求需要联网，不会自动下载本地大模型。
@@ -73,7 +73,7 @@ python ops/desktop/diagnostics_cli.py rag-eval --database cache/rag-eval.sqlite 
 
 ## 从源码构建
 
-构建机需要 Windows x64、Python 3.12，以及可访问官方 Python、Electron 和 PyPI 下载服务的网络。先在 `integrations/media-publisher` 准备 `npm ci` 和 `npm run build:dir`，并准备 PATH 中的 `ffmpeg.exe` 与同目录 `ffprobe.exe`。这些要求只适用于构建机。
+构建机需要 Windows x64、Python 3.12，以及可访问官方 Python、Electron 和 PyPI 下载服务的网络。先在 `integrations/media-publisher` 准备 `npm ci` 和 `npm run build:dir`，并准备 PATH 中的 `ffmpeg.exe` 与同目录 `ffprobe.exe`。这些要求只适用于构建机。界面依赖安装到内嵌 Python，Agent 依赖安装到 `resources/app/agent-packages`，两个进程分别加载，避免上游 LangChain 版本约束冲突。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ops/desktop/build_portable.ps1

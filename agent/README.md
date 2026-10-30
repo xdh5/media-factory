@@ -114,10 +114,10 @@ Agent 根据启动工具返回的 `poll_tool` 和 `task_path` 调用查询工具
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=你的LangSmith密钥
 LANGSMITH_PROJECT=media-factory
-LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+LANGSMITH_ENDPOINT=https://apac.api.smith.langchain.com
 ```
 
-LangSmith API Key 与模型服务密钥独立，在 LangSmith 设置页创建。企业或其他区域的部署使用对应 `LANGSMITH_ENDPOINT`。未启用追踪时 Agent 可以运行；启用追踪而没有密钥时会明确报错。桌面管理页显示启用状态，并提供 LangSmith 入口。
+LangSmith API Key 与模型服务密钥独立，在 LangSmith 设置页创建。上述接口对应亚太组织，页面为 `https://apac.smith.langchain.com`；区域按组织所在的数据区选择，与使用者的物理位置无关。其他区域或企业部署使用对应 `LANGSMITH_ENDPOINT`，管理页入口随接口配置切换。未启用追踪时 Agent 可以运行；启用追踪而没有密钥时会明确报错。桌面管理页显示启用状态，并提供 LangSmith 入口。
 
 任务、模型调用、工具调用和检索链路由 SDK 原生记录；`thread_id` 关联同一聊天，运行结果中的 `run_id` 对应本次原生执行。模型与工具耗时、Token 用量和异常在 LangSmith 查看；模型费用取决于 LangSmith 是否已配置对应模型价格。输入输出上传前脱敏。执行记录和评分不再双写本地 Trace 表；旧本地记录保留，未自动上传。
 
