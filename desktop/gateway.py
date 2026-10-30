@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Stre
 
 from agent.diagnostics.knowledge import KnowledgeBase
 from agent.diagnostics.redaction import redact
-from agent.diagnostics.tracing import TraceStore
+from agent.diagnostics.tracing import agent_tracing, langsmith_client, tracing_settings
 from agent.journal import CallJournal
 from agent.settings import ROOT, SERVERS, llm_configuration
 from .runtime import AgentRuntime
@@ -107,22 +107,22 @@ def media_links(result, request):
 def result_text(result, request):
     lines = []
     for pending in result.get("interrupts", []):
-        identity = pending["id"]
         if pending["kind"] == "approval":
             lines.append("\n这一步需要你确认，我还没有执行。\n")
-            lines.append("操作：`" + pending.get("tool", "敏感操作") + "`\n")
-            lines.append("```json\n" + json.dumps(redact(pending.get("arguments", {})), ensure_ascii=False, indent=2) + "\n```\n")
+            for action in pending["action_requests"]:
+                lines.append("操作：`" + action["name"] + "`\n")
+                lines.append("```json\n" + json.dumps(redact(action["args"]), ensure_ascii=False, indent=2) + "\n```\n")
             lines.append("直接在当前对话回复“同意”或“取消”即可。\n")
         elif pending["kind"] == "pause":
             lines.append("\n任务已暂停，直接回复“继续”即可。\n")
-        elif pending["kind"] == "uncertain":
-            lines.append("\n上次操作的结果尚未确认，我已停止自动重试，避免重复执行。请先核对实际业务结果。\n")
         elif pending["kind"] == "input":
             lines.append("\n" + str(pending.get("question", pending.get("message", "请补充任务所需的信息。"))) + "\n")
     if result.get("status") == "recoverable":
         lines.append("\n任务可恢复，发送 `/恢复` 继续。\n")
     if result.get("status") == "limit_reached":
         lines.append("\n本轮已达到执行次数上限，进度已保存。在当前聊天回复“继续”即可接着执行，无需新建聊天。\n")
+    if result.get("task_id"):
+        lines.append("\n\n任务：`" + result["task_id"] + "`\n")
     lines.extend(media_links(result, request))
     return "".join(lines)
 
@@ -167,8 +167,6 @@ async def chat(request: Request):
                 has_tokens = True
                 yield event["text"]
             elif event["kind"] == "tool":
-                if event["name"] == "agent_load_tools":
-                    continue
                 if event["name"].endswith("_poll_task"):
                     payload = event.get("payload", {})
                     result = payload.get("result", {})
@@ -216,14 +214,9 @@ async def media(encoded: str, signature: str):
 
 @app.get("/api/overview", dependencies=[Depends(authenticated)])
 async def overview():
-    return {"runs": runtime.store.list_runs(), "documents": KnowledgeBase(DATABASE).list_documents(),
-            "evaluations": runtime.store.evaluations(), "configuration": list(dotenv_values(HOME / "config.env")),
+    return {"active_tasks": sorted(runtime.active), "documents": KnowledgeBase(DATABASE).list_documents(),
+            "langsmith": tracing_settings(), "configuration": list(dotenv_values(HOME / "config.env")),
             "home": str(HOME)}
-
-
-@app.get("/api/traces/{run_id}", dependencies=[Depends(authenticated)])
-async def traces(run_id: str):
-    return runtime.store.chain(run_id)
 
 
 @app.get("/api/tasks/{task_id}", dependencies=[Depends(authenticated)])
@@ -265,13 +258,15 @@ async def configure(request: Request):
         raise HTTPException(400, "不能覆盖客户端运行目录或会话授权")
     (HOME / "config.env").write_text(raw, encoding="utf-8")
     os.environ.update({key: value for key, value in configuration.items() if value is not None})
+    langsmith_client.cache_clear()
     return {"saved": True, "message": "模型配置已生效；MCP 业务配置变更后请重启客户端"}
 
 
 @app.post("/api/knowledge/search", dependencies=[Depends(authenticated)])
 async def search(request: Request):
     body = await request.json()
-    return await KnowledgeBase(DATABASE).search(body["query"], k=min(20, max(1, body.get("k", 5))))
+    with agent_tracing():
+        return await KnowledgeBase(DATABASE).search(body["query"], k=min(20, max(1, body.get("k", 5))))
 
 
 @app.post("/api/knowledge/ingest", dependencies=[Depends(authenticated)])
@@ -279,7 +274,8 @@ async def ingest(request: Request):
     body = await request.json()
     if body.get("kind") == "solution" and body.get("verified") is not True:
         raise HTTPException(400, "解决方案必须经人工核验")
-    identity = await KnowledgeBase(DATABASE).ingest(body["source"], body["content"], body.get("kind", "document"), body.get("evidence", ""))
+    with agent_tracing():
+        identity = await KnowledgeBase(DATABASE).ingest(body["source"], body["content"], body.get("kind", "document"), body.get("evidence", ""))
     return {"id": identity}
 
 
@@ -289,42 +285,29 @@ async def import_project():
     documents = []
     paths = list((WORKSPACE / "docs").rglob("*.md")) + list((WORKSPACE / "agent").glob("*.md"))
     for path in paths:
-        documents.append(await knowledge.ingest(str(path.relative_to(WORKSPACE)), path.read_text(encoding="utf-8")))
+        with agent_tracing():
+            documents.append(await knowledge.ingest(str(path.relative_to(WORKSPACE)), path.read_text(encoding="utf-8")))
     return {"imported": len(documents)}
 
 
 @app.post("/api/knowledge/reindex", dependencies=[Depends(authenticated)])
 async def reindex():
-    return await KnowledgeBase(DATABASE).reindex()
+    with agent_tracing():
+        return await KnowledgeBase(DATABASE).reindex()
 
 
-@app.post("/api/runs/{run_id}/label", dependencies=[Depends(authenticated)])
-async def label(run_id: str, request: Request):
+@app.post("/api/langsmith/datasets", dependencies=[Depends(authenticated)])
+async def upload_cases(request: Request):
+    from agent.diagnostics.evaluation import upload_diagnostic_cases
     body = await request.json()
-    if type(body.get("success")) is not bool:
-        raise HTTPException(400)
-    runtime.store.label(run_id, body["success"], body["evidence"])
-    return {"saved": True}
+    return await asyncio.to_thread(upload_diagnostic_cases, body["cases"], body["dataset"])
 
 
-@app.post("/api/evals/{kind}", dependencies=[Depends(authenticated)])
-async def evaluate(kind: str, request: Request):
-    from agent.diagnostics.evaluation import agent_metrics, evaluate_rag
+@app.post("/api/langsmith/evaluate-rag", dependencies=[Depends(authenticated)])
+async def evaluate(request: Request):
+    from agent.diagnostics.evaluation import evaluate_rag
     body = await request.json()
-    if kind == "agent":
-        report = agent_metrics(runtime.store)
-    elif kind == "rag":
-        report = await evaluate_rag(KnowledgeBase(DATABASE), body["cases"], body.get("k", 5))
-    else:
-        raise HTTPException(404)
-    runtime.store.save_evaluation(kind, report)
-    return report
-
-
-@app.post("/api/evals/{evaluation_id}/diagnosis-label", dependencies=[Depends(authenticated)])
-async def diagnosis_label(evaluation_id: str, request: Request):
-    body = await request.json()
-    return runtime.store.label_diagnosis(evaluation_id, body["case_id"], body["correct"], body["evidence"])
+    return await evaluate_rag(KnowledgeBase(DATABASE), body["dataset"], body.get("k", 5))
 
 
 @app.post("/api/shutdown", dependencies=[Depends(authenticated)])

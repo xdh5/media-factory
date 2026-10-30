@@ -5,19 +5,21 @@ import asyncio
 import hashlib
 import json
 import sys
+import uuid
 from pathlib import Path
 
 from filelock import FileLock
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.graph import START
+from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
+from langchain_core.messages import BaseMessage, convert_to_openai_messages
 from langgraph.types import Command
 
 from .journal import CallJournal
-from .llm import ToolCallingLLM
 from .mcp_client import MCPTools
 from .settings import AgentSettings, SERVERS
-from .workflow import build_graph, initial_state
-from .diagnostics.tracing import TraceStore, RunObserver
+from .agent import create_media_agent, initial_state, require_current_checkpoint
+from .interrupts import interrupt_payload, resume_value
+from .streaming import stream_agent
 from .diagnostics.knowledge import KnowledgeBase
 
 
@@ -34,22 +36,25 @@ def parser():
             action.add_argument("--llm-timeout", type=float, default=180)
             action.add_argument("--max-attempts", type=int, default=3)
             action.add_argument("--max-llm-tokens", type=int, default=100000)
+            action.add_argument("--max-steps", type=int, default=60, help="每次执行的模型调用次数上限")
         if name == "run":
             action.add_argument("task", help="自然语言任务")
             action.add_argument("--servers", nargs="+", choices=list(SERVERS), default=["finance"])
-            action.add_argument("--max-steps", type=int, default=60)
+
         if name == "resume":
             action.add_argument("--response", help="审批、人工回答或核对回执的 JSON")
     return command
 
 
 def snapshot_output(snapshot):
-    interrupts = [item.value for task in snapshot.tasks for item in task.interrupts]
+    interrupts = [interrupt_payload(item.value) for task in snapshot.tasks for item in task.interrupts]
+    last_message = (snapshot.values.get("messages") or [None])[-1]
+    if isinstance(last_message, BaseMessage):
+        last_message = convert_to_openai_messages(last_message)
     return {"status": "paused" if interrupts else (
-        "recoverable" if snapshot.next else snapshot.values.get("status", "unknown")),
-        "steps": snapshot.values.get("steps"), "next": list(snapshot.next),
-        "interrupts": interrupts,
-        "last_message": (snapshot.values.get("messages") or [None])[-1]}
+        "recoverable" if snapshot.next else "completed" if snapshot.values else "unknown"),
+        "steps": snapshot.values.get("thread_model_call_count", snapshot.values.get("steps", 0)),
+        "next": list(snapshot.next), "interrupts": interrupts, "last_message": last_message}
 
 
 async def execute_command(arguments):
@@ -59,14 +64,14 @@ async def execute_command(arguments):
         if hasattr(arguments, name)})
     settings.database.parent.mkdir(parents=True, exist_ok=True)
     journal = CallJournal(settings.database)
-    traces, run_id = None, None
     try:
         if arguments.command == "pause":
             journal.pause(arguments.task_id)
             return {"status": "pause_requested", "message": "当前操作完成后在下一边界暂停"}
         async with AsyncSqliteSaver.from_conn_string(str(settings.database)) as saver:
-            config = {"configurable": {"thread_id": arguments.task_id}, "recursion_limit": 100000}
-            graph = build_graph(None, None, journal, saver, settings, arguments.task_id)
+            config = {"configurable": {"thread_id": arguments.task_id}, "recursion_limit": 100000,
+                      "run_id": uuid.uuid4(), "metadata": {"thread_id": arguments.task_id}, "tags": ["命令行任务"]}
+            graph = create_media_agent(None, journal, saver, settings, arguments.task_id)
             snapshot = await graph.aget_state(config)
             if arguments.command == "status":
                 if not snapshot.values:
@@ -77,57 +82,39 @@ async def execute_command(arguments):
                     raise ValueError("任务 ID 已存在，请使用 resume 或新的 ID")
                 servers = arguments.servers
             else:
+                require_current_checkpoint(snapshot)
                 if not snapshot.values:
                     raise ValueError("任务不存在")
                 if not snapshot.next:
                     return snapshot_output(snapshot)
                 servers = snapshot.values["servers"]
             async with MCPTools(servers, session_timeout=settings.llm_timeout) as tools:
-                traces = TraceStore(settings.database)
-                run_id = traces.start(arguments.task_id)
                 knowledge = KnowledgeBase(settings.database)
-                observer = RunObserver(traces, run_id, knowledge=knowledge)
-                knowledge.observer = observer
-                graph = build_graph(ToolCallingLLM(settings, observer), tools, journal, saver, settings, arguments.task_id, observer)
+                graph = create_media_agent(tools, journal, saver, settings, arguments.task_id, knowledge)
                 if arguments.command == "run":
-                    await graph.aupdate_state(
-                        config, initial_state(arguments.task, tools, servers, settings), as_node=START)
-                    graph_input = None
+                    graph_input = initial_state(arguments.task, servers)
                 else:
                     pending = [item for task in snapshot.tasks for item in task.interrupts]
                     if pending:
-                        kind = pending[0].value["kind"]
-                        from .approval_policy import requires_approval
-                        if kind == "approval" and not requires_approval(pending[0].value["tool"], pending[0].value.get("arguments", {}), False):
-                            response = {"approved": True}
-                        elif kind == "uncertain":
-                            response = {}
-                        else:
-                            if arguments.response is None:
-                                raise ValueError("任务等待人工输入，请使用 --response 提供 JSON")
-                            response = json.loads(arguments.response)
-                        if kind == "approval" and (not isinstance(response, dict) or type(response.get("approved")) is not bool):
-                            raise ValueError('审批格式为 {"approved": true} 或 {"approved": false}')
+                        if arguments.response is None:
+                            raise ValueError("任务等待人工输入，请使用 --response 提供 JSON")
+                        response = resume_value(pending[0].value, json.loads(arguments.response))
                         graph_input = Command(resume={pending[0].id: response})
                     else:
                         if arguments.response is not None:
                             raise ValueError("当前没有等待处理的人工中断")
                         graph_input = None
                 try:
-                    await asyncio.wait_for(graph.ainvoke(graph_input, config, durability="sync"), settings.run_timeout)
+                    await asyncio.wait_for(stream_agent(graph, graph_input, config), settings.run_timeout)
+                except ModelCallLimitExceededError:
+                    return {**snapshot_output(await graph.aget_state(config)), "status": "limit_reached"}
                 except TimeoutError:
-                    traces.finish(run_id, "recoverable")
                     return {**snapshot_output(await graph.aget_state(config)),
                             "message": "本次执行超时，已保留检查点；使用 resume 继续"}
-                except Exception:
-                    traces.finish(run_id, "error")
-                    raise
                 result = snapshot_output(await graph.aget_state(config))
-                traces.finish(run_id, result["status"])
+                result["run_id"] = str(config["run_id"])
                 return result
     finally:
-        if traces and run_id:
-            traces.finish_interrupted(run_id)
         journal.close()
 
 

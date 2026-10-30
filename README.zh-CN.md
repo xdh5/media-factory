@@ -20,7 +20,7 @@ Media Factory 将这些环节设计为一个有状态、可恢复的工作流，
 
 ### Agent 编排的生产流程
 
-项目提供可独立调用 LLM API 的 [LangGraph Agent 模块](agent/README.md)，支持工具调用、检查点恢复、暂停与人工审批，可与现有 Codex + MCP 工作方式并行使用。
+项目提供可独立调用 LLM API 的 [Deep Agents 模块](agent/README.md)，使用 Deep Agents 原生工具循环、重试、审批和流式输出，支持检查点恢复；追踪、反馈、数据集与评估接入 LangSmith，可与现有 Codex + MCP 工作方式并行使用。
 
 [Windows 绿色版客户端](desktop/README.md) 使用原版 Open WebUI 与 Electron，提供多轮聊天、流式工具调用、人工审批、视频预览、故障 RAG、长期记忆和 Tracing/Evals 管理入口。
 

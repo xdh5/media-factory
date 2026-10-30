@@ -34,6 +34,9 @@ packages = []
 
 [project.optional-dependencies]
 agent = [
+    "deepagents>=0.7.32,<0.8",
+    "langchain-openai>=1.7.3,<2",
+    "langsmith>=0.14.16,<1",
     "langgraph>=1.0,<2",
     "langgraph-checkpoint-sqlite>=3,<4",
     "httpx>=0.28,<1",

@@ -2,7 +2,13 @@
 
 from contextlib import AsyncExitStack
 from copy import deepcopy
+import asyncio
 import json
+
+from langchain_core.tools import StructuredTool, ToolException
+from langgraph.config import get_stream_writer
+
+from .streaming import tool_event
 
 from core.mcp.client import ProjectMCP
 from .settings import ROOT, SERVERS
@@ -111,3 +117,28 @@ class ScopedTools:
         if name not in self.names:
             raise KeyError(name)
         return await self.parent.call(name, arguments, timeout)
+
+
+def adapt_mcp_tool(definition, mcp_tools, settings):
+    """将 MCP JSON Schema 与异步调用注册为可执行的 LangChain 工具。"""
+    function = definition["function"]
+    name = function["name"]
+
+    async def invoke(**arguments):
+        result = await asyncio.wait_for(
+            mcp_tools.call(name, arguments, settings.tool_timeout), settings.tool_timeout)
+        # 后台轮询在工具内部等待，避免为每次进度查询请求模型。
+        while (name.endswith("_poll_task") and isinstance(result, dict)
+               and result.get("done") is False and not result.get("error")
+               and result.get("status") not in {"failed", "cancelled"}):
+            get_stream_writer()(tool_event(name, result))
+            await asyncio.sleep(15)
+            result = await asyncio.wait_for(
+                mcp_tools.call(name, arguments, settings.tool_timeout), settings.tool_timeout)
+        if isinstance(result, dict) and (result.get("error") or result.get("status") == "failed"):
+            raise ToolException(json.dumps(result, ensure_ascii=False))
+        return result
+
+    return StructuredTool.from_function(name=name, description=function["description"],
+        args_schema=function["parameters"], coroutine=invoke)
+
