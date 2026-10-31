@@ -62,7 +62,7 @@ language_learning_save_images
 └─ generate_image.save_agent_image_tasks
 
 language_learning_submit_images
-└─ generate_image.submit_agent_image_tasks  （同步，千问仅作失败兜底生图）
+└─ generate_image.submit_agent_image_tasks  （同步，仅提交宿主生成的图片）
 
 language_learning_start_submit_images
 └─ core.mcp._task_runner.submit_task

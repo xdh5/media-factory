@@ -88,7 +88,7 @@ finance_get_topics
 finance_start_storyboard(draft_path, tts_config, material_strategy)
 └─ core.mcp._task_runner.submit_task
    └─ tools.storyboard.prepare_storyboard
-      └─ prompts/shot_image_rules.md（qwen_reference）
+      └─ prompts/shot_image_rules.md（agent_reference）
       └─ prompts/stock_video_rules.md（stock_video）
 
 finance_poll_task(task_path)
@@ -96,12 +96,11 @@ finance_poll_task(task_path)
 
 [Agent 按 storyboard_prompt 写分镜行，并为每句原样写 SUB 字幕；成片统一套用黄色 karaoke 逐字扫]
 
-素材策略 A：参考图千问生图
+素材策略 A：参考图宿主生图
 finance_prepare_images(..., image_config)
 └─ tools.prepare_shot_images.prepare_shot_images
-   └─ qwen_reference → 每个镜头建立独立任务并附带用户参考图
-finance_start_generate_images(context_path)
-└─ tools.generate_qwen_shot_images.generate_qwen_shot_images
+   └─ agent_reference → 每个镜头建立独立任务并附带用户参考图
+宿主按任务 Prompt 生图
 finance_save_images / finance_submit_images
 └─ generate_image 保存或提交 Agent 图任务
 
@@ -117,7 +116,7 @@ finance_start_download_videos(context_path)
 finance_start_finish_video(..., production_config, material_manifest_path, intro_image_path?)
 └─ core.mcp._task_runner.submit_task
    └─ tools.assemble_finance_video.finish_finance_video
-      └─ 按素材清单自动识别策略（images → 千问生图；videos → 实拍视频）
+      └─ 按素材清单自动识别策略（images → 宿主生图；videos → 实拍视频）
       └─ 复用 prepare_storyboard 的 tts_path
       └─ 从本期下载的正文实拍视频帧随机选底图，再由 generate_cover_image 保留原封面叠字样式
       └─ generate_shot.generate_shot_from_intro（片头动画 + 快门音效）
@@ -139,7 +138,7 @@ finance_poll_task(task_path)
 | `tools/storyboard.py` | TTS、timeline 与分镜解析（IMAGE / VIDEO 两种行标记） |
 | `tools/narration.py` | 旁白切句与字幕显示（去句尾标点） |
 | `tools/prepare_shot_images.py` | 按 image_config 准备镜头图 |
-| `tools/generate_qwen_shot_images.py` | 逐镜头千问生图并登记独立生成图库 |
+| `services/image_delivery.py` | 校验宿主镜头图并登记独立生成图库 |
 | `tools/prepare_videos.py` | 正版实拍视频搜索、下载、规范化与磨砂 |
 | `tools/assemble_finance_video.py` | 封面、片头、钩子图层与最终合成 |
 | `tools/upload_to_r2.py` | 上传成片、封面和生产清单到 R2 |
@@ -151,7 +150,7 @@ GitHub 周生产按 `finance_get_automation_plan` 的缺失分片补齐每日两
 - 缓存：`cache/finance/{run_id}/`
 - 成片：`cache/output/finance/run-YYYYMMDD/`，日期为北京时间计划发布日期
 - 产物记录：成片成功后自动写入 D1 `production_outputs`
-- 千问生成图库：`data/image_library_finance/{连续编号}.png`
+- 宿主生成图库：`data/image_library_finance/{连续编号}.png`
 - 来源稿件：已收集的财经文案；保存草稿后继续临时占用，成片成功后才永久标记为已使用
 - 素材来源清单：实拍视频策略会写出 `cache/output/finance/{run_id}/attribution-comment.txt`
 - 图片记录：独立 D1 表 `finance_generated_images`

@@ -6,9 +6,6 @@ from pathlib import Path
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-# 语言主体图和财经片头均使用百炼当前静态生图模型；图生视频模型不得填入此入口。
-QWEN_IMAGE_MODEL = "wan2.7-image-pro"
-QWEN_IMAGE_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 AGENT_IMAGE_TASK_VERSION = 4
 AGENT_IMAGE_CONTEXT_NAME = "agent-image-context.json"
 AGENT_IMAGE_MANIFEST_NAME = "agent-image-manifest.json"

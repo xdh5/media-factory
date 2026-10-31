@@ -36,8 +36,7 @@ class MCPTools:
         try:
             for name in self.servers:
                 client = await self.stack.enter_async_context(ProjectMCP(
-                    SERVERS[name], ROOT, session_timeout_seconds=self.session_timeout,
-                    environment_overrides={"DASHSCOPE_BUSINESS_LINE": name} if name in {"finance", "language_learning"} else None))
+                    SERVERS[name], ROOT, session_timeout_seconds=self.session_timeout))
                 self.instructions.append(await client.instructions())
                 for tool in await client.list_tools():
                     if tool.name in self.tools:

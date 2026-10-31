@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import uuid
 import warnings
@@ -11,7 +10,6 @@ from copy import deepcopy
 from datetime import date
 from pathlib import Path
 
-os.environ.setdefault("DASHSCOPE_BUSINESS_LINE", "language_learning")
 
 warnings.filterwarnings(
     "ignore",
@@ -28,7 +26,6 @@ from ..infrastructure import (
     release_language_learning_pack,
     commit_language_learning_pack,
     list_language_learning_pack_topics,
-    generate_qwen_image,
     get_topic,
     list_production_outputs,
     list_publication_records,
@@ -155,7 +152,7 @@ def language_learning_get_topic_generation_prompt(recent_topics: list[str], requ
 
 
 def language_learning_validate_topic_response(response_text: str, recent_topics: list[str]) -> dict:
-    """统一校验宿主 Agent 或千问生成的英文主题。"""
+    """统一校验宿主 Agent 生成的英文主题。"""
     try:
         return validate_topic_response(response_text, recent_topics)
     except Exception as exc:
@@ -189,34 +186,6 @@ def language_learning_get_production_outputs(publish_date: str) -> dict:
         }
     except Exception as exc:
         raise _map_error(exc) from exc
-
-
-def _run_qwen_fallback(context_path: str, failures: list, images: list) -> None:
-    """宿主无能力或单张失败三次后，才调用千问。"""
-    provided = {str(item.get("image_id") or "").strip() for item in images if isinstance(item, dict)}
-    context_file = Path(context_path).resolve()
-    context = json.loads(context_file.read_text(encoding="utf-8"))
-    tasks = {str(task.get("image_id") or ""): task for task in context.get("tasks") or []}
-    seen: set[str] = set()
-    for item in failures:
-        image_id = str(item["image_id"]).strip()
-        if image_id in seen:
-            raise LanguageLearningError(f"失败结果重复：{image_id}")
-        if image_id in provided:
-            raise LanguageLearningError(f"图片 {image_id} 不能同时提交成功路径和失败结果")
-        task = tasks[image_id]
-        attempts = item.get("attempts", 0)
-        if item.get("capability_unavailable") is not True and attempts < 3:
-            raise LanguageLearningError(f"图片 {image_id} 仅失败 {attempts} 次；必须尝试满 3 次才能走千问")
-        references = task.get("referenced_image_paths") or []
-        generate_qwen_image(
-            str(task.get("prompt") or ""),
-            task["output_path"],
-            size=str(task["size"]),
-            reference_image_paths=list(references) if isinstance(references, list) else [],
-            cache_signature=str(task.get("cache_signature") or "") or None,
-        )
-        seen.add(image_id)
 
 
 def language_learning_get_topics() -> dict:
@@ -545,12 +514,9 @@ def language_learning_save_images(context_path: str, images: list[dict]) -> dict
 def language_learning_submit_images(
     context_path: str,
     images: list[dict],
-    failures: list[dict] | None = None,
 ) -> dict:
-    """提交主体图；若需千问兜底，优先使用 start_submit_images + poll_task。"""
+    """提交宿主生成的主体图并校验产物。"""
     try:
-        if failures:
-            _run_qwen_fallback(context_path, failures, images or [])
         result = submit_agent_image_tasks(context_path, images or [])
     except ImageGenerationError as exc:
         raise LanguageLearningError(exc.message, exc.details) from exc
@@ -568,10 +534,7 @@ def language_learning_submit_images(
 def _submit_images_worker(
     context_path: str,
     images: list[dict],
-    failures: list[dict] | None,
 ) -> dict:
-    if failures:
-        _run_qwen_fallback(context_path, failures, images or [])
     result = submit_agent_image_tasks(context_path, images or [])
     subject_sheet_path = (result.get("images") or {}).get(SUBJECT_SHEET_IMAGE_ID)
     if not subject_sheet_path:
@@ -588,10 +551,9 @@ def language_learning_start_submit_images(
     context_path: str,
     images: list[dict],
     run_id: str,
-    failures: list[dict] | None = None,
     generation_attempt: int = 1,
 ) -> dict:
-    """启动主体图提交（含可选千问兜底）；立即返回 task_path，用 language_learning_poll_task 轮询。"""
+    """启动宿主主体图提交；立即返回 task_path，用 language_learning_poll_task 轮询。"""
     try:
         cache_root, _ = production_dirs(run_id)
         if generation_attempt < 1 or generation_attempt > SUBJECT_GENERATION_MAX_ATTEMPTS:
@@ -601,11 +563,10 @@ def language_learning_start_submit_images(
 
         def _work(progress=None) -> dict:
             if progress is not None:
-                progress("开始千问兜底生图")
+                progress("正在提交宿主生成的主体图")
             return _submit_images_worker(
                 context_path,
                 images,
-                failures,
             )
 
         started = runner_submit_task(

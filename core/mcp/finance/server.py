@@ -1,9 +1,7 @@
 """财经 MCP 注册与服务实例。"""
 
-import os
 import warnings
 
-os.environ.setdefault("DASHSCOPE_BUSINESS_LINE", "finance")
 warnings.filterwarnings("ignore", message=r"Field 'lifespan' has an incomplete definition.*")
 
 from mcp.server.fastmcp import FastMCP

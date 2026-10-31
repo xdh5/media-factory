@@ -1,9 +1,8 @@
 """生图任务的真实入参和返回合同。
 
-公开入口分两类，互不耦合：
+公开入口：
 - 宿主 Agent：prepare_agent_image_tasks / save_agent_image_tasks / submit_agent_image_tasks
-- 千问：generate_qwen_image
-宿主失败后是否改走千问，由业务 MCP（如语言学习）决定，不放在 image 内。
+图片生成由宿主完成，工具只管理任务与结果。
 """
 
 from __future__ import annotations
@@ -115,18 +114,5 @@ SUBMIT_AGENT_IMAGE_TASKS_INPUT_SCHEMA = {
         "manifest_path": {"type": "string", "minLength": 1},
     },
     "required": ["context_path", "images"],
-    "additionalProperties": False,
-}
-
-GENERATE_QWEN_IMAGE_INPUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "prompt": {"type": "string", "minLength": 1},
-        "output_path": {"type": "string", "minLength": 1},
-        "size": {"type": "string"},
-        "reference_image_paths": {"type": "array", "items": {"type": "string"}},
-        "cache_signature": {"type": "string"},
-    },
-    "required": ["prompt", "output_path", "size"],
     "additionalProperties": False,
 }

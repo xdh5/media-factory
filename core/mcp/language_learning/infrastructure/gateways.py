@@ -14,7 +14,6 @@ from core.tools.media_records import (
 )
 from core.tools.generate_image import (
     ImageGenerationError,
-    generate_qwen_image,
     prepare_agent_image_tasks,
     save_agent_image_tasks,
     submit_agent_image_tasks,

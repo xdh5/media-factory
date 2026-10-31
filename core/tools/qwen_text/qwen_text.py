@@ -1,4 +1,4 @@
-"""通过百炼 OpenAI 兼容接口调用文本与视觉模型。"""
+"""通过百炼 OpenAI 兼容接口调用文本模型。"""
 
 from __future__ import annotations
 
@@ -18,10 +18,8 @@ from ._constants import (
     DASHSCOPE_BUSINESS_LINE_ENV,
     DASHSCOPE_ENABLE_THINKING_ENV,
     DASHSCOPE_MODEL_ENV,
-    DASHSCOPE_VISION_MODEL_ENV,
     DEFAULT_BASE_URL,
     DEFAULT_MODEL,
-    DEFAULT_VISION_MODEL,
     DEFAULT_TEMPERATURE,
     DEFAULT_TIMEOUT_SECONDS,
     MAX_RESPONSE_BYTES,
@@ -68,7 +66,6 @@ def get_qwen_configuration() -> dict:
     api_key = resolve_dashscope_api_key()
     base_url = os.getenv(DASHSCOPE_BASE_URL_ENV, "").strip() or DEFAULT_BASE_URL
     model = os.getenv(DASHSCOPE_MODEL_ENV, "").strip() or DEFAULT_MODEL
-    vision_model = os.getenv(DASHSCOPE_VISION_MODEL_ENV, "").strip() or DEFAULT_VISION_MODEL
     thinking_value = os.getenv(DASHSCOPE_ENABLE_THINKING_ENV)
     enable_thinking = _boolean(
         False if thinking_value is None else thinking_value,
@@ -78,15 +75,14 @@ def get_qwen_configuration() -> dict:
     temperature = DEFAULT_TEMPERATURE
     if not base_url.startswith("https://"):
         raise QwenConfigurationError("千问 base_url 必须使用 https://")
-    if not model or not vision_model:
-        raise QwenConfigurationError("千问文本模型和视觉模型不能为空")
+    if not model:
+        raise QwenConfigurationError("千问文本模型不能为空")
     if timeout_seconds < 1 or not 0 <= temperature <= 2:
         raise QwenConfigurationError("千问 timeout_seconds 或 temperature 超出允许范围")
     return {
         "api_key": api_key,
         "base_url": base_url.rstrip("/"),
         "model": model,
-        "vision_model": vision_model,
         "enable_thinking": enable_thinking,
         "timeout_seconds": timeout_seconds,
         "temperature": temperature,

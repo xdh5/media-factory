@@ -1,4 +1,4 @@
-"""逐镜头调用千问生图，并把结果登记到独立财经生成图库。"""
+"""接收宿主生成的镜头图，并登记到独立财经生成图库。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 from core.tools.media_records import MediaRecordsError
 
 from ..infrastructure.source_scripts import save_shot_images
-from core.tools.generate_image import ImageGenerationError, generate_qwen_image, submit_agent_image_tasks
+from core.tools.generate_image import submit_agent_image_tasks
 
 from ..config.settings import _PROJECT_ROOT
 from ..errors import WorkflowStepError
@@ -25,17 +25,17 @@ def _project_relative(path: str | Path) -> str:
 def _load_context(context_path: str | Path) -> tuple[Path, dict, dict, list[dict], list[str]]:
     resolved_context = Path(context_path).resolve()
     if not resolved_context.is_file():
-        raise WorkflowStepError(f"千问生图任务上下文不存在：{resolved_context}")
+        raise WorkflowStepError(f"宿主生图任务上下文不存在：{resolved_context}")
     try:
         context = json.loads(resolved_context.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise WorkflowStepError(f"读取千问生图任务上下文失败：{resolved_context}。{exc}") from exc
+        raise WorkflowStepError(f"读取宿主生图任务上下文失败：{resolved_context}。{exc}") from exc
     metadata = context.get("metadata")
     tasks = context.get("tasks")
-    if not isinstance(metadata, dict) or metadata.get("image_source") != "qwen_reference":
-        raise WorkflowStepError("当前图片任务不是财经千问参考图生图任务")
+    if not isinstance(metadata, dict) or metadata.get("image_source") != "agent_reference":
+        raise WorkflowStepError("当前图片任务不是财经宿主参考图生图任务")
     if not isinstance(tasks, list) or not tasks:
-        raise WorkflowStepError("千问生图任务上下文缺少 tasks")
+        raise WorkflowStepError("宿主生图任务上下文缺少 tasks")
     image_ids = [str(task.get("image_id") or "") for task in tasks]
     if any(not image_id for image_id in image_ids) or len(set(image_ids)) != len(image_ids):
         raise WorkflowStepError("每张图片必须具有唯一且非空的生图任务 ID")
@@ -88,38 +88,7 @@ def _commit_generated_images(
     }
 
 
-def generate_qwen_shot_images(context_path: str | Path, progress=None) -> dict:
-    """生成上下文中的全部镜头图；全部成功后直接写入独立图库。"""
-    resolved_context, _, metadata, tasks, image_ids = _load_context(context_path)
-
-    generated = []
-    total = len(tasks)
-    try:
-        for index, task in enumerate(tasks, start=1):
-            image_id = str(task["image_id"])
-            if progress is not None:
-                progress(f"千问生图 {index}/{total}：{image_id}")
-            result = generate_qwen_image(
-                str(task["prompt"]),
-                str(task["output_path"]),
-                size=str(task["size"]),
-                reference_image_paths=list(task.get("referenced_image_paths") or []),
-                cache_signature=str(task.get("cache_signature") or "") or None,
-            )
-            generated.append({"image_id": image_id, **result})
-    except ImageGenerationError as exc:
-        raise WorkflowStepError(exc.message, exc.details) from exc
-    return _commit_generated_images(
-        resolved_context,
-        metadata,
-        tasks,
-        image_ids,
-        generated=generated,
-        recovered_existing_images=False,
-    )
-
-
-def commit_existing_qwen_shot_images(context_path: str | Path) -> dict:
+def commit_existing_shot_images(context_path: str | Path) -> dict:
     """校验上下文中的现有镜头图并直接写入 D1，绝不调用生图服务。"""
     resolved_context, _, metadata, tasks, image_ids = _load_context(context_path)
     missing_paths = [

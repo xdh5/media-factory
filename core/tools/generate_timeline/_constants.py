@@ -39,7 +39,7 @@ DEFAULT_TIMELINE_STYLE: dict = {
     "separator_width": 2,
 }
 
-# 章节标题约束：给千问生成与兜底截断用。
+# 章节标题约束：供宿主标题与本地截断使用。
 TITLE_MIN_CHARS = 1
 TITLE_MAX_CHARS = 6
 

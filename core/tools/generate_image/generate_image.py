@@ -366,7 +366,7 @@ def submit_agent_image_tasks(
     *,
     manifest_path: str | Path | None = None,
 ) -> dict:
-    """接收已缓存的宿主 Agent 图片并写出清单；不调用千问。"""
+    """接收已缓存的宿主 Agent 图片并写出清单。"""
     resolved_context, context, tasks, task_by_id = _load_image_context(context_path)
     provided = _parse_image_results(images, allow_empty=True)
     if provided:

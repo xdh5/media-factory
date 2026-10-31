@@ -10,7 +10,6 @@ from .gateways import (
     release_language_learning_pack,
     commit_language_learning_pack,
     list_language_learning_pack_topics,
-    generate_qwen_image,
     get_topic,
     list_production_outputs,
     list_publication_records,

@@ -7,9 +7,8 @@ from ..infrastructure.gateways import runner_submit_task
 from ..config.settings import DEFAULT_PRODUCTION_CONFIG
 from ..errors import WorkflowStepError
 from ..services.prepare_videos import build_stock_video_selection_prompt
-from ..services.generate_qwen_shot_images import commit_existing_qwen_shot_images
+from ..services.image_delivery import commit_existing_shot_images
 from ..services.prepare_videos import download_selected_videos
-from ..services.generate_qwen_shot_images import generate_qwen_shot_images
 from ..services.prepare_shot_images import prepare_shot_images
 from ..services.storyboard import prepare_storyboard
 from ..services.prepare_videos import prepare_video_searches
@@ -38,7 +37,7 @@ def finance_start_storyboard(
     """启动 TTS 与分镜上下文生成；material_strategy 决定分镜写 IMAGE 行还是 VIDEO 行。
 
     取值：stock_video（Pexels/Pixabay/Coverr 正版实拍视频）、
-    qwen_reference（参考图千问生图）。
+    agent_reference（参考图宿主生图）。
     立即返回 task_path，用 finance_poll_task 轮询至 done=true。
     """
     try:
@@ -69,7 +68,7 @@ def finance_prepare_images(
     storyboard_text: str,
     image_config: dict,
 ) -> dict:
-    """按 Skill 准备用户参考图千问生图任务。"""
+    """按 Skill 准备用户参考图宿主生图任务。"""
     try:
         return prepare_shot_images(
             draft_path,
@@ -88,36 +87,10 @@ def finance_save_images(context_path: str, images: list[dict]) -> dict:
         raise WorkflowStepError(exc.message, exc.details) from exc
 
 
-def finance_start_generate_images(context_path: str) -> dict:
-    """启动全部镜头的千问参考图生图与独立图库入库。"""
-    try:
-        _, context = load_draft(context_path, "千问生图任务上下文")
-        metadata = context.get("metadata")
-        if not isinstance(metadata, dict):
-            raise WorkflowStepError("千问生图任务上下文缺少 metadata")
-        draft_path = str(metadata.get("draft_path") or "")
-        _, draft = load_draft(draft_path, "财经稿件")
-        cache_dir = Path(str(draft["cache_dir"]))
-        run_id = str(draft["run_id"])
-
-        def _work(progress=None) -> dict:
-            return generate_qwen_shot_images(context_path, progress=progress)
-
-        started = runner_submit_task(
-            cache_dir=cache_dir,
-            run_id=run_id,
-            step="generate_qwen_images",
-            fn=_work,
-        )
-        return {**started, "poll_tool": "finance_poll_task"}
-    except Exception as exc:
-        raise _map_error(exc) from exc
-
-
 def finance_commit_existing_images(context_path: str) -> dict:
-    """仅校验现有镜头图片并写入 D1；绝不重新调用千问生图。"""
+    """仅校验现有镜头图片并写入 D1；不请求生图服务。"""
     try:
-        return commit_existing_qwen_shot_images(context_path)
+        return commit_existing_shot_images(context_path)
     except Exception as exc:
         raise _map_error(exc) from exc
 
@@ -176,7 +149,7 @@ def finance_get_stock_video_selection_prompt(context_path: str, feedback: str = 
 
 
 def finance_validate_stock_video_selection_response(context_path: str, response_text: str) -> dict:
-    """统一解析并校验 Agent 或千问返回的正版视频选择结果。"""
+    """统一解析并校验 宿主返回的正版视频选择结果。"""
     try:
         return validate_stock_video_selection_response(context_path, response_text)
     except Exception as exc:

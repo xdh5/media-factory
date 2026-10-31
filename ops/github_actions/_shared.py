@@ -10,7 +10,6 @@ from pathlib import Path
 import boto3
 
 from core.tools.qwen_text import generate_text
-from core.tools.qwen_vision import analyze_image
 from core.tools.media_files import upload_public_file
 
 
@@ -31,23 +30,6 @@ def qwen(system_prompt: str, user_prompt: str, *, json_output: bool = False, max
         f"completion_tokens={result['usage']['completion_tokens']}"
     )
     return result
-
-
-def qwen_vision(image_path: str | Path, system_prompt: str, user_prompt: str) -> dict:
-    result = analyze_image(
-        image_path,
-        system_prompt,
-        user_prompt,
-        max_image_width=1280,
-        max_tokens=1600,
-        json_output=True,
-    )
-    print(
-        f"千问视觉完成：model={result['model']}，"
-        f"prompt_tokens={result['usage']['prompt_tokens']}，"
-        f"completion_tokens={result['usage']['completion_tokens']}"
-    )
-    return json_text(result)
 
 
 def json_text(result: dict) -> dict:

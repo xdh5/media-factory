@@ -74,7 +74,6 @@ jobs:
       DASHSCOPE_API_KEY_FINANCE: ${{ secrets.DASHSCOPE_API_KEY_FINANCE }}
       DASHSCOPE_API_KEY_LANGUAGE: ${{ secrets.DASHSCOPE_API_KEY_LANGUAGE }}
       DASHSCOPE_MODEL: qwen3.7-plus
-      DASHSCOPE_VISION_MODEL: qwen3.7-plus
       DASHSCOPE_ENABLE_THINKING: ${{ vars.DASHSCOPE_ENABLE_THINKING || 'false' }}
       CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
       CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
@@ -87,7 +86,6 @@ jobs:
       PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
       COVERR_API_KEY: ${{ secrets.COVERR_API_KEY }}
       FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
-      DASHSCOPE_IMAGE_MODEL: wan2.7-image-pro
     steps:
       - name: 检出生产代码
         uses: actions/checkout@v5

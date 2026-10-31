@@ -25,18 +25,18 @@ def _image_config(config: dict) -> dict:
     if not isinstance(config, dict):
         raise WorkflowStepError("image_config 必须是对象")
     source = str(config.get("source") or "").strip()
-    if source == "qwen_reference":
+    if source == "agent_reference":
         reference_image_path = str(config.get("reference_image_path") or "").strip()
         if not reference_image_path:
-            raise WorkflowStepError("image_config.reference_image_path 不能为空（qwen_reference 时必填）")
+            raise WorkflowStepError("image_config.reference_image_path 不能为空（agent_reference 时必填）")
         return {"source": source, "reference_image_path": reference_image_path}
     raise WorkflowStepError(
         f"不支持的 image_config.source：{source or '(空)'}",
-        {"supported_sources": ["qwen_reference"]},
+        {"supported_sources": ["agent_reference"]},
     )
 
 
-def _prepare_qwen_reference(
+def _prepare_agent_reference(
     shots: list[dict],
     cache_root: Path,
     metadata: dict,
@@ -77,7 +77,7 @@ def _prepare_qwen_reference(
             }
         )
     output_root = GENERATED_IMAGE_LIBRARY_ROOT
-    context_path = cache_root / "qwen-images" / "agent-image-context.json"
+    context_path = cache_root / "agent-images" / "agent-image-context.json"
     try:
         context = prepare_agent_image_tasks(
             tasks,
@@ -89,7 +89,7 @@ def _prepare_qwen_reference(
             context_path=context_path,
             metadata={
                 **metadata,
-                "image_source": "qwen_reference",
+                "image_source": "agent_reference",
                 "run_id": run_id,
                 "generated_image_dir": str(output_root.resolve()),
                 "caption_by_image_id": captions,
@@ -100,10 +100,10 @@ def _prepare_qwen_reference(
     except ImageGenerationError as extra:
         raise WorkflowStepError(extra.message, extra.details) from extra
     if len(context["tasks"]) != len(shots):
-        raise WorkflowStepError("千问生图任务没有完整覆盖全部镜头")
-    context["status"] = "awaiting_qwen_generation"
+        raise WorkflowStepError("宿主生图任务没有完整覆盖全部镜头")
+    context["status"] = "awaiting_agent_generation"
     for task in context["tasks"]:
-        task["provider"] = "dashscope"
+        task["provider"] = "agent"
         task["output_path"] = str(
             (output_root / f"{library_ids[str(task['image_id'])]}.png").resolve()
         ).replace("\\", "/")
@@ -113,10 +113,11 @@ def _prepare_qwen_reference(
     )
     return {
         **context,
-        "image_source": "qwen_reference",
+        "image_source": "agent_reference",
         "generated_image_dir": str(output_root.resolve()),
         "generation_task_count": len(context["tasks"]),
-        "next_tool": "finance_start_generate_images",
+        "next_tool": "finance_save_images",
+        "completion_tool": "finance_commit_existing_images",
     }
 
 
@@ -152,8 +153,8 @@ def prepare_shot_images(
         "image_config": image_config,
         "tts_path": storyboard_context.get("tts_path"),
     }
-    if source == "qwen_reference":
-        return _prepare_qwen_reference(
+    if source == "agent_reference":
+        return _prepare_agent_reference(
             shots,
             cache_root,
             metadata,

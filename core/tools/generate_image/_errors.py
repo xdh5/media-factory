@@ -40,13 +40,5 @@ class ReferenceImageError(ImageGenerationError):
     code = "REFERENCE_IMAGE_ERROR"
 
 
-class AIConfigurationError(ImageGenerationError):
-    code = "AI_CONFIGURATION_ERROR"
-
-
-class AIGenerationError(ImageGenerationError):
-    code = "AI_GENERATION_FAILED"
-
-
 class AgentImageTaskError(ImageGenerationError):
     code = "AGENT_IMAGE_TASK_ERROR"

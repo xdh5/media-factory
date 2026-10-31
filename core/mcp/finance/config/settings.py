@@ -26,14 +26,14 @@ ARTICLE_MAX_LINE_LENGTH = 36
 # 单次正文改写交给模型的原稿片段上限。钩子单独作为首片段处理，避免与后文任务互相干扰。
 ARTICLE_CHUNK_MAX_SOURCE_LENGTH = 280
 
-# 素材策略：实拍视频是默认来源，参考图千问生图仍可指定。
-MATERIAL_QWEN_REFERENCE = "qwen_reference"    # 用户参考图 + 千问逐镜头生图
+# 素材策略：实拍视频是默认来源，参考图宿主生图仍可指定。
+MATERIAL_AGENT_REFERENCE = "agent_reference"    # 用户参考图 + 宿主逐镜头生图
 MATERIAL_STOCK_VIDEO = "stock_video"          # Pexels/Pixabay/Coverr 正版实拍视频
 MATERIAL_STRATEGIES = (
     MATERIAL_STOCK_VIDEO,
-    MATERIAL_QWEN_REFERENCE,
+    MATERIAL_AGENT_REFERENCE,
 )
-IMAGE_MATERIAL_STRATEGIES = (MATERIAL_QWEN_REFERENCE,)
+IMAGE_MATERIAL_STRATEGIES = (MATERIAL_AGENT_REFERENCE,)
 
 # Finance MCP 是生产参数的唯一真源；Agent 与 GitHub Runner 均通过
 # finance_get_production_config 获取，禁止在各自入口复制参数。
