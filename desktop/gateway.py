@@ -65,6 +65,8 @@ def authenticated(request: Request):
 async def health():
     if runtime.worker and runtime.worker.done():
         raise HTTPException(503, "MCP 服务不可用，请查看脱敏日志")
+    if not runtime.ready.is_set():
+        raise HTTPException(503, "正在准备业务工具")
     return {"status": "ok"}
 
 

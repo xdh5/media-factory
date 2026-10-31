@@ -42,7 +42,7 @@ async function start() {
   app.on('second-instance', () => { if (window) {window.show(); window.focus();} });
   window = new BrowserWindow({width: 1100, height: 800, title: 'Media Factory',
     webPreferences: {nodeIntegration: false, contextIsolation: true, sandbox: true}});
-  window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><body style="background:#111827;color:#eee;font:20px system-ui;padding:80px"><h1>Media Factory</h1><p>正在启动聊天服务，请稍候。</p></body></html>'));
+  window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><body style="background:#111827;color:#eee;font:20px system-ui;padding:80px"><h1>Media Factory</h1><p>正在启动聊天服务并准备业务工具，请稍候。</p></body></html>'));
   window.on('closed', () => app.quit());
   const python = path.join(bundle, 'python', 'python.exe');
   if (!fs.existsSync(python)) throw new Error('缺少内嵌 Python，请运行完整构建脚本。');

@@ -17,6 +17,7 @@ class AgentRuntime:
         self.queue = asyncio.Queue()
         self.active = set()
         self.worker = None
+        self.ready = asyncio.Event()
 
     def start(self):
         self.worker = asyncio.create_task(self.serve())
@@ -29,17 +30,15 @@ class AgentRuntime:
             pass
 
     async def serve(self):
-        # 首个任务到达后连接 MCP；长驻会话仍由同一协程进入和退出。
-        first_task = await self.queue.get()
-        await first_task[-1].put({"kind": "status", "text": "正在准备业务工具，请稍候。"})
+        # GUI 启动时准备全部工具，会话始终由同一协程建立、复用和关闭。
         try:
             from agent.mcp_client import MCPTools
             async with MCPTools(list(SERVERS)) as tools:
-                await self.process_task(tools, first_task)
+                self.ready.set()
                 while True:
                     await self.process_task(tools, await self.queue.get())
         except Exception as exc:
-            pending = [first_task]
+            pending = []
             while not self.queue.empty():
                 pending.append(self.queue.get_nowait())
             for task_id, _, _, _, _, events in pending:
