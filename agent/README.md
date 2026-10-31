@@ -147,3 +147,8 @@ python ops/desktop/diagnostics_cli.py rag-eval --database cache/rag-eval.sqlite 
 动漫封面取证返回图片，由宿主识别，桌面 Agent 将图片作为多模态工具结果交给当前模型。
 因此封面识别要求宿主模型支持图片输入，工具执行要求宿主模型支持工具调用。
 生图、TTS、ASR 专用服务独立保留。
+
+
+### 当前时间上下文
+
+每次模型调用通过中间件动态读取 `datetime.now().astimezone()`，追加到系统消息，恢复任务也获取最新时间。宿主本地工具 `agent_calculate_datetime` 负责日期偏移、周定位和时区转换；模型只理解意图，不自行算日期。用户指定时区优先，完整时刻返回带偏移的 ISO 8601；仅日期不补零点，必要信息缺失或夏令时歧义需询问用户。没有新增 MCP 或模型调用。

@@ -12,6 +12,7 @@ from .approval_policy import APPROVAL_REQUIRED_TOOLS, policy_instruction
 from .llm import create_chat_model
 from .mcp_client import adapt_mcp_tool
 from .middleware import BusinessExecutionMiddleware
+from .time_context import TimeContextMiddleware, agent_calculate_datetime
 
 
 SYSTEM_PROMPT = """你是 Media Factory 的内部任务执行 Agent，使用中文沟通。
@@ -45,13 +46,14 @@ def create_media_agent(tools, journal, saver, settings, task_id, knowledge=None,
     instructions = "\n\n".join(tools.instructions) if tools else ""
     return create_deep_agent(
         model=model,
-        tools=[*registered_tools, agent_request_input],
+        tools=[*registered_tools, agent_request_input, agent_calculate_datetime],
         system_prompt=SYSTEM_PROMPT + "\n" + policy_instruction() + "\n" + instructions,
         checkpointer=saver,
         interrupt_on={item.name: {"allowed_decisions": ["approve", "reject"]}
                       for item in registered_tools if item.name in APPROVAL_REQUIRED_TOOLS},
         state_schema=MediaAgentState,
         middleware=[
+            TimeContextMiddleware(),
             BusinessExecutionMiddleware(tools, journal, settings, task_id, usage, knowledge),
             ToolRetryMiddleware(max_retries=settings.max_attempts - 1,
                 tools=[item.name for item in registered_tools if tools.read_only(item.name)],
