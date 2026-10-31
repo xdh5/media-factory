@@ -15,7 +15,7 @@ from .settings import ROOT, SERVERS
 
 # 只列经业务代码确认无写入的查询，用于重试和回执去重。
 READ_ONLY = {
-    "finance_get_production_config", "finance_get_source_stats",
+    "finance_get_video_editorial_input", "finance_get_production_config", "finance_get_source_stats",
     "finance_list_source_authors", "finance_list_editorial_drafts",
     "finance_poll_task", "language_learning_get_production_config",
     "language_learning_poll_task", "anime_get_production_config",
@@ -137,6 +137,11 @@ def adapt_mcp_tool(definition, mcp_tools, settings):
                 mcp_tools.call(name, arguments, settings.tool_timeout), settings.tool_timeout)
         if isinstance(result, dict) and (result.get("error") or result.get("status") == "failed"):
             raise ToolException(json.dumps(result, ensure_ascii=False))
+        payload = result.get("result", result) if isinstance(result, dict) else {}
+        covers = [item["cover"] for item in payload.get("evidence", []) if item.get("cover")] if isinstance(payload, dict) else []
+        if covers:
+            return [{"type": "text", "text": json.dumps(result, ensure_ascii=False)},
+                    *[{"type": "image_url", "image_url": {"url": cover["image_url"]}} for cover in covers]]
         return result
 
     return StructuredTool.from_function(name=name, description=function["description"],

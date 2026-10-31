@@ -53,7 +53,6 @@ DEFAULT_CHAPTER_TIMELINE: dict = {
     "enabled": False,
     "position": "bottom",
     "segment_count": 8,       # 章节数（按镜头时长均分边界，AI 起标题）
-    "ai_titles": True,        # False = 用章节开头文字兜底，不调千问
     "font_size": 30,
     "bar_height": 56,
     "margin_horizontal": 0,   # 0 = 紧贴左右边缘

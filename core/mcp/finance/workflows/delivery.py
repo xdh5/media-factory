@@ -120,3 +120,12 @@ def finance_start_upload_r2(manifest_path: str, run_id: str) -> dict:
     except Exception as exc:
         raise _map_error(exc) from exc
 
+
+
+def finance_get_video_editorial_input(draft_path: str, storyboard_text: str, production_config: dict) -> dict:
+    """TTS 和分镜完成后返回字幕翻译、重点句排版、章节标题的输入，由宿主定稿后写入 production_config 再合成。MCP 不调用文本模型。"""
+    from ..services.video_editorial import get_video_editorial_input
+    try:
+        return get_video_editorial_input(draft_path, storyboard_text, production_config)
+    except Exception as exc:
+        raise _map_error(exc) from exc

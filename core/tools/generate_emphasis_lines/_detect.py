@@ -1,24 +1,8 @@
-"""重点句 AI 识别（按完整句子）。
-
-字幕 cue 先由上层按句读边界归成完整句子，整句编号喂给千问，
-让它判断哪些「完整句子」值得全屏大字强调。判定按内容价值把握，
-不依赖关键词；选定即整句——句子里每个逗号段都必须一起上大字，
-分多行堆叠，不允许只挑其中一段。
-输出经程序校验，非法整组丢弃，千问不可用时静默跳过（本条视频不带大字层）。
-"""
+"""宿主重点句定稿提示词与输入校验。"""
 
 from __future__ import annotations
 
-import hashlib
 import json
-import re
-from pathlib import Path
-
-from core.tools.qwen_text import QwenTextError, generate_text
-
-from ._constants import DETECTION_CACHE_FILE_NAME
-
-_PROMPT_VERSION = "v6-agent-layout-20260924"
 
 _SYSTEM_PROMPT = (
     "你是中文短视频的排版导演，负责从字幕里挑出值得全屏大字强调的重点句。"
@@ -31,19 +15,6 @@ _SYSTEM_PROMPT = (
     "大字是稀缺资源，必须克制：只挑整条视频里分量最重的少数几句，"
     "宁缺毋滥，讲道理但平平的句子一律不选。"
 )
-
-_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$")
-
-
-def _parse_json(text: str) -> dict:
-    cleaned = _FENCE.sub("", str(text or "").strip()).strip()
-    try:
-        payload = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"千问返回的不是有效 JSON：{exc}") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("千问返回的 JSON 不是对象")
-    return payload
 
 
 def _build_prompt(rows: list[tuple[int, list[str]]]) -> str:
@@ -158,57 +129,4 @@ def validate_emphasis_groups(payload: dict, sentences: list[list[str]]) -> list[
     return groups
 
 
-def detect_emphasis_groups(
-    sentences: list[list[str]],
-    *,
-    cache_path: str | Path | None = None,
-    progress=None,
-) -> list[dict]:
-    """返回经校验的重点句组：[{"sentence": 行号, "markers": n, "keywords": [...]}]。
-
-    sentences 每项是一个完整句子，按句内逗号段拆成的行文本列表。
-    千问不可用或输出不合规时返回空列表，绝不抛错、绝不中断生产。
-    """
-    rows = [(index, lines) for index, lines in enumerate(sentences) if any(lines)]
-    if len(rows) < 2:
-        return []
-    cache_file = Path(cache_path).resolve() if cache_path else None
-    fingerprint = hashlib.sha256(
-        (_PROMPT_VERSION + "|" + json.dumps(rows, ensure_ascii=False)).encode("utf-8")
-    ).hexdigest()
-    if cache_file is not None and cache_file.is_file():
-        try:
-            cached = json.loads(cache_file.read_text(encoding="utf-8"))
-            if cached.get("fingerprint") == fingerprint:
-                return list(cached.get("groups") or [])
-        except (OSError, json.JSONDecodeError, ValueError):
-            pass
-    last_error = None
-    for _ in range(2):
-        try:
-            result = generate_text(
-                _SYSTEM_PROMPT,
-                _build_prompt(rows),
-                json_output=True,
-                max_tokens=4000,
-            )
-            payload = _parse_json(result["text"])
-            groups = validate_emphasis_groups(payload, sentences)
-            if cache_file is not None:
-                try:
-                    cache_file.parent.mkdir(parents=True, exist_ok=True)
-                    cache_file.write_text(
-                        json.dumps({"fingerprint": fingerprint, "groups": groups}, ensure_ascii=False, indent=2),
-                        encoding="utf-8",
-                    )
-                except OSError:
-                    pass
-            return groups
-        except (QwenTextError, ValueError) as exc:
-            last_error = exc
-    if progress:
-        progress(f"重点句识别失败，本条视频不带大字层：{last_error}")
-    return []
-
-
-__all__ = ["detect_emphasis_groups", "validate_emphasis_groups"]
+__all__ = ["validate_emphasis_groups"]

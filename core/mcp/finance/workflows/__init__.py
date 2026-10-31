@@ -41,6 +41,7 @@ from .materials import (
 )
 from .tasks import finance_poll_task
 from .delivery import (
+    finance_get_video_editorial_input,
     finance_finish_video,
     finance_start_finish_video,
     finance_start_upload_r2,
@@ -99,6 +100,7 @@ ALL_TOOLS = (
     finance_get_stock_video_selection_prompt,
     finance_validate_stock_video_selection_response,
     finance_start_download_videos,
+    finance_get_video_editorial_input,
     finance_finish_video,
     finance_start_finish_video,
     finance_start_upload_r2,

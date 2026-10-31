@@ -161,3 +161,18 @@ GitHub 周生产按 `finance_get_automation_plan` 的缺失分片补齐每日两
 性能记录：素材清单的 elapsed_seconds 与 timings 记录总耗时、逐镜头下载耗时及缓存命中；成片清单的 performance 记录拼接、时间戳规范化、最终合成耗时与最终成片缓存命中。新镜头已统一为 30 帧，不再额外整片转码规范时间戳。相同输入的最终成片也按签名复用，后续登记失败重试不会重复烧字幕。
 
 下载自动成片：finance_start_download_videos 默认 auto_finish=true，下载后在同一后台任务继续合成并登记产物，最终结果包含 video_path、成片 manifest_path、material_manifest_path、auto_finished=true。production_config 可省略，默认读取统一生产配置；production_source 默认 local_mcp，GitHub 必须传 github_workflow。自动流水线可由 MCP 生成重点句；独立合成仍要求宿主传重点句。仅需要素材时显式传 auto_finish=false。自动合成成功后禁止重复调用独立合成工具。
+
+
+### 宿主内容定稿
+
+MCP 不调用文本生成或视觉理解模型。TTS 与分镜完成后，宿主调用
+`finance_get_video_editorial_input(draft_path, storyboard_text, production_config)`，
+按返回的真实字幕和章节生成并合并以下字段：
+
+- `production_config.emphasis_lines.groups`：完整重点句、语义断行和逐行标红词；没有重点句传 `[]`。
+- `production_config.secondary_subtitles.translations`：中文字幕原文到英文译文的对象。
+- `production_config.chapter_timeline.titles`：与返回章节等长的短标题数组，每项 1 到 6 字。
+
+自动下载合成与独立成片入口均使用上述定稿。开启的图层缺少定稿时返回参数错误，
+不能通过关闭图层跳过宿主工作。GitHub Runner 同样在宿主侧生成定稿后提交给 MCP。
+生图、语音合成和语音转写仍由专用服务执行。

@@ -192,7 +192,7 @@ def finance_start_download_videos(
 ) -> dict:
     """后台下载并自动合成，轮询同一 task_path 至 done=true 获取 video_path。
 
-    默认读取统一成片配置；可传 production_config 覆盖配置（含重点句 groups）。
+    默认读取统一成片配置；自动合成前须传入宿主定稿的重点句 groups、英文字幕 translations 和章节 titles。先调用 finance_get_video_editorial_input 获取输入。
     单段不足时拼两段，下载和合成均复用缓存。只有 auto_finish=false 时仅返回素材清单。
     自动合成失败可重试本工具或调用 finance_start_finish_video，无需重复处理完成镜头。
     本工具不上传 R2、不发布平台。
@@ -209,6 +209,10 @@ def finance_start_download_videos(
             raise WorkflowStepError("production_config 必须是对象")
         settings = deepcopy(DEFAULT_PRODUCTION_CONFIG["production_config"])
         settings.update(deepcopy(production_config or {}))
+        if auto_finish:
+            from ..services.video_editorial import validate_video_editorial
+            validate_video_editorial(str(metadata["draft_path"]), str(metadata["storyboard_text"]), settings)
+
 
         def _work(progress=None) -> dict:
             materials = download_selected_videos(resolved_context, selections, progress=progress)
@@ -220,7 +224,6 @@ def finance_start_download_videos(
                 str(metadata["draft_path"]),
                 material_manifest_path=materials["manifest_path"],
                 production_config=settings,
-                allow_auto_emphasis=True,
                 storyboard_text=metadata.get("storyboard_text"),
                 production_source=production_source,
                 progress=progress,

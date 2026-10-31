@@ -14,7 +14,6 @@ from core.tools.generate_subtitles import generate_subtitles
 from core.tools.generate_emphasis_lines import generate_emphasis_lines
 from core.tools.generate_subtitles._constants import SUBTITLE_DEFAULT_FONT_SIZE
 
-from ._bilingual import translate_cue_texts
 from ._compose_shots import compose_shots, _hash_file
 from ._mix_body import mix_body
 from ._errors import InvalidParameterError, MediaProbeError
@@ -138,6 +137,13 @@ def _subtitle_cues(shots: list[dict], shot_results: list[dict]) -> list[dict]:
     return cues
 
 
+def subtitle_plain_text(text) -> str:
+    """提取含高亮片段的字幕原文，供宿主译文映射与渲染共用。"""
+    if isinstance(text, list):
+        return "".join(str(item.get("text") or "") if isinstance(item, dict) else str(item) for item in text).strip()
+    return str(text).strip()
+
+
 def _secondary_subtitle_ass(
     cues: list[dict],
     settings: dict,
@@ -147,7 +153,7 @@ def _secondary_subtitle_ass(
     height: int,
     progress: ProgressCallback | None,
 ) -> str | None:
-    """中文 karaoke 字幕下方的英文翻译层；失败或无内容返回 None。"""
+    """使用宿主提供的译文生成中文 karaoke 下方的英文字幕层。"""
     enabled = bool(settings.get("enabled", True))
     if not enabled or not cues:
         return None
@@ -160,12 +166,11 @@ def _secondary_subtitle_ass(
     texts: list[str] = []
     for cue in translatable:
         text = cue["text"]
-        if isinstance(text, list):
-            text = " ".join(str(item) for item in text)
-        texts.append(str(text).strip())
-    if progress:
-        progress("正在翻译英文字幕")
-    translations = translate_cue_texts(texts, progress=progress)
+        texts.append(subtitle_plain_text(text))
+    supplied = settings.get("translations")
+    if not isinstance(supplied, dict) or any(not supplied.get(text) for text in texts):
+        raise ValueError("secondary_subtitles.translations 必须由宿主提供全部中文原文到英文译文的映射")
+    translations = [supplied[text] for text in texts]
     en_pairs = [
         (cue, translation)
         for cue, translation in zip(translatable, translations)
@@ -173,7 +178,7 @@ def _secondary_subtitle_ass(
     ]
     if not en_pairs:
         if progress:
-            progress("英文字幕翻译全部失败，跳过英文层")
+            progress("没有需要显示的英文字幕")
         return None
     ratio = float(settings.get("font_size_ratio") or 0.4)
     chinese_font_size = int((subtitle_style or {}).get("font_size") or SUBTITLE_DEFAULT_FONT_SIZE)

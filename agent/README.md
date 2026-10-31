@@ -138,3 +138,12 @@ python ops/desktop/diagnostics_cli.py rag-eval --database cache/rag-eval.sqlite 
 `Client.aevaluate` 负责运行样本、保存实验和关联评估反馈。项目只提供来源召回率、来源相关性和诊断关键词命中三个领域评分函数，不再自行管理评估表或汇总报告。关键词命中不代表诊断正确；实际答案的正确性在 LangSmith 进行人工标注。命令返回原生实验链接，不会自动运行生产或发布。
 
 参考：[框架中间件](https://docs.langchain.com/oss/python/langchain/middleware/built-in)、[LangSmith SDK](https://reference.langchain.com/python/langsmith)与[原生评估](https://reference.langchain.com/python/langsmith/evaluation)。
+
+
+### MCP 与模型职责
+
+业务工具全量注册，由宿主 Agent 判断何时调用。MCP 内部不请求文本生成和视觉理解模型。
+财经字幕翻译、重点句排版和章节标题由宿主通过 `finance_get_video_editorial_input` 取得输入后定稿；
+动漫封面取证返回图片，由宿主识别，桌面 Agent 将图片作为多模态工具结果交给当前模型。
+因此封面识别要求宿主模型支持图片输入，工具执行要求宿主模型支持工具调用。
+生图、TTS、ASR 专用服务独立保留。

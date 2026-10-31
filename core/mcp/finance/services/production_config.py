@@ -87,14 +87,14 @@ def _production_config(config: dict) -> dict:
                 **(secondary_subtitles.get("position") or {}),
             },
         }
-        unknown = set(secondary_subtitles) - {"enabled", "font_size_ratio", "style", "position"}
+        unknown = set(secondary_subtitles) - {"enabled", "font_size_ratio", "style", "position", "translations"}
         if unknown:
             raise WorkflowStepError(
                 f"production_config.secondary_subtitles 含未知字段：{sorted(unknown)}"
             )
     else:
         raise WorkflowStepError("production_config.secondary_subtitles 必须是对象")
-    # 章节时间轴条：None = 用默认（贴下方、8 段、AI 标题）；enabled=False 关闭。
+    # 章节时间轴条：None = 用默认（贴下方、8 段、宿主标题）；enabled=False 关闭。
     chapter_timeline = config.get("chapter_timeline")
     if chapter_timeline is not None and not isinstance(chapter_timeline, dict):
         raise WorkflowStepError("production_config.chapter_timeline 必须是对象")
@@ -103,7 +103,7 @@ def _production_config(config: dict) -> dict:
     else:
         chapter_settings = {**DEFAULT_CHAPTER_TIMELINE, **chapter_timeline}
         unknown = set(chapter_timeline) - {
-            "enabled", "position", "segment_count", "ai_titles", "font_size",
+            "enabled", "position", "segment_count", "titles", "font_size",
             "bar_height", "margin_horizontal", "margin_vertical_ratio",
             "track_color", "track_opacity", "title_color", "active_color",
             "progress_color", "progress_opacity", "separator_color",
@@ -114,7 +114,6 @@ def _production_config(config: dict) -> dict:
                 f"production_config.chapter_timeline 含未知字段：{sorted(unknown)}"
             )
     chapter_settings["enabled"] = bool(chapter_settings.get("enabled", True))
-    chapter_settings["ai_titles"] = bool(chapter_settings.get("ai_titles", True))
     chapter_settings["position"] = str(chapter_settings.get("position") or "bottom").strip().lower()
     if chapter_settings["position"] not in ("top", "bottom"):
         raise WorkflowStepError("production_config.chapter_timeline.position 必须是 top 或 bottom")
@@ -124,7 +123,7 @@ def _production_config(config: dict) -> dict:
         raise WorkflowStepError("production_config.chapter_timeline.segment_count 必须是整数") from exc
     if not 2 <= chapter_settings["segment_count"] <= 12:
         raise WorkflowStepError("production_config.chapter_timeline.segment_count 必须在 2~12 之间")
-    # 重点句大字层：None = 默认开启（AI 识别提示/总结句，中央大字随机动画）。
+    # 重点句大字层：None = 默认开启（宿主定稿提示/总结句，中央大字随机动画）。
     emphasis_lines = config.get("emphasis_lines")
     if emphasis_lines is not None and not isinstance(emphasis_lines, dict):
         raise WorkflowStepError("production_config.emphasis_lines 必须是对象")
@@ -136,7 +135,7 @@ def _production_config(config: dict) -> dict:
             "enabled", "font_size", "primary_color", "highlight_color",
             "outline_color", "outline", "bold", "center_ratio", "line_height",
             "animations", "animation_duration",
-            "ai_detect", "seed", "groups",
+            "seed", "groups",
         }
         if unknown:
             raise WorkflowStepError(

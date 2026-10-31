@@ -79,7 +79,7 @@ def anime_start_discover(profile_url: str, series_name: str, limit: int = 300) -
 @mcp.tool()
 def anime_start_inspect(discovery_path: str, work_ids: list[str],
                         window_starts: list[float] | None = None, cover_reason: str = "") -> dict:
-    """按需转写指定作品的 45 秒片段，默认从 5 秒开始跳过短片头。封面为最后兜底，必须先完成片段取证并说明原因。转写复用 Groq，封面复用千问视觉，会产生相应服务用量。"""
+    """按需转写指定作品的 45 秒片段，默认从 5 秒开始跳过短片头。封面为最后兜底，必须先完成片段取证并说明原因。转写复用 Groq；封面返回图片地址和本地路径，由宿主 Agent 识别。"""
     directory, _ = load_discovery(discovery_path)
     task_id = f"inspect-{time.time_ns()}"
     return {**runner_submit_task(cache_dir=directory / task_id, run_id=task_id, step="inspect",

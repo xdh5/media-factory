@@ -8,11 +8,10 @@ from core.tools.generate_subtitles._fonts import resolve_fontsdir
 
 from ._ass import write_chapter_timeline_ass
 from ._errors import InvalidParameterError, TimelineError
-from ._titles import fallback_chapter_titles, generate_chapter_titles
+from ._titles import fallback_chapter_titles
 
 __all__ = [
     "generate_chapter_timeline",
-    "generate_chapter_titles",
     "fallback_chapter_titles",
     "TimelineError",
     "InvalidParameterError",
@@ -59,8 +58,7 @@ def generate_chapter_timeline(
 ) -> dict:
     """生成章节时间轴条 ASS 覆盖图层。
 
-    segments 每项含 start / end（秒，成片时间轴）与 title（章节标题，一般来自
-    generate_chapter_titles）。position 控制横条贴在画面上方还是下方。
+    segments 每项含 start / end（秒，成片时间轴）与 title（宿主提供的章节标题）。position 控制横条贴在画面上方还是下方。
     """
     normalized = _validate_segments(segments)
     try:

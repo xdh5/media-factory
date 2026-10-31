@@ -19,7 +19,7 @@ description: 生产财经视频。使用项目财经 MCP 制作中文短视频�
 2. 读取 `source.editorial` 中的正文、话题、黄金钩子、标题、标签、封面断行和重点词，直接调用 `finance_save_draft`，同时传来源 ID、占用令牌、计划日期和内容分片。生产阶段不重新编辑内容。
 3. 若需要补稿，先用 `finance_list_editorial_drafts` 获取未使用原稿，宿主按 collect-finance-copy 的定稿要求编辑并通过 `finance_save_editorial_drafts` 入库，再领取生产。
 4. 启动分镜任务，按返回的分镜 Prompt 生成完整文本。根据配置选择参考图生图或实拍搜索流程。实拍素材按搜索顺序取尺寸达标的候选，单段不足时拼两段，不调用模型选片。
-5. 实拍策略调用 finance_start_download_videos，默认下载后在同一后台任务自动合成；可省略 production_config 以使用统一配置，并允许 MCP 自动生成重点句。成功结果包含 video_path、最终成片 manifest_path、material_manifest_path 与 auto_finished=true，不再调用独立合成工具。仅需素材时显式传 auto_finish=false。独立调用合成工具时，由宿主判断重点句、断行及标红词，通过 `production_config.emphasis_lines.groups` 传入。优先使用 `sentence_text` 精确对应原文，不猜句子编号；其他字幕和制作参数复用 MCP 配置。
+5. TTS 和分镜完成后，调用 `finance_get_video_editorial_input(draft_path, storyboard_text, production_config)`。宿主依据返回的真实句子、字幕和章节定稿：将重点句断行与逐行标红词写入 `production_config.emphasis_lines.groups`（没有重点句传 `[]`），中文字幕到英文译文的映射写入 `production_config.secondary_subtitles.translations`，章节短标题写入 `production_config.chapter_timeline.titles`。其余参数复用统一配置，不关闭图层来跳过定稿。实拍策略随后调用 `finance_start_download_videos` 并传入完整配置，默认在同一后台任务下载并合成。成功返回 `video_path`、最终 `manifest_path`、`material_manifest_path` 和 `auto_finished=true`，不再调用独立合成工具。仅需素材时传 `auto_finish=false`。
 6. 生图或 auto_finish=false 时才单独启动成片任务，完成后交付结果。耗时步骤使用对应 `start` 工具，每 15～30 秒轮询返回的 `task_path`；客户端超时后继续轮询同一任务，不重复启动。
 
 参考图生图已经完成、仅 D1 入库失败时，重连后调用 `finance_commit_existing_images(context_path)` 恢复，不重新生图。其他失败按工具返回的错误与恢复指引处理，禁止绕过 MCP 执行业务脚本或读写内部文件。

@@ -19,6 +19,7 @@ from .video_materials import _load_saved_storyboard, _apply_material, _write_att
 from .production_config import _production_config
 from .video_layers import _with_display_text, _hook_layer, _chapter_layer
 from .video_opening import _render_first_shot_cached
+from .video_editorial import validate_video_editorial
 
 
 def finish_finance_video(
@@ -30,7 +31,6 @@ def finish_finance_video(
     storyboard_text: str | None = None,
     force_shot_ids: list[str] | None = None,
     production_source: str = "local_mcp",
-    allow_auto_emphasis: bool = False,
     image_manifest_path: str | Path | None = None,
     progress=None,
 ) -> dict:
@@ -48,17 +48,6 @@ def finish_finance_video(
         )
     if production_source not in {"local_mcp", "github_workflow"}:
         raise WorkflowStepError("production_source 必须是 local_mcp 或 github_workflow")
-    emphasis_settings = settings.get("emphasis_lines") or {}
-    if (
-        production_source == "local_mcp"
-        and not allow_auto_emphasis
-        and emphasis_settings.get("enabled", True)
-        and emphasis_settings.get("groups") is None
-    ):
-        raise WorkflowStepError(
-            "交互式 Finance 成片必须由宿主 Agent 在 production_config.emphasis_lines.groups "
-            "传入重点句、语义断行和逐行标红词；MCP 禁止自行调用文本模型"
-        )
     record = {"id": draft["topic_record_id"], "topic": draft["topic"]}
     content_kind = str(draft.get("content_kind") or CONTENT_KIND)
     content_part = int(draft.get("content_part") or 1)
@@ -90,6 +79,7 @@ def finish_finance_video(
         raise WorkflowStepError("素材清单缺少 metadata")
     storyboard_output = _load_saved_storyboard(material_metadata, cache_root, storyboard_text)
     shots = parse_storyboard(storyboard_output, tts["timeline"])
+    validate_video_editorial(str(resolved_draft), storyboard_output, production_config)
     stock_video, cover_sources = _apply_material(
         material_manifest,
         shots,

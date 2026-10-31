@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
 from ._mcp import MCPCallError, ProjectMCP
-from ._shared import PROJECT_ROOT, qwen, write_summary
+from ._shared import PROJECT_ROOT, qwen, json_text, write_summary
 
 
 async def _storyboard(mcp, draft, config, attempts):
@@ -58,6 +59,18 @@ async def run(
         })
 
         storyboard, prepared = await _storyboard(mcp, draft, config, int(retries["storyboard"]))
+        editorial_input = await mcp.call("finance_get_video_editorial_input", {
+            "draft_path": draft["draft_path"], "storyboard_text": storyboard,
+            "production_config": config["production_config"],
+        })
+        layout = json_text(qwen(
+            editorial_input["system_prompt"],
+            json.dumps(editorial_input, ensure_ascii=False) +
+            '\n只输出 JSON：{"emphasis_lines":{"groups":[]},"secondary_subtitles":{"translations":{"中文原文":"英文译文"}},"chapter_timeline":{"titles":["章节标题"]}}。按输入真实定稿，不得省略字段。',
+            json_output=True, max_tokens=16000,
+        ))
+        for key in ("emphasis_lines", "secondary_subtitles", "chapter_timeline"):
+            config["production_config"][key] = {**config["production_config"].get(key, {}), **layout[key]}
         started = await mcp.call("finance_start_download_videos", {
             "context_path": prepared["context_path"],
             "production_config": config["production_config"],

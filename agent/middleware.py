@@ -50,7 +50,7 @@ class BusinessExecutionMiddleware(AgentMiddleware):
 
         def reply(value):
             failed = isinstance(value, dict) and (value.get("error") or value.get("status") == "failed")
-            return ToolMessage(content=json.dumps(value, ensure_ascii=False), tool_call_id=call["id"],
+            return ToolMessage(content=value if isinstance(value, list) else json.dumps(value, ensure_ascii=False), tool_call_id=call["id"],
                                name=name, status="error" if failed else "success")
 
         try:
@@ -105,7 +105,7 @@ class BusinessExecutionMiddleware(AgentMiddleware):
         if response.status == "error":
             result = {"error": response.content}
         else:
-            result = json.loads(response.content)
+            result = response.content if isinstance(response.content, list) else json.loads(response.content)
         failed = isinstance(result, dict) and (result.get("error") or result.get("status") == "failed")
         if failed:
             result["diagnostic_context"] = await self.diagnose(result)

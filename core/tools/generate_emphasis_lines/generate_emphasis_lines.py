@@ -1,7 +1,7 @@
-"""重点句大字图层：AI 识别 + 居中堆叠 + 随机入场动画 + 普通字幕隐藏。
+"""重点句大字图层：宿主定稿 + 居中堆叠 + 随机入场动画 + 普通字幕隐藏。
 
 行为（2026-09-24 用户定稿）：
-- 选取单位是完整句子：cue 按句读边界归成整句，由千问按内容价值挑选
+- 选取单位是完整句子：cue 按句读边界归成整句，由宿主 Agent 按内容价值挑选
   （不做关键词匹配）；选中即整句，句内每个逗号段都必须一起上大字；
 - 每段大字最多两行（字魂群英体、白字黑边、重点词标红 #E30F13），
   句首纯引出语段（如「第一，」）不上大字；
@@ -35,7 +35,7 @@ from ._constants import (
     EMPHASIS_PRIMARY_COLOR,
 )
 from ._animations import SUPPORTED_ANIMATIONS
-from ._detect import detect_emphasis_groups, validate_emphasis_groups
+from ._detect import validate_emphasis_groups
 
 __all__ = ["generate_emphasis_lines", "DEFAULT_SETTINGS"]
 
@@ -51,7 +51,6 @@ DEFAULT_SETTINGS: dict = {
     "line_height": EMPHASIS_LINE_HEIGHT,
     "animations": list(EMPHASIS_ANIMATIONS),
     "animation_duration": EMPHASIS_ANIMATION_DURATION,
-    "ai_detect": True,      # False 时本条视频不带大字层
     "seed": None,
     # 交互式 Finance 由宿主 Agent 传入；None 时仅供 GitHub Action 调用文本模型 API。
     "groups": None,
@@ -225,16 +224,8 @@ def generate_emphasis_lines(
         raw_groups = validate_emphasis_groups({"groups": explicit_groups}, sentences)
         if len(raw_groups) != len(explicit_groups):
             raise ValueError("emphasis_lines.groups 含无效重点句、断行或标红词；每行必须有原文重点词")
-    elif merged.get("ai_detect", True):
-        if cache_path is None:
-            cache_path = Path(output_path).resolve().parent / DETECTION_CACHE_FILE_NAME
-        raw_groups = detect_emphasis_groups(
-            sentences,
-            cache_path=cache_path,
-            progress=progress,
-        )
     else:
-        raw_groups = []
+        raise ValueError("emphasis_lines.groups 必须由宿主提供；无重点句时传空列表")
     if not raw_groups:
         return None
 

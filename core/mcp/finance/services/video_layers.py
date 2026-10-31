@@ -6,7 +6,7 @@ from pathlib import Path
 from core.tools.generate_final_video._size import parse_size
 from core.tools.generate_subtitles import generate_subtitles
 from core.tools.generate_subtitles._constants import SUBTITLE_FONT_DIRECTORY
-from core.tools.generate_timeline import fallback_chapter_titles, generate_chapter_timeline, generate_chapter_titles
+from core.tools.generate_timeline import generate_chapter_timeline
 from ..config.settings import VIDEO_SIZE
 from ..errors import WorkflowStepError
 from .narration import bare_text, display_subtitle_cue, display_subtitle_text
@@ -356,31 +356,14 @@ def _chapter_layer(
     cache_root: Path,
     progress=None,
 ) -> list[str]:
-    """章节时间轴条图层：横条分段 + AI 段落标题 + 进度色随播放推进。"""
+    """章节时间轴条图层：横条分段 + 宿主段落标题 + 进度色随播放推进。"""
     chapter = settings["chapter_timeline"]
-    if not chapter.get("enabled") or len(shots) < 2:
+    segments, chapter_texts = chapter_editorial_input(shots, chapter)
+    if not segments:
         return []
-    count = max(2, min(int(chapter["segment_count"]), len(shots)))
-    groups = _chapter_groups(shots, count)
-    if len(groups) < 2:
-        return []
-    segments = []
-    chapter_texts = []
-    for group in groups:
-        start = float(group[0]["audio_start"])
-        end = float(group[-1]["audio_end"])
-        if end - start < 1.0:
-            continue
-        segments.append({"start": start, "end": end, "title": ""})
-        chapter_texts.append(
-            " ".join(str(shot.get("subtitle") or "") for shot in group)
-        )
-    if len(segments) < 2:
-        return []
-    if chapter.get("ai_titles", True):
-        titles = generate_chapter_titles(chapter_texts, progress=progress)
-    else:
-        titles = fallback_chapter_titles(chapter_texts)
+    titles = chapter.get("titles")
+    if not isinstance(titles, list) or len(titles) != len(segments) or any(not isinstance(title, str) or not title.strip() for title in titles):
+        raise WorkflowStepError("production_config.chapter_timeline.titles 必须由宿主提供，数量与章节一致")
     for segment, title in zip(segments, titles, strict=True):
         segment["title"] = title
     canvas_width, canvas_height = parse_size(VIDEO_SIZE)
@@ -412,3 +395,27 @@ def _chapter_layer(
         )
     return [layer["output_path"]]
 
+
+
+def chapter_editorial_input(shots: list[dict], chapter: dict) -> tuple[list[dict], list[str]]:
+    """按实际镜头时间轴返回宿主定稿所需的章节正文。"""
+    if not chapter.get("enabled") or len(shots) < 2:
+        return [], []
+    count = max(2, min(int(chapter["segment_count"]), len(shots)))
+    groups = _chapter_groups(shots, count)
+    if len(groups) < 2:
+        return [], []
+    segments = []
+    chapter_texts = []
+    for group in groups:
+        start = float(group[0]["audio_start"])
+        end = float(group[-1]["audio_end"])
+        if end - start < 1.0:
+            continue
+        segments.append({"start": start, "end": end, "title": ""})
+        chapter_texts.append(
+            " ".join(str(shot.get("subtitle") or "") for shot in group)
+        )
+    if len(segments) < 2:
+        return [], []
+    return segments, chapter_texts

@@ -106,23 +106,20 @@ def inspect_works(discovery_path: str, work_ids: list[str], windows: list[float]
             text = json.loads(transcript.read_text(encoding="utf-8"))["text"]
             evidence["windows"].append({"start_seconds": start, "text": text})
         if cover_reason.strip():
-            from core.tools.qwen_vision import analyze_image
-
-            cover_result = directory / "sources" / f"{work_id}-cover.json"
-            if not cover_result.is_file():
-                url = work.get("cover_url")
-                if not url:
-                    raise AnimeError(f"作品 {work_id} 没有可读取的封面")
+            url = work.get("cover_url")
+            if not url:
+                raise AnimeError(f"作品 {work_id} 没有可读取的封面")
+            cover = directory / "sources" / f"{work_id}-cover.jpg"
+            if not cover.is_file():
                 response = requests.get(url, timeout=30)
                 response.raise_for_status()
                 if len(response.content) > 10 * 1024 * 1024:
                     raise AnimeError("封面超过 10MB")
-                cover = directory / "sources" / f"{work_id}-cover.jpg"
                 cover.write_bytes(response.content)
-                result = analyze_image(cover, "只识别图片中实际可见的文字，禁止猜测。",
-                                       "抄录剧名、集数、合集范围及其他可见文字。", max_tokens=500)
-                _write_json(cover_result, {**result, "fallback_reason": cover_reason})
-            evidence["cover"] = json.loads(cover_result.read_text(encoding="utf-8"))
+            evidence["cover"] = {
+                "image_path": str(cover), "image_url": url, "reason": cover_reason,
+                "instruction": "由宿主 Agent 查看封面，只抄录实际可见的剧名、集数、合集范围及文字，不得猜测。",
+            }
         results.append(evidence)
     return {"discovery_path": discovery_path, "evidence": results}
 
