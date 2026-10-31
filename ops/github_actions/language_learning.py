@@ -253,7 +253,12 @@ async def schedule_publication(
                 "publish_at": publish_at,
             },
         )
-        result = await mcp.poll("publishing_poll_task", started["task_path"])
+        await mcp.poll("publishing_poll_task", started["task_path"])
+        # 平台完整性校验使用完整回执，精简轮询结果仅用于进度显示。
+        completed = await mcp.call("publishing_poll_task", {
+            "task_path": started["task_path"], "detailed": True,
+        })
+        result = completed["result"]
     completed_channels = {
         str(item.get("record", {}).get("platform") or "").strip().casefold()
         for item in result.get("published") or []
