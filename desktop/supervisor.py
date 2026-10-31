@@ -66,8 +66,13 @@ def main():
         if not Path(target).is_file() or Path(source).stat().st_size != Path(target).stat().st_size or Path(source).stat().st_mtime != Path(target).stat().st_mtime:
             shutil.copy2(source, target)
         return target
-    shutil.copytree(args.bundle / "project", workspace, dirs_exist_ok=True, copy_function=copy_changed,
-                    ignore=shutil.ignore_patterns("data", "cache", ".env", "__pycache__", "node_modules"))
+    project_directory = args.bundle / "project"
+    build_identity = (args.bundle.parents[1] / "构建信息.json").read_text(encoding="utf-8")
+    workspace_version = home / "workspace-version.txt"
+    if not workspace_version.is_file() or workspace_version.read_text(encoding="utf-8") != build_identity:
+        shutil.copytree(project_directory, workspace, dirs_exist_ok=True, copy_function=copy_changed,
+                        ignore=shutil.ignore_patterns("data", "cache", ".env", "__pycache__", "node_modules"))
+        workspace_version.write_text(build_identity, encoding="utf-8")
     publisher_modules = workspace / "integrations/media-publisher/node_modules"
     packaged_modules = (args.bundle / "project/integrations/media-publisher/node_modules").resolve()
     if os.path.isjunction(publisher_modules) and publisher_modules.resolve() != packaged_modules:
@@ -124,7 +129,8 @@ def main():
              "CORS_ALLOW_ORIGIN": f"http://127.0.0.1:{ports['webui']}",
              "OPENAI_API_BASE_URL": f"http://127.0.0.1:{ports['agent']}/v1", "OPENAI_API_KEY": token,
              "OPENAI_API_BASE_URLS": f"http://127.0.0.1:{ports['agent']}/v1", "OPENAI_API_KEYS": token,
-             "ENABLE_FORWARD_USER_INFO_HEADERS": "true", "ENABLE_OLLAMA_API": "false", "OFFLINE_MODE": "true",
+             "ENABLE_FORWARD_USER_INFO_HEADERS": "true",
+             "USE_SLIM_DOCKER": configuration.get("USE_SLIM_DOCKER", "true"), "ENABLE_OLLAMA_API": "false", "OLLAMA_BASE_URL": "http://127.0.0.1:11434", "OFFLINE_MODE": "true",
              "HF_HUB_OFFLINE": "1", "RAG_EMBEDDING_ENGINE": "openai", "ENABLE_TITLE_GENERATION": "false",
              "ENABLE_TAGS_GENERATION": "false", "ENABLE_FOLLOW_UP_GENERATION": "false", "ANONYMIZED_TELEMETRY": "false",
              "ENABLE_AUTOCOMPLETE_GENERATION": "false", "ENABLE_SEARCH_QUERY_GENERATION": "false",

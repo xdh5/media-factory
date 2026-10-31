@@ -39,7 +39,7 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "dist/MediaFactory")
     parser.add_argument("--electron-version", default="42.11.16")
     parser.add_argument("--prepare-only", action="store_true", help="只准备运行时及项目资源，不视为完整构建")
-    parser.add_argument("--reuse-runtime", action="store_true", help="复用已安装的界面依赖，仍安装 Agent 依赖并执行导入检查")
+    parser.add_argument("--reuse-runtime", action="store_true", help="复用已安装的界面与 Agent 依赖，仍执行导入检查")
     args = parser.parse_args()
     if sys.platform != "win32" or sys.version_info[:2] != (3, 12):
         raise RuntimeError("请使用 Windows x64 Python 3.12 构建")
@@ -54,10 +54,12 @@ def main():
     expected = next(line.split()[0] for line in sums.read_text().splitlines() if line.split()[-1].lstrip("*") == name)
     if hashlib.sha256(archive.read_bytes()).hexdigest() != expected:
         raise RuntimeError("Electron 校验失败")
-    with zipfile.ZipFile(archive) as source:
-        source.extractall(output)
     executable = output / "MediaFactory.exe"
-    if executable.exists():
+    reuse_electron = args.reuse_runtime and executable.is_file() and (output / "version").read_text().strip() == version
+    if not reuse_electron:
+        with zipfile.ZipFile(archive) as source:
+            source.extractall(output)
+    if executable.exists() and not reuse_electron:
         executable.replace(output / "MediaFactory.incomplete.exe")
     if (output / "electron_wer.dll").exists():
         (output / "electron_wer.dll").replace(output / "MediaFactory_wer.dll")
@@ -86,8 +88,9 @@ def main():
     runtime = application / "python"
     runtime.mkdir(exist_ok=True)
     python_archive = download("https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip", "python-3.12.10-embed-amd64.zip")
-    with zipfile.ZipFile(python_archive) as source:
-        source.extractall(runtime)
+    if not args.reuse_runtime or not (runtime / "python.exe").is_file():
+        with zipfile.ZipFile(python_archive) as source:
+            source.extractall(runtime)
     (runtime / "python312._pth").write_text("python312.zip\n.\nLib/site-packages\n../project\nimport site\n", encoding="utf-8")
     agent_packages = application / "agent-packages"
     agent_packages.mkdir(exist_ok=True)
@@ -106,7 +109,7 @@ def main():
     if not ffmpeg:
         raise RuntimeError("构建机缺少 ffmpeg；请准备 ffmpeg 与 ffprobe 后重新构建")
     for name in ("ffmpeg.exe", "ffprobe.exe"):
-        shutil.copy2(Path(ffmpeg).parent / name, binaries / name)
+        copy_changed(Path(ffmpeg).parent / name, binaries / name)
     requirements = ROOT / "ops/desktop/runtime-requirements.txt"
     if args.prepare_only:
         print("只完成资源准备，尚未安装依赖，不是可用绿色版。", flush=True)
@@ -115,15 +118,17 @@ def main():
     if not args.reuse_runtime:
         subprocess.run([sys.executable, "-m", "pip", "install", "--no-compile", "--timeout", "120", "--retries", "4", "--target", str(runtime / "Lib/site-packages"),
                         "--upgrade", "--only-binary=:all:", "-r", str(requirements), str(ROOT) + "[desktop]"], env=environment, check=True)
-    subprocess.run([sys.executable, "-m", "pip", "install", "--no-compile", "--timeout", "120", "--retries", "4",
-                    "--target", str(agent_packages), "--upgrade", "--only-binary=:all:", str(ROOT) + "[agent]"],
-                   env=environment, check=True)
+    if not args.reuse_runtime:
+        subprocess.run([sys.executable, "-m", "pip", "install", "--no-compile", "--timeout", "120", "--retries", "4",
+                        "--target", str(agent_packages), "--upgrade", "--only-binary=:all:", str(ROOT) + "[agent]"],
+                       env=environment, check=True)
     for name in ("core", "agent", "desktop", "docs"):
         shutil.copytree(ROOT / name, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
     shutil.copy2(ROOT / "desktop/main.cjs", application / "main.cjs")
     (CACHE / "build-check-webui").mkdir(parents=True, exist_ok=True)
     check_environment = {**environment, "DATA_DIR": str(CACHE / "build-check-webui"), "OFFLINE_MODE": "true",
                          "HF_HUB_OFFLINE": "1", "RAG_EMBEDDING_ENGINE": "openai", "FROM_INIT_PY": "true",
+                         "USE_SLIM_DOCKER": "true",
                          "CORS_ALLOW_ORIGIN": "http://127.0.0.1",
                          "STATIC_DIR": str(CACHE / "build-check-webui/static"), "WEBUI_SECRET_KEY": "0" * 64,
                          "MEDIA_FACTORY_HOME": str(CACHE / "gateway-check"),
@@ -147,7 +152,8 @@ def main():
         "built_at": datetime.now(timezone.utc).isoformat(), "agent_dependencies": "resources/app/agent-packages",
         "entry": "MediaFactory.exe", "dependencies_verified": True}, ensure_ascii=False, indent=2), encoding="utf-8")
     shutil.copy2(ROOT / "desktop/README.md", output / "使用说明.md")
-    (output / "electron.exe").replace(executable)
+    if not reuse_electron:
+        (output / "electron.exe").replace(executable)
     (output / "MediaFactory.incomplete.exe").unlink(missing_ok=True)
     print("绿色版构建完成：" + str(executable), flush=True)
 

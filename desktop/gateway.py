@@ -16,7 +16,6 @@ from dotenv import dotenv_values
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
 
-from agent.diagnostics.knowledge import KnowledgeBase
 from agent.diagnostics.redaction import redact
 from agent.diagnostics.tracing import agent_tracing, langsmith_client, tracing_settings
 from agent.journal import CallJournal
@@ -166,6 +165,8 @@ async def chat(request: Request):
             if event["kind"] == "token":
                 has_tokens = True
                 yield event["text"]
+            elif event["kind"] == "status":
+                yield "\n\n> " + event["text"] + "\n\n"
             elif event["kind"] == "tool":
                 if event["name"].endswith("_poll_task"):
                     payload = event.get("payload", {})
@@ -186,7 +187,7 @@ async def chat(request: Request):
                     yield event["last_message"].get("content") or ""
                 yield result_text(event, request)
             elif event["kind"] == "error":
-                yield "\n执行失败：" + redact(event["error"]) + f"\n任务 `{task_id}` 的检查点已保留。"
+                yield "\n执行失败：" + redact(event["error"]) + f"\n任务：`{task_id}`。"
     if not body.get("stream", False):
         content = "".join([text async for text in fragments()])
         return {"id": identity, "object": "chat.completion", "created": int(time.time()), "model": body["model"],
@@ -214,6 +215,7 @@ async def media(encoded: str, signature: str):
 
 @app.get("/api/overview", dependencies=[Depends(authenticated)])
 async def overview():
+    from agent.diagnostics.knowledge import KnowledgeBase
     return {"active_tasks": sorted(runtime.active), "documents": KnowledgeBase(DATABASE).list_documents(),
             "langsmith": tracing_settings(), "configuration": list(dotenv_values(HOME / "config.env")),
             "home": str(HOME)}
@@ -264,6 +266,7 @@ async def configure(request: Request):
 
 @app.post("/api/knowledge/search", dependencies=[Depends(authenticated)])
 async def search(request: Request):
+    from agent.diagnostics.knowledge import KnowledgeBase
     body = await request.json()
     with agent_tracing():
         return await KnowledgeBase(DATABASE).search(body["query"], k=min(20, max(1, body.get("k", 5))))
@@ -271,6 +274,7 @@ async def search(request: Request):
 
 @app.post("/api/knowledge/ingest", dependencies=[Depends(authenticated)])
 async def ingest(request: Request):
+    from agent.diagnostics.knowledge import KnowledgeBase
     body = await request.json()
     if body.get("kind") == "solution" and body.get("verified") is not True:
         raise HTTPException(400, "解决方案必须经人工核验")
@@ -281,6 +285,7 @@ async def ingest(request: Request):
 
 @app.post("/api/knowledge/import-project", dependencies=[Depends(authenticated)])
 async def import_project():
+    from agent.diagnostics.knowledge import KnowledgeBase
     knowledge = KnowledgeBase(DATABASE)
     documents = []
     paths = list((WORKSPACE / "docs").rglob("*.md")) + list((WORKSPACE / "agent").glob("*.md"))
@@ -292,6 +297,7 @@ async def import_project():
 
 @app.post("/api/knowledge/reindex", dependencies=[Depends(authenticated)])
 async def reindex():
+    from agent.diagnostics.knowledge import KnowledgeBase
     with agent_tracing():
         return await KnowledgeBase(DATABASE).reindex()
 
@@ -305,6 +311,7 @@ async def upload_cases(request: Request):
 
 @app.post("/api/langsmith/evaluate-rag", dependencies=[Depends(authenticated)])
 async def evaluate(request: Request):
+    from agent.diagnostics.knowledge import KnowledgeBase
     from agent.diagnostics.evaluation import evaluate_rag
     body = await request.json()
     return await evaluate_rag(KnowledgeBase(DATABASE), body["dataset"], body.get("k", 5))

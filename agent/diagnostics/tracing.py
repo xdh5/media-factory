@@ -4,7 +4,6 @@ from functools import lru_cache
 import os
 
 from dotenv import load_dotenv
-from langsmith import Client, tracing_context
 
 from ..settings import ROOT
 from .redaction import redact
@@ -30,6 +29,8 @@ def tracing_settings():
 
 @lru_cache(maxsize=1)
 def langsmith_client():
+    from langsmith import Client
+
     tracing_settings()
     if not os.getenv("LANGSMITH_API_KEY"):
         raise ValueError("请先配置 LANGSMITH_API_KEY；启用任务追踪还需设置 LANGSMITH_TRACING=true")
@@ -37,6 +38,8 @@ def langsmith_client():
 
 
 def agent_tracing():
+    from langsmith import tracing_context
+
     settings = tracing_settings()
     return tracing_context(enabled=settings["enabled"], project_name=settings["project"],
                            client=langsmith_client() if settings["enabled"] else None)

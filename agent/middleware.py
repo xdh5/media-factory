@@ -18,7 +18,7 @@ class BusinessExecutionMiddleware(AgentMiddleware):
     """在框架执行边界处理暂停、预算及跨系统业务回执。"""
 
     def __init__(self, tools, journal, settings, task_id, usage, knowledge):
-        self.tools, self.journal, self.settings = tools, journal, settings
+        self.mcp_tools, self.journal, self.settings = tools, journal, settings
         self.task_id, self.usage, self.knowledge = task_id, usage, knowledge
         self.diagnoses = {}
         self.definitions = {item["function"]["name"]: item["function"]["parameters"]
@@ -76,7 +76,7 @@ class BusinessExecutionMiddleware(AgentMiddleware):
         except (ValidationError, ValueError) as exc:
             return reply({"error": str(exc)[:1000]})
 
-        read_only = self.tools.read_only(name)
+        read_only = self.mcp_tools.read_only(name)
         scope = request.state["operation_scope"]
         canonical = json.dumps([scope, name, arguments], sort_keys=True, ensure_ascii=False)
         key = "read:" + call["id"] if read_only else hashlib.sha256(canonical.encode()).hexdigest()

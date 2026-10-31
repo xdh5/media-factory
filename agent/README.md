@@ -58,7 +58,7 @@ python -m agent resume finance-check-001 --response '{}'
 - `agent/agent.py`：组合模型、工具、系统提示词和检查点，`create_media_agent` 返回 Deep Agents 实例。
 - `agent/llm.py`：创建 `ChatOpenAI`；用量统计使用官方 `UsageMetadataCallbackHandler`。
 - `agent/mcp_client.py`：连接 MCP、发现工具并适配为可执行的 `StructuredTool`。
-- `agent/middleware.py`：处理业务参数校验、暂停、预算和调用回执。
+- `agent/middleware.py`：处理业务参数校验、暂停、预算和调用回执；MCP 客户端保存在 `mcp_tools`，框架保留的 `tools` 属性仅用于注册工具列表。
 - `agent/streaming.py`：消费框架 `astream` 的消息、工具更新和业务进度，转换为聊天事件。
 - `agent/diagnostics/tracing.py`：配置 LangSmith 客户端、追踪项目及输入输出脱敏。
 - `agent/diagnostics/evaluation.py`：导入 LangSmith 数据集，用原生评估器运行诊断实验。

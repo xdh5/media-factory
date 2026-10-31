@@ -5,18 +5,10 @@ import hashlib
 import uuid
 
 from filelock import FileLock
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
-from langgraph.types import Command
 
-from agent.__main__ import snapshot_output
-from agent.diagnostics.knowledge import KnowledgeBase
 from agent.journal import CallJournal
-from agent.mcp_client import MCPTools
 from agent.settings import AgentSettings, SERVERS
-from agent.agent import create_media_agent, initial_state, require_current_checkpoint
 from agent.interrupts import interrupt_payload, resume_value
-from agent.streaming import stream_agent
 
 
 class AgentRuntime:
@@ -37,25 +29,45 @@ class AgentRuntime:
             pass
 
     async def serve(self):
-        # MCP 上下文始终由同一协程进入和退出；人工审批不会关闭后台任务所属的服务。
-        async with MCPTools(list(SERVERS)) as tools:
-            while True:
-                task_id, model, text, response, interrupt_id, events = await self.queue.get()
-                run_id = uuid.uuid4()
-                async def emit(event):
-                    await events.put(event)
-                knowledge = KnowledgeBase(self.database)
-                try:
-                    settings = AgentSettings(database=self.database)
-                    lock = FileLock(str(self.database) + "." + hashlib.sha256(task_id.encode()).hexdigest() + ".lock", timeout=0)
-                    with lock:
-                        result = await self.execute(tools, knowledge, settings, task_id, model, text, response, interrupt_id, run_id, emit)
-                    await events.put({"kind": "result", "run_id": str(run_id), "task_id": task_id, **result})
-                except Exception as exc:
-                    await events.put({"kind": "error", "error": str(exc), "task_id": task_id, "run_id": str(run_id)})
-                finally:
-                    self.active.discard(task_id)
-                    await events.put({"kind": "done"})
+        # 首个任务到达后连接 MCP；长驻会话仍由同一协程进入和退出。
+        first_task = await self.queue.get()
+        await first_task[-1].put({"kind": "status", "text": "正在准备业务工具，请稍候。"})
+        try:
+            from agent.mcp_client import MCPTools
+            async with MCPTools(list(SERVERS)) as tools:
+                await self.process_task(tools, first_task)
+                while True:
+                    await self.process_task(tools, await self.queue.get())
+        except Exception as exc:
+            pending = [first_task]
+            while not self.queue.empty():
+                pending.append(self.queue.get_nowait())
+            for task_id, _, _, _, _, events in pending:
+                self.active.discard(task_id)
+                await events.put({"kind": "error", "error": "MCP 初始化失败：" + str(exc), "task_id": task_id})
+                await events.put({"kind": "done"})
+            raise
+
+    async def process_task(self, tools, item):
+        task_id, model, text, response, interrupt_id, events = item
+        run_id = uuid.uuid4()
+
+        async def emit(event):
+            await events.put(event)
+
+        try:
+            from agent.diagnostics.knowledge import KnowledgeBase
+            knowledge = KnowledgeBase(self.database)
+            settings = AgentSettings(database=self.database)
+            lock = FileLock(str(self.database) + "." + hashlib.sha256(task_id.encode()).hexdigest() + ".lock", timeout=0)
+            with lock:
+                result = await self.execute(tools, knowledge, settings, task_id, model, text, response, interrupt_id, run_id, emit)
+            await events.put({"kind": "result", "run_id": str(run_id), "task_id": task_id, **result})
+        except Exception as exc:
+            await events.put({"kind": "error", "error": str(exc), "task_id": task_id, "run_id": str(run_id)})
+        finally:
+            self.active.discard(task_id)
+            await events.put({"kind": "done"})
 
     async def submit(self, task_id, model, text="", response=None, interrupt_id=None):
         if self.worker.done():
@@ -69,11 +81,20 @@ class AgentRuntime:
         return events
 
     async def snapshot(self, task_id):
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+        from agent.agent import create_media_agent
+
         async with AsyncSqliteSaver.from_conn_string(str(self.database)) as saver:
             graph = create_media_agent(None, None, saver, AgentSettings(database=self.database), task_id)
             return await graph.aget_state({"configurable": {"thread_id": task_id}})
 
     async def execute(self, tools, knowledge, settings, task_id, model, text, response, interrupt_id, run_id, emit):
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+        from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
+        from langgraph.types import Command
+        from agent.agent import create_media_agent, initial_state, require_current_checkpoint
+        from agent.streaming import stream_agent
+
         config = {"configurable": {"thread_id": task_id}, "recursion_limit": 100000,
                   "run_id": run_id, "metadata": {"thread_id": task_id}, "tags": ["桌面任务"]}
         journal = CallJournal(self.database)
@@ -124,6 +145,8 @@ class AgentRuntime:
 
     @staticmethod
     def output(snapshot):
+        from agent.__main__ import snapshot_output
+
         result = snapshot_output(snapshot)
         result["interrupts"] = [{"id": item.id, **interrupt_payload(item.value)} for task in snapshot.tasks for item in task.interrupts]
         return result
