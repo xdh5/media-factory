@@ -36,7 +36,7 @@ MATERIAL_STRATEGIES = (
 IMAGE_MATERIAL_STRATEGIES = (MATERIAL_AGENT_REFERENCE,)
 
 # Finance MCP 是生产参数的唯一真源；Agent 与 GitHub Runner 均通过
-# finance_get_production_config 获取，禁止在各自入口复制参数。
+# finance_get_config 获取，禁止在各自入口复制参数。
 DEFAULT_PRODUCTION_CONFIG = {
     "material_strategy": MATERIAL_STOCK_VIDEO,
     "tts_config": {

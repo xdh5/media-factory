@@ -53,7 +53,7 @@ def main():
             checked("未授权请求被拒绝", httpx.get(base + "/api/overview").status_code == 401)
             checked("真实千问模型可发现", [item["id"] for item in client.get("/v1/models").json()["data"]] == ["qwen3.7-plus"])
             body = {"model": "qwen3.7-plus", "stream": True,
-                    "messages": [{"role": "user", "content": "只调用一次 finance_get_production_config，然后用一句中文概括素材方案。不要生产、写库或发布。"}]}
+                    "messages": [{"role": "user", "content": "只调用一次 finance_get_config，然后用一句中文概括素材方案。不要生产、写库或发布。"}]}
             parts = []
             with client.stream("POST", "/v1/chat/completions", json=body) as response:
                 response.raise_for_status()
@@ -61,7 +61,7 @@ def main():
                     if line.startswith("data: ") and line != "data: [DONE]":
                         chunk = json.loads(line[6:])
                         parts.append(chunk["choices"][0]["delta"].get("content", ""))
-            checked("真实模型 SSE 流式工具调用", len(parts) > 2 and "finance_get_production_config" in "".join(parts))
+            checked("真实模型 SSE 流式工具调用", len(parts) > 2 and "finance_get_config" in "".join(parts))
             task_id = "chat-" + hashlib.sha256("local:real-integration-chat:qwen3.7-plus".encode()).hexdigest()
             state = client.get("/api/tasks/" + task_id).json()
             checked("首轮检查点完成", state["status"] == "completed")
@@ -74,7 +74,7 @@ def main():
             checked("多轮会话可继续", bool(second["choices"][0]["message"]["content"]))
             automatic_headers = {**headers, "X-OpenWebUI-Chat-Id": "automatic-tool-integration-chat"}
             response = client.post("/v1/chat/completions", headers=automatic_headers, json={"model": "qwen3.7-plus", "stream": False,
-                "messages": [{"role": "user", "content": "只调用一次 finance_get_topics 查询已占用话题，回复话题条数。不要写库、生产或发布。"}]})
+                "messages": [{"role": "user", "content": "只调用一次 finance_get_inventory 查询已占用话题，回复话题条数。不要写库、生产或发布。"}]})
             response.raise_for_status()
             automatic_task = "chat-" + hashlib.sha256("local:automatic-tool-integration-chat:qwen3.7-plus".encode()).hexdigest()
             state = client.get("/api/tasks/" + automatic_task).json()

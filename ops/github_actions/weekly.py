@@ -57,9 +57,10 @@ async def run_day(
 
     async with ProjectMCP("core.mcp.finance", PROJECT_ROOT) as finance_mcp:
         finance_preflight = await finance_mcp.call(
-            "finance_get_automation_plan",
+            "finance_get_inventory",
             {"publish_date": publish_date},
         )
+    finance_preflight = finance_preflight["plan"]
     if finance_preflight["should_generate"]:
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"
         produced, failed = [], []
@@ -89,7 +90,8 @@ async def run_day(
         }
 
     async with ProjectMCP("core.mcp.finance", PROJECT_ROOT) as finance_mcp:
-        remaining = await finance_mcp.call("finance_get_automation_plan", {"publish_date": publish_date})
+        remaining = await finance_mcp.call("finance_get_inventory", {"publish_date": publish_date})
+    remaining = remaining["plan"]
     if remaining["should_generate"]:
         results["finance"]["status"] = "produce_failed"
         results["finance"]["pending_content_parts"] = remaining["pending_content_parts"]

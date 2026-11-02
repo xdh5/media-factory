@@ -7,6 +7,6 @@
 5. 定稿前逐篇通读，判断原稿的推销、导流、拉群、卖课内容有没有漏删（包括没写进 `ad_segments` 的软植入），以及作者名、账号名、机构名、课程名、外号是否全部换成财富研习岛。有残留就改定稿再提交，不要用关键词清单或脚本代替判断，并在 reason 里写清这两项结论。
 6. 每条都给出简短 reason。提交 JSON：{"reviews":[{"aweme_id":"作品ID","kind":"normal或ad","text":"正常正文或空字符串","ad_segments":[],"reason":"校对及审核说明","editorial":{"article":"完整断行正文","db_source_hook":"原文钩子","source_hook":"处理后钩子","replacements":[],"topic":"话题","title":"长标题","short_title":"短标题","hashtags":["标签一","标签二","标签三","标签四"],"cover_lines":["标题原文"],"cover_highlights":["重点词"]}}]}。
 
-调用 finance_submit_copy_reviews 提交。若 needs_more=true，调用 finance_start_continue_collect_author_copies 并轮询，沿用 context_path 补足该作者配额，直到 completed=true 或已没有可抓作品。未经宿主审核的文本不能写入稿库。
+调用 finance_finalize_collection(context_path, reviews) 提交审核数组，无需 JSON 字符串。若返回 continuation，轮询其中 task_path，继续审核新返回的 pending，直到 completed=true 或候选用尽。未经宿主审核的文本不能写入稿库。
 
-正常稿件必须同时提供 editorial 定稿对象，字段为 article、db_source_hook、source_hook、replacements、topic、title、short_title、hashtags、cover_lines、cover_highlights。宿主使用财经现有正文改写、黄金钩子、断句、标题标签与视觉 Prompt 及校验工具完成编辑；正文按原稿顺序保留所有观点数字、替换品牌、消除连载指涉，按语义断行且每行最多36字。黄金钩子原文连续前缀为 db_source_hook，品牌替换后的钩子为 source_hook。长标题12至26字，短标题6至16字，四个标签不重复不带井号，封面一至三行拼接须与长标题一致，重点词原样来自长标题。广告记录不需要 editorial。
+正常稿件必须同时提供 editorial 定稿对象，字段为 article、db_source_hook、source_hook、replacements、topic、title、short_title、hashtags、cover_lines、cover_highlights。宿主按本任务要求一次完成编辑，提交时统一校验；正文按原稿顺序保留所有观点数字、替换品牌、消除连载指涉，按语义断行且每行最多36字。黄金钩子原文连续前缀为 db_source_hook，品牌替换后的钩子为 source_hook。长标题12至26字，短标题6至16字，四个标签不重复不带井号，封面一至三行拼接须与长标题一致，重点词原样来自长标题。广告记录不需要 editorial。

@@ -1,177 +1,22 @@
 # 财经 MCP
 
-编排入口：`python -m core.mcp.finance`。
+业务分为采集定稿入库、财经视频制作。通过 `python -m core.mcp.finance` 启动。
 
-生产参数以 `finance_get_production_config` 返回值为唯一标准；Agent 与 GitHub Runner 共用，禁止在各自入口复制。
+| 工具 | 职责 |
+|---|---|
+| finance_get_config | 唯一生产配置 |
+| finance_manage_authors | 作者名单管理 |
+| finance_start_collection | 单条、作者配额和续采 |
+| finance_finalize_collection | 宿主审核与完整定稿一起入库，配额不足自动启动续采 |
+| finance_manage_drafts | 查询和补齐未使用旧稿 |
+| finance_start_production | 领取定稿、保存生产稿、后台生成配音及分镜输入 |
+| finance_prepare_visuals | 提交分镜，准备生图任务或搜索视频 |
+| finance_submit_visuals | 图片保存和图库入库，或下载所选视频；不合成 |
+| finance_prepare_editorial | 返回重点句、翻译、章节的宿主定稿输入 |
+| finance_start_render | 合成、提交来源使用状态、默认上传 R2 |
+| finance_get_task | 查询所有后台任务 |
+| finance_get_inventory | 只读库存、话题、某日成片和生产计划 |
 
-财经线是唯一的文章成片线（原心灵鸡汤线已并入删除）；财经 Skill 提供原稿整理规则等业务参数，标题标签与分镜 Prompt 在 `core/mcp/finance/prompts/`。完整流程见 `.agents/skills/produce-finance-video/SKILL.md`。收集财经文案也在本 MCP，见 `.agents/skills/collect-finance-copy/SKILL.md`。
+工具在 workflows/business.py 按业务组合现有服务；注册清单仅包含以上12项。内部提示和校验函数保留为业务实现，不单独暴露。公共规则放在 config/server.py，具体交互见项目 collect-finance-copy 和 produce-finance-video 技能。
 
-## 目录职责
-
-- `__main__.py`：启动入口；`server.py`：创建服务实例。
-- `tools/registry.py`：注册工具，保持原有工具名称和参数。
-- `workflows/`：按稿件、素材、交付、后台任务拆分业务编排。
-- `services/`：稿件处理、分镜、素材准备、收集文案、合成和上传服务；调用方直接导入所需服务。
-- `services/collect_copy.py`：调用 media-collector 子仓库下载单条抖音链接，转写并写入财经文案库。
-- `services/collect_author_copies.py`：调用 media-collector 子仓库按作者名单平分抓取最新口播，去重并去掉广告后入库。
-- `services/copy_review.py`：管理待审原文并校验宿主 Agent 的校对、措辞修改和广告审核结果，不调用外部文本模型。
-- `services/production_config.py`：成片参数校验。
-- `services/video_layers.py`：字幕、钩子标题和章节图层。
-- `services/video_opening.py`：片头渲染和缓存。
-- `services/video_materials.py`：素材时长处理、分镜清单和署名。
-- `services/assemble_finance_video.py`：组织合成步骤并登记生产产物。
-- `infrastructure/gateways.py`：工作流依赖的外部工具接口。
-- `infrastructure/source_scripts.py`：转写稿入库、去重、占用，以及作者名单和整篇广告记录。
-- `config/`：生产配置、目录规则和服务说明；`errors/`：领域错误。
-- `prompts/`：现有业务提示词。
-
-## 工具编排
-
-```
-finance_get_production_config
-finance_get_automation_plan(publish_date)
-  └─ 每个计划发布日期目标为 1 条，返回尚缺少的 content_part（1）
-finance_get_source_hook_prompt / finance_validate_source_hook_response
-finance_get_article_prompt(source_text, source_hook)
-finance_get_article_chunk_plan
-  └─ 首段钩子与后续语义短句拆成多个小任务
-finance_get_article_chunk_generation_prompt / finance_validate_article_chunk_response
-  └─ Runner 逐段生成与校验，失败只重试当前段
-finance_validate_article_response
-  └─ 合并后执行全文校验
-finance_get_topic_generation_prompt / finance_validate_topic_response
-finance_get_metadata_generation_prompt / finance_validate_metadata_response
-  └─ 只确定长短标题与标签
-finance_get_visual_metadata_prompt / finance_validate_visual_metadata_response
-  └─ 根据确定标题生成封面断行与重点词
-finance_get_article_linebreak_prompt / finance_validate_article_linebreak_response
-  └─ 每段改写后单独断句，去掉换行必须与改写稿逐字一致
-finance_get_stock_video_selection_prompt / finance_validate_stock_video_selection_response
-finance_start_collect_copy(share_text, collection_name)
-└─ services.collect_copy.collect_copy
-   └─ infrastructure.source_scripts.save_transcribed_scripts
-   └─ 收集财经文案：下载单条抖音链接、转写口播，返回待审原文
-finance_list_source_authors / finance_add_source_author / finance_remove_source_author
-└─ 财经作者名单可随时查看、添加和删除，保存在数据库
-finance_start_collect_author_copies(count)
-└─ services.collect_author_copies.collect_author_copies
-   └─ 按作者人数平分 count，准备最新且未入库作品的原始转写
-finance_submit_copy_reviews(context_path, response_text)
-└─ 宿主 Agent 校对、按需修改措辞及广告审核后提交；正常稿入库，整篇广告登记排除
-finance_start_continue_collect_author_copies(context_path)
-└─ 继续补足被广告排除的作者配额，复用候选列表，不重启原始任务
-finance_poll_task(task_path)
-
-finance_get_source_stats
-└─ infrastructure.source_scripts.get_source_script_stats
-   └─ 只读统计原稿总数、可用数、有效占用数和已使用数
-
-finance_get_source_script
-└─ infrastructure.source_scripts.reserve_source_script
-   └─ 选择未使用原稿并临时占用
-
-finance_get_metadata_prompt
-└─ tools.prompts.build_metadata_prompt
-   └─ prompts/metadata.md
-
-[Agent 按 Skill 把原稿整理为正文：两类必做改动（品牌替换、连载指涉改写）+ 措辞级改写但保留大结构与信息。原稿已有标点且文字正确，不要改错别字或标点。再按 metadata_prompt 写标题标签]
-
-finance_save_draft(...)
-└─ topic_dedup.get_topic 查重；暂不写 D1
-└─ tools.save_draft.save_draft
-   └─ tools.parse_metadata.parse_metadata
-└─ 来源原稿保持临时占用，暂不标记已使用
-
-finance_get_topics
-└─ topic_dedup.get_topic
-
-finance_start_storyboard(draft_path, tts_config, material_strategy)
-└─ core.mcp._task_runner.submit_task
-   └─ tools.storyboard.prepare_storyboard
-      └─ prompts/shot_image_rules.md（agent_reference）
-      └─ prompts/stock_video_rules.md（stock_video）
-
-finance_poll_task(task_path)
-└─ core.mcp._task_runner.poll_task
-
-[Agent 按 storyboard_prompt 写分镜行，并为每句原样写 SUB 字幕；成片统一套用黄色 karaoke 逐字扫]
-
-素材策略 A：参考图宿主生图
-finance_prepare_images(..., image_config)
-└─ tools.prepare_shot_images.prepare_shot_images
-   └─ agent_reference → 每个镜头建立独立任务并附带用户参考图
-宿主按任务 Prompt 生图
-finance_save_images / finance_submit_images
-└─ generate_image 保存或提交 Agent 图任务
-
-素材策略 B：正版实拍视频
-finance_start_video_search(draft_path, storyboard_text, video_config)
-└─ tools.prepare_videos.prepare_video_searches
-   └─ generate_stock_video.search_stock_videos（Pexels → Pixabay → Coverr 兜底）
-finance_start_download_videos(context_path)
-└─ tools.prepare_videos.download_selected_videos
-   └─ generate_stock_video.prepare_stock_clip 一次完成拼接、裁切、帧率规范化与磨砂
-   └─ 按素材与参数签名复用完成镜头；最多并发处理 3 个镜头
-
-finance_start_finish_video(..., production_config, material_manifest_path, intro_image_path?)
-└─ core.mcp._task_runner.submit_task
-   └─ tools.assemble_finance_video.finish_finance_video
-      └─ 按素材清单自动识别策略（images → 宿主生图；videos → 实拍视频）
-      └─ 复用 prepare_storyboard 的 tts_path
-      └─ 从本期下载的正文实拍视频帧随机选底图，再由 generate_cover_image 保留原封面叠字样式
-      └─ generate_shot.generate_shot_from_intro（片头动画 + 快门音效）
-      └─ 黄金钩子图层：字幕位置覆盖 + generate_subtitles 按行生成 hook-title-N.ass（字魂群英体 165px，按标点断行，单行红字黑边 / 多行首行黄黑边其余红白边，\pos 堆叠）
-      └─ generate_final_video
-      └─ 成片成功后 infrastructure.source_scripts.mark_source_script_used
-
-finance_poll_task(task_path)
-└─ core.mcp._task_runner.poll_task
-```
-
-## 内部模块
-
-| 文件 | 职责 |
-| --- | --- |
-| `tools/prompts.py` | 标题标签 Prompt、分镜规则（按素材策略选文件）读取与拼装 |
-| `tools/save_draft.py` | 稿件读写、品牌替换后正文的断行与标签校验 |
-| `tools/parse_metadata.py` | 标题标签格式校验 |
-| `tools/storyboard.py` | TTS、timeline 与分镜解析（IMAGE / VIDEO 两种行标记） |
-| `tools/narration.py` | 旁白切句与字幕显示（去句尾标点） |
-| `tools/prepare_shot_images.py` | 按 image_config 准备镜头图 |
-| `services/image_delivery.py` | 校验宿主镜头图并登记独立生成图库 |
-| `tools/prepare_videos.py` | 正版实拍视频搜索、下载、规范化与磨砂 |
-| `tools/assemble_finance_video.py` | 封面、片头、钩子图层与最终合成 |
-| `tools/upload_to_r2.py` | 上传成片、封面和生产清单到 R2 |
-
-## 目录
-
-GitHub 周生产按 `finance_get_automation_plan` 的缺失分片补齐每日两条，结束后再次查询生产记录；仍缺分片时返回失败。晨间检查启动最新 `main` 的新任务，即使原任务显示成功也检查实际缺项，不使用沿用旧提交的失败 Job 重跑。手动补产可在周生产工作流填写 `publish_dates`（英文逗号分隔日期）并启用 `finance_only`，只补财经，不启动语言生产和发布。
-
-- 缓存：`cache/finance/{run_id}/`
-- 成片：`cache/output/finance/run-YYYYMMDD/`，日期为北京时间计划发布日期
-- 产物记录：成片成功后自动写入 D1 `production_outputs`
-- 宿主生成图库：`data/image_library_finance/{连续编号}.png`
-- 来源稿件：已收集的财经文案；保存草稿后继续临时占用，成片成功后才永久标记为已使用
-- 素材来源清单：实拍视频策略会写出 `cache/output/finance/{run_id}/attribution-comment.txt`
-- 图片记录：独立 D1 表 `finance_generated_images`
-
-正文素材按搜索顺序选择宽高至少 1920×1080 的候选；单段不足时最多拼接两段，合计时长必须覆盖镜头。当前站无法满足时搜索下一站，不再调用模型选片。全部站点无法满足时报错。
-
-性能记录：素材清单的 elapsed_seconds 与 timings 记录总耗时、逐镜头下载耗时及缓存命中；成片清单的 performance 记录拼接、时间戳规范化、最终合成耗时与最终成片缓存命中。新镜头已统一为 30 帧，不再额外整片转码规范时间戳。相同输入的最终成片也按签名复用，后续登记失败重试不会重复烧字幕。
-
-下载自动成片：finance_start_download_videos 默认 auto_finish=true，下载后在同一后台任务继续合成并登记产物，最终结果包含 video_path、成片 manifest_path、material_manifest_path、auto_finished=true。production_config 可省略，默认读取统一生产配置；production_source 默认 local_mcp，GitHub 必须传 github_workflow。自动流水线可由 MCP 生成重点句；独立合成仍要求宿主传重点句。仅需要素材时显式传 auto_finish=false。自动合成成功后禁止重复调用独立合成工具。
-
-
-### 宿主内容定稿
-
-MCP 不调用文本生成或视觉理解模型。TTS 与分镜完成后，宿主调用
-`finance_get_video_editorial_input(draft_path, storyboard_text, production_config)`，
-按返回的真实字幕和章节生成并合并以下字段：
-
-- `production_config.emphasis_lines.groups`：完整重点句、语义断行和逐行标红词；没有重点句传 `[]`。
-- `production_config.secondary_subtitles.translations`：中文字幕原文到英文译文的对象。
-- `production_config.chapter_timeline.titles`：与返回章节等长的短标题数组，每项 1 到 6 字。
-
-自动下载合成与独立成片入口均使用上述定稿。开启的图层缺少定稿时返回参数错误，
-不能通过关闭图层跳过宿主工作。GitHub Runner 同样在宿主侧生成定稿后提交给 MCP。
-生图、语音合成和语音转写仍由专用服务执行。
+采集内容由宿主去广告、改写并生成全部定稿字段，入库时统一校验。制作直接使用定稿，分镜、翻译、重点句和章节由宿主生成。MCP 不调用外部通用模型；语音合成与转写保留。GitHub Runner 在 MCP 外的既有模型调用独立保留。所有耗时步骤返回 task_path，finance_get_task 完成后读取 result，采集须额外确认 completed=true。

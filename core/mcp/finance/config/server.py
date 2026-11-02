@@ -1,6 +1,22 @@
 """财经 MCP 服务名称和使用说明。"""
 
-SERVER_NAME = 'media-factory-finance'
-SERVER_INSTRUCTIONS = '财经短视频编排 MCP。素材方案、TTS、BGM、片头等生产参数以 finance_get_production_config 为唯一标准，Agent 与 GitHub Runner 都必须先读取并复用。TTS 和分镜完成后，必须调用 finance_get_video_editorial_input，由宿主 Agent 生成重点句 groups、英文字幕 translations 和章节 titles，分别合并到 production_config.emphasis_lines、secondary_subtitles、chapter_timeline；所有成片入口均须提供，MCP 不调用文本或视觉理解模型。实拍素材调用 finance_start_download_videos 后默认自动合成，轮询同一任务至 done=true 后直接取得 video_path；禁止在自动合成成功后再次调用合成工具；只有 auto_finish=false 时需要单独合成。成片生产前必须先确认北京时间计划发布日期 publish_date；日期不明确时禁止创建生产 run、生产或成片落库。文案采集审核和预制定稿不需要计划发布日期。宿主 Agent 在采集审核存稿时完成正文改写、品牌替换、连载指涉改写、语义断行、黄金钩子、话题、长短标题、四个标签和封面断行重点词定稿。正常稿件提交 finance_submit_copy_reviews 时必须提供 editorial 对象。未使用旧稿使用 finance_list_editorial_drafts 和 finance_save_editorial_drafts 补齐；已使用稿件不能修改。生产通过 finance_get_source_script 领取已定稿稿件，直接使用 source.editorial 调用 finance_save_draft，不能重新生成内容。原稿临时占用仅在成片成功后标记已使用。查询稿件余量必须使用只读的 finance_get_source_stats，不得用选稿工具代替统计。镜头素材默认是 stock_video（Pexels/Pixabay/Coverr 正版实拍视频 + 首帧片头动画），也可指定 agent_reference（用户参考图 + 宿主逐镜头生图）。默认值由 finance_get_production_config 返回。稿件生成后直接制作视频；制作时将合入首帧的封面原图保存为成片目录中的 cover.png。成品完成后展示路径、标题、标签和发布文案。耗时步骤（TTS、素材、成片合成）必须用 start + poll_task 轮询，禁止同步调用以免 MCP 超时。禁止绕过 MCP 运行本地脚本。用户提供的单条抖音分享链接用 finance_start_collect_copy 收集财经文案，再用 finance_poll_task 轮询至 done=true；分类只接受“财经”。财经作者名单用 finance_list_source_authors、finance_add_source_author、finance_remove_source_author 查看和增减。用户要求抓取若干篇财经稿件时用 finance_start_collect_author_copies，再轮询至 done=true。'
-
-SERVER_INSTRUCTIONS += ' 文案采集仅做下载和语音识别。done=true 后必须读取 pending，由宿主 Agent 完成措辞修改、错字标点校对、广告审核及完整 editorial 内容定稿，不调用外部文本 LLM。使用 finance_submit_copy_reviews 提交；needs_more=true 时沿用 context_path 调用 finance_start_continue_collect_author_copies 补足配额。只有 completed=true 才表示目标稿件已入库。'
+SERVER_NAME = "media-factory-finance"
+SERVER_INSTRUCTIONS = (
+    "财经分为采集定稿入库和视频制作两项业务。先用 finance_get_config 读取唯一生产配置。"
+    "finance_manage_authors 管理作者；finance_start_collection 按链接或作者配额采集。"
+    "采集任务只返回原始转写，宿主必须校对、去广告、改写、替换品牌、生成钩子、话题、长短标题、四个标签和封面文案，"
+    "再用 finance_finalize_collection 一次提交 reviews 和完整 editorial。广告不入库，正常稿件缺定稿不能入库。"
+    "返回 continuation 时查询其中 task_path，继续审核 pending，直到 completed=true 或候选用尽。"
+    "补齐旧稿通过 finance_manage_drafts，不能修改已使用稿件。查库存只用 finance_get_inventory，不领取稿件。"
+    "制作前必须明确北京时间计划发布日期，禁止默认日期或提前占用稿件。"
+    "finance_start_production 领取定稿、保存生产稿并生成配音及分镜输入；生产不重新编辑原稿定稿。"
+    "宿主按返回 Prompt 写分镜，用 finance_prepare_visuals 准备参考图生图任务或实拍候选。"
+    "finance_submit_visuals 保存图片或下载视频，只准备素材，不自动合成。实拍默认按搜索顺序选择尺寸达标候选。"
+    "finance_prepare_editorial 返回真实字幕和章节输入；宿主生成 emphasis_lines.groups、"
+    "secondary_subtitles.translations、chapter_timeline.titles，合入统一 production_config。"
+    "finance_start_render 使用完整配置合成，默认上传 R2，成功后才标记来源已使用，不发布平台。"
+    "所有后台任务使用 finance_get_task 查询至 done=true，超时继续同一任务，禁止重复启动。"
+    "素材、配音、BGM、片头和字幕配置复用统一标准；成片保存 cover.png 并交付路径、标题和标签。"
+    "MCP 不调用外部通用生成模型，内容判断、改写、翻译、分镜和生图由宿主 Agent 完成。"
+    "专用配音与语音转写保留。GitHub Runner 在 MCP 外的既有模型调用保持独立。禁止绕过 MCP 执行业务脚本。"
+)

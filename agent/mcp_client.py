@@ -1,7 +1,6 @@
 """复用项目 stdio 客户端，动态发现业务工具和服务说明。"""
 
 from contextlib import AsyncExitStack
-from copy import deepcopy
 import asyncio
 import json
 
@@ -15,11 +14,10 @@ from .settings import ROOT, SERVERS
 
 # 只列经业务代码确认无写入的查询，用于重试和回执去重。
 READ_ONLY = {
-    "finance_get_video_editorial_input", "finance_get_production_config", "finance_get_source_stats",
-    "finance_list_source_authors", "finance_list_editorial_drafts",
-    "finance_poll_task", "language_learning_get_production_config",
+    "finance_prepare_editorial", "finance_get_config", "finance_get_inventory",
+    "finance_get_task", "language_learning_get_production_config",
     "language_learning_poll_task", "anime_get_production_config",
-    "anime_poll_task", "publishing_list_account_groups",
+    "anime_get_task", "publishing_list_account_groups",
     "publishing_preview", "publishing_poll_task", "publishing_batch_status",
 }
 
@@ -55,21 +53,6 @@ class MCPTools:
             "name": tool.name, "description": tool.description or "",
             "parameters": tool.inputSchema,
         }} for _, tool in self.tools.values()]
-        for definition in definitions:
-            if definition["function"]["name"] == "finance_submit_copy_reviews":
-                schema = deepcopy(definition["function"]["parameters"])
-                schema["properties"]["response_text"] = {
-                    "type": "object", "description": "审核对象，直接提供 reviews 数组，无需编码成 JSON 字符串",
-                    "properties": {"reviews": {"type": "array", "minItems": 1, "items": {
-                        "type": "object", "properties": {"aweme_id": {"type": "string"},
-                            "kind": {"type": "string", "enum": ["normal", "ad"]},
-                            "text": {"type": "string"}, "reason": {"type": "string"},
-                            "ad_segments": {"type": "array", "items": {"type": "string"}},
-                            "editorial": {"type": "object"}},
-                        "required": ["aweme_id", "kind", "text", "reason"]}}},
-                    "required": ["reviews"],
-                }
-                definition["function"]["parameters"] = schema
         return definitions
 
     def instructions_for(self, names):
@@ -83,8 +66,6 @@ class MCPTools:
         return next(item["function"]["parameters"] for item in self.definitions() if item["function"]["name"] == name)
 
     async def call(self, name, arguments, timeout):
-        if name == "finance_submit_copy_reviews" and isinstance(arguments.get("response_text"), dict):
-            arguments = {**arguments, "response_text": json.dumps(arguments["response_text"], ensure_ascii=False)}
         return await self.tools[name][0].call(name, arguments, read_timeout_seconds=timeout)
 
     def scoped(self, servers):
@@ -127,7 +108,7 @@ def adapt_mcp_tool(definition, mcp_tools, settings):
         result = await asyncio.wait_for(
             mcp_tools.call(name, arguments, settings.tool_timeout), settings.tool_timeout)
         # 后台轮询在工具内部等待，避免为每次进度查询请求模型。
-        while (name.endswith("_poll_task") and isinstance(result, dict)
+        while ((name.endswith("_poll_task") or name in {"finance_get_task", "anime_get_task"}) and isinstance(result, dict)
                and result.get("done") is False and not result.get("error")
                and result.get("status") not in {"failed", "cancelled"}):
             get_stream_writer()(tool_event(name, result))

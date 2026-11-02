@@ -55,7 +55,7 @@ class BusinessExecutionMiddleware(AgentMiddleware):
 
         try:
             validate(arguments, self.definitions[name])
-            if name == "finance_submit_copy_reviews":
+            if name == "finance_finalize_collection":
                 for message in reversed(request.state["messages"]):
                     if not isinstance(message, ToolMessage) or not isinstance(message.content, str):
                         continue
@@ -69,7 +69,7 @@ class BusinessExecutionMiddleware(AgentMiddleware):
                     if context.get("context_path") != arguments["context_path"] or "pending" not in context:
                         continue
                     expected = {item["aweme_id"] for item in context["pending"]}
-                    actual = [item["aweme_id"] for item in arguments["response_text"]["reviews"]]
+                    actual = [item["aweme_id"] for item in arguments["reviews"]]
                     if set(actual) != expected or len(actual) != len(expected):
                         raise ValueError("审核必须一次覆盖当前全部待审作品，不可拆成部分批次")
                     break

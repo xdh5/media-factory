@@ -10,12 +10,7 @@ from ._mcp import MCPCallError, ProjectMCP
 from ._shared import PROJECT_ROOT, qwen, json_text, write_summary
 
 
-async def _storyboard(mcp, draft, config, attempts):
-    started = await mcp.call("finance_start_storyboard", {
-        "draft_path": draft["draft_path"], "tts_config": config["tts_config"],
-        "material_strategy": config["material_strategy"],
-    })
-    context = await mcp.poll("finance_poll_task", started["task_path"])
+async def _storyboard(mcp, draft, config, attempts, context):
     feedback = ""
     for _ in range(attempts):
         text = qwen(
@@ -24,11 +19,11 @@ async def _storyboard(mcp, draft, config, attempts):
             max_tokens=12000,
         )["text"]
         try:
-            started = await mcp.call("finance_start_video_search", {
+            started = await mcp.call("finance_prepare_visuals", {
                 "draft_path": draft["draft_path"], "storyboard_text": text,
-                "video_config": config["video_config"],
+                "material_strategy": config["material_strategy"],
             })
-            return text, await mcp.poll("finance_poll_task", started["task_path"])
+            return text, await mcp.poll("finance_get_task", started["task_path"])
         except MCPCallError as exc:
             feedback = str(exc)
     raise RuntimeError(f"财经分镜连续 {attempts} 次不合格：{feedback}")
@@ -41,25 +36,19 @@ async def run(
     if not str(publish_date or "").strip():
         raise ValueError("GitHub 财经生产必须明确传入 publish_date")
     async with ProjectMCP("core.mcp.finance", PROJECT_ROOT) as mcp:
-        config = await mcp.call("finance_get_production_config")
+        config = await mcp.call("finance_get_config")
         retries = config["runner_retry_config"]
         if str(config["material_strategy"]) != "stock_video":
             raise RuntimeError("Finance MCP 默认素材策略必须是 stock_video")
 
-        selected = await mcp.call("finance_get_source_script")
-        source, reservation = selected["source"], selected["reservation"]
-        editorial = source["editorial"]
-        topic = editorial["topic"]
-        print(f"财经定稿：来源={source['aweme_id']} 标题={editorial['title']} 话题={topic}", flush=True)
-        draft = await mcp.call("finance_save_draft", {
-            **{key: editorial[key] for key in ("topic", "article", "title", "short_title", "hashtags", "cover_lines", "cover_highlights", "source_hook", "db_source_hook")},
-            "source_aweme_id": str(source["aweme_id"]),
-            "source_reservation_token": str(reservation["reservation_token"]),
+        started = await mcp.call("finance_start_production", {
             "publish_date": publish_date, "content_part": content_part,
         })
-
-        storyboard, prepared = await _storyboard(mcp, draft, config, int(retries["storyboard"]))
-        editorial_input = await mcp.call("finance_get_video_editorial_input", {
+        context = await mcp.poll("finance_get_task", started["task_path"])
+        draft = context["draft"]
+        topic = context["source"]["editorial"]["topic"]
+        storyboard, prepared = await _storyboard(mcp, draft, config, int(retries["storyboard"]), context)
+        editorial_input = await mcp.call("finance_prepare_editorial", {
             "draft_path": draft["draft_path"], "storyboard_text": storyboard,
             "production_config": config["production_config"],
         })
@@ -71,17 +60,18 @@ async def run(
         ))
         for key in ("emphasis_lines", "secondary_subtitles", "chapter_timeline"):
             config["production_config"][key] = {**config["production_config"].get(key, {}), **layout[key]}
-        started = await mcp.call("finance_start_download_videos", {
-            "context_path": prepared["context_path"],
+        started = await mcp.call("finance_submit_visuals", {
+            "context_path": prepared["context_path"], "material_strategy": "stock_video",
+        })
+        materials = await mcp.poll("finance_get_task", started["task_path"])
+        started = await mcp.call("finance_start_render", {
+            "draft_path": draft["draft_path"], "storyboard_text": storyboard,
+            "material_manifest_path": materials["manifest_path"],
             "production_config": config["production_config"],
-            "production_source": "github_workflow",
+            "production_source": "github_workflow", "upload_r2": True,
         })
-        manifest = await mcp.poll("finance_poll_task", started["task_path"])
-        uploaded = await mcp.call("finance_start_upload_r2", {
-            "manifest_path": str(manifest["manifest_path"]),
-            "run_id": str(manifest["run_id"]),
-        })
-        remote = await mcp.poll("finance_poll_task", uploaded["task_path"])
+        manifest = await mcp.poll("finance_get_task", started["task_path"])
+        remote = manifest["r2"]
 
     write_summary("财经成片已生成", [
         ("内容分片", str(content_part)), ("话题", topic), ("标题", manifest["title"]),

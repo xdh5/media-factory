@@ -54,11 +54,13 @@ def main() -> None:
 
         async def _load_plan() -> dict:
             module = "core.mcp.finance" if business_line == "finance" else "core.mcp.language_learning"
-            tool = "finance_get_automation_plan" if business_line == "finance" else "language_learning_get_automation_plan"
+            tool = "finance_get_inventory" if business_line == "finance" else "language_learning_get_automation_plan"
             async with ProjectMCP(module, PROJECT_ROOT) as mcp:
                 return await mcp.call(tool, {"publish_date": publish_date})
 
         payload = asyncio.run(_load_plan())
+        if business_line == "finance":
+            payload = payload["plan"]
         output_path = os.getenv("GITHUB_OUTPUT", "").strip()
         if output_path:
             with Path(output_path).open("a", encoding="utf-8") as stream:
