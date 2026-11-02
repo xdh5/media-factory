@@ -139,7 +139,7 @@ def prepare_split_execution(share_texts: list[str], series_name: str, selection_
                                      for index, (start, end) in enumerate(ranges, 1)]},
             "sources": [{key: item[key] for key in ("order", "title", "description", "topics",
                                                     "duration_seconds", "platform")} for item in sources],
-            "next_step": "按拆分计划的段数准备封面，写含已完结的一套文案，再调用 anime_dispatch_github_execution"}
+            "next_step": "按拆分计划的段数准备封面，写含已完结的一套文案，再调用 anime_start_publication"}
 
 
 def _repository() -> str:
@@ -187,7 +187,7 @@ def dispatch_execution(manifest_path: str, titles: list[str], descriptions: list
     validate_copy(titles, descriptions, tags)
     directory, parts = load_manifest(manifest_path)
     if not json.loads((directory / "manifest.json").read_text(encoding="utf-8")).get("preview_only"):
-        raise AnimeError("请使用 anime_start_prepare_execution 或 anime_start_prepare_split_execution 返回的预览清单")
+        raise AnimeError("请使用 anime_prepare_publication 或 anime_prepare_publication 返回的预览清单")
     selection = json.loads((directory / "selection.json").read_text(encoding="utf-8"))
     intro = directory / "youtube-intro-1.json"
     if not intro.is_file():

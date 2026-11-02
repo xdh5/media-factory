@@ -51,7 +51,7 @@ async def main():
                 return
             previous = None
             while True:
-                result = payload(await session.call_tool("anime_poll_task", {"task_path": started["task_path"]}))
+                result = payload(await session.call_tool("anime_get_task", {"task_path": started["task_path"]}))
                 if result.get("progress") != previous:
                     previous = result.get("progress")
                     if previous:

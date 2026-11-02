@@ -387,7 +387,7 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
 
     directory, parts = load_manifest(manifest_path, require_video_files=False)
     if json.loads((directory / "manifest.json").read_text(encoding="utf-8")).get("preview_only"):
-        raise AnimeError("预览片段不能发布，请调用 anime_dispatch_github_execution 由 Action 下载完整来源后发布")
+        raise AnimeError("预览片段不能发布，请调用 anime_start_publication 由 Action 下载完整来源后发布")
     if len(titles) != 1 or len(descriptions) != 1:
         raise AnimeError("只需提供一个共用标题和描述")
     max_title_length = 80 if require_completed else 100
