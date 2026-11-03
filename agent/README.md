@@ -152,3 +152,8 @@ python ops/desktop/diagnostics_cli.py rag-eval --database cache/rag-eval.sqlite 
 ### 当前时间上下文
 
 每次模型调用通过中间件动态读取 `datetime.now().astimezone()`，追加到系统消息，恢复任务也获取最新时间。宿主本地工具 `agent_calculate_datetime` 负责日期偏移、周定位和时区转换；模型只理解意图，不自行算日期。用户指定时区优先，完整时刻返回带偏移的 ISO 8601；仅日期不补零点，必要信息缺失或夏令时歧义需询问用户。没有新增 MCP 或模型调用。
+
+
+### 业务 Skill
+
+通过 Deep Agents 原生 `create_deep_agent(skills=["/skills/"], backend=...)` 加载项目 `.agents/skills`。`CompositeBackend` 将 `/skills/` 映射到该目录，其余文件操作继续使用 `StateBackend`。框架加载技能名称与描述，模型匹配任务后读取对应 `SKILL.md` 正文。桌面构建包含该目录，无需 GUI 配置。

@@ -3,6 +3,9 @@
 import uuid
 
 from deepagents import DeepAgentState, create_deep_agent
+from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
+
+from .settings import ROOT
 from langchain.agents.middleware import ModelCallLimitMiddleware, ToolRetryMiddleware
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.tools import ToolException, tool
@@ -17,6 +20,7 @@ from .time_context import TimeContextMiddleware, agent_calculate_datetime
 
 SYSTEM_PROMPT = """你是 Media Factory 的内部任务执行 Agent，使用中文沟通。
 通过提供的 MCP 工具完成任务，严格遵守各 MCP 服务说明和生产配置。
+任务匹配业务 Skill 时，先读取对应 SKILL.md 并按其流程执行。先查询配置并应用 Skill 明确的默认值，只询问仍无法确定的信息，不把接口必填参数全部交给用户填写。
 MCP 只执行业务，内容判断、翻译、重点句排版和章节标题由你完成；按工具返回的输入和格式提交定稿，不能省略或关闭图层来绕过。
 先读取业务线生产配置，再执行生产。日期不明确时使用 agent_request_input 询问，不能自行占用话题。
 长任务使用 start 后返回的 task_path 轮询到 done=true，恢复时优先查询已有任务。
@@ -46,6 +50,11 @@ def create_media_agent(tools, journal, saver, settings, task_id, knowledge=None,
     instructions = "\n\n".join(tools.instructions) if tools else ""
     return create_deep_agent(
         model=model,
+        skills=["/skills/"],
+        backend=lambda runtime: CompositeBackend(
+            default=StateBackend(runtime),
+            routes={"/skills/": FilesystemBackend(root_dir=ROOT / ".agents" / "skills", virtual_mode=True)},
+        ),
         tools=[*registered_tools, agent_request_input, agent_calculate_datetime],
         system_prompt=SYSTEM_PROMPT + "\n" + policy_instruction() + "\n" + instructions,
         checkpointer=saver,

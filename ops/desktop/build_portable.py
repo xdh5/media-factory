@@ -70,7 +70,7 @@ def main():
     project = application / "project"
     project.mkdir(exist_ok=True)
     ignored = shutil.ignore_patterns(".git", "node_modules", "__pycache__", ".env", "data", "cache", "*.sqlite*", "*.db", "*.log", "client_secret*.json", "*token.json")
-    for name in ("core", "agent", "desktop", "integrations", "static", "docs"):
+    for name in ("core", "agent", "desktop", "integrations", "static", "docs", ".agents"):
         shutil.copytree(ROOT / name, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
     (project / "ops").mkdir(exist_ok=True)
     shutil.copy2(ROOT / "ops/__init__.py", project / "ops/__init__.py")
@@ -122,7 +122,7 @@ def main():
         subprocess.run([sys.executable, "-m", "pip", "install", "--no-compile", "--timeout", "120", "--retries", "4",
                         "--target", str(agent_packages), "--upgrade", "--only-binary=:all:", str(ROOT) + "[agent]"],
                        env=environment, check=True)
-    for name in ("core", "agent", "desktop", "docs"):
+    for name in ("core", "agent", "desktop", "docs", ".agents"):
         shutil.copytree(ROOT / name, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
     shutil.copy2(ROOT / "desktop/main.cjs", application / "main.cjs")
     (CACHE / "build-check-webui").mkdir(parents=True, exist_ok=True)
