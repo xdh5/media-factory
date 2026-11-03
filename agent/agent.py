@@ -51,8 +51,8 @@ def create_media_agent(tools, journal, saver, settings, task_id, knowledge=None,
     return create_deep_agent(
         model=model,
         skills=["/skills/"],
-        backend=lambda runtime: CompositeBackend(
-            default=StateBackend(runtime),
+        backend=CompositeBackend(
+            default=StateBackend(),
             routes={"/skills/": FilesystemBackend(root_dir=ROOT / ".agents" / "skills", virtual_mode=True)},
         ),
         tools=[*registered_tools, agent_request_input, agent_calculate_datetime],
