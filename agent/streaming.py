@@ -1,11 +1,40 @@
 """消费框架原生消息、工具更新与业务进度流。"""
 
 import json
+import time
+
+from langchain.agents.middleware import AgentMiddleware
+from langgraph.config import get_stream_writer
+from langgraph.errors import GraphBubbleUp
 
 from langchain_core.messages import AIMessageChunk, ToolMessage
 
 from .diagnostics.redaction import redact
 from .diagnostics.tracing import agent_tracing
+
+
+class ActivityMiddleware(AgentMiddleware):
+    """通过框架自定义流发送可观察的执行状态，不增加模型调用。"""
+
+    async def abefore_model(self, state, runtime):
+        get_stream_writer()({"kind": "status", "text": "模型思考中…"})
+
+    async def awrap_tool_call(self, request, handler):
+        writer = get_stream_writer()
+        name = request.tool_call["name"]
+        started = time.monotonic()
+        writer({"kind": "status", "text": f"正在调用工具：{name}…"})
+        try:
+            result = await handler(request)
+        except GraphBubbleUp:
+            writer({"kind": "status", "text": f"工具 {name} 已暂停，等待处理"})
+            raise
+        except Exception:
+            writer({"kind": "status", "text": f"工具 {name} 执行失败（{time.monotonic() - started:.1f} 秒）"})
+            raise
+        status = "失败" if getattr(result, "status", None) == "error" else "完成"
+        writer({"kind": "status", "text": f"工具 {name} 执行{status}（{time.monotonic() - started:.1f} 秒）"})
+        return result
 
 
 def tool_event(name, result, status="ok"):

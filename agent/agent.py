@@ -15,6 +15,7 @@ from .approval_policy import APPROVAL_REQUIRED_TOOLS, policy_instruction
 from .llm import create_chat_model
 from .mcp_client import adapt_mcp_tool
 from .middleware import BusinessExecutionMiddleware
+from .streaming import ActivityMiddleware
 from .time_context import TimeContextMiddleware, agent_calculate_datetime
 
 
@@ -62,6 +63,7 @@ def create_media_agent(tools, journal, saver, settings, task_id, knowledge=None,
                       for item in registered_tools if item.name in APPROVAL_REQUIRED_TOOLS},
         state_schema=MediaAgentState,
         middleware=[
+            ActivityMiddleware(),
             TimeContextMiddleware(),
             BusinessExecutionMiddleware(tools, journal, settings, task_id, usage, knowledge),
             ToolRetryMiddleware(max_retries=settings.max_attempts - 1,

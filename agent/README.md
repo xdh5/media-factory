@@ -157,3 +157,8 @@ python ops/desktop/diagnostics_cli.py rag-eval --database cache/rag-eval.sqlite 
 ### 业务 Skill
 
 通过 Deep Agents 原生 `create_deep_agent(skills=["/skills/"], backend=...)` 加载项目 `.agents/skills`。`CompositeBackend` 将 `/skills/` 映射到该目录，其余文件操作继续使用 `StateBackend`。框架加载技能名称与描述，模型匹配任务后读取对应 `SKILL.md` 正文。桌面构建包含该目录，无需 GUI 配置。
+
+
+### 执行状态流
+
+`ActivityMiddleware` 使用框架的 `abefore_model` 和 `awrap_tool_call`，通过 `get_stream_writer()` 发送 `custom` 状态事件。模型请求前显示“模型思考中”，所有工具开始、结束、失败或暂停均报告状态与耗时。现有 `astream(messages/updates/custom)` 转发这些事件，桌面 SSE 输出状态提示；MCP 已返回的后台任务进度沿用现有展示。没有新增模型调用，也不展示模型内部思考内容。MCP 内部未上报的细分步骤无法自动显示。

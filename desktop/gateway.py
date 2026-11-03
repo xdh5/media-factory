@@ -195,7 +195,6 @@ async def chat(request: Request):
                             last_progress[task] = progress
                             yield f"\n\n> {progress}\n\n"
                         continue
-                yield f"\n\n> 工具 `{event['name']}`：{event['status']}\n\n"
                 paths = media_links(event.get("artifacts", []), request)
                 for link in paths:
                     yield link
