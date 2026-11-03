@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import secrets
 import time
+import tempfile
 import uuid
 
 from dotenv import dotenv_values
@@ -90,18 +91,31 @@ async def models():
             "object": "model", "created": 0, "owned_by": "media-factory"}]}
 
 
+def allowed_media_path(path):
+    """允许工作区媒体及登录工具生成的临时二维码，不开放任意本地图片。"""
+    if not path.is_file():
+        return False
+    if path.is_relative_to(WORKSPACE / "cache"):
+        return path.suffix.lower() in {".mp4", ".webm", ".mov", ".png"}
+    return (path.parent == Path(tempfile.gettempdir()).resolve()
+            and path.name.startswith("media-publisher-login-") and path.suffix.lower() == ".png")
+
+
 def media_links(result, request):
     content = json.dumps(result, ensure_ascii=False)
     import re
-    paths = re.findall(r'"([^"\n]+\.(?:mp4|webm|mov))"', content, re.IGNORECASE)
+    paths = re.findall(r'"([^"\n]+\.(?:mp4|webm|mov|png))"', content, re.IGNORECASE)
     links = []
     for raw in paths:
         path = Path(raw.replace("\\\\", "\\")).resolve()
-        if path.is_file() and path.is_relative_to(WORKSPACE / "cache"):
+        if allowed_media_path(path):
             encoded = base64.urlsafe_b64encode(str(path).encode()).decode().rstrip("=")
             signature = hmac.new(MEDIA_KEY.encode(), encoded.encode(), hashlib.sha256).hexdigest()
             url = str(request.base_url).rstrip("/") + f"/media/{encoded}?signature={signature}"
-            links.append(f"\n[预览视频：{path.name}]({url})\n")
+            if path.suffix.lower() == ".png":
+                links.append(f"\n\n![登录二维码]({url})\n\n")
+            else:
+                links.append(f"\n[预览视频：{path.name}]({url})\n")
     return list(dict.fromkeys(links))
 
 
@@ -210,9 +224,10 @@ async def media(encoded: str, signature: str):
     if not hmac.compare_digest(signature, expected):
         raise HTTPException(403)
     path = Path(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)).decode()).resolve()
-    if not path.is_relative_to(WORKSPACE / "cache") or path.suffix.lower() not in {".mp4", ".webm", ".mov"} or not path.is_file():
+    if not allowed_media_path(path):
         raise HTTPException(404)
-    return FileResponse(path, media_type="video/mp4")
+    return FileResponse(path, media_type="image/png" if path.suffix.lower() == ".png" else "video/mp4",
+                        headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/overview", dependencies=[Depends(authenticated)])
