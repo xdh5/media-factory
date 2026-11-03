@@ -16,7 +16,7 @@ description: 发布或预约韩语学习成片；适用于“发布明天的韩�
 
 ## 执行
 
-1. 调用 `publishing_list_account_groups(business_line="language_learning", account_group="korean")`，默认不传 `platforms`，读取真实平台并预检全部目标账号。用户指定平台时传该范围。仅在配置缺失或选择确有歧义时询问。
+1. 调用 `publishing_list_account_groups(business_line="language_learning", account_group="korean")`，默认不传 `platforms`，读取真实平台。随后调用 `publishing_start_account_check`，传入本次平台范围，并用 `publishing_poll_task` 查看进度与登录结果。用户指定平台时传该范围。仅在配置缺失或选择确有歧义时询问。
 2. 账号需登录时展示账号、平台及二维码或授权入口；检测失败单独说明。全部通过前不恢复成片、不上传、不发布。通过后提示 **全部账号已登录，开始发布**，自动继续。
 3. 调用 `publishing_preview` 核对该日期的成片和重复记录；已发布或已预约的跳过，无待发布产物则说明并结束。
 4. 单日使用 `publishing_start_publish`，轮询 `publishing_poll_task` 至完成；多日使用 `publishing_start_batch`，每 3 分钟查询 `publishing_batch_status`，直到完成或需要用户处理。

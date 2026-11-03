@@ -37,12 +37,23 @@ def _map_error(exc: Exception) -> PublishingError:
 
 def publishing_list_account_groups(business_line: str | None = None, account_group: str | None = None,
                                     detailed: bool = False, platforms: list[str] | None = None) -> dict:
-    """只检测指定账号组和本次发布平台的真实会话；需要登录与检测失败分开返回。默认返回摘要。"""
+    """只读取账号组及平台配置，不检查登录。随后用 publishing_start_account_check 执行后台预检。"""
     try:
         payload = list_account_groups(business_line, account_group, platforms)
-        return payload if detailed else account_groups_summary(payload)
+        return payload if detailed else {"groups": [{"name": group["name"], "business_line": group["business_line"], "platforms": [member["platform"] for member in group["members"]]} for group in payload["groups"]]}
     except Exception as exc:
         raise _map_error(exc) from exc
+
+
+def publishing_start_account_check(business_line: str, account_group: str, platforms: list[str]) -> dict:
+    """后台预检本次目标账号，立即返回 task_path。使用 publishing_poll_task 查看当前平台、阶段、耗时，完成后读取 all_accounts_ready 和 login_states；配置查询不代表登录通过。"""
+    from core.tools.publish_media.accounts import check_account_groups
+    def work(progress=None):
+        return account_groups_summary(check_account_groups(business_line, account_group, platforms, progress))
+    started = runner_submit_task(cache_dir=CACHE_ROOT / "account-check" / business_line / account_group,
+                                 run_id="account-check-" + account_group,
+                                 step="account-check:" + ",".join(sorted(platforms)), fn=work)
+    return {**started, "poll_tool": "publishing_poll_task"}
 
 
 def publishing_preview(
@@ -151,7 +162,7 @@ def publishing_poll_task(task_path: str, after_revision: str | None = None, deta
         deadline = time.monotonic() + min(25, max(0, wait_seconds))
         while True:
             payload = runner_poll_task(task_path=task_path)
-            if detailed:
+            if detailed or (payload.get("result") or {}).get("all_accounts_ready") is not None or str(payload.get("step") or "").startswith("account-check"):
                 return payload
             summary = task_summary(payload, after_revision)
             if summary["changed"] or summary["done"] or time.monotonic() >= deadline:

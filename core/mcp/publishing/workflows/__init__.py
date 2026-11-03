@@ -2,6 +2,7 @@
 
 from .api import (
     publishing_review_session,
+    publishing_start_account_check,
     publishing_list_account_groups,
     publishing_preview,
     publishing_start_login,
@@ -15,6 +16,7 @@ ALL_TOOLS = (
     publishing_start_batch,
     publishing_batch_status,
     publishing_review_session,
+    publishing_start_account_check,
     publishing_list_account_groups,
     publishing_preview,
     publishing_start_login,

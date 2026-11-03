@@ -478,51 +478,49 @@ def _database_groups(business_line: str | None = None) -> list[dict]:
 
 def list_account_groups(business_line: str | None = None, account_group: str | None = None,
                         platforms: list[str] | None = None) -> dict:
-    """返回 D1 账号组，并尽量合并 media-publisher 当前已登录账号组。"""
+    """只读取并筛选数据库账号组配置，不打开浏览器或检查授权。"""
     database = _database_groups(None)
-    all_database_names = {str(item["name"]) for item in database}
     requested = set(normalize_platforms(platforms)) if platforms is not None else None
     groups = [{**item, "members": [member for member in item["members"] if member["enabled"]
                                   and (requested is None or member["platform"] in requested)]}
               for item in database if (not business_line or item["business_line"] == business_line)
               and (not account_group or item["name"] == account_group) and item["enabled"]]
-    account_refs = sorted({member["account_ref"] for group in groups for member in group["members"]
-                           if member["connector"] == "media-publisher"})
-    matrix_error = None
-    try:
-        rows = []
-        for account_ref in account_refs:
-            group_platforms = sorted({member["platform"] for group in groups for member in group["members"]
-                                if member["account_ref"] == account_ref and member["connector"] == "media-publisher"
-                                and member["enabled"]})
-            rows.extend(_publisher_account_rows([account_ref], platforms=group_platforms, refresh=True))
-        matrix_accounts = list_publisher_accounts(rows=rows)
-        matrix_login_states = list_publisher_login_states(rows=rows)
-    except MediaPublisherCommandError as exc:
-        matrix_accounts = []
-        matrix_login_states = []
-        matrix_error = str(exc)
+    return {"groups": groups}
+
+
+def check_account_groups(business_line: str, account_group: str, platforms: list[str], progress=None) -> dict:
+    """按平台执行真实账号预检，逐项报告进度与检测结果。"""
+    groups = list_account_groups(business_line, account_group, platforms)["groups"]
+    rows, errors = [], []
     for group in groups:
-        live = [item for item in matrix_accounts if item["account_ref"] == group["name"]]
+        live = []
         for member in group["members"]:
-            if member.get("account_key"):
-                live.extend(_official_members(member))
+            label = f"{member['platform']} / {member['account_ref']}"
+            if progress:
+                progress(f"正在预检 {label}：打开真实发布页或验证官方授权")
+            started = time.monotonic()
+            try:
+                if member["connector"] == "media-publisher":
+                    detected = _publisher_account_rows([member["account_ref"]], platforms=[member["platform"]], refresh=True)
+                    rows.extend(detected)
+                    live.extend(list_publisher_accounts(rows=detected))
+                else:
+                    live.extend(_official_members(member))
+                if progress:
+                    progress(f"已完成预检 {label}（{time.monotonic() - started:.1f} 秒）")
+            except Exception as exc:
+                error = f"{label}：{type(exc).__name__}: {exc}"
+                errors.append(error)
+                if progress:
+                    progress(f"预检失败 {error}")
         group["publisher_accounts"] = live
-    for name in sorted({item["account_ref"] for item in matrix_accounts} - all_database_names):
-        groups.append({
-            "code": f"media-publisher:{name}",
-            "name": name,
-            "business_line": None,
-            "enabled": 1,
-            "source": "media-publisher",
-            "members": [],
-            "publisher_accounts": [item for item in matrix_accounts if item["account_ref"] == name],
-        })
-    return {
-        "groups": groups,
-        "publisher_login_states": matrix_login_states,
-        "publisher_error": matrix_error,
-    }
+    with _ACCOUNT_ROWS_LOCK:
+        for account_ref in {row["phone"] for row in rows}:
+            selected_rows = [row for row in rows if row["phone"] == account_ref]
+            selected_platforms = tuple(sorted({MEDIA_PUBLISHER_CODE_PLATFORMS.get(row["pt"], row["pt"]) for row in selected_rows}))
+            _ACCOUNT_ROWS_CACHE[(account_ref, selected_platforms)] = (time.monotonic(), selected_rows)
+    return {"groups": groups, "publisher_login_states": list_publisher_login_states(rows=rows),
+            "publisher_error": "；".join(errors) if errors else None}
 
 
 _OFFICIAL_ACCOUNT_CACHE: dict[str, list] = {}

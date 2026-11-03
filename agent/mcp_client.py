@@ -120,7 +120,7 @@ def adapt_mcp_tool(definition, mcp_tools, settings):
         if isinstance(result, dict):
             from pathlib import Path
             import base64
-            screenshots = [row.get("screenshot_path") for row in result.get("login_states", []) if row.get("screenshot_path")]
+            screenshots = [row.get("screenshot_path") for row in result.get("result", result).get("login_states", []) if row.get("screenshot_path")]
             if screenshots:
                 return [{"type": "text", "text": json.dumps(result, ensure_ascii=False)},
                         *[{"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(Path(path).read_bytes()).decode()}} for path in screenshots]]

@@ -10,7 +10,7 @@ description: 使用统一发布 MCP 把指定计划发布日期的财经成片�
 ## 用户信息与默认时间
 
 - 必须明确产物计划发布日期 `publish_date` 和账号组；缺少时追问。日期用于选择产物，与实际预约时间分开。
-- 先调用 `publishing_list_account_groups`，传 `business_line="finance"`、`account_group="finance"`；指定平台时同时传 `platforms`，只检查本次使用的账号。只有真实页面检测 `status="connected"` 才可报告有效，不用 Cookie 或声明的有效期推断。财经成片的账号组名称是 `finance`。
+- 先调用 `publishing_list_account_groups`，传 `business_line="finance"`、`account_group="finance"`；指定平台时同时传 `platforms`，读取本次配置，再调用 `publishing_start_account_check` 并轮询 `publishing_poll_task`，只检查本次使用的账号。只有真实页面检测 `status="connected"` 才可报告有效，不用 Cookie 或声明的有效期推断。财经成片的账号组名称是 `finance`。
 - 用户未指定平台时，检查并使用所选账号组全部启用的平台；指定时只用指定平台。登录失效的目标账号需要用户登录，不能自动排除。
 - 明确说“立即/现在”时立即发布。未给具体时间时，不传 `publish_mode`、`publish_at`，由公共发布层按计划发布日期北京时间 14:00、18:00 各安排一篇。
 - 两篇齐全时第一篇排 14:00、第二篇排 18:00；只有一篇时排 18:00。当天 14:00 已过时，只安排 18:00 一篇，不把两篇挤到同一时段。仅明确指定 18:00 时也只安排一篇，优先第二篇。
@@ -24,7 +24,7 @@ description: 使用统一发布 MCP 把指定计划发布日期的财经成片�
 
 ## 执行与交付
 
-1. 先调用 `publishing_list_account_groups` 检查所有本次目标账号。有账号需要登录或检测失败时立即提示，展示可用的二维码或授权入口，处理完成后重新预检；账号未全部通过前不读取、恢复或上传成片。只有 `all_accounts_ready=true` 时，先向用户用醒目粗体发送“**全部账号已登录，开始发布**”，再自动继续，无需用户确认。随后调用 `publishing_preview`。没有可发布内容时说明原因并停止。
+1. 先调用 `publishing_list_account_groups` 读取配置，再调用 `publishing_start_account_check` 并轮询 `publishing_poll_task` 检查所有本次目标账号。有账号需要登录或检测失败时立即提示，展示可用的二维码或授权入口，处理完成后重新预检；账号未全部通过前不读取、恢复或上传成片。只有 `all_accounts_ready=true` 时，先向用户用醒目粗体发送“**全部账号已登录，开始发布**”，再自动继续，无需用户确认。随后调用 `publishing_preview`。没有可发布内容时说明原因并停止。
    用户指定单条标题时，从预检结果匹配对应 `production_id`，再次预检及实际发布均传入该标识，只发布这一条。
 2. 多日期发布用 `publishing_start_batch` 一次提交，`publications` 每项传 `publish_date` 和 `content_kind="finance"`，时间按上述默认规则。返回批次路径后由后台程序独立执行，宿主持续等待并按下述规则盯进度，不能直接结束对话让用户反复催问。后台失败或需要登录时停止批次，核对已入库项后恢复，不能自动补发结果不确定项。单日交互诊断才用 `publishing_start_publish` 和 `publishing_poll_task`。
 3. 账号 `status="login_required"` 时先让用户登录，不继续恢复成片或发布；`status="error"` 是检测失败，排查页面或网络，不宣称账号过期。抖音、快手、头条或视频号明确需要扫码时，调用登录工具并把 `qr_path` 直接展示为 Markdown 图片及可点击文件链接；轮询扫码成功后刷新账号状态并重新预检。

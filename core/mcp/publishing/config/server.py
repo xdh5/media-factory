@@ -3,6 +3,7 @@
 SERVER_NAME = "media-factory-publishing"
 
 SERVER_INSTRUCTIONS = (
+    "publishing_list_account_groups只查配置；读取平台后调用publishing_start_account_check，再用publishing_poll_task查看预检进度和all_accounts_ready，禁止将配置查询视为登录通过。"
     "统一视频发布 MCP。必须明确业务线、产物计划发布日期、账号组、平台和发布方式。"
     "立即发布使用 immediate + now，预约发布使用 scheduled + 带时区的未来 ISO 8601 时间。"
     "优先使用本地产物，本地缺失时允许从 GitHub Workflow 的 R2 产物恢复。"
