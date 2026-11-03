@@ -7,6 +7,7 @@ SERVER_INSTRUCTIONS = (
     "立即发布使用 immediate + now，预约发布使用 scheduled + 带时区的未来 ISO 8601 时间。"
     "优先使用本地产物，本地缺失时允许从 GitHub Workflow 的 R2 产物恢复。"
     "先检查本次账号组和目标平台的真实发布页，全部通过后才恢复成片或发布。"
+    "自动检测异常且返回screenshot_path时，由宿主先查看截图，使用publishing_review_session提交判断；页面正常可继续，异常或无法确认则告诉用户，不把检测异常误说成登录失效。"
     "Cookie 存在不代表登录有效；login_required 才需要扫码，检测失败不可说成账号过期。"
     "账号异常立即通知并提供登录入口；all_accounts_ready=true 后先用醒目粗体提示全部账号已登录，开始发布，再自动执行。"
     "发布前查询 publication_records 去重，成功或预约成功后逐条写回数据库。"

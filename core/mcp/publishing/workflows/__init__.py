@@ -1,6 +1,7 @@
 """统一发布 MCP 工作流与工具清单。"""
 
 from .api import (
+    publishing_review_session,
     publishing_list_account_groups,
     publishing_preview,
     publishing_start_login,
@@ -13,6 +14,7 @@ from .batch_api import publishing_start_batch, publishing_batch_status
 ALL_TOOLS = (
     publishing_start_batch,
     publishing_batch_status,
+    publishing_review_session,
     publishing_list_account_groups,
     publishing_preview,
     publishing_start_login,

@@ -232,7 +232,7 @@ def _publisher_account_rows(account_refs: list[str] | None = None, *, platforms:
         with _ACCOUNT_ROWS_LOCK:
             key = (group, tuple(sorted(platforms or [])))
             cached = _ACCOUNT_ROWS_CACHE.get(key)
-            if (not refresh and cached and time.monotonic() - cached[0] < 30
+            if (not refresh and cached and time.monotonic() - cached[0] < (300 if any(row.get("hostReviewed") for row in cached[1]) else 30)
                     and all(item.get("loggedIn") is True and item.get("realSessionProbe") is True for item in cached[1])):
                 rows.extend(cached[1])
                 continue
@@ -297,6 +297,8 @@ def list_publisher_login_states(*, rows: list | None = None) -> list[dict]:
             "checked_at": item.get("checkedAt"),
             "real_session_probe": item.get("realSessionProbe") is True,
             "login_required": login_required,
+            "screenshot_path": item.get("screenshotPath"),
+            "current_url": item.get("currentUrl"),
             "login_tool": "publishing_start_login" if login_required else None,
         })
     return states
@@ -658,9 +660,32 @@ def resolve_account_group(account_group: str, business_line: str, platforms: lis
                 "account_group": account_group,
                 "missing_platforms": missing,
                 "login_required": login_required,
+            "screenshot_path": item.get("screenshotPath"),
+            "current_url": item.get("currentUrl"),
                 "account_states": account_states,
                 "inspection_errors": [state for state in account_states if state["status"] == "error"] + unavailable,
                 "next_step": "仅对 login_required 调用扫码登录；检测失败先处理页面或网络问题，再重新预检",
             },
         )
     return routes
+
+
+def review_publish_session(account_ref: str, platform: str, screenshot_path: str, ready: bool, reason: str) -> dict:
+    """宿主查看真实发布页截图后提交判断，仅接纳近期自动检测不确定的页面。"""
+    if not reason.strip():
+        raise PublishAccountGroupError("必须说明页面可用或异常的可见依据")
+    matches = []
+    with _ACCOUNT_ROWS_LOCK:
+        for key, (checked, rows) in _ACCOUNT_ROWS_CACHE.items():
+            if key[0] != account_ref or time.monotonic() - checked >= 300:
+                continue
+            for row in rows:
+                if (MEDIA_PUBLISHER_CODE_PLATFORMS.get(row.get("pt"), row.get("pt")) == platform
+                        and row.get("screenshotPath") == screenshot_path
+                        and row.get("loginRequired") is not True and row.get("status") == "error"):
+                    matches.append(row)
+        if not matches:
+            raise PublishAccountGroupError("没有匹配的近期异常截图，请重新检测账号")
+        for row in matches:
+            row.update(hostReviewed=True, loggedIn=ready, status="connected" if ready else "error", reason=reason)
+    return {"platform": platform, "account_ref": account_ref, "ready": ready, "reason": reason}

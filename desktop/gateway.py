@@ -98,7 +98,7 @@ def allowed_media_path(path):
     if path.is_relative_to(WORKSPACE / "cache"):
         return path.suffix.lower() in {".mp4", ".webm", ".mov", ".png"}
     return (path.parent == Path(tempfile.gettempdir()).resolve()
-            and path.name.startswith("media-publisher-login-") and path.suffix.lower() == ".png")
+            and path.name.startswith(("media-publisher-login-", "media-publisher-probe-")) and path.suffix.lower() == ".png")
 
 
 def media_links(result, request):
@@ -113,7 +113,8 @@ def media_links(result, request):
             signature = hmac.new(MEDIA_KEY.encode(), encoded.encode(), hashlib.sha256).hexdigest()
             url = str(request.base_url).rstrip("/") + f"/media/{encoded}?signature={signature}"
             if path.suffix.lower() == ".png":
-                links.append(f"\n\n![登录二维码]({url})\n\n")
+                label = "发布页检测截图" if path.name.startswith("media-publisher-probe-") else "登录二维码"
+                links.append(f"\n\n![{label}]({url})\n\n")
             else:
                 links.append(f"\n[预览视频：{path.name}]({url})\n")
     return list(dict.fromkeys(links))

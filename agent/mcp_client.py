@@ -117,6 +117,13 @@ def adapt_mcp_tool(definition, mcp_tools, settings):
                 mcp_tools.call(name, arguments, settings.tool_timeout), settings.tool_timeout)
         if isinstance(result, dict) and (result.get("error") or result.get("status") == "failed"):
             raise ToolException(json.dumps(result, ensure_ascii=False))
+        if isinstance(result, dict):
+            from pathlib import Path
+            import base64
+            screenshots = [row.get("screenshot_path") for row in result.get("login_states", []) if row.get("screenshot_path")]
+            if screenshots:
+                return [{"type": "text", "text": json.dumps(result, ensure_ascii=False)},
+                        *[{"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(Path(path).read_bytes()).decode()}} for path in screenshots]]
         payload = result.get("result", result) if isinstance(result, dict) else {}
         covers = [item["cover"] for item in payload.get("evidence", []) if item.get("cover")] if isinstance(payload, dict) else []
         if covers:
