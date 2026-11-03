@@ -111,6 +111,9 @@ def main():
                               "AGENT_BASE_URL": configuration.get("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1",
                               "AGENT_MODEL": configuration.get("AGENT_MODEL") or "qwen3.7-plus"})
     os.environ.update(configuration)
+    if project_root:
+        # 项目内桌面启动与命令行共用发布服务及其账号会话目录。
+        os.environ["MEDIA_PUBLISHER_DIR"] = str(project_root / "integrations" / "media-publisher")
     from agent.diagnostics.redaction import redact
     (home / "shutdown.request").unlink(missing_ok=True)
     os.environ.update({"MEDIA_FACTORY_HOME": str(home), "MEDIA_FACTORY_WORKSPACE": str(workspace),
