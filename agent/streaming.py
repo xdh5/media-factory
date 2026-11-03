@@ -12,7 +12,10 @@ def tool_event(name, result, status="ok"):
     def artifacts(value):
         if isinstance(value, dict):
             if value.get("type") == "text":
-                return artifacts(json.loads(value["text"]))
+                try:
+                    return artifacts(json.loads(value["text"]))
+                except ValueError:
+                    return []
             return [path for item in value.values() for path in artifacts(item)]
         if isinstance(value, list):
             return [path for item in value for path in artifacts(item)]
