@@ -160,7 +160,7 @@ def result_text(result, request):
 async def chat(request: Request):
     body = await request.json()
     model = body.get("model", "")
-    # 已有聊天保留原任务映射，新聊天使用真实模型标识。
+    # 校验请求的模型标识。
     if model.startswith("media-factory-") and model.removeprefix("media-factory-") in SERVERS:
         model = model.removeprefix("media-factory-")
     elif model != llm_configuration()["model"]:
@@ -169,7 +169,7 @@ async def chat(request: Request):
     if not chat_id:
         raise HTTPException(400, "需要 X-OpenWebUI-Chat-Id 或 metadata.chat_id 维持检查点")
     user_id = request.headers.get("x-openwebui-user-id", "local")
-    task_id = "chat-" + hashlib.sha256(f"{user_id}:{chat_id}:{model}".encode()).hexdigest()
+    task_id = "chat-" + hashlib.sha256(f"{user_id}:{chat_id}".encode()).hexdigest()
     message = next((item["content"] for item in reversed(body.get("messages", [])) if item["role"] == "user"), "")
     if not isinstance(message, str):
         raise HTTPException(400, "当前 Agent 只接收文本任务，视频通过工具产物预览")
