@@ -161,3 +161,8 @@ python ops/desktop/diagnostics_cli.py rag-eval --database cache/rag-eval.sqlite 
 ### 执行状态流
 
 `ActivityMiddleware` 使用框架的 `abefore_model` 和 `awrap_tool_call`，通过 `get_stream_writer()` 发送 `custom` 状态事件。模型请求前显示“模型思考中”，所有工具开始、结束、失败或暂停均报告状态与耗时。现有 `astream(messages/updates/custom)` 转发这些事件，桌面 SSE 输出状态提示；MCP 已返回的后台任务进度沿用现有展示。没有新增模型调用，也不展示模型内部思考内容。MCP 内部未上报的细分步骤无法自动显示。
+
+
+### 发布上下文开销
+
+Agent 接收发布预览时，将完整嵌套任务转换为摘要，相同成片与排期的平台合并。完整结果仍可由 MCP 的 `detailed=true` 查询。只读工具仅对超时和连接错误自动重试，参数与业务错误交给模型修正。工具仍全量注册，没有新增模型或 Token 预算限制。

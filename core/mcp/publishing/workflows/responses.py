@@ -29,12 +29,20 @@ def account_groups_summary(payload: dict) -> dict:
 
 
 def preview_summary(payload: dict) -> dict:
+    """合并同一成片的相同排期，避免重复传递平台账号与嵌套任务。"""
+    grouped = {}
+    for row in payload["default_publication_plan"]:
+        key = (row["production_id"], row["publish_mode"], row["publish_at"])
+        if key not in grouped:
+            grouped[key] = {"production_id": row["production_id"], "publish_mode": row["publish_mode"],
+                            "publish_at": row["publish_at"], "platforms": []}
+        grouped[key]["platforms"].append(row["platform"])
     return {
         **{key: payload[key] for key in ("business_line", "publish_date", "account_group", "platforms",
-                                       "publishable_count", "duplicate_count", "timings_seconds", "reused_prepared")},
+                                       "publishable_count", "duplicate_count")},
         "items": [{key: item[key] for key in ("production_id", "title", "content_kind", "content_part")}
                   for item in payload["items"]],
-        "default_publication_plan": payload["default_publication_plan"],
+        "default_publication_plan": list(grouped.values()),
         "default_schedule_skipped": payload["default_schedule_skipped"],
     }
 

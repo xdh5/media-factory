@@ -115,6 +115,9 @@ def adapt_mcp_tool(definition, mcp_tools, settings):
             await asyncio.sleep(15)
             result = await asyncio.wait_for(
                 mcp_tools.call(name, arguments, settings.tool_timeout), settings.tool_timeout)
+        if name == "publishing_preview" and isinstance(result, dict) and "tasks" in result:
+            from core.mcp.publishing.workflows.responses import preview_summary
+            result = preview_summary(result)
         if isinstance(result, dict) and (result.get("error") or result.get("status") == "failed"):
             raise ToolException(json.dumps(result, ensure_ascii=False))
         if isinstance(result, dict):
