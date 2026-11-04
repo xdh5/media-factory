@@ -60,7 +60,7 @@ python -m agent resume finance-check-001 --response '{}'
 - `agent/mcp_client.py`：连接 MCP、发现工具并适配为可执行的 `StructuredTool`。
 - `agent/middleware.py`：处理业务参数校验、暂停、预算和调用回执；MCP 客户端保存在 `mcp_tools`，框架保留的 `tools` 属性仅用于注册工具列表。
 - `agent/streaming.py`：消费框架 `astream` 的消息、工具更新和业务进度，转换为聊天事件。
-- `agent/diagnostics/tracing.py`：配置 LangSmith 客户端、追踪项目及输入输出脱敏。
+- `agent/diagnostics/tracing.py`：配置 LangSmith 客户端及追踪项目。
 - `agent/diagnostics/evaluation.py`：导入 LangSmith 数据集，用原生评估器运行诊断实验。
 - `agent/__main__.py`、`desktop/runtime.py`：运行 Agent，读取结果并交给终端或聊天界面。
 
@@ -77,7 +77,7 @@ agent = create_deep_agent(
 result = await agent.ainvoke(state, config)
 ```
 
-Deep Agents 负责完整的模型与工具循环、内置规划及上下文管理。项目中间件处理业务参数校验、暂停、Token 预算和调用回执，不再自行搭建决策与执行节点。检查点使用框架支持的 `AsyncSqliteSaver`，补充业务信息通过 `interrupt/Command` 恢复。同一任务由文件锁禁止并行运行。
+Deep Agents 负责完整的模型与工具循环、内置规划及上下文管理。项目中间件处理业务参数校验、暂停和调用回执，不再自行搭建决策与执行节点。检查点使用框架支持的 `AsyncSqliteSaver`，补充业务信息通过 `interrupt/Command` 恢复。同一任务由文件锁禁止并行运行。
 
 工具完成后先保存调用回执，再推进图状态。只读查询按调用 ID 缓存，允许多次轮询；有副作用的工具按工具名与规范化参数去重，避免模型换用调用 ID 重复执行。后台任务返回的 `task_path` 会随工具结果持久化。
 
@@ -102,7 +102,6 @@ docker run --rm --env-file .env -v "${PWD}/data:/app/data" -v "${PWD}/cache:/app
 
 Agent 根据启动工具返回的 `poll_tool` 和 `task_path` 调用查询工具。查询工具内部每 15 秒检查一次，直到完成或失败；等待期间不额外请求模型。上下文压缩由 Deep Agents 管理。
 
-每轮执行的 `--max-llm-tokens` 默认 100000，通过官方用量回调累计模型接口实际返回的输入和输出 Token，达到阈值后停止后续模型请求并保留检查点。这是后续请求的停止阈值，单次响应可能越过阈值，不是严格计费上限。供应商未返回用量时保持未知，不能据此保证费用；重新恢复开始新的执行预算。
 
 故障检索默认使用本地检索词覆盖度重排，不额外请求主模型；设置 `AGENT_RERANK_MODEL` 后才启用生成式模型重排。Embedding 仍使用配置的接口，相同执行内的重复故障检索复用缓存。JSON 格式错误和模型额度错误不请求外部诊断。评估命令仍会调用实际诊断模型，需单独计算消耗。
 
@@ -119,7 +118,7 @@ LANGSMITH_ENDPOINT=https://apac.api.smith.langchain.com
 
 LangSmith API Key 与模型服务密钥独立，在 LangSmith 设置页创建。上述接口对应亚太组织，页面为 `https://apac.smith.langchain.com`；区域按组织所在的数据区选择，与使用者的物理位置无关。其他区域或企业部署使用对应 `LANGSMITH_ENDPOINT`，管理页入口随接口配置切换。未启用追踪时 Agent 可以运行；启用追踪而没有密钥时会明确报错。桌面管理页显示启用状态，并提供 LangSmith 入口。
 
-任务、模型调用、工具调用和检索链路由 SDK 原生记录；`thread_id` 关联同一聊天，运行结果中的 `run_id` 对应本次原生执行。模型与工具耗时、Token 用量和异常在 LangSmith 查看；模型费用取决于 LangSmith 是否已配置对应模型价格。输入输出上传前脱敏。执行记录和评分不再双写本地 Trace 表；旧本地记录保留，未自动上传。
+任务、模型调用、工具调用和检索链路由 SDK 原生记录；`thread_id` 关联同一聊天，运行结果中的 `run_id` 对应本次原生执行。模型与工具耗时、Token 用量和异常在 LangSmith 查看；模型费用取决于 LangSmith 是否已配置对应模型价格。执行记录和评分不再双写本地 Trace 表；旧本地记录保留，未自动上传。
 
 人工验收、反馈、标注队列、实验比较与指标聚合使用 LangSmith 页面。框架运行完成不能直接等同于业务验收成功；使用实际产物和业务回执进行人工评分。
 

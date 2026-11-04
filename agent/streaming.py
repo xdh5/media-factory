@@ -9,7 +9,6 @@ from langgraph.errors import GraphBubbleUp
 
 from langchain_core.messages import AIMessageChunk, ToolMessage
 
-from .diagnostics.redaction import redact
 from .diagnostics.tracing import agent_tracing
 
 
@@ -50,7 +49,7 @@ def tool_event(name, result, status="ok"):
             return [path for item in value for path in artifacts(item)]
         return [value] if isinstance(value, str) and value.lower().endswith((".mp4", ".webm", ".mov", ".png")) else []
     return {"kind": "tool", "name": name, "status": status,
-            "payload": {"result": redact(result)}, "artifacts": artifacts(result)}
+            "payload": {"result": result}, "artifacts": artifacts(result)}
 
 
 async def stream_agent(agent, graph_input, config, emit=None):

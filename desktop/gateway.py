@@ -19,7 +19,6 @@ from dotenv import dotenv_values
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
 
-from agent.diagnostics.redaction import redact
 from agent.diagnostics.tracing import agent_tracing, langsmith_client, tracing_settings
 from agent.journal import CallJournal
 from agent.settings import ROOT, SERVERS, llm_configuration
@@ -55,7 +54,7 @@ app = FastAPI(title="Media Factory 本地 Agent", lifespan=lifespan)
 
 @app.exception_handler(ValueError)
 async def invalid_request(request, error):
-    return JSONResponse({"detail": redact(str(error))}, status_code=400)
+    return JSONResponse({"detail": str(error)}, status_code=400)
 
 
 def authenticated(request: Request):
@@ -67,7 +66,7 @@ def authenticated(request: Request):
 @app.get("/health")
 async def health():
     if runtime.worker and runtime.worker.done():
-        raise HTTPException(503, "MCP 服务不可用，请查看脱敏日志")
+        raise HTTPException(503, "MCP 服务不可用，请查看原始日志")
     if not runtime.ready.is_set():
         raise HTTPException(503, "正在准备业务工具")
     return {"status": "ok"}
@@ -141,7 +140,7 @@ def result_text(result, request):
             lines.append("\n这一步需要你确认，我还没有执行。\n")
             for action in pending["action_requests"]:
                 lines.append("操作：`" + action["name"] + "`\n")
-                lines.append("```json\n" + json.dumps(redact(action["args"]), ensure_ascii=False, indent=2) + "\n```\n")
+                lines.append("```json\n" + json.dumps(action["args"], ensure_ascii=False, indent=2) + "\n```\n")
             lines.append("直接在当前对话回复“同意”或“取消”即可。\n")
         elif pending["kind"] == "pause":
             lines.append("\n任务已暂停，直接回复“继续”即可。\n")
@@ -232,7 +231,7 @@ async def chat(request: Request):
                     yield render_model_images(event["last_message"].get("content") or "", request)
                 yield result_text(event, request)
             elif event["kind"] == "error":
-                yield "\n执行失败：" + redact(event["error"]) + f"\n任务：`{task_id}`。"
+                yield "\n执行失败：" + event["error"] + f"\n任务：`{task_id}`。"
     if not body.get("stream", False):
         content = "".join([text async for text in fragments()])
         return {"id": identity, "object": "chat.completion", "created": int(time.time()), "model": body["model"],
@@ -272,7 +271,7 @@ async def task_status(task_id: str):
     result = runtime.output(await runtime.snapshot(task_id))
     if task_id in runtime.active and not result["interrupts"]:
         result["status"] = "running"
-    return redact(result)
+    return result
 
 
 @app.post("/api/tasks/{task_id}/pause", dependencies=[Depends(authenticated)])

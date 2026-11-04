@@ -20,11 +20,10 @@ class AgentSettings:
     tool_timeout: float = 180
     run_timeout: float = 1800
     llm_timeout: float = 180
-    max_llm_tokens: int = 100000
 
     def __post_init__(self):
         if min(self.max_steps, self.max_attempts, self.tool_timeout,
-               self.run_timeout, self.llm_timeout, self.max_llm_tokens) <= 0:
+               self.run_timeout, self.llm_timeout) <= 0:
             raise ValueError("执行次数和超时必须大于零")
 
 

@@ -52,11 +52,11 @@ async function start() {
     env: {...process.env, MEDIA_FACTORY_SESSION_TOKEN: token, PYTHONUTF8: '1',
       PATH: path.join(bundle, 'bin') + path.delimiter + process.env.PATH}
   });
-  // 日志由 Python 在脱敏后写入，原始子进程输出不落盘。
+  // 服务日志由 Python 写入。
   backend.stderr.resume();
   backend.stdout.resume();
   backend.on('exit', () => { if (!closing) {
-    if (!process.argv.includes('--verify-desktop')) dialog.showErrorBox('后端已退出', '请查看数据目录中的脱敏日志。');
+    if (!process.argv.includes('--verify-desktop')) dialog.showErrorBox('后端已退出', '请查看数据目录中的原始日志。');
     app.quit();
   } });
   for (let attempt = 0; attempt < 1200; attempt++) {

@@ -114,7 +114,6 @@ def main():
     if project_root:
         # 项目内桌面启动与命令行共用发布服务及其账号会话目录。
         os.environ["MEDIA_PUBLISHER_DIR"] = str(project_root / "integrations" / "media-publisher")
-    from agent.diagnostics.redaction import redact
     (home / "shutdown.request").unlink(missing_ok=True)
     os.environ.update({"MEDIA_FACTORY_HOME": str(home), "MEDIA_FACTORY_WORKSPACE": str(workspace),
                        "MEDIA_FACTORY_AGENT_DATABASE": str(home / "agent.sqlite"), "PYTHONPATH": str(workspace),
@@ -149,7 +148,7 @@ def main():
     def log_output(process, name):
         with (home / "logs" / (name + ".log")).open("a", encoding="utf-8") as stream:
             for line in process.stdout:
-                stream.write(redact(line))
+                stream.write(line)
                 stream.flush()
     try:
         for name, module, environment, port in (("agent", "desktop.gateway:app", agent_environment, ports["agent"]),
@@ -163,7 +162,7 @@ def main():
             threading.Thread(target=log_output, args=(process, name), daemon=True).start()
         for _ in range(360):
             if any(process.poll() is not None for process in children):
-                raise RuntimeError("本地服务提前退出，请查看脱敏日志")
+                raise RuntimeError("本地服务提前退出，请查看原始日志")
             try:
                 for port, route in ((ports["agent"], "/health"), (ports["webui"], "/health")):
                     urllib.request.urlopen(f"http://127.0.0.1:{port}{route}", timeout=1).close()
@@ -204,8 +203,7 @@ if __name__ == "__main__":
         main()
     except Exception:
         import traceback
-        from agent.diagnostics.redaction import redact
         log_root = Path(sys.argv[sys.argv.index("--home") + 1]) / "logs"
         log_root.mkdir(parents=True, exist_ok=True)
-        (log_root / "supervisor.log").write_text(redact(traceback.format_exc()), encoding="utf-8")
+        (log_root / "supervisor.log").write_text(traceback.format_exc(), encoding="utf-8")
         raise

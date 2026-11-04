@@ -18,7 +18,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import httpx
-from agent.diagnostics.redaction import redact
 
 
 def main():
@@ -79,7 +78,6 @@ def main():
             automatic_task = "chat-" + hashlib.sha256("local:automatic-tool-integration-chat:qwen3.7-plus".encode()).hexdigest()
             state = client.get("/api/tasks/" + automatic_task).json()
             checked("原需审批工具直接执行且无人工中断", state["status"] == "completed" and not state["interrupts"])
-            checked("未知查询参数中的凭据会脱敏", "sensitive-example" not in redact("https://a.test?TrustedClientToken=sensitive-example&Sec-MS-GEC=private"))
             video = home / "preview.mp4"
             subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=blue:s=320x180:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(video)], check=True)
             encoded = base64.urlsafe_b64encode(str(video.resolve()).encode()).decode().rstrip("=")

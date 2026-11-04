@@ -14,7 +14,6 @@ from langsmith import traceable
 from openai import APIError
 
 from ..settings import llm_configuration
-from .redaction import redact
 
 
 def tokens(text):
@@ -24,7 +23,6 @@ def tokens(text):
 
 
 def chunks(text, size=1200, overlap=180):
-    text = redact(text)
     paragraphs = re.split(r"\n(?=#{1,4} )|\n\s*\n", text)
     current = ""
     for paragraph in paragraphs:
@@ -74,8 +72,7 @@ class KnowledgeBase:
     async def ingest(self, source, text, kind="document", evidence=""):
         if kind == "solution" and not evidence.strip():
             raise ValueError("长期解决方案必须包含人工核验依据")
-        clean = redact(text)
-        source, evidence = redact(source), redact(evidence)
+        clean = text
         identity = hashlib.sha256((source + "\n" + clean).encode()).hexdigest()
         with self.connect() as connection:
             if connection.execute("SELECT 1 FROM diagnostic_documents WHERE id=?", (identity,)).fetchone():
@@ -110,7 +107,7 @@ class KnowledgeBase:
                 return sum(weights[term] for term in terms & documents[index])
             return [candidates[index] for index in sorted(range(len(candidates)), key=relevance, reverse=True)]
         config = llm_configuration()
-        prompt = {"问题": redact(query), "候选": [{"id": item["id"], "content": item["content"]} for item in candidates]}
+        prompt = {"问题": query, "候选": [{"id": item["id"], "content": item["content"]} for item in candidates]}
         model = ChatOpenAI(**{**config, "model": os.environ["AGENT_RERANK_MODEL"]}, temperature=0,
             timeout=float(os.getenv("AGENT_DIAGNOSTIC_TIMEOUT", "180")), max_retries=0,
             use_responses_api=False).bind(response_format={"type": "json_object"})
@@ -138,10 +135,10 @@ class KnowledgeBase:
         query_vector = None
         degraded = []
         try:
-            query_vector = (await self.embed([redact(query)]))[0]
+            query_vector = (await self.embed([query]))[0]
         except APIError as exc:
             degraded.append("embedding_unavailable")
-            logging.getLogger(__name__).warning("Embedding 接口不可用，使用 FTS：%s", redact(str(exc)))
+            logging.getLogger(__name__).warning("Embedding 接口不可用，使用 FTS：%s", str(exc))
         model = self.model_configuration()["model"]
         def similarity(row):
             vector = json.loads(row["vector"])
@@ -164,7 +161,7 @@ class KnowledgeBase:
             result = (await self.rerank(query, candidates))[:k]
         except APIError as exc:
             degraded.append("rerank_unavailable")
-            logging.getLogger(__name__).warning("模型重排不可用，保留检索顺序：%s", redact(str(exc)))
+            logging.getLogger(__name__).warning("模型重排不可用，保留检索顺序：%s", str(exc))
             result = candidates[:k]
         for item in result:
             item["retrieval_mode"] = ("hybrid_reranked" if os.getenv("AGENT_RERANK_MODEL") else "hybrid_local_reranked") if not degraded else "+".join(degraded)

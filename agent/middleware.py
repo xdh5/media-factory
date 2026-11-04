@@ -11,7 +11,6 @@ from langchain_core.tools import ToolException
 from langgraph.errors import GraphBubbleUp
 from langgraph.types import interrupt
 
-from .diagnostics.redaction import redact
 
 
 class BusinessExecutionMiddleware(AgentMiddleware):
@@ -31,9 +30,6 @@ class BusinessExecutionMiddleware(AgentMiddleware):
 
     async def abefore_model(self, state, runtime):
         self.check_pause()
-        used_tokens = sum(item.get("total_tokens", 0) for item in self.usage.usage_metadata.values())
-        if used_tokens >= self.settings.max_llm_tokens:
-            raise RuntimeError(f"本轮模型已消耗 {used_tokens} Token，达到预算阈值，已保留检查点")
 
     async def aafter_model(self, state, runtime):
         message = state["messages"][-1]
@@ -115,13 +111,13 @@ class BusinessExecutionMiddleware(AgentMiddleware):
     async def diagnose(self, error):
         if self.knowledge is None:
             return []
-        query = json.dumps(redact(error), ensure_ascii=False)[:4000]
+        query = json.dumps(error, ensure_ascii=False)[:4000]
         if any(marker in query for marker in ("JSONDecodeError", "AllocationQuota.", "Free quota exhausted")):
             return []
         if query not in self.diagnoses:
             try:
                 self.diagnoses[query] = await self.knowledge.search(query, k=4)
             except Exception as exc:
-                logging.getLogger(__name__).warning("故障知识检索失败：%s", redact(str(exc)))
+                logging.getLogger(__name__).warning("故障知识检索失败：%s", str(exc))
                 self.diagnoses[query] = []
         return self.diagnoses[query]

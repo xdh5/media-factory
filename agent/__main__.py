@@ -35,7 +35,6 @@ def parser():
             action.add_argument("--run-timeout", type=float, default=1800)
             action.add_argument("--llm-timeout", type=float, default=180)
             action.add_argument("--max-attempts", type=int, default=3)
-            action.add_argument("--max-llm-tokens", type=int, default=100000)
             action.add_argument("--max-steps", type=int, default=60, help="每次执行的模型调用次数上限")
         if name == "run":
             action.add_argument("task", help="自然语言任务")
@@ -60,7 +59,7 @@ def snapshot_output(snapshot):
 async def execute_command(arguments):
     settings = AgentSettings(database=arguments.database.resolve(), **{
         name: getattr(arguments, name) for name in (
-            "tool_timeout", "run_timeout", "llm_timeout", "max_steps", "max_attempts", "max_llm_tokens")
+            "tool_timeout", "run_timeout", "llm_timeout", "max_steps", "max_attempts")
         if hasattr(arguments, name)})
     settings.database.parent.mkdir(parents=True, exist_ok=True)
     journal = CallJournal(settings.database)

@@ -1,4 +1,4 @@
-"""LangSmith 原生追踪配置，上传前对输入输出、异常和元数据脱敏。"""
+"""LangSmith 原生追踪配置，记录输入输出、异常和元数据。"""
 
 from functools import lru_cache
 import os
@@ -6,7 +6,6 @@ import os
 from dotenv import load_dotenv
 
 from ..settings import ROOT
-from .redaction import redact
 
 
 def tracing_settings():
@@ -34,7 +33,7 @@ def langsmith_client():
     tracing_settings()
     if not os.getenv("LANGSMITH_API_KEY"):
         raise ValueError("请先配置 LANGSMITH_API_KEY；启用任务追踪还需设置 LANGSMITH_TRACING=true")
-    return Client(anonymizer=redact)
+    return Client()
 
 
 def agent_tracing():
