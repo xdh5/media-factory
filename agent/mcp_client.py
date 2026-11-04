@@ -22,6 +22,25 @@ READ_ONLY = {
 }
 
 
+def compact_schema(schema):
+    """移除 JSON Schema 展示标题和示例，保留参数语义、默认值与全部校验约束。"""
+    if isinstance(schema, list):
+        return [compact_schema(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    result = {}
+    for key, value in schema.items():
+        if key in {"title", "examples", "$comment"}:
+            continue
+        if key in {"properties", "$defs", "definitions", "patternProperties"}:
+            result[key] = {name: compact_schema(item) for name, item in value.items()}
+        elif key in {"default", "const", "enum"}:
+            result[key] = value
+        else:
+            result[key] = compact_schema(value)
+    return result
+
+
 class MCPTools:
     def __init__(self, servers: list[str], session_timeout: float = 180):
         self.servers = servers
@@ -51,7 +70,7 @@ class MCPTools:
     def definitions(self):
         definitions = [{"type": "function", "function": {
             "name": tool.name, "description": tool.description or "",
-            "parameters": tool.inputSchema,
+            "parameters": compact_schema(tool.inputSchema),
         }} for _, tool in self.tools.values()]
         return definitions
 

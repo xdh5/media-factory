@@ -4,6 +4,7 @@ import uuid
 
 from deepagents import DeepAgentState, create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
+from deepagents.middleware.filesystem import FilesystemMiddleware
 
 from .settings import ROOT
 from langchain.agents.middleware import ModelCallLimitMiddleware, ToolRetryMiddleware
@@ -30,6 +31,7 @@ MCP 只执行业务，内容判断、翻译、重点句排版和章节标题由�
 错误后根据结果决定更正参数、使用查询工具核实、重试或结束；不得谎称成功。
 按用户任务执行，完成后给出产物位置和实际结果。
 发布预览使用默认摘要，常规任务不请求 detailed=true；返回的 job_path 等标识必须原样复用，不手写重建路径。参数或业务错误先修正原因，不重复提交相同失败请求。
+工具长结果由框架保存为文件，只读取当前决策需要的段落。后台任务使用工具内等待，不通过模型反复询问普通进度。回答简洁，只报告关键状态、异常和结果，不复述完整工具回执。
 采集审核按返回的 pending 逐条完成，提交时覆盖全部待审作品；不要自行拆成接口不接受的部分批次。
 """
 
@@ -50,13 +52,14 @@ def create_media_agent(tools, journal, saver, settings, task_id, knowledge=None,
     model = create_chat_model(settings, usage, streaming=streaming, read_only=tools is None)
     registered_tools = [adapt_mcp_tool(item, tools, settings) for item in tools.definitions()] if tools else []
     instructions = "\n\n".join(tools.instructions) if tools else ""
+    backend = CompositeBackend(
+        default=StateBackend(),
+        routes={"/skills/": FilesystemBackend(root_dir=ROOT / ".agents" / "skills", virtual_mode=True)},
+    )
     return create_deep_agent(
         model=model,
         skills=["/skills/"],
-        backend=CompositeBackend(
-            default=StateBackend(),
-            routes={"/skills/": FilesystemBackend(root_dir=ROOT / ".agents" / "skills", virtual_mode=True)},
-        ),
+        backend=backend,
         tools=[*registered_tools, agent_request_input, agent_calculate_datetime],
         system_prompt=SYSTEM_PROMPT + "\n" + policy_instruction() + "\n" + instructions,
         checkpointer=saver,
@@ -64,6 +67,7 @@ def create_media_agent(tools, journal, saver, settings, task_id, knowledge=None,
                       for item in registered_tools if item.name in APPROVAL_REQUIRED_TOOLS},
         state_schema=MediaAgentState,
         middleware=[
+            FilesystemMiddleware(backend=backend, tool_token_limit_before_evict=1500),
             ActivityMiddleware(),
             TimeContextMiddleware(),
             BusinessExecutionMiddleware(tools, journal, settings, task_id, usage, knowledge),
