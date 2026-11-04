@@ -105,7 +105,8 @@ def start_worker(path: Path, env: dict) -> int:
         # 由本机进程管理服务创建独立工作进程，MCP 的作业对象退出时不会连带终止它。
         script = (
             "$ErrorActionPreference='Stop'; "
-            "$startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ShowWindow=[UInt16]0}; "
+            "$batchEnvironment = [string[]](ConvertFrom-Json $env:MEDIA_FACTORY_BATCH_ENVIRONMENT); "
+            "$startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ShowWindow=[UInt16]0;EnvironmentVariables=$batchEnvironment}; "
             "$created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments "
             "@{CommandLine=$env:MEDIA_FACTORY_BATCH_COMMAND;CurrentDirectory=$env:MEDIA_FACTORY_BATCH_DIRECTORY;"
             "ProcessStartupInformation=$startup}; $created | ConvertTo-Json -Compress"
@@ -113,7 +114,8 @@ def start_worker(path: Path, env: dict) -> int:
         result = subprocess.run(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
             env={**env, "MEDIA_FACTORY_BATCH_COMMAND": subprocess.list2cmdline(command),
-                 "MEDIA_FACTORY_BATCH_DIRECTORY": str(PROJECT_ROOT)},
+                 "MEDIA_FACTORY_BATCH_DIRECTORY": str(PROJECT_ROOT),
+                 "MEDIA_FACTORY_BATCH_ENVIRONMENT": json.dumps([f"{key}={value}" for key, value in env.items()])},
             capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=30,
         )
         if result.returncode or not result.stdout.strip():
