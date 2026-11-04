@@ -7,6 +7,8 @@ import hashlib
 import hmac
 import json
 import os
+import re
+from urllib.parse import unquote, urlparse
 from pathlib import Path
 import secrets
 import time
@@ -120,6 +122,18 @@ def media_links(result, request):
     return list(dict.fromkeys(links))
 
 
+def render_model_images(text, request):
+    """将模型输出的本地图片链接转为浏览器可访问的签名媒体链接。"""
+    def replace(match):
+        target = match.group(1).strip().strip("<>")
+        if target.startswith("file:"):
+            target = unquote(urlparse(target).path).lstrip("/")
+        elif not re.match(r"^[A-Za-z]:[\\/]", target):
+            return match.group(0)
+        return "".join(media_links([target], request))
+    return re.sub(r"!\[[^\]]*\]\(([^)]+)\)", replace, text)
+
+
 def result_text(result, request):
     lines = []
     for pending in result.get("interrupts", []):
@@ -175,13 +189,28 @@ async def chat(request: Request):
     async def fragments():
         has_tokens = False
         last_progress = {}
+        pending_text = ""
         while True:
             event = await events.get()
             if event["kind"] == "done":
+                if pending_text:
+                    yield render_model_images(pending_text, request)
                 break
             if event["kind"] == "token":
                 has_tokens = True
-                yield event["text"]
+                pending_text += event["text"]
+                image_start = pending_text.rfind("![")
+                if image_start >= 0 and ")" not in pending_text[image_start:]:
+                    yield render_model_images(pending_text[:image_start], request)
+                    pending_text = pending_text[image_start:]
+                else:
+                    keep = 1 if pending_text.endswith("!") else 0
+                    if keep:
+                        yield render_model_images(pending_text[:-1], request)
+                        pending_text = "!"
+                    else:
+                        yield render_model_images(pending_text, request)
+                        pending_text = ""
             elif event["kind"] == "status":
                 yield "\n\n> " + event["text"] + "\n\n"
             elif event["kind"] == "tool":
@@ -200,7 +229,7 @@ async def chat(request: Request):
                     yield link
             elif event["kind"] == "result":
                 if not has_tokens and event.get("last_message", {}).get("role") == "assistant":
-                    yield event["last_message"].get("content") or ""
+                    yield render_model_images(event["last_message"].get("content") or "", request)
                 yield result_text(event, request)
             elif event["kind"] == "error":
                 yield "\n执行失败：" + redact(event["error"]) + f"\n任务：`{task_id}`。"
