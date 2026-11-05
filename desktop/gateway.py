@@ -19,9 +19,10 @@ from dotenv import dotenv_values
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
 
+from agent.business import ROUTING_QUESTION
 from agent.diagnostics.tracing import agent_tracing, langsmith_client, tracing_settings
 from agent.journal import CallJournal
-from agent.settings import ROOT, SERVERS, llm_configuration
+from agent.settings import ROOT, llm_configuration
 from .runtime import AgentRuntime
 
 HOME = Path(os.getenv("MEDIA_FACTORY_HOME", ROOT / "data/desktop")).resolve()
@@ -161,16 +162,17 @@ async def chat(request: Request):
     body = await request.json()
     model = body.get("model", "")
     # 校验请求的模型标识。
-    if model.startswith("media-factory-") and model.removeprefix("media-factory-") in SERVERS:
-        model = model.removeprefix("media-factory-")
-    elif model != llm_configuration()["model"]:
+    if model != llm_configuration()["model"]:
         raise HTTPException(400, "请选择已配置的模型")
     chat_id = request.headers.get("x-openwebui-chat-id") or body.get("metadata", {}).get("chat_id")
     if not chat_id:
         raise HTTPException(400, "需要 X-OpenWebUI-Chat-Id 或 metadata.chat_id 维持检查点")
     user_id = request.headers.get("x-openwebui-user-id", "local")
     task_id = "chat-" + hashlib.sha256(f"{user_id}:{chat_id}".encode()).hexdigest()
-    message = next((item["content"] for item in reversed(body.get("messages", [])) if item["role"] == "user"), "")
+    messages = body.get("messages", [])
+    user_index = next((index for index in range(len(messages) - 1, -1, -1)
+                       if messages[index]["role"] == "user"), -1)
+    message = messages[user_index]["content"] if user_index >= 0 else ""
     if not isinstance(message, str):
         raise HTTPException(400, "当前 Agent 只接收文本任务，视频通过工具产物预览")
     response, interrupt_id = None, None
@@ -180,8 +182,17 @@ async def chat(request: Request):
             raise HTTPException(400, "操作必须带当前中断 ID")
         interrupt_id = parts[1]
         response = {} if parts[0] == "/继续" else {"approved": parts[0] == "/批准"}
+    elif message != "/恢复":
+        original_request = []
+        for index in range(user_index - 1, 0, -2):
+            previous, clarification = messages[index - 1:index + 1]
+            if (clarification["role"] != "assistant" or ROUTING_QUESTION not in str(clarification["content"])
+                    or previous["role"] != "user" or not isinstance(previous["content"], str)):
+                break
+            original_request.append(previous["content"])
+        message = "\n".join([*reversed(original_request), message])
     try:
-        events = await runtime.submit(task_id, model, "" if message == "/恢复" else message, response, interrupt_id)
+        events = await runtime.submit(task_id, "" if message == "/恢复" else message, response, interrupt_id)
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(409, str(exc)) from exc
     identity = "chatcmpl-" + uuid.uuid4().hex
@@ -288,7 +299,7 @@ async def resume(task_id: str, request: Request):
     snapshot = await runtime.snapshot(task_id)
     if not snapshot.values:
         raise HTTPException(404)
-    await runtime.submit(task_id, snapshot.values["servers"][0], response=body.get("response"), interrupt_id=body.get("interrupt_id"))
+    await runtime.submit(task_id, response=body.get("response"), interrupt_id=body.get("interrupt_id"))
     return {"status": "queued"}
 
 

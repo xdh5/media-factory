@@ -4,7 +4,7 @@
 
 完整交付目录包含 `MediaFactory.exe`、Electron 资源、内嵌 Python、原版 Open WebUI、独立 Agent 依赖、项目源码和 FFmpeg。无需安装 Python、Node.js 或 Docker，不创建服务，不修改系统环境变量，不需要管理员权限。不要只复制 EXE，必须保留同目录资源。
 
-双击 `MediaFactory.exe` 会先显示启动提示，随后打开原版 Open WebUI。界面默认启用上游轻量模式，跳过本地向量库及部分本地音频组件；需要界面自带本地文档检索或语音组件时，可设置 `USE_SLIM_DOCKER=false`。项目故障知识与视频生产由独立 Agent 和 MCP 提供。项目内启动自动读取现有 `.env`，不弹配置窗口；模型列表显示 `AGENT_MODEL` 配置的实际模型，同一个 Agent 自主调用财经、语言学习、动漫及发布工具即可。关闭主聊天窗口会退出客户端并回收它启动的服务、MCP、浏览器发布进程和 FFmpeg；不会终止其他软件启动的 Python 进程。
+双击 `MediaFactory.exe` 会先显示启动提示，随后打开原版 Open WebUI。界面默认启用上游轻量模式，跳过本地向量库及部分本地音频组件；需要界面自带本地文档检索或语音组件时，可设置 `USE_SLIM_DOCKER=false`。项目故障知识与视频生产由独立 Agent 和 MCP 提供。项目内启动自动读取现有 `.env`，不弹配置窗口；模型列表显示 `AGENT_MODEL` 配置的实际模型，业务路由将请求交给动漫、财经、语言学习或发布 Agent。关闭主聊天窗口会退出客户端并回收它启动的服务、MCP、浏览器发布进程和 FFmpeg；不会终止其他软件启动的 Python 进程。
 
 默认数据目录为 `%APPDATA%\MediaFactory`，与程序目录分离。可通过启动进程的 `MEDIA_FACTORY_HOME` 指定另一个可写目录。升级时替换程序目录，保留数据目录。同一构建版本仅在首次启动时同步工作区源码；Agent 模型与故障检索模块在实际请求时加载，MCP 在 GUI 启动等待页期间连接，工具就绪后进入聊天界面，随后保持会话供后续任务使用。
 
@@ -41,7 +41,7 @@ LANGSMITH_ENDPOINT=https://apac.api.smith.langchain.com
 
 ## 聊天、审批和恢复
 
-Open WebUI 将聊天 ID 转发到本地 OpenAI 兼容网关。每个聊天与实际模型映射到固定 LangGraph 任务；普通后续消息延续原有历史。流式回复包含真实文本增量和工具执行状态。
+Open WebUI 将聊天 ID 转发到本地 OpenAI 兼容网关。每个用户的聊天映射到固定 LangGraph 任务。路由沿用上一轮业务处理追问，恢复时直接使用检查点中的业务。升级到专用 Agent 后请新建聊天。流式回复包含真实文本增量和工具执行状态。
 
 当前不启用工具审批，采集、生产和发布不再要求逐步确认。以后可在 `agent/approval_policy.py` 配置工具名单，通过 Deep Agents 的 `interrupt_on` 原生审批。缺少业务信息时仍在当前聊天询问。
 

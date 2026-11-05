@@ -29,16 +29,16 @@ AGENT_MODEL=支持工具调用的模型名称
 
 ```powershell
 $env:DASHSCOPE_BUSINESS_LINE = "finance"
-python -m agent run finance-check-001 "读取财经生产配置，查询稿件余量并汇总" --servers finance
+python -m agent run finance-check-001 "读取财经生产配置，查询稿件余量并汇总" --business finance
 python -m agent status finance-check-001
 python -m agent resume finance-check-001
 ```
 
-`--servers` 可选 `finance language_learning anime publishing`，只连接任务需要的服务。工具名称、参数结构与描述从 MCP 动态发现。MCP 工具适配为可执行的 `StructuredTool` 后，直接传给 `create_deep_agent(tools=...)`；业务说明进入系统提示词。`agent_request_input` 用于询问日期等缺失信息。
+`--business` 可选 `anime`、`finance`、`language_learning` 和 `publishing`。省略时由无工具的模型路由识别业务。专用 Agent 只加载对应技能和工具。发布 Agent 使用统一发布 MCP，并加载动漫 YouTube 发布需要的动漫工具。`agent_request_input` 用于询问日期等缺失信息。
 
 执行控制参数：`--max-steps 60`（每次执行的模型调用次数上限，由框架的 `ModelCallLimitMiddleware` 管理）、`--max-attempts 3`（只读工具最大尝试次数）、`--tool-timeout 180`、`--llm-timeout 180`、`--run-timeout 1800`（每次执行的时间预算，不含 MCP 连接与发现，单位秒）。MCP 初始化和发现使用 `--llm-timeout` 作为请求超时。达到模型调用次数上限、超时或进程中断后，可恢复相同任务；恢复时开始新的执行预算。已完成的命令行任务不能重用 ID。
 
-旧版自定义图的检查点不能在当前 Agent 中恢复，需要新建任务；原有业务产物和回执保留。
+业务 Agent 使用独立版本的检查点。升级后请新建聊天或命令行任务，业务产物与发布回执保留。
 
 ## 暂停与人工审批
 
@@ -91,7 +91,7 @@ Deep Agents 负责完整的模型与工具循环、内置规划及上下文管�
 
 ```powershell
 docker build --build-arg INSTALL_AGENT=true -t media-factory-agent .
-docker run --rm --env-file .env -v "${PWD}/data:/app/data" -v "${PWD}/cache:/app/cache" media-factory-agent python -m agent run check-001 "查询财经稿件余量" --servers finance
+docker run --rm --env-file .env -v "${PWD}/data:/app/data" -v "${PWD}/cache:/app/cache" media-factory-agent python -m agent run check-001 "查询财经稿件余量" --business finance
 ```
 
 后续状态、审批和恢复使用同样的镜像及目录挂载。媒体文件路径必须在容器内有效，生产和发布仍需部署相应系统依赖及凭据。命令行和桌面端共用同一 Agent 构造入口，当前实现面向单机任务。
@@ -155,7 +155,7 @@ python ops/desktop/diagnostics_cli.py rag-eval --database cache/rag-eval.sqlite 
 
 ### 业务 Skill
 
-通过 Deep Agents 原生 `create_deep_agent(skills=["/skills/"], backend=...)` 加载项目 `.agents/skills`。`CompositeBackend` 将 `/skills/` 映射到该目录，其余文件操作继续使用 `StateBackend`。框架加载技能名称与描述，模型匹配任务后读取对应 `SKILL.md` 正文。桌面构建包含该目录，无需 GUI 配置。
+通过 Deep Agents 原生 `create_deep_agent(skills=["/skills/"], backend=...)` 加载技能。`CompositeBackend` 仅在 `/skills/` 挂载当前业务对应的技能目录，其余文件操作使用 `StateBackend`。框架加载技能名称与描述，模型匹配任务后读取对应 `SKILL.md` 正文。桌面构建包含技能目录。
 
 
 ### 执行状态流

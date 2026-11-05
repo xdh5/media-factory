@@ -46,6 +46,7 @@ class MCPTools:
         self.servers = servers
         self.stack = AsyncExitStack()
         self.tools = {}
+        self.tool_servers = {}
         self.instructions = []
         self.session_timeout = session_timeout
 
@@ -59,6 +60,7 @@ class MCPTools:
                     if tool.name in self.tools:
                         raise ValueError(f"MCP 工具名称重复：{tool.name}")
                     self.tools[tool.name] = (client, tool)
+                    self.tool_servers[tool.name] = name
             return self
         except BaseException:
             await self.stack.aclose()
@@ -87,15 +89,16 @@ class MCPTools:
     async def call(self, name, arguments, timeout):
         return await self.tools[name][0].call(name, arguments, read_timeout_seconds=timeout)
 
-    def scoped(self, servers):
-        return ScopedTools(self, servers)
+    def scoped(self, servers, anime_tools):
+        return ScopedTools(self, servers, anime_tools)
 
 
 class ScopedTools:
-    """仅向模型暴露当前业务及统一发布，底层 MCP 会话继续共享。"""
-    def __init__(self, parent, servers):
+    """仅向模型暴露当前业务工具，底层 MCP 会话继续共享。"""
+    def __init__(self, parent, servers, anime_tools):
         self.parent = parent
-        self.names = {name for name in parent.tools if any(name.startswith(server + "_") for server in servers)}
+        self.names = {name for name, server in parent.tool_servers.items()
+                      if server in servers and (server != "anime" or name in anime_tools)}
         self.instructions = [instructions for server, instructions in zip(parent.servers, parent.instructions) if server in servers]
 
     def definitions(self):

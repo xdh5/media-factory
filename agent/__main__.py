@@ -16,7 +16,8 @@ from langgraph.types import Command
 
 from .journal import CallJournal
 from .mcp_client import MCPTools
-from .settings import AgentSettings, SERVERS
+from .settings import AgentSettings
+from .business import BUSINESSES, ROUTING_QUESTION, business_tools, route_business
 from .agent import create_media_agent, initial_state, require_current_checkpoint
 from .interrupts import interrupt_payload, resume_value
 from .streaming import stream_agent
@@ -38,7 +39,7 @@ def parser():
             action.add_argument("--max-steps", type=int, default=60, help="每次执行的模型调用次数上限")
         if name == "run":
             action.add_argument("task", help="自然语言任务")
-            action.add_argument("--servers", nargs="+", choices=list(SERVERS), default=["finance"])
+            action.add_argument("--business", choices=BUSINESSES, help="指定业务，省略时自动识别")
 
         if name == "resume":
             action.add_argument("--response", help="审批、人工回答或核对回执的 JSON")
@@ -79,19 +80,25 @@ async def execute_command(arguments):
             if arguments.command == "run":
                 if snapshot.values:
                     raise ValueError("任务 ID 已存在，请使用 resume 或新的 ID")
-                servers = arguments.servers
+                business = arguments.business or await route_business(settings, arguments.task, config={
+                    "run_name": "业务路由", "metadata": config["metadata"]})
+                if business is None:
+                    return {"status": "needs_business", "message": ROUTING_QUESTION}
             else:
                 require_current_checkpoint(snapshot)
                 if not snapshot.values:
                     raise ValueError("任务不存在")
                 if not snapshot.next:
                     return snapshot_output(snapshot)
-                servers = snapshot.values["servers"]
+                business = snapshot.values["business"]
+            _, servers, _ = BUSINESSES[business]
+            config["metadata"]["business"] = business
             async with MCPTools(servers, session_timeout=settings.llm_timeout) as tools:
                 knowledge = KnowledgeBase(settings.database)
-                graph = create_media_agent(tools, journal, saver, settings, arguments.task_id, knowledge)
+                graph = create_media_agent(business_tools(tools, business), journal, saver, settings,
+                                           arguments.task_id, knowledge, business=business)
                 if arguments.command == "run":
-                    graph_input = initial_state(arguments.task, servers)
+                    graph_input = initial_state(arguments.task, business)
                 else:
                     pending = [item for task in snapshot.tasks for item in task.interrupts]
                     if pending:

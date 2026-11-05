@@ -6,6 +6,7 @@ import uuid
 
 from filelock import FileLock
 
+from agent.business import BUSINESSES, ROUTING_QUESTION, business_tools, route_business
 from agent.journal import CallJournal
 from agent.settings import AgentSettings, SERVERS
 from agent.interrupts import interrupt_payload, resume_value
@@ -41,14 +42,14 @@ class AgentRuntime:
             pending = []
             while not self.queue.empty():
                 pending.append(self.queue.get_nowait())
-            for task_id, _, _, _, _, events in pending:
+            for task_id, _, _, _, events in pending:
                 self.active.discard(task_id)
                 await events.put({"kind": "error", "error": "MCP 初始化失败：" + str(exc), "task_id": task_id})
                 await events.put({"kind": "done"})
             raise
 
     async def process_task(self, tools, item):
-        task_id, model, text, response, interrupt_id, events = item
+        task_id, text, response, interrupt_id, events = item
         run_id = uuid.uuid4()
 
         async def emit(event):
@@ -60,7 +61,7 @@ class AgentRuntime:
             settings = AgentSettings(database=self.database)
             lock = FileLock(str(self.database) + "." + hashlib.sha256(task_id.encode()).hexdigest() + ".lock", timeout=0)
             with lock:
-                result = await self.execute(tools, knowledge, settings, task_id, model, text, response, interrupt_id, run_id, emit)
+                result = await self.execute(tools, knowledge, settings, task_id, text, response, interrupt_id, run_id, emit)
             await events.put({"kind": "result", "run_id": str(run_id), "task_id": task_id, **result})
         except Exception as exc:
             await events.put({"kind": "error", "error": str(exc), "task_id": task_id, "run_id": str(run_id)})
@@ -68,7 +69,7 @@ class AgentRuntime:
             self.active.discard(task_id)
             await events.put({"kind": "done"})
 
-    async def submit(self, task_id, model, text="", response=None, interrupt_id=None):
+    async def submit(self, task_id, text="", response=None, interrupt_id=None):
         if self.worker.done():
             exception = self.worker.exception()
             raise RuntimeError(f"MCP 服务不可用：{exception}")
@@ -76,7 +77,7 @@ class AgentRuntime:
             raise ValueError("此任务正在执行，请先查看状态")
         self.active.add(task_id)
         events = asyncio.Queue()
-        await self.queue.put((task_id, model, text, response, interrupt_id, events))
+        await self.queue.put((task_id, text, response, interrupt_id, events))
         return events
 
     async def snapshot(self, task_id):
@@ -87,7 +88,7 @@ class AgentRuntime:
             graph = create_media_agent(None, None, saver, AgentSettings(database=self.database), task_id)
             return await graph.aget_state({"configurable": {"thread_id": task_id}})
 
-    async def execute(self, tools, knowledge, settings, task_id, model, text, response, interrupt_id, run_id, emit):
+    async def execute(self, tools, knowledge, settings, task_id, text, response, interrupt_id, run_id, emit):
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
         from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
         from langgraph.types import Command
@@ -99,9 +100,11 @@ class AgentRuntime:
         journal = CallJournal(self.database)
         try:
             async with AsyncSqliteSaver.from_conn_string(str(self.database)) as saver:
-                graph = create_media_agent(tools, journal, saver, settings, task_id, knowledge, streaming=True)
-                snapshot = await graph.aget_state(config)
+                reader = create_media_agent(None, None, saver, settings, task_id)
+                snapshot = await reader.aget_state(config)
                 require_current_checkpoint(snapshot)
+                previous_business = snapshot.values.get("business")
+                business = previous_business
                 pending = [item for task in snapshot.tasks for item in task.interrupts]
                 if pending:
                     current = pending[0]
@@ -123,15 +126,25 @@ class AgentRuntime:
                     graph_input = Command(resume={current.id: resume_value(current.value, response)})
                 elif response is not None:
                     raise ValueError("任务没有等待审批，不能复用旧审批")
-                elif not snapshot.values:
-                    graph_input = initial_state(text, list(SERVERS))
                 elif snapshot.next:
                     graph_input = None
                 else:
                     if not text:
                         return self.output(snapshot)
-                    graph_input = {"messages": [{"role": "user", "content": text}],
-                                   "operation_scope": uuid.uuid4().hex}
+                    await emit({"kind": "status", "text": "正在识别业务…"})
+                    business = await route_business(settings, text, previous_business, {
+                        "run_name": "业务路由", "metadata": {"thread_id": task_id}})
+                    if business is None:
+                        return {"status": "needs_business", "last_message": {
+                            "role": "assistant", "content": ROUTING_QUESTION}}
+                    graph_input = initial_state(text, business)
+                    if business != previous_business:
+                        graph_input["skills_metadata"] = None
+                label, _, _ = BUSINESSES[business]
+                config["metadata"]["business"] = business
+                await emit({"kind": "status", "text": f"{label} Agent 正在处理"})
+                graph = create_media_agent(business_tools(tools, business), journal, saver, settings, task_id,
+                                           knowledge, streaming=True, business=business)
                 try:
                     await asyncio.wait_for(stream_agent(graph, graph_input, config, emit), settings.run_timeout)
                 except ModelCallLimitExceededError:
