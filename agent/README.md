@@ -1,6 +1,6 @@
 # 独立 AI Agent
 
-本模块使用 `deepagents.create_deep_agent` 管理模型决策、工具执行和后续推理，通过 `langchain_openai.ChatOpenAI` 接入模型并自主调用项目现有 MCP，不依赖 Codex。原有 MCP 服务和调用方式继续使用。业务数据仍经 MCP 读写现有 D1；本地 SQLite 保存 LangGraph 检查点、工具回执、暂停请求和故障知识；追踪、人工反馈、数据集与实验交给 LangSmith。
+本模块使用 `deepagents.create_deep_agent` 管理模型决策、工具执行和后续推理，通过 `langchain_openai.ChatOpenAI` 接入模型并调用项目 MCP。业务数据经 MCP 读写 D1；本地 SQLite 保存 LangGraph 检查点、长期记忆、工具回执及故障资料；追踪、人工反馈、数据集与实验由 LangSmith 管理。
 
 ## 安装与配置
 
@@ -103,7 +103,11 @@ docker run --rm --env-file .env -v "${PWD}/data:/app/data" -v "${PWD}/cache:/app
 Agent 根据启动工具返回的 `poll_tool` 和 `task_path` 调用查询工具。查询工具内部每 15 秒检查一次，直到完成或失败；等待期间不额外请求模型。上下文压缩由 Deep Agents 管理。
 
 
-故障检索默认使用本地检索词覆盖度重排，不额外请求主模型；设置 `AGENT_RERANK_MODEL` 后才启用生成式模型重排。Embedding 仍使用配置的接口，相同执行内的重复故障检索复用缓存。JSON 格式错误和模型额度错误不请求外部诊断。评估命令仍会调用实际诊断模型，需单独计算消耗。
+## 记忆与故障检索
+
+短期记忆由 Deep Agents 的线程状态、上下文摘要与 LangGraph `AsyncSqliteSaver` 检查点管理。长期记忆使用 `memory=["/memory/AGENTS.md"]` 和 `StoreBackend`，桌面端按用户隔离，同一用户的新聊天可读取此前保存的长期偏好。命令行使用同一数据库的任务共享本地记忆。
+
+故障资料通过 LangChain 的 `RecursiveCharacterTextSplitter` 分块，由 LangGraph 的 `AsyncSqliteStore.asearch` 做向量检索。Agent 需要资料时调用 `agent_search_diagnostics`。可设置 `AGENT_EMBEDDING_API_KEY`、`AGENT_EMBEDDING_BASE_URL`、`AGENT_EMBEDDING_MODEL` 和 `AGENT_EMBEDDING_DIMENSIONS`。向量维数默认 1024，须与模型输出匹配。更换向量维数时使用新知识库文件并重新导入文档。
 
 ## LangSmith
 

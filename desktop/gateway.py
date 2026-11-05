@@ -192,7 +192,8 @@ async def chat(request: Request):
             original_request.append(previous["content"])
         message = "\n".join([*reversed(original_request), message])
     try:
-        events = await runtime.submit(task_id, "" if message == "/恢复" else message, response, interrupt_id)
+        events = await runtime.submit(task_id, "" if message == "/恢复" else message, response, interrupt_id,
+                                      memory_owner=hashlib.sha256(user_id.encode()).hexdigest())
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(409, str(exc)) from exc
     identity = "chatcmpl-" + uuid.uuid4().hex
@@ -272,7 +273,7 @@ async def media(encoded: str, signature: str):
 @app.get("/api/overview", dependencies=[Depends(authenticated)])
 async def overview():
     from agent.diagnostics.knowledge import KnowledgeBase
-    return {"active_tasks": sorted(runtime.active), "documents": KnowledgeBase(DATABASE).list_documents(),
+    return {"active_tasks": sorted(runtime.active), "documents": await KnowledgeBase(DATABASE).list_documents(),
             "langsmith": tracing_settings(), "configuration": list(dotenv_values(HOME / "config.env")),
             "home": str(HOME)}
 

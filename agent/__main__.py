@@ -10,6 +10,7 @@ from pathlib import Path
 
 from filelock import FileLock
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.store.sqlite import AsyncSqliteStore
 from langchain.agents.middleware.model_call_limit import ModelCallLimitExceededError
 from langchain_core.messages import BaseMessage, convert_to_openai_messages
 from langgraph.types import Command
@@ -21,7 +22,6 @@ from .business import BUSINESSES, ROUTING_QUESTION, business_tools, route_busine
 from .agent import create_media_agent, initial_state, require_current_checkpoint
 from .interrupts import interrupt_payload, resume_value
 from .streaming import stream_agent
-from .diagnostics.knowledge import KnowledgeBase
 
 
 def parser():
@@ -93,10 +93,11 @@ async def execute_command(arguments):
                 business = snapshot.values["business"]
             _, servers, _ = BUSINESSES[business]
             config["metadata"]["business"] = business
-            async with MCPTools(servers, session_timeout=settings.llm_timeout) as tools:
-                knowledge = KnowledgeBase(settings.database)
+            async with (MCPTools(servers, session_timeout=settings.llm_timeout) as tools,
+                        AsyncSqliteStore.from_conn_string(str(settings.database)) as store):
+                await store.setup()
                 graph = create_media_agent(business_tools(tools, business), journal, saver, settings,
-                                           arguments.task_id, knowledge, business=business)
+                                           arguments.task_id, store=store, business=business)
                 if arguments.command == "run":
                     graph_input = initial_state(arguments.task, business)
                 else:

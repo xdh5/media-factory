@@ -62,7 +62,7 @@ def diagnostic_scores(run, example):
 
 
 async def evaluate_rag(knowledge, dataset_name, k=5):
-    if any(item["kind"] == "error" for item in knowledge.list_documents()):
+    if any(item["kind"] == "error" for item in await knowledge.list_documents()):
         raise ValueError("评估必须使用未导入待评估错误查询的独立文档索引")
     if not 1 <= k <= 20:
         raise ValueError("K 必须在 1 到 20 之间")

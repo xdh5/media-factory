@@ -29,13 +29,14 @@ DASHSCOPE_API_KEY_FINANCE=你的密钥
 # AGENT_BASE_URL=https://你的模型服务/v1
 # AGENT_MODEL=支持工具调用的模型
 AGENT_EMBEDDING_MODEL=text-embedding-v3
+AGENT_EMBEDDING_DIMENSIONS=1024
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=你的LangSmith密钥
 LANGSMITH_PROJECT=media-factory
 LANGSMITH_ENDPOINT=https://apac.api.smith.langchain.com
 ```
 
-故障知识需要 Embedding 接口，默认复用百炼密钥和兼容接口；其他模型服务可配置 `AGENT_EMBEDDING_API_KEY`、`AGENT_EMBEDDING_BASE_URL` 和 `AGENT_EMBEDDING_MODEL`。重排默认使用本地检索词覆盖度，设置 `AGENT_RERANK_MODEL` 后才调用指定兼容模型。首次导入知识和正常模型请求需要联网，不会自动下载本地大模型。
+故障知识需要支持 Embedding 的接口，可通过 `AGENT_EMBEDDING_API_KEY` 和 `AGENT_EMBEDDING_BASE_URL` 单独配置。导入和检索故障资料时会调用 Embedding 接口。
 
 视频生产、云端工作流和平台发布仍需要原业务凭据及授权。浏览器发布适配器沿用项目已有 media-publisher 源码与运行资源，构建机会一并复制；OAuth、扫码登录和平台账号授权不会预置。工具审批当前关闭，发布按用户任务执行。
 
@@ -53,9 +54,9 @@ Open WebUI 将聊天 ID 转发到本地 OpenAI 兼容网关。每个用户的聊
 
 ## 故障诊断、记忆和评估
 
-管理窗口可导入项目文档、录入原始历史错误、执行混合检索，并在实际验证后保存长期解决方案。检索采用分块、远端 Embedding、SQLite FTS5、RRF 融合和本地检索词覆盖度重排（仅显式配置 `AGENT_RERANK_MODEL` 时调用模型重排）。Agent 工具报错会自主检索相关故障经验，将来源和诊断上下文交回模型。该知识库不承担选题去重或历史文案管理。
+管理窗口可导入项目文档、录入历史错误、执行语义检索并保存已核验的解决方案。故障资料及向量索引保存在 `agent.knowledge.sqlite`，旧版故障资料如有需要可重新导入。Agent 根据故障按需检索并引用来源。
 
-模型或 Embedding 接口不可用时，已有索引保留可用的 FTS 或混合检索结果，并明确标注降级原因；不会将降级结果记作模型重排成功。首次建立向量索引仍需要有效的 Embedding 配置。
+同一聊天的短期记忆由 LangGraph 检查点维护。跨聊天偏好使用 Deep Agents 原生长期记忆，按用户保存在 `agent.sqlite`。
 
 执行链路、模型用量、耗时、异常、人工反馈、数据集与实验由 LangSmith 管理。管理页提供启用状态和入口；同一聊天按 `thread_id` 关联。未启用时不写本地 Trace；旧本地执行记录保留，未自动上传。模型费用依赖 LangSmith 对应模型价格配置。
 

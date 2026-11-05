@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import logging
 
 from jsonschema import validate, ValidationError
 from langchain.agents.middleware import AgentMiddleware
@@ -16,10 +15,8 @@ from langgraph.types import interrupt
 class BusinessExecutionMiddleware(AgentMiddleware):
     """在框架执行边界处理暂停、预算及跨系统业务回执。"""
 
-    def __init__(self, tools, journal, settings, task_id, usage, knowledge):
-        self.mcp_tools, self.journal, self.settings = tools, journal, settings
-        self.task_id, self.usage, self.knowledge = task_id, usage, knowledge
-        self.diagnoses = {}
+    def __init__(self, tools, journal, task_id):
+        self.mcp_tools, self.journal, self.task_id = tools, journal, task_id
         self.definitions = {item["function"]["name"]: item["function"]["parameters"]
                             for item in tools.definitions()} if tools else {}
 
@@ -90,12 +87,10 @@ class BusinessExecutionMiddleware(AgentMiddleware):
             raise
         except ToolException as exc:
             error = json.loads(str(exc))
-            error["diagnostic_context"] = await self.diagnose(error)
             self.journal.save(self.task_id, key, "done", error)
             return reply(error)
         except Exception as exc:
             error = {"error": f"{type(exc).__name__}: {exc}"}
-            error["diagnostic_context"] = await self.diagnose(error)
             self.journal.save(self.task_id, key, "done" if read_only else "uncertain", error)
             return reply(error)
         if response.status == "error":
@@ -103,21 +98,5 @@ class BusinessExecutionMiddleware(AgentMiddleware):
         else:
             result = response.content if isinstance(response.content, list) else json.loads(response.content)
         failed = isinstance(result, dict) and (result.get("error") or result.get("status") == "failed")
-        if failed:
-            result["diagnostic_context"] = await self.diagnose(result)
         self.journal.save(self.task_id, key, "done", result)
         return reply(result) if failed else response
-
-    async def diagnose(self, error):
-        if self.knowledge is None:
-            return []
-        query = json.dumps(error, ensure_ascii=False)[:4000]
-        if any(marker in query for marker in ("JSONDecodeError", "AllocationQuota.", "Free quota exhausted")):
-            return []
-        if query not in self.diagnoses:
-            try:
-                self.diagnoses[query] = await self.knowledge.search(query, k=4)
-            except Exception as exc:
-                logging.getLogger(__name__).warning("故障知识检索失败：%s", str(exc))
-                self.diagnoses[query] = []
-        return self.diagnoses[query]
