@@ -12,7 +12,7 @@ from .common import _map_error
 def finance_start_collect_copy(share_text: str, collection_name: str) -> dict:
     """下载并转写一条抖音链接，返回原文等待宿主校对和广告审核后提交入库。
 
-    立即返回 task_path，用 finance_poll_task 轮询至 done=true。
+    立即返回 task_path，用 finance_get_task 轮询至 done=true。
     collection_name 目前只接受“财经”。
     """
     try:
@@ -32,6 +32,6 @@ def finance_start_collect_copy(share_text: str, collection_name: str) -> dict:
             step="collect_finance_copy",
             fn=_work,
         )
-        return {**started, "poll_tool": "finance_poll_task"}
+        return started
     except Exception as exc:
         raise _map_error(exc) from exc

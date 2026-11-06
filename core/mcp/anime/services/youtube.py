@@ -1,400 +1,16 @@
-"""成片开头转写与动漫账号组 YouTube 发布，复用现有转写和官方发布接口。"""
+"""逐段发布 YouTube 视频并持久化回执。"""
 
 from __future__ import annotations
 
-import hashlib
 import json
-import os
-import re
-import subprocess
-import time
 from datetime import datetime, timezone
-from io import BytesIO
 from pathlib import Path
 
-from .._constants import OUTPUT_ROOT, SEGMENTATION_DURATION
 from .._errors import AnimeError
-from .compile import _executable, _subprocess_kwargs, _write_json, part_ranges, split_ranges
-
-
-def _local_path(raw: str) -> Path:
-    """Docker 读取同一工作区的 Windows 成片路径时映射到挂载目录。"""
-    if os.name != "nt" and re.match(r"^[A-Za-z]:[\\/]", raw):
-        normalized = raw.replace("\\", "/")
-        marker = "/cache/output/anime/"
-        if marker not in normalized:
-            raise AnimeError("Windows 路径不属于动漫输出目录")
-        return (OUTPUT_ROOT / normalized.split(marker, 1)[1]).resolve()
-    return Path(raw).resolve()
-
-
-def load_manifest(manifest_path: str, *, require_video_files: bool = True) -> tuple[Path, list[dict]]:
-    """仅接受动漫生产目录中的真实成片清单。"""
-    path = _local_path(manifest_path)
-    if not path.is_relative_to(OUTPUT_ROOT.resolve()) or path.name != "manifest.json":
-        raise AnimeError("必须传动漫生产返回的 manifest.json")
-    parts = json.loads(path.read_text(encoding="utf-8")).get("parts") or []
-    if not parts:
-        raise AnimeError("成片清单没有分段")
-    for part in parts:
-        video = _local_path(part["video_path"])
-        if not video.is_relative_to(OUTPUT_ROOT.resolve()) or (require_video_files and not video.is_file()):
-            raise AnimeError("成片文件不存在或不在动漫目录")
-        part["video_path"] = str(video)
-    return path.parent, parts
-
-
-def transcribe_intros(manifest_path: str, progress=None) -> dict:
-    """只抽取第一段从零秒开始的前一分钟，缓存原始转写。"""
-    from core.tools.transcribe import transcribe
-
-    directory, parts = load_manifest(manifest_path)
-    results = []
-    for part in parts[:1]:
-        index = part["part_index"]
-        transcript = directory / f"youtube-intro-{index}.json"
-        if not transcript.is_file():
-            if progress:
-                progress(f"正在转写第 {index} 段前一分钟")
-            clip = directory / f"youtube-intro-{index}.mp3"
-            subprocess.run([
-                _executable("ffmpeg"), "-v", "error", "-y", "-i", part["video_path"],
-                "-t", "60", "-vn", "-ac", "1", str(clip),
-            ], check=True, capture_output=True, timeout=120, **_subprocess_kwargs())
-            _write_json(transcript, transcribe(clip))
-        results.append({"part_index": index, "original_title": part.get("title"),
-                        "transcript": json.loads(transcript.read_text(encoding="utf-8"))})
-    return {"manifest_path": manifest_path, "intros": results}
-
-
-_THUMBNAIL_SIZE = "1280x720"
-_THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024
-
-
-def _thumbnail_prompt(title: str) -> str:
-    """一次生成同时包含画面和标题，不接受先出图再叠字。"""
-    return (
-        "一次生成一张 16:9 YouTube 封面。画面和标题必须在同一次出图里一起完成，"
-        "禁止先生成无字图片，再后期贴字、叠字或另外加文字图层。"
-        "画风、线条、上色和角色造型语言与参考帧一致，不要改成写实照片或其他画风。"
-        "把下面的标题原文作为画面的一部分完整、清晰地画在画面正中间，不要放在顶部或底部，不要改字、漏字，也不要添加标题以外的文字：\n"
-        f"{title}"
-    )
-
-
-def _extract_style_frame(video: Path, destination: Path, duration: float) -> None:
-    """抽取成片中段附近的一帧，作为封面画风参考。"""
-    offset = 8.0 if duration > 12 else max(0.2, duration / 2)
-    completed = subprocess.run([
-        _executable("ffmpeg"), "-v", "error", "-y", "-ss", f"{offset:.3f}", "-i", str(video),
-        "-frames:v", "1", "-q:v", "2", str(destination),
-    ], check=False, capture_output=True, timeout=120, **_subprocess_kwargs())
-    if completed.returncode != 0 or not destination.is_file():
-        detail = (completed.stderr or b"").decode("utf-8", errors="replace").strip()[-500:]
-        raise AnimeError("抽取视频画风参考帧失败", {"stderr": detail})
-
-
-def _jpeg_under_limit(source: Path, destination: Path) -> None:
-    """压成 YouTube 封面要求的 2MB 以内 JPEG。"""
-    from PIL import Image
-
-    with Image.open(source) as image:
-        rgb = image.convert("RGB")
-        quality = 90
-        while True:
-            buffer = BytesIO()
-            rgb.save(buffer, format="JPEG", quality=quality, optimize=True)
-            if buffer.tell() <= _THUMBNAIL_MAX_BYTES or quality <= 50:
-                destination.write_bytes(buffer.getvalue())
-                break
-            quality -= 8
-    if destination.stat().st_size > _THUMBNAIL_MAX_BYTES:
-        raise AnimeError("YouTube 封面超过 2MB")
-
-
-def _file_sha256(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
-def _part_title(title: str, index: int, count: int) -> str:
-    """多段成片在标题末尾标明当前集数，单段保持原题。"""
-    text = str(title).strip()
-    if count <= 1:
-        return text[:100]
-    suffix = f"｜第{index}集（共{count}集）"
-    return f"{text[:100 - len(suffix)].rstrip()}{suffix}"
-
-
-def prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
-    """只抽一帧画风参考，按预计分段数分别生成带集数标题的封面任务。"""
-    from core.tools.generate_image import ImageGenerationError, prepare_agent_image_tasks
-
-    directory, parts = load_manifest(manifest_path)
-    if len(titles) != 1:
-        raise AnimeError("只需提供一个共用封面标题")
-    if any(not str(title).strip() for title in titles):
-        raise AnimeError("封面标题不能为空")
-    selection_path = directory / "selection.json"
-    expected_part_count = len(parts)
-    if selection_path.is_file():
-        selection = json.loads(selection_path.read_text(encoding="utf-8"))
-        durations = [float(item["duration_seconds"]) for item in selection.get("sources") or []]
-        if durations and sum(durations) > 0:
-            if selection.get("segmentation") == SEGMENTATION_DURATION:
-                expected_part_count = len(split_ranges(sum(durations)))
-            else:
-                expected_part_count = len(part_ranges(durations))
-    prepared_tasks = []
-    titles_by_image_id = {}
-    digests = {}
-    version = None
-    frame = directory / "youtube-style-frame.jpg"
-    sample = parts[0]
-    _extract_style_frame(Path(sample["video_path"]), frame, float(sample["duration_seconds"]))
-    preview_digest = _file_sha256(Path(sample["video_path"]))
-    for index in range(1, expected_part_count + 1):
-        image_id = f"youtube-thumbnail-{index}"
-        text = _part_title(titles[0], index, expected_part_count)
-        titles_by_image_id[image_id] = text
-        digests[image_id] = preview_digest
-        try:
-            one = prepare_agent_image_tasks(
-                [{"image_id": image_id, "kind": "youtube-thumbnail", "prompt": _thumbnail_prompt(text)}],
-                None,
-                "16:9",
-                _THUMBNAIL_SIZE,
-                directory,
-                additional_reference_image_paths=[frame],
-                context_path=directory / f".{image_id}-context.json",
-                reference_usage="style_only",
-            )
-        except ImageGenerationError as exc:
-            raise AnimeError(exc.message, exc.details) from exc
-        version = one["version"]
-        for task in one["tasks"]:
-            task["reference_failure_policy"] = (
-                "宿主先查看这一张参考帧，再一次生成封面。画风以这张参考帧为准。"
-                "标题必须和画面在同一次出图里一起生成，并且放在画面正中间，禁止先出无字图再叠字。"
-                "不要调用千问或其他生图接口代替宿主。"
-            )
-        prepared_tasks.extend(one["tasks"])
-    context_path = directory / "youtube-thumbnail-context.json"
-    context = {
-        "version": version,
-        "status": "awaiting_agent_images",
-        "tasks": prepared_tasks,
-        "metadata": {
-            "workflow": "anime-youtube-thumbnail",
-            "titles_by_image_id": titles_by_image_id,
-            "video_sha256_by_image_id": digests,
-        },
-        "context_path": context_path.resolve().as_posix(),
-    }
-    context_path.write_text(json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8")
-    return context
-
-
-def save_youtube_thumbnails(context_path: str, images: list[dict]) -> dict:
-    """保存宿主生成的封面，并压成 YouTube 可上传的 JPEG。"""
-    from core.tools.generate_image import ImageGenerationError, save_agent_image_tasks
-
-    resolved = _local_path(context_path)
-    if resolved.name != "youtube-thumbnail-context.json":
-        raise AnimeError("必须传 prepare 返回的 youtube-thumbnail-context.json")
-    try:
-        context = json.loads(resolved.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise AnimeError(f"读取封面任务失败：{exc}") from exc
-    tasks = context.get("tasks") or []
-    if images:
-        try:
-            save_agent_image_tasks(resolved, images)
-        except ImageGenerationError as exc:
-            raise AnimeError(exc.message, exc.details) from exc
-    titles = (context.get("metadata") or {}).get("titles_by_image_id") or {}
-    digests = (context.get("metadata") or {}).get("video_sha256_by_image_id") or {}
-    saved = []
-    for task in tasks:
-        image_id = str(task["image_id"])
-        png = Path(task["output_path"])
-        if not png.is_file():
-            raise AnimeError(f"封面 {image_id} 尚未由宿主生成")
-        thumbnail = png.with_suffix(".jpg")
-        _jpeg_under_limit(png, thumbnail)
-        _write_json(thumbnail.with_suffix(".json"), {"title": titles.get(image_id), "video_sha256": digests.get(image_id)})
-        saved.append({"image_id": image_id, "thumbnail_path": thumbnail.resolve().as_posix()})
-    return {"context_path": resolved.resolve().as_posix(), "thumbnails": saved}
-
-
-def _require_host_thumbnail(directory: Path, index: int, title: str, digest: str) -> Path:
-    """发布只接收宿主已经按当前标题生成的封面。"""
-    thumbnail = directory / f"youtube-thumbnail-{index}.jpg"
-    metadata_path = directory / f"youtube-thumbnail-{index}.json"
-    if not thumbnail.is_file() or not metadata_path.is_file():
-        raise AnimeError("请先由宿主根据成片画风生成带标题的 YouTube 封面")
-    try:
-        saved = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise AnimeError("YouTube 封面记录无法读取") from exc
-    if saved.get("title") != title or saved.get("video_sha256") != digest:
-        raise AnimeError("封面与本次成片或标题不一致，请由宿主重新生成")
-    return thumbnail
-
-
-def _verify_processed_video(route: dict, result: dict, expected_duration: float, progress=None, *, stale: bool = False) -> None:
-    """平台创建视频 ID 不代表上传完整，核验处理状态和实际时长后才登记成功。
-
-    stale 为真时，连续多次查不到视频就要求重新上传。刚上传的视频允许继续等待索引。
-    """
-    from googleapiclient.discovery import build
-    from platform_api.account_registry import account_context
-    from platform_api.youtube.publish_to_youtube import _load_credentials
-    from platform_api.youtube._transport import authorized_http
-
-    missing = 0
-    seen = False
-    with account_context(route) as account:
-        with build("youtube", "v3", http=authorized_http(_load_credentials(route["platform_account_id"], account)),
-                   cache_discovery=False) as service:
-            for _ in range(80):
-                videos = service.videos().list(part="status,contentDetails,processingDetails,snippet", id=result["video_id"]).execute().get("items", [])
-                if len(videos) != 1:
-                    missing += 1
-                    if missing >= 4 and (seen or stale):
-                        raise AnimeError("YouTube 视频已不在目标频道，需重新上传", {"video_id": result.get("video_id"), "reupload": True})
-                    if progress:
-                        progress("YouTube 尚未返回目标频道视频，继续核验")
-                    time.sleep(15)
-                    continue
-                video = videos[0]
-                if (video.get("snippet") or {}).get("channelId") != route["platform_account_id"]:
-                    raise AnimeError("YouTube 视频不属于目标频道，需重新上传", {"video_id": result.get("video_id"), "reupload": True})
-                missing = 0
-                seen = True
-                status = video.get("status") or {}
-                processing = (video.get("processingDetails") or {}).get("processingStatus")
-                if status.get("uploadStatus") in {"failed", "rejected", "deleted"} or processing in {"failed", "terminated"}:
-                    raise AnimeError("YouTube 视频上传或处理失败，需重新上传", {
-                        "video_id": result["video_id"], "status": status, "reupload": True,
-                    })
-                if status.get("uploadStatus") == "processed" or processing == "succeeded":
-                    duration = sum(float(number) * {"D": 86400, "H": 3600, "M": 60, "S": 1}[unit]
-                                   for number, unit in re.findall(r"(\d+(?:\.\d+)?)([DHMS])", video["contentDetails"]["duration"]))
-                    if abs(duration - expected_duration) > 3 or status.get("privacyStatus") != "public":
-                        raise AnimeError("YouTube 视频时长或公开状态与预期不符，未登记发布成功")
-                    return
-                if progress:
-                    progress("YouTube 正在处理视频，等待实际时长与公开状态核验")
-                time.sleep(15)
-    raise AnimeError("YouTube 视频仍在处理；回执已保留，稍后重试将继续核验，不重复上传")
-
-
-def _ensure_playlist_video(route: dict, playlist_title: str, video_id: str,
-                           position: int, progress=None) -> dict | None:
-    """创建或复用频道播放列表，并幂等加入视频。普通频道凭 force-ssl 授权即可使用。"""
-    title = str(playlist_title or "").strip()[:150]
-    if not title:
-        return None
-    from googleapiclient.discovery import build
-    from googleapiclient.errors import HttpError
-    from platform_api.account_registry import account_context
-    from platform_api.youtube.publish_to_youtube import _load_credentials
-    from platform_api.youtube._transport import authorized_http
-
-    with account_context(route) as account:
-        with build("youtube", "v3", http=authorized_http(_load_credentials(route["platform_account_id"], account)),
-                   cache_discovery=False) as service:
-            playlist_id = ""
-            page_token = None
-            while True:
-                response = service.playlists().list(
-                    part="snippet,status", mine=True, maxResults=50, pageToken=page_token).execute()
-                matched = next((
-                    item for item in response.get("items") or []
-                    if str((item.get("snippet") or {}).get("title") or "").strip() == title
-                ), None)
-                if matched:
-                    playlist_id = str(matched["id"])
-                    break
-                page_token = response.get("nextPageToken")
-                if not page_token:
-                    break
-            if not playlist_id:
-                created = service.playlists().insert(
-                    part="snippet,status",
-                    body={"snippet": {"title": title}, "status": {"privacyStatus": "public"}},
-                ).execute()
-                playlist_id = str(created["id"])
-                if progress:
-                    progress(f"已创建 YouTube 播放列表：{title}")
-            # 按视频 ID 精确查重，避免遍历列表时使用平台返回的失效分页令牌。
-            for attempt in range(7):
-                try:
-                    response = service.playlistItems().list(
-                        part="snippet,contentDetails", playlistId=playlist_id,
-                        videoId=video_id, maxResults=50).execute()
-                    break
-                except HttpError as exc:
-                    errors = json.loads(exc.content).get("error", {}).get("errors", [])
-                    if (exc.resp.status != 404
-                            or not any(item.get("reason") == "playlistNotFound" for item in errors)
-                            or attempt == 6):
-                        raise
-                    if progress:
-                        progress(f"YouTube 播放列表查询返回 404，5 秒后重试（{attempt + 1}/6）")
-                    time.sleep(5)
-            for item in response.get("items") or []:
-                if str((item.get("contentDetails") or {}).get("videoId") or "") != video_id:
-                    continue
-                snippet = item.get("snippet") or {}
-                if int(snippet.get("position") or 0) != position:
-                    service.playlistItems().update(
-                        part="snippet",
-                        body={"id": item["id"], "snippet": {
-                            "playlistId": playlist_id,
-                            "position": position,
-                            "resourceId": {"kind": "youtube#video", "videoId": video_id},
-                        }},
-                    ).execute()
-                return {"playlist_id": playlist_id,
-                        "playlist_url": f"https://www.youtube.com/playlist?list={playlist_id}"}
-            service.playlistItems().insert(
-                part="snippet",
-                body={"snippet": {
-                    "playlistId": playlist_id,
-                    "position": position,
-                    "resourceId": {"kind": "youtube#video", "videoId": video_id},
-                }},
-            ).execute()
-            if progress:
-                progress(f"已加入 YouTube 播放列表：{title}")
-            return {"playlist_id": playlist_id,
-                    "playlist_url": f"https://www.youtube.com/playlist?list={playlist_id}"}
-
-
-def _recover_youtube_upload(route: dict, attempt: dict, thumbnail: Path) -> dict:
-    from googleapiclient.discovery import build
-    from platform_api.youtube._transport import authorized_http
-    from platform_api.youtube.publish_to_youtube import _apply_thumbnail, _find_existing_video, _load_credentials
-    from platform_api.account_registry import account_context
-
-    channel_id = route["platform_account_id"]
-    with account_context(route) as account:
-        with build("youtube", "v3", http=authorized_http(_load_credentials(channel_id, account)),
-                   cache_discovery=False) as youtube:
-            existing = _find_existing_video(youtube, channel_id, attempt["title"], attempt["upload_tag"])
-            if not existing:
-                raise AnimeError("YouTube 上传结果待核对，频道暂未查到匹配的视频。请核查频道上传记录后再处理。",
-                                 {"channel_id": channel_id, "upload_tag": attempt["upload_tag"]})
-            video_id = existing["video_id"]
-            _apply_thumbnail(youtube, video_id, thumbnail)
-    return {"video_id": video_id, "video_url": f"https://www.youtube.com/watch?v={video_id}",
-            "channel_id": channel_id, "privacy_status": "public", "publish_at": None,
-            "scheduled": False, "reused": True}
+from .media_artifacts import file_sha256, write_json, load_manifest
+from .youtube_assets import require_host_thumbnail
+from .youtube_metadata import part_title
+from .youtube_platform import ensure_playlist_video, recover_youtube_upload, verify_processed_video
 
 
 def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str],
@@ -443,11 +59,11 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
     results = []
     for part in parts:
         index = part["part_index"]
-        title = _part_title(titles[0], index, int(part.get("part_count") or len(parts)))
+        title = part_title(titles[0], index, int(part.get("part_count") or len(parts)))
         description = descriptions[0]
         path = Path(part["video_path"])
         if path.is_file():
-            digest = _file_sha256(path)
+            digest = file_sha256(path)
         else:
             digest = str(part.get("sha256") or "")
             if not digest:
@@ -461,7 +77,7 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
                 live_record = row
                 break
             try:
-                _verify_processed_video(route, {"video_id": row["external_id"]}, part["duration_seconds"], progress, stale=True)
+                verify_processed_video(route, {"video_id": row["external_id"]}, part["duration_seconds"], progress, stale=True)
             except AnimeError as exc:
                 if not exc.details.get("reupload"):
                     raise
@@ -481,14 +97,14 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
             if receipt_saved:
                 result = {"video_id": live_record["external_id"], "video_url": live_record["external_url"],
                           "reused": True}
-                _write_json(receipt, {**metadata, "title": live_record["title"], "result": result})
+                write_json(receipt, {**metadata, "title": live_record["title"], "result": result})
                 receipt_saved(receipt)
-            playlist = _ensure_playlist_video(
+            playlist = ensure_playlist_video(
                 route, playlist_title, live_record["external_id"], index - 1, progress)
             results.append({"skipped": True, "record": live_record, "playlist": playlist})
             continue
         confirmed_invalid = bool(matching)
-        _write_json(directory / f"youtube-metadata-{index}.json", metadata)
+        write_json(directory / f"youtube-metadata-{index}.json", metadata)
         # 平台成功而数据库写回失败时，重试复用本地回执，不重复上传。回执视频已失效时作废并重传。
         saved = json.loads(receipt.read_text(encoding="utf-8")) if receipt.is_file() else {}
         publish_title = title
@@ -498,7 +114,7 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
             publish_title = saved.get("title") or title
             if verify_processing:
                 try:
-                    _verify_processed_video(route, result, part["duration_seconds"], progress, stale=True)
+                    verify_processed_video(route, result, part["duration_seconds"], progress, stale=True)
                 except AnimeError as exc:
                     if not exc.details.get("reupload"):
                         raise
@@ -510,7 +126,7 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
         if result is None:
             if not path.is_file():
                 raise AnimeError(f"第 {index} 段没有本地成片且无可复用回执，无法上传")
-            thumbnail = _require_host_thumbnail(directory, index, title, digest)
+            thumbnail = require_host_thumbnail(directory, index, title, digest)
             if progress:
                 progress(
                     f"正在发布第 {index}/{int(part.get('part_count') or len(parts))} 段"
@@ -518,10 +134,10 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
             attempt = json.loads(attempt_path.read_text(encoding="utf-8")) if attempt_path.is_file() else {}
             if (not confirmed_invalid and attempt.get("video_sha256") == digest
                     and attempt.get("channel_id") == route["platform_account_id"]):
-                result = _recover_youtube_upload(route, attempt, thumbnail)
+                result = recover_youtube_upload(route, attempt, thumbnail)
                 publish_title = attempt["title"]
             else:
-                _write_json(attempt_path, {"channel_id": route["platform_account_id"], "video_sha256": digest,
+                write_json(attempt_path, {"channel_id": route["platform_account_id"], "video_sha256": digest,
                                            "title": title.strip()[:100], "upload_tag": _upload_tag(path, run_id)})
                 if upload_attempt_saved:
                     upload_attempt_saved(attempt_path)
@@ -531,15 +147,15 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
                         publication_id=run_id, thumbnail_path=thumbnail,
                         on_progress=lambda percent, message: progress(f"YouTube：{message}（{percent:.1%}）") if progress else None)
                 publish_title = title
-            _write_json(receipt, {**metadata, "title": publish_title, "result": result})
+            write_json(receipt, {**metadata, "title": publish_title, "result": result})
             if receipt_saved:
                 receipt_saved(receipt)
             if verify_processing:
-                _verify_processed_video(route, result, part["duration_seconds"], progress)
+                verify_processed_video(route, result, part["duration_seconds"], progress)
         elif receipt_saved:
             receipt_saved(receipt)
         if not verify_processing:
-            playlist = _ensure_playlist_video(
+            playlist = ensure_playlist_video(
                 route, playlist_title, result["video_id"], index - 1, progress)
             results.append({
                 "pending_processing": True,
@@ -554,7 +170,7 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
                   "publish_at": datetime.now(timezone.utc).isoformat(), "status": "published",
                   "external_id": result["video_id"], "external_url": result["video_url"]}
         stored = commit_publication_records([record])["records"][0]
-        playlist = _ensure_playlist_video(route, playlist_title, result["video_id"], index - 1, progress)
+        playlist = ensure_playlist_video(route, playlist_title, result["video_id"], index - 1, progress)
         results.append({"record": stored, "result": result, "playlist": playlist})
     playlists = [item["playlist"] for item in results if item.get("playlist")]
     return {"account_group": account_group, "published": results,

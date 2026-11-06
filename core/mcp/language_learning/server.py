@@ -1,5 +1,9 @@
 """语言学习 MCP 注册与服务实例。"""
 
+import warnings
+
+warnings.filterwarnings("ignore", message=r"Field 'lifespan' has an incomplete definition.*")
+
 from mcp.server.fastmcp import FastMCP
 
 from .config import SERVER_INSTRUCTIONS, SERVER_NAME

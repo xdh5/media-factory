@@ -109,12 +109,12 @@ def _load_saved_storyboard(
     fallback = str(storyboard_text or "").strip()
     if not fallback:
         raise WorkflowStepError(
-            "素材清单里没有分镜文本。请重新调用 finance_prepare_images / finance_start_video_search，出片不必再传 storyboard_text"
+            "素材清单里没有分镜文本。请用 finance_prepare_visuals 重新准备素材，再用 finance_submit_visuals 提交"
         )
     expected_hash = str(material_metadata.get("storyboard_sha256") or "").strip()
     if expected_hash and _storyboard_hash(fallback) != expected_hash:
         raise WorkflowStepError(
-            "传入的 storyboard_text 与准备素材时不一致。请重新准备素材后直接 finance_finish_video",
+            "传入的 storyboard_text 与准备素材时不一致。请重新准备素材后直接 finance_start_render",
             {"storyboard_sha256": expected_hash, "received_sha256": _storyboard_hash(fallback)},
         )
     return fallback

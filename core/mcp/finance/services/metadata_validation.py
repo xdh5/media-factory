@@ -5,11 +5,13 @@ from __future__ import annotations
 from ..errors import AgentOutputFormatError
 
 
-def parse_metadata(value: str) -> dict:
-    line = next((line.strip() for line in value.splitlines() if "|" in line), "")
-    fields = [field.strip().lstrip("#") for field in line.split("|")]
-    if len(fields) != 6 or any(not field for field in fields):
-        raise AgentOutputFormatError("标题标签必须严格输出：长标题|短标题|标签一|标签二|标签三|标签四")
+def validate_metadata(title: str, short_title: str, hashtags: list[str]) -> dict:
+    """归一化长短标题和四个标签，校验各字段的格式。"""
+    if not isinstance(hashtags, list) or len(hashtags) != 4:
+        raise AgentOutputFormatError("hashtags 必须包含四个标签")
+    fields = [str(field).strip().lstrip("#") for field in (title, short_title, *hashtags)]
+    if any(not field or "|" in field or len(field.splitlines()) != 1 for field in fields):
+        raise AgentOutputFormatError("长标题、短标题和标签必须为不含竖线的单行文字")
     # 在字数校验前去掉模型偶尔生成的尾部句末标点，避免标题标点单独占行。
     fields[0] = fields[0].rstrip("。．.？?！!… \t")
     fields[1] = fields[1].rstrip("。．.？?！!… \t")

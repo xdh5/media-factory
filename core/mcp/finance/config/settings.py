@@ -10,7 +10,6 @@ SOURCE_RESERVATION_MINUTES = 120
 DRAFT_FILE_NAME = "draft.json"
 STORYBOARD_CONTEXT_FILE_NAME = "storyboard-context.json"
 STORYBOARD_TEXT_FILE_NAME = "storyboard.txt"
-TASKS_DIR_NAME = "tasks"
 
 TOPIC_DEDUPLICATION_DAYS = 30
 VIDEO_SIZE = "1920x1080"
@@ -23,8 +22,6 @@ AUTOMATION_DAILY_OUTPUT_COUNT = 2
 # 但大结构与信息量必须与原稿一致；
 # 每行上限约两行字幕容量（显示层再按词边界均衡换行），只挡超长行。
 ARTICLE_MAX_LINE_LENGTH = 36
-# 单次正文改写交给模型的原稿片段上限。钩子单独作为首片段处理，避免与后文任务互相干扰。
-ARTICLE_CHUNK_MAX_SOURCE_LENGTH = 280
 
 # 素材策略：实拍视频是默认来源，参考图宿主生图仍可指定。
 MATERIAL_AGENT_REFERENCE = "agent_reference"    # 用户参考图 + 宿主逐镜头生图
@@ -33,7 +30,6 @@ MATERIAL_STRATEGIES = (
     MATERIAL_STOCK_VIDEO,
     MATERIAL_AGENT_REFERENCE,
 )
-IMAGE_MATERIAL_STRATEGIES = (MATERIAL_AGENT_REFERENCE,)
 
 # Finance MCP 是生产参数的唯一真源；Agent 与 GitHub Runner 均通过
 # finance_get_config 获取，禁止在各自入口复制参数。
@@ -59,13 +55,10 @@ DEFAULT_PRODUCTION_CONFIG = {
     },
     "runner_retry_config": {
         "storyboard": 3,
-        "stock_video_selection": 3,
     },
 }
 
 _ROOT = Path(__file__).resolve().parent.parent
-METADATA_PROMPT_PATH = _ROOT / "prompts" / "metadata.md"
-ARTICLE_PROMPT_PATH = _ROOT / "prompts" / "article.md"
 SHOT_IMAGE_RULES_PATH = _ROOT / "prompts" / "shot_image_rules.md"
 STOCK_VIDEO_RULES_PATH = _ROOT / "prompts" / "stock_video_rules.md"
 

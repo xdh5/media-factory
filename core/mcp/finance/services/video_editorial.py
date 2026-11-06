@@ -9,7 +9,8 @@ from ..errors import WorkflowStepError
 from .save_draft import load_draft
 from .storyboard import load_prepared_tts, parse_storyboard
 from .production_config import _production_config
-from .video_layers import _with_display_text, _auto_hook_lines, chapter_editorial_input
+from .chapter_layers import chapter_editorial_input
+from .video_layers import _with_display_text, _auto_hook_lines
 
 
 def get_video_editorial_input(draft_path: str, storyboard_text: str, production_config: dict) -> dict:
@@ -47,12 +48,12 @@ def get_video_editorial_input(draft_path: str, storyboard_text: str, production_
             "secondary_subtitles": "translations：中文原文到英文译文的对象，逐条对应 subtitle_texts，简短口语化",
             "chapter_timeline": "titles：与 chapters 等长的非空短标题数组，每项最多 6 字",
         },
-        "instruction": "由宿主完成定稿，将结果分别合并到 production_config 对应对象后传给下载自动合成或成片工具。保留统一生产配置；不得为了省略定稿关闭图层。",
+        "instruction": "由宿主完成定稿，将结果分别合并到 production_config 对应对象后调用 finance_start_render。保留统一生产配置；不得为了省略定稿关闭图层。",
     }
 
 
 def validate_video_editorial(draft_path: str, storyboard_text: str, production_config: dict) -> None:
-    """在下载和渲染前校验宿主定稿，缺失时直接返回可修正的参数错误。"""
+    """在渲染前校验宿主定稿，缺失时直接返回可修正的参数错误。"""
     from core.tools.generate_emphasis_lines._detect import validate_emphasis_groups
     inputs = get_video_editorial_input(draft_path, storyboard_text, production_config)
     settings = _production_config(production_config)

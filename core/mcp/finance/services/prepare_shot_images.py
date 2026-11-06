@@ -116,8 +116,7 @@ def _prepare_agent_reference(
         "image_source": "agent_reference",
         "generated_image_dir": str(output_root.resolve()),
         "generation_task_count": len(context["tasks"]),
-        "next_tool": "finance_save_images",
-        "completion_tool": "finance_commit_existing_images",
+        "next_tool": "finance_submit_visuals",
     }
 
 
@@ -139,7 +138,7 @@ def prepare_shot_images(
     _, storyboard_context = load_draft(cache_root / STORYBOARD_CONTEXT_FILE_NAME, "分镜上下文")
     timeline = storyboard_context.get("timeline")
     if not isinstance(timeline, list) or not timeline:
-        raise WorkflowStepError("分镜上下文缺少有效 timeline，请先完成 finance_prepare_storyboard")
+        raise WorkflowStepError("分镜上下文缺少有效 timeline，请先完成 finance_start_production")
     shots = parse_storyboard(normalized_storyboard, timeline)
     storyboard_path = cache_root / STORYBOARD_TEXT_FILE_NAME
     storyboard_path.write_text(normalized_storyboard, encoding="utf-8")

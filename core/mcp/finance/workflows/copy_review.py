@@ -8,10 +8,10 @@ from ..services.collect_author_copies import continue_collect_author_copies
 from .common import _map_error
 
 
-def finance_submit_copy_reviews(context_path: str, response_text: str) -> dict:
-    """提交宿主校对及广告审核 JSON，正常稿件入库，广告登记排除。"""
+def finance_submit_copy_reviews(context_path: str, reviews: list[dict]) -> dict:
+    """提交宿主校对及广告审核结果，正常稿件入库，广告登记排除。"""
     try:
-        return submit_copy_reviews(context_path, response_text)
+        return submit_copy_reviews(context_path, reviews)
     except Exception as extra:
         raise _map_error(extra) from extra
 
@@ -27,6 +27,6 @@ def finance_start_continue_collect_author_copies(context_path: str) -> dict:
             step="continue_collect_finance_author_copies",
             fn=lambda: continue_collect_author_copies(str(path)),
         )
-        return {**started, "poll_tool": "finance_poll_task"}
+        return started
     except Exception as extra:
         raise _map_error(extra) from extra

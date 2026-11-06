@@ -21,8 +21,12 @@ from ._constants import OUTPUT_ROOT, SERVER_INSTRUCTIONS
 from ._errors import AnimeError, TaskNotFoundError, WorkflowStepError
 from .services.compile import compile_videos, normalize_share_texts
 from .services.discover import discover_series, inspect_works, compile_selection, load_discovery
-from .services.youtube import load_manifest, transcribe_intros, publish_youtube, prepare_youtube_thumbnails, save_youtube_thumbnails
-from .services.github_execution import prepare_execution, prepare_split_execution, dispatch_execution, read_execution_result
+from .services.media_artifacts import load_manifest
+from .services.youtube import publish_youtube
+from .services.youtube_assets import prepare_youtube_thumbnails, save_youtube_thumbnails, transcribe_intros
+from .services.youtube_metadata import validate_copy
+from .services.github_execution import dispatch_execution, read_execution_result
+from .services.publication_preparation import prepare_execution, prepare_split_execution
 
 mcp = FastMCP("media-factory-anime", instructions=SERVER_INSTRUCTIONS)
 
@@ -146,22 +150,6 @@ def anime_start_transcribe_intro(manifest_path: str) -> dict:
             fn=lambda progress: transcribe_intros(manifest_path, progress)), "poll_tool": "anime_get_task"}
 
 
-def anime_prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
-    """titles 只传一个共用标题；按预计分段数返回独立封面任务，每张标题自动标明第几集。只抽一帧作为共用画风参考。"""
-    try:
-        return prepare_youtube_thumbnails(manifest_path, titles)
-    except Exception as exc:
-        raise _map_error(exc) from exc
-
-
-def anime_save_youtube_thumbnails(context_path: str, images: list[dict]) -> dict:
-    """保存宿主生成的分段 YouTube 封面。images 每项包含 image_id 和 image_path；已缓存的封面可以不重复提交。"""
-    try:
-        return save_youtube_thumbnails(context_path, images)
-    except Exception as exc:
-        raise _map_error(exc) from exc
-
-
 def anime_start_publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str],
                                 tags: list[str], account_group: str = "",
                                 playlist_title: str = "") -> dict:
@@ -231,7 +219,6 @@ def anime_save_publication_assets(manifest_path: str, titles: list[str], descrip
                                    tags: list[str], images: list[dict] | None = None) -> dict:
     """提交共用文案并准备各段封面参考和生图任务；宿主生图后再次传 images 保存全部封面。尚未提交图片时返回待生成任务，不发布。"""
     import json
-    from .services.github_execution import validate_copy
     directory, _ = load_manifest(manifest_path)
     validate_copy(titles, descriptions, tags)
     context = prepare_youtube_thumbnails(manifest_path, titles)

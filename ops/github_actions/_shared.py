@@ -7,7 +7,6 @@ import mimetypes
 import os
 from pathlib import Path
 
-import boto3
 
 from core.tools.qwen_text import generate_text
 from core.tools.media_files import upload_public_file

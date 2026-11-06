@@ -7,15 +7,11 @@ from pathlib import Path
 
 from core.mcp.anime._constants import SEGMENTATION_DURATION, SEGMENTATION_EPISODES
 from core.mcp.anime._errors import AnimeError
-from core.mcp.anime.services.compile import (
-    _probe,
-    _validate_audio,
-    _write_json,
-    assemble_videos,
-    part_ranges,
-    split_ranges,
-)
-from core.mcp.anime.services.youtube import _file_sha256
+from core.mcp.anime.services.compile import assemble_videos
+from core.mcp.anime.services.ffmpeg import probe_video
+from core.mcp.anime.services.media_artifacts import file_sha256, write_json
+from core.mcp.anime.services.segmentation import part_ranges, split_ranges
+from core.mcp.anime.services.video_rendering import validate_audio
 
 CHECKPOINT_NAME = "block-checkpoint.json"
 
@@ -58,19 +54,19 @@ class CheckpointUploader:
                         local.parent.mkdir(parents=True, exist_ok=True)
                         self.progress(f"恢复检查点块：来源 {block['first_source_order']}—{block['last_source_order']}")
                         fetch(f"{prefix}/{part['name']}", local)
-                        if _file_sha256(local) != part["sha256"]:
+                        if file_sha256(local) != part["sha256"]:
                             raise AnimeError("检查点分块摘要不一致")
-                        if abs(_probe(local)["duration"] - float(part["duration_seconds"])) > 1:
+                        if abs(probe_video(local)["duration"] - float(part["duration_seconds"])) > 1:
                             raise AnimeError("检查点分块实际时长不一致")
                     if block.get("audio_validation") != 1:
                         try:
                             for part in block["parts"]:
-                                _validate_audio(self.directory / part["name"])
+                                validate_audio(self.directory / part["name"])
                         except AnimeError:
                             self.progress(f"检查点音频损坏，仅重建来源 {block['first_source_order']}—{block['last_source_order']}")
                             self._repair_block(block)
                         block["audio_validation"] = 1
-                        _write_json(path, self.checkpoint)
+                        write_json(path, self.checkpoint)
                         upload(path, f"{prefix}/{CHECKPOINT_NAME}", content_type="application/json")
         except BaseException:
             self.executor.shutdown(wait=True)
@@ -94,7 +90,7 @@ class CheckpointUploader:
             if str(metadata.get("video_id")) != str(source["aweme_id"]):
                 raise AnimeError("修复检查点时来源 ID 不一致", {"order": order, "expected_id": source["aweme_id"],
                                                          "actual_id": metadata.get("video_id")})
-            probe = _probe(path)
+            probe = probe_video(path)
             expected = float(source["duration_seconds"])
             if abs(probe["duration"] - expected) > max(5, expected * 0.02):
                 raise AnimeError("修复检查点时来源时长不一致")
@@ -103,8 +99,8 @@ class CheckpointUploader:
         parts = []
         for index, part in enumerate(manifest["parts"], 1):
             path = Path(part["video_path"])
-            _validate_audio(path)
-            digest = _file_sha256(path)
+            validate_audio(path)
+            digest = file_sha256(path)
             name = f"checkpoint-blocks/block-{first}-{last}-{index}-{digest[:16]}.mp4"
             local = self.directory / name
             local.parent.mkdir(exist_ok=True)
@@ -180,14 +176,14 @@ class CheckpointUploader:
         if len(batch) == 1:
             path = folder / "part-1.mp4"
             shutil.copy2(batch[0]["path"], path)
-            parts = [{"video_path": str(path), "duration_seconds": _probe(path)["duration"]}]
+            parts = [{"video_path": str(path), "duration_seconds": probe_video(path)["duration"]}]
         else:
             parts = assemble_videos(batch, folder, progress=self.progress)["parts"]
         saved = []
         for index, part in enumerate(parts, 1):
             path = Path(part["video_path"])
-            _validate_audio(path)
-            digest = _file_sha256(path)
+            validate_audio(path)
+            digest = file_sha256(path)
             name = f"checkpoint-blocks/block-{first}-{last}-{index}-{digest[:16]}.mp4"
             local = self.directory / name
             local.parent.mkdir(exist_ok=True)
@@ -202,7 +198,7 @@ class CheckpointUploader:
                                                    "audio_validation": 1}]}
         # 最后提交索引；硬终止最多留下未引用的块，不会指向未上传的视频。
         path = self.directory / CHECKPOINT_NAME
-        _write_json(path, value)
+        write_json(path, value)
         self.upload(path, f"{self.prefix}/{CHECKPOINT_NAME}", content_type="application/json")
         # 仅释放本次 Runner 已提交的原片，降低长剧磁盘占用。
         for source in batch:
@@ -227,7 +223,7 @@ class CheckpointUploader:
         for block in self.checkpoint["blocks"]:
             for part_index, part in enumerate(block["parts"]):
                 path = self.directory / part["name"]
-                probe = _probe(path)
+                probe = probe_video(path)
                 records.append({"path": path, "probe": probe, "duration": probe["duration"],
                                 "order": len(records) + 1, "title": "已验证来源分块", "topics": [],
                                 "episode_boundary_after": part_index == len(block["parts"]) - 1})

@@ -14,7 +14,9 @@ from list_author_works import list_author_works
 
 from .._constants import OUTPUT_ROOT
 from .._errors import AnimeError
-from .compile import _executable, _probe, _subprocess_kwargs, _write_json, _write_text, assemble_videos
+from .compile import assemble_videos
+from .ffmpeg import media_executable, probe_video, subprocess_options
+from .media_artifacts import write_json, write_text
 from .preview import extract_remote_preview
 
 
@@ -37,7 +39,7 @@ def discover_series(profile_url: str, series_name: str, limit: int, directory: P
     directory.mkdir(parents=True, exist_ok=True)
     payload = {"profile_url": profile_url, "series_name": series_name, "scan_limit": limit, "works": works}
     path = directory / "discovery.json"
-    _write_json(path, payload)
+    write_json(path, payload)
     return {
         "discovery_path": str(path), "series_name": series_name,
         "scan_limit": limit, "scope": "仅保证已读取范围，不能据此宣称全主页或全剧完整",
@@ -62,8 +64,8 @@ def _source(directory: Path, work: dict) -> dict:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     else:
         metadata = download(work["work_url"], path)
-        _write_json(metadata_path, metadata)
-    probe = _probe(path)
+        write_json(metadata_path, metadata)
+    probe = probe_video(path)
     return {**metadata, "path": path, "probe": probe, "duration": probe["duration"],
             "share_text": work["work_url"]}
 
@@ -99,10 +101,10 @@ def inspect_works(discovery_path: str, work_ids: list[str], windows: list[float]
                 preview = clip.with_suffix(".mp4")
                 extract_remote_preview(work, preview, start, 45)
                 subprocess.run([
-                    _executable("ffmpeg"), "-v", "error", "-y",
+                    media_executable("ffmpeg"), "-v", "error", "-y",
                     "-i", str(preview), "-t", "45", "-vn", "-ac", "1", str(clip),
-                ], check=True, capture_output=True, timeout=120, **_subprocess_kwargs())
-                _write_json(transcript, transcribe(clip))
+                ], check=True, capture_output=True, timeout=120, **subprocess_options())
+                write_json(transcript, transcribe(clip))
             text = json.loads(transcript.read_text(encoding="utf-8"))["text"]
             evidence["windows"].append({"start_seconds": start, "text": text})
         if cover_reason.strip():
@@ -138,12 +140,12 @@ def compile_selection(discovery_path: str, work_ids: list[str], selection_reason
         sources.append({**_source(directory, works[work_id]), "order": index})
     output = directory / f"selection-{time.time_ns()}"
     output.mkdir()
-    _write_json(output / "selection.json", {"work_ids": work_ids, "reason": selection_reason,
+    write_json(output / "selection.json", {"work_ids": work_ids, "reason": selection_reason,
                                             "series_name": discovery["series_name"]})
     if len(sources) != 1:
         result = assemble_videos(sources, output, progress=progress)
         result["selection_reason"] = selection_reason
-        _write_json(output / "manifest.json", result)
+        write_json(output / "manifest.json", result)
         return result
     source = sources[0]
     path = output / "part-1.mp4"
@@ -152,9 +154,9 @@ def compile_selection(discovery_path: str, work_ids: list[str], selection_reason
             "metadata_path": str(path.with_suffix(".json")),
             "duration_seconds": source["duration"], "title": source.get("title") or "",
             "description": source.get("description") or "", "topics": source.get("topics") or []}
-    _write_json(path.with_suffix(".json"), part)
-    _write_text(path.with_suffix(".txt"), f"标题：\n{part['title']}\n描述：\n{part['description']}\n话题：\n{' '.join(part['topics'])}")
+    write_json(path.with_suffix(".json"), part)
+    write_text(path.with_suffix(".txt"), f"标题：\n{part['title']}\n描述：\n{part['description']}\n话题：\n{' '.join(part['topics'])}")
     result = {"output_dir": str(output), "part_count": 1, "parts": [part],
               "original_file": True, "selection_reason": selection_reason}
-    _write_json(output / "manifest.json", result)
+    write_json(output / "manifest.json", result)
     return result

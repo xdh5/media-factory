@@ -17,7 +17,8 @@ from .save_draft import load_draft
 from .storyboard import load_prepared_tts, parse_storyboard
 from .video_materials import _load_saved_storyboard, _apply_material, _write_attributions
 from .production_config import _production_config
-from .video_layers import _with_display_text, _hook_layer, _chapter_layer
+from .chapter_layers import render_chapter_layer
+from .video_layers import _with_display_text, _hook_layer
 from .video_opening import _render_first_shot_cached
 from .video_editorial import validate_video_editorial
 
@@ -150,7 +151,7 @@ def finish_finance_video(
     extra_ass_paths = _hook_layer(
         video_shots, settings, metadata, str(draft.get("source_hook") or ""), cache_root
     )
-    extra_ass_paths += _chapter_layer(shots, settings, cache_root, progress=progress)
+    extra_ass_paths += render_chapter_layer(shots, settings, cache_root, progress=progress)
     try:
         final_result = generate_final_video(
             _with_display_text(video_shots),

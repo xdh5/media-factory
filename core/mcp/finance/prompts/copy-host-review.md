@@ -1,12 +1,7 @@
-你是当前宿主 Agent。MCP 已完成语音识别，请亲自逐篇校对、按需修改措辞并审核广告，不要调用外部文本大模型。
+逐篇校对原始转写、审核广告并完成定稿，再调用 `finance_finalize_collection(context_path, reviews)`。每条填写 `aweme_id`、`kind`、`text` 和简短 `reason`。
 
-1. 结合上下文改正明显错别字、补齐标点；允许措辞级修改，保留原稿大结构、事实、数字、例子和信息量，不总结或扩写。
-2. 整篇以推销商品、课程、社群、领取资料、添加联系方式为目的时，标记 ad，不入库。
-3. 正常内容中的插入广告需要删除，ad_segments 填被删除片段的原始文字，逐字从 transcript_raw 复制；其余正文校对后填 text。
-4. 不要把一般关注提醒、作者署名或观点表达自动当作整篇广告；根据全文目的判断。
-5. 定稿前逐篇通读，判断原稿的推销、导流、拉群、卖课内容有没有漏删（包括没写进 `ad_segments` 的软植入），以及作者名、账号名、机构名、课程名、外号是否全部换成财富研习岛。有残留就改定稿再提交，不要用关键词清单或脚本代替判断，并在 reason 里写清这两项结论。
-6. 每条都给出简短 reason。提交 JSON：{"reviews":[{"aweme_id":"作品ID","kind":"normal或ad","text":"正常正文或空字符串","ad_segments":[],"reason":"校对及审核说明","editorial":{"article":"完整断行正文","db_source_hook":"原文钩子","source_hook":"处理后钩子","replacements":[],"topic":"话题","title":"长标题","short_title":"短标题","hashtags":["标签一","标签二","标签三","标签四"],"cover_lines":["标题原文"],"cover_highlights":["重点词"]}}]}。
-
-调用 finance_finalize_collection(context_path, reviews) 提交审核数组，无需 JSON 字符串。若返回 continuation，轮询其中 task_path，继续审核新返回的 pending，直到 completed=true 或候选用尽。未经宿主审核的文本不能写入稿库。
-
-正常稿件必须同时提供 editorial 定稿对象，字段为 article、db_source_hook、source_hook、replacements、topic、title、short_title、hashtags、cover_lines、cover_highlights。宿主按本任务要求一次完成编辑，提交时统一校验；正文按原稿顺序保留所有观点数字、替换品牌、消除连载指涉，按语义断行且每行最多36字。黄金钩子原文连续前缀为 db_source_hook，品牌替换后的钩子为 source_hook。长标题12至26字，短标题6至16字，四个标签不重复不带井号，封面一至三行拼接须与长标题一致，重点词原样来自长标题。广告记录不需要 editorial。
+- 整篇以推销或导流为目的时，填 `kind=ad`、空 `text`。一般关注提醒、署名和观点表达按全文目的判断。
+- 正常稿填 `kind=normal`。将被删的插入广告逐字复制到 `ad_segments`，剩余正文补标点、校正错字后填 `text`。保留原稿结构、事实、数字和例子。
+- 正常稿必须提交 `editorial`。按原稿顺序编写 `article`，去除连载指涉，把作者名、账号名、机构名、课程名及外号统一替换为「财富研习岛」，按语义断行，每行最多 36 字。用 `replacements` 记录品牌替换，每项包含 `from` 和 `to`。从 `text` 开头逐字复制黄金钩子到 `db_source_hook`，仅做品牌替换后填 `source_hook`，并用它开篇。
+- 补齐 `topic`、`title`（12 至 26 字）、`short_title`（6 至 16 字）、`hashtags`（四个不同的标签，不带井号）、`cover_lines`（一至三行，拼接后与长标题一致）和 `cover_highlights`（取自长标题原文）。
+- 提交前逐篇检查软广告和品牌残留，在 `reason` 写明结论。若返回 `continuation`，用 `finance_get_task` 查询并继续审核，直到完成或候选用尽。

@@ -1,11 +1,9 @@
 """宿主编辑财经定稿，统一校验后写入稿件库。"""
 
-import json
-
 from core.tools.media_records.client import _request
 from ..errors import WorkflowStepError
-from .agent_tasks import validate_article_response, validate_source_hook_response, validate_visual_metadata_response
-from .parse_metadata import parse_metadata
+from .editorial_validation import validate_article, validate_cover, validate_source_hook
+from .metadata_validation import validate_metadata
 from .save_draft import _SERIAL_REFERENCE_PATTERN
 
 
@@ -14,14 +12,16 @@ def validate_editorial(source_text: str, editorial: dict) -> dict:
     if not isinstance(editorial, dict):
         raise WorkflowStepError("正常稿件必须提供 editorial 定稿对象")
     original_hook = str(editorial.get("db_source_hook") or "").strip()
-    validate_source_hook_response(source_text, json.dumps({"source_hook": original_hook}, ensure_ascii=False))
-    article = validate_article_response(source_text, original_hook, json.dumps(editorial, ensure_ascii=False))
+    validate_source_hook(source_text, original_hook)
+    article = validate_article(source_text, original_hook, editorial)
     if article["source_hook"] != editorial.get("source_hook"):
         raise WorkflowStepError("source_hook 必须对应原稿钩子的品牌替换结果")
     if _SERIAL_REFERENCE_PATTERN.search(article["article"]):
         raise WorkflowStepError("定稿正文不能包含连载指涉")
-    metadata = parse_metadata("|".join([str(editorial.get("title") or ""), str(editorial.get("short_title") or ""), *(editorial.get("hashtags") or [])]))
-    visual = validate_visual_metadata_response(metadata["title"], json.dumps(editorial, ensure_ascii=False))
+    metadata = validate_metadata(
+        editorial.get("title") or "", editorial.get("short_title") or "", editorial.get("hashtags") or [],
+    )
+    visual = validate_cover(metadata["title"], editorial)
     topic = str(editorial.get("topic") or "").strip()
     if not topic:
         raise WorkflowStepError("定稿 topic 不能为空")

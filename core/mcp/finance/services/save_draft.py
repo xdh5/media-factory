@@ -15,7 +15,7 @@ from ..config.settings import (
     production_run_id,
 )
 from ..errors import DraftNotFoundError, WorkflowStepError
-from .parse_metadata import parse_metadata
+from .metadata_validation import validate_metadata
 
 # 连载/前文指涉：本文必须是「财富研习岛」独立成篇的文章，出现这些表述必须由 Agent 改写。
 _SERIAL_REFERENCE_PATTERN = re.compile(
@@ -81,7 +81,6 @@ def save_draft(
     source_reservation_token: str,
     source_hook: str,
     publish_date: str,
-    draft_path: str | Path | None = None,
     cover_highlights: list[str] | None = None,
     content_part: int = 1,
     db_source_hook: str = "",
@@ -130,44 +129,23 @@ def save_draft(
         )
     if not isinstance(hashtags, list):
         raise WorkflowStepError("hashtags 必须是包含四个标签的列表")
-    metadata_line = "|".join([str(title), str(short_title), *(str(item) for item in hashtags)])
-    metadata = parse_metadata(metadata_line)
+    metadata = validate_metadata(title, short_title, hashtags)
     normalized_cover_lines = _cover_lines(cover_lines)
     normalized_cover_highlights = _cover_highlights(metadata["title"], cover_highlights)
     if isinstance(content_part, bool) or not isinstance(content_part, int) or content_part < 1:
         raise WorkflowStepError("content_part 必须是大于等于 1 的整数（同一天第二条传 2）")
-    if draft_path is not None:
-        resolved_draft, existing = load_draft(draft_path, "待修改稿件")
-        if normalized_topic != str(existing.get("topic") or "").strip():
-            raise WorkflowStepError("修改已有稿件时不能更换话题；请重新开始一次财经制作")
-        if normalized_source_aweme_id != str(existing.get("source_aweme_id") or "").strip():
-            raise WorkflowStepError("修改已有稿件时不能更换数据库来源稿件")
-        if normalized_source_token != str(existing.get("source_reservation_token") or "").strip():
-            raise WorkflowStepError("修改已有稿件时必须沿用原来源稿件的占用令牌")
-        if not normalized_db_hook:
-            normalized_db_hook = (
-                str(existing.get("db_source_hook") or "").strip()
-                or str(existing.get("source_hook") or "").strip()
-            )
-        record = {"id": int(existing["topic_record_id"]), "topic": normalized_topic}
-        run_id = str(existing["run_id"])
-        content_part = int(existing.get("content_part") or 1)
-        cache_root = Path(existing["cache_dir"]).resolve()
-        output_root = Path(existing["output_dir"]).resolve()
-        target_draft_path = resolved_draft
-    else:
-        try:
-            run_id = production_run_id(publish_date)
-        except ValueError as exc:
-            raise WorkflowStepError(str(exc)) from exc
-        # 话题库记录 ID：part 1 沿用 run-YYYYMMDD 的纯数字；part 2 起追加两位分片号避免撞车。
-        record = {
-            "id": int(run_id.removeprefix("run-")) if content_part == 1
-            else int(f"{run_id.removeprefix('run-')}{content_part:02d}"),
-            "topic": normalized_topic,
-        }
-        cache_root, output_root = production_dirs(run_id, content_part)
-        target_draft_path = cache_root / DRAFT_FILE_NAME
+    try:
+        run_id = production_run_id(publish_date)
+    except ValueError as exc:
+        raise WorkflowStepError(str(exc)) from exc
+    # 话题库记录 ID：part 1 沿用 run-YYYYMMDD 的纯数字；part 2 起追加两位分片号避免撞车。
+    record = {
+        "id": int(run_id.removeprefix("run-")) if content_part == 1
+        else int(f"{run_id.removeprefix('run-')}{content_part:02d}"),
+        "topic": normalized_topic,
+    }
+    cache_root, output_root = production_dirs(run_id, content_part)
+    target_draft_path = cache_root / DRAFT_FILE_NAME
     cache_root.mkdir(parents=True, exist_ok=True)
     output_root.mkdir(parents=True, exist_ok=True)
     draft = {
@@ -180,16 +158,12 @@ def save_draft(
         "content_part": content_part,
         "topic_record_id": record["id"],
         "database_status": "pending_production",
-        "publish_date": (
-            str(existing.get("publish_date") or publish_date).strip()
-            if draft_path is not None
-            else str(publish_date).strip()
-        ),
+        "publish_date": str(publish_date).strip(),
         "source_aweme_id": normalized_source_aweme_id,
         "source_reservation_token": normalized_source_token,
         "source_hook": normalized_source_hook,
         "db_source_hook": normalized_db_hook or normalized_source_hook,
-        "source_database_status": str(existing.get("source_database_status") or "reserved") if draft_path is not None else "reserved",
+        "source_database_status": "reserved",
         "article": normalized_article,
         **metadata,
         "cover_lines": normalized_cover_lines,

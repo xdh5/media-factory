@@ -9,7 +9,7 @@ from pathlib import Path
 from download_video._extractor import parse_share_text
 
 from .._errors import AnimeError
-from .compile import _executable, _probe, _subprocess_kwargs
+from .ffmpeg import media_executable, probe_video, subprocess_options
 
 
 def _remote_headers(resolved) -> str:
@@ -18,11 +18,11 @@ def _remote_headers(resolved) -> str:
 
 def probe_remote_duration(resolved) -> float:
     """只读远程流容器的时长，不下载整部长视频。"""
-    command = [_executable("ffprobe"), "-v", "error", "-rw_timeout", "30000000",
+    command = [media_executable("ffprobe"), "-v", "error", "-rw_timeout", "30000000",
                "-headers", _remote_headers(resolved), "-show_entries", "format=duration",
                "-of", "json", resolved.video_url]
     completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
-                               errors="replace", timeout=180, **_subprocess_kwargs())
+                               errors="replace", timeout=180, **subprocess_options())
     if completed.returncode != 0:
         detail = (completed.stderr or "").strip()[-500:]
         raise AnimeError(f"读取远程视频时长失败：{detail or 'ffprobe 没有返回结果'}")
@@ -35,24 +35,24 @@ def probe_remote_duration(resolved) -> float:
 def extract_remote_preview(work: dict, destination: Path, start: float = 0, seconds: float = 60) -> dict:
     """由解析器取得临时流地址，远程定位并截取，不回退为整集下载。"""
     if destination.is_file():
-        return _probe(destination)
+        return probe_video(destination)
     resolved = parse_share_text(work["work_url"])
     if str(resolved.video_id) != str(work["aweme_id"]):
         raise AnimeError("预览来源 ID 与选定作品不一致")
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.stem + ".partial.mp4")
     headers = _remote_headers(resolved)
-    command = [_executable("ffmpeg"), "-v", "error", "-y"]
+    command = [media_executable("ffmpeg"), "-v", "error", "-y"]
     for url in [resolved.video_url] + ([resolved.audio_url] if resolved.audio_url else []):
         command.extend(["-rw_timeout", "30000000", "-headers", headers, "-ss", str(start), "-i", url])
     command.extend(["-t", str(seconds), "-map", "0:v:0", "-map", "1:a:0" if resolved.audio_url else "0:a:0?",
                     "-vf", "scale=1280:720:force_original_aspect_ratio=decrease",
                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", str(temporary)])
     try:
-        result = subprocess.run(command, capture_output=True, timeout=180, **_subprocess_kwargs())
+        result = subprocess.run(command, capture_output=True, timeout=180, **subprocess_options())
         if result.returncode:
             raise AnimeError("远程片段截取失败；未回退为整集下载，请检查来源或网络")
-        probe = _probe(temporary)
+        probe = probe_video(temporary)
         if probe["duration"] > seconds + 2:
             raise AnimeError("远程片段长度超过预期")
         temporary.replace(destination)

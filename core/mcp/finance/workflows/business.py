@@ -1,7 +1,6 @@
 """财经采集定稿与视频生产的业务入口。"""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Literal
 from typing_extensions import NotRequired, TypedDict
@@ -12,7 +11,9 @@ from .collect_author_copies import finance_start_collect_author_copies
 from .copy_review import finance_submit_copy_reviews, finance_start_continue_collect_author_copies
 from .tasks import finance_poll_task
 from ..errors import WorkflowStepError
-from ..config.settings import normalize_publish_date
+from ..config.settings import (
+    MATERIAL_AGENT_REFERENCE, MATERIAL_STOCK_VIDEO, MATERIAL_STRATEGIES, normalize_publish_date,
+)
 from ..infrastructure.gateways import runner_submit_task
 from ..services.save_draft import load_draft
 from ..services.storyboard import prepare_storyboard
@@ -65,7 +66,7 @@ def finance_start_collection(share_text: str = "", count: int = 0, context_path:
 
 def finance_finalize_collection(context_path: str, reviews: list[CopyReview]) -> dict:
     """一次校验并保存宿主审核的原稿和完整 editorial。整篇广告剔除；配额不足自动启动续采，须继续审核至 completed=true。"""
-    result = finance_submit_copy_reviews(context_path, json.dumps({"reviews": reviews}, ensure_ascii=False))
+    result = finance_submit_copy_reviews(context_path, reviews)
     if result.get("needs_more"):
         result["continuation"] = _task(finance_start_continue_collect_author_copies(context_path))
     return result
@@ -89,7 +90,7 @@ def finance_start_production(publish_date: str, content_part: int = 1,
         raise WorkflowStepError("内容分片必须为正整数")
     config = finance_get_config()
     strategy = material_strategy or config["material_strategy"]
-    if strategy not in {"stock_video", "agent_reference"}:
+    if strategy not in MATERIAL_STRATEGIES:
         raise WorkflowStepError("素材策略必须为 stock_video 或 agent_reference")
     if draft_path:
         _, stored = load_draft(draft_path, "财经稿件")
@@ -109,7 +110,8 @@ def finance_start_production(publish_date: str, content_part: int = 1,
             source_reservation_token=str(reservation["reservation_token"]),
             publish_date=date, content_part=content_part)
         draft_path = draft["draft_path"]
-    _, stored = load_draft(draft_path, "财经稿件")
+        _, stored = load_draft(draft_path, "财经稿件")
+
     def work():
         result = prepare_storyboard(draft_path, tts_config=config["tts_config"], material_strategy=strategy)
         return {**result, "draft": draft, "source": source}
@@ -122,9 +124,9 @@ def finance_prepare_visuals(draft_path: str, storyboard_text: str,
     """提交宿主分镜，按配置返回生图任务或启动实拍素材搜索。耗时搜索返回统一后台任务。"""
     config = finance_get_config()
     strategy = material_strategy or config["material_strategy"]
-    if strategy == "stock_video":
+    if strategy == MATERIAL_STOCK_VIDEO:
         return _task(m.finance_start_video_search(draft_path, storyboard_text, config["video_config"]))
-    if strategy == "agent_reference":
+    if strategy == MATERIAL_AGENT_REFERENCE:
         return m.finance_prepare_images(draft_path, storyboard_text, image_config or {})
     raise WorkflowStepError("素材策略必须为 stock_video 或 agent_reference")
 
@@ -133,11 +135,10 @@ def finance_submit_visuals(context_path: str, material_strategy: str,
                             images: list[dict] | None = None,
                             selections: list[dict] | None = None) -> dict:
     """图片保存并完成入库；实拍按明确选片或默认尺寸顺序下载。只准备素材，不自动合成，不调用模型选片。"""
-    if material_strategy == "agent_reference":
-        m.finance_save_images(context_path, images or [])
-        return m.finance_commit_existing_images(context_path)
-    if material_strategy == "stock_video":
-        return _task(m.finance_start_download_videos(context_path, selections, auto_finish=False))
+    if material_strategy == MATERIAL_AGENT_REFERENCE:
+        return m.submit_reference_images(context_path, images or [])
+    if material_strategy == MATERIAL_STOCK_VIDEO:
+        return _task(m.start_download_videos(context_path, selections))
     raise WorkflowStepError("素材策略必须为 stock_video 或 agent_reference")
 
 

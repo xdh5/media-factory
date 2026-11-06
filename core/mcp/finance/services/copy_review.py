@@ -74,11 +74,9 @@ def _validate_review(original: str, review: dict) -> dict:
     return {"kind": kind, "text": text, "reason": reason}
 
 
-def submit_copy_reviews(context_path: str, response_text: str) -> dict:
+def submit_copy_reviews(context_path: str, reviews: list[dict]) -> dict:
     """验证宿主对当前批次的全部审核结果，再逐条幂等入库。"""
     path, context = load_review_context(context_path)
-    data = json.loads(response_text)
-    reviews = data.get("reviews") if isinstance(data, dict) else None
     if not isinstance(reviews, list) or not all(isinstance(r, dict) for r in reviews):
         raise WorkflowStepError("必须提交 reviews 数组")
     by_id = {str(r.get("aweme_id") or ""): r for r in reviews}

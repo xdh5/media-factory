@@ -16,7 +16,7 @@ from ..config.settings import (
 )
 from ..errors import AgentOutputFormatError, WorkflowStepError
 from .narration import display_subtitle_text, ends_sentence, parse_emphasis_segments, split_narration_lines
-from .prompts import build_metadata_prompt, build_storyboard_prompt
+from .prompts import build_storyboard_prompt
 from .save_draft import load_draft
 
 # 镜头行标记：图库/生图策略用 IMAGE，实拍视频策略用 VIDEO；两种结构完全一致。
@@ -208,11 +208,11 @@ def load_prepared_tts(cache_root: str | Path) -> dict:
     timeline = context.get("timeline")
     if not tts_path.is_file():
         raise WorkflowStepError(
-            "分镜上下文没有完整配音文件。请重新调用 finance_prepare_storyboard",
+            "分镜上下文没有完整配音文件。请重新调用 finance_start_production",
             {"tts_path": str(tts_path)},
         )
     if not isinstance(timeline, list) or not timeline:
-        raise WorkflowStepError("分镜上下文缺少有效 timeline，请重新调用 finance_prepare_storyboard")
+        raise WorkflowStepError("分镜上下文缺少有效 timeline，请重新调用 finance_start_production")
     return {
         "tts_path": tts_path,
         "timeline": timeline,

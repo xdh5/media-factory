@@ -42,7 +42,7 @@ language_learning_prepare_pack / language_learning_validate_pack_words
 [宿主 Agent 生成一张真实 Alpha 透明主题图，并按共用视觉 Prompt 提交十个主体框]
 
 language_learning_validate_pack_subject_sheet
-└─ 复用 services.subject_cards.validate_subject_sheet 完成定位和十张主体切图
+└─ 复用 services.subject_cutouts.validate_subject_sheet 完成定位和十张主体切图
 
 language_learning_review_pack_subject_sheet
 └─ 复用整图视觉验收；未通过时禁止提交词包
@@ -73,7 +73,7 @@ language_learning_get_visual_validation_prompt
 [宿主 Agent 按 Prompt 提交十个主体框，不做内容质检]
 
 language_learning_validate_subject_sheet
-└─ services.subject_cards.validate_subject_sheet
+└─ services.subject_cutouts.validate_subject_sheet
    └─ 硬校验真实 Alpha 透明通道；按十个框输出十张透明主体和一张切图整体验收图
 
 [宿主 Agent 打开十张实际切图组成的整体验收图做一次性验收]

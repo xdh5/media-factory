@@ -1,25 +1,19 @@
 """语言学习 MCP 工作流与工具清单。"""
 
-from .api import (
+from .production_plan import (
     language_learning_get_production_config,
     language_learning_get_automation_plan,
+    language_learning_get_production_outputs,
+)
+from .vocabulary import (
     language_learning_get_topic_generation_prompt,
     language_learning_validate_topic_response,
-    language_learning_get_production_outputs,
     language_learning_get_topics,
     language_learning_occupy_topic,
     language_learning_build_vocabulary_prompt,
-    language_learning_get_visual_validation_prompt,
-    language_learning_get_sheet_validation_prompt,
     language_learning_parse_vocabulary_response,
-    language_learning_prepare_images,
-    language_learning_save_images,
-    language_learning_submit_images,
-    language_learning_start_submit_images,
-    language_learning_validate_subject_sheet,
-    language_learning_review_subject_sheet,
-    language_learning_compose_cards,
-    language_learning_start_compose_cards,
+)
+from .packs import (
     language_learning_prepare_pack,
     language_learning_validate_pack_words,
     language_learning_validate_pack_subject_sheet,
@@ -27,10 +21,26 @@ from .api import (
     language_learning_commit_pack,
     language_learning_claim_pack,
     language_learning_release_pack,
+)
+from .subject_images import (
+    language_learning_get_visual_validation_prompt,
+    language_learning_get_sheet_validation_prompt,
+    language_learning_prepare_images,
+    language_learning_save_images,
+    language_learning_submit_images,
+    language_learning_start_submit_images,
+    language_learning_validate_subject_sheet,
+    language_learning_review_subject_sheet,
+)
+from .rendering import (
+    language_learning_compose_cards,
+    language_learning_start_compose_cards,
     language_learning_start_compose_pack_cards,
     language_learning_create_videos,
     language_learning_start_create_videos,
     language_learning_start_upload_r2,
+)
+from .tasks import (
     language_learning_poll_task,
 )
 
