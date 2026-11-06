@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "dashboard/**"
+      - "apps/dashboard/**"
       - ".github/workflows/deploy-publishing-dashboard.yml"
   workflow_dispatch:
 
@@ -34,7 +34,7 @@ jobs:
       - name: 上传静态看板
         uses: actions/upload-pages-artifact@v4
         with:
-          path: dashboard
+          path: apps/dashboard
 
       - name: 发布 GitHub Pages
         id: deployment

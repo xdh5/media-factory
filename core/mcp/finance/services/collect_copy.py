@@ -10,8 +10,6 @@ from download_video import DownloadError, download
 
 from ..errors import WorkflowStepError
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]
-CACHE_ROOT = _PROJECT_ROOT / "cache" / "collect_finance_copy"
 _VIDEO_FILE_NAME = "video.mp4"
 _DIRECT_LINK_SOURCE = "direct_link"
 _COLLECTION_CODE_BY_NAME = {"财经": "finance"}

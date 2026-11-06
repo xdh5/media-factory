@@ -5,7 +5,8 @@ from __future__ import annotations
 import time
 
 from ..infrastructure.gateways import runner_submit_task
-from ..services.collect_copy import CACHE_ROOT, collect_copy
+from ..config.settings import COLLECTION_CACHE_ROOT
+from ..services.collect_copy import collect_copy
 from .common import _map_error
 
 
@@ -17,7 +18,7 @@ def finance_start_collect_copy(share_text: str, collection_name: str) -> dict:
     """
     try:
         run_id = f"run-{time.time_ns()}"
-        cache_dir = CACHE_ROOT / run_id
+        cache_dir = COLLECTION_CACHE_ROOT / run_id
 
         def _work() -> dict:
             return collect_copy(

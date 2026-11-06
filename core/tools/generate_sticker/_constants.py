@@ -5,14 +5,7 @@ REC 是可选贴图之一：以 1080p 为基准按画布高度缩放，左上红
 
 from __future__ import annotations
 
-from pathlib import Path
-
-def _project_root() -> Path:
-    for candidate in Path(__file__).resolve().parents:
-        if any((candidate / name).is_file() for name in ("AGENTS.md", "agents.md")):
-            return candidate
-    raise RuntimeError("找不到项目根目录：缺少 AGENTS.md 或 agents.md")
-
+from core.paths import PROJECT_STATIC_ROOT
 
 STICKER_REC = "rec"
 STICKER_COUNTDOWN = "countdown"
@@ -21,7 +14,7 @@ SUPPORTED_STICKERS = (STICKER_REC, STICKER_COUNTDOWN)
 STICKER_FFMPEG_TIMEOUT_SECONDS = 60
 STICKER_FPS = 30
 
-REC_FONT_PATH = _project_root() / "static" / "font" / "ArialMdm.ttf"
+REC_FONT_PATH = PROJECT_STATIC_ROOT / "font" / "ArialMdm.ttf"
 REC_REFERENCE_HEIGHT = 1080
 REC_MARGIN_X = 36
 REC_MARGIN_Y = 28
@@ -42,7 +35,7 @@ COUNTDOWN_REFERENCE_WIDTH = 1080
 COUNTDOWN_REFERENCE_HEIGHT = 1920
 COUNTDOWN_DIAMETER = 264
 COUNTDOWN_CENTER_Y = 1160
-COUNTDOWN_FONT_PATH = _project_root() / "static" / "font" / "ArialMdm.ttf"
+COUNTDOWN_FONT_PATH = PROJECT_STATIC_ROOT / "font" / "ArialMdm.ttf"
 COUNTDOWN_CIRCLE_COLOR = (255, 255, 255, 255)
 COUNTDOWN_WEDGE_COLOR = (255, 255, 255, 72)
 COUNTDOWN_NUMBER_COLOR = (255, 255, 255, 255)

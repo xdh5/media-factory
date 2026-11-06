@@ -1,22 +1,15 @@
 """生成 ASS 字幕常量。
 
 默认版式：左右各留 10%、底中、距底 10%；固定 100px 加粗白字黑边。
-默认字体：普推黑体（`static/font/PUTUI-Regular.ttf`）。
+默认字体：普推黑体（`core/static/font/PUTUI-Regular.ttf`）。
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+from core.paths import PROJECT_STATIC_ROOT
 
 
-def _project_root() -> Path:
-    for candidate in Path(__file__).resolve().parents:
-        if any((candidate / name).is_file() for name in ("AGENTS.md", "agents.md")):
-            return candidate
-    raise RuntimeError("找不到项目根目录：缺少 AGENTS.md 或 agents.md")
-
-
-SUBTITLE_FONT_DIRECTORY = _project_root() / "static" / "font"
+SUBTITLE_FONT_DIRECTORY = PROJECT_STATIC_ROOT / "font"
 SUBTITLE_DEFAULT_FONT_PATH = SUBTITLE_FONT_DIRECTORY / "PUTUI-Regular.ttf"
 SUBTITLE_DEFAULT_FONT_FAMILY = "PUTUI"
 SUBTITLE_DEFAULT_FONT_SIZE = 100

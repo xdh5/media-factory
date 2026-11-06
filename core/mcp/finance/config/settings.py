@@ -4,6 +4,13 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from core.paths import (
+    PROJECT_DATA_ROOT as PROJECT_DATA_ROOT,
+    PROJECT_CACHE_ROOT as PROJECT_CACHE_ROOT,
+    PROJECT_OUTPUT_ROOT as PROJECT_OUTPUT_ROOT,
+    PROJECT_TMP_ROOT as PROJECT_TMP_ROOT,
+)
+
 MCP_ID = "finance"
 SOURCE_COLLECTION_CODE = "finance"
 SOURCE_RESERVATION_MINUTES = 120
@@ -47,7 +54,7 @@ DEFAULT_PRODUCTION_CONFIG = {
         "soft_blur_sigma": 0.55,
     },
     "production_config": {
-        "bgm_path": "static/bgm/easy-lemon-kevin-macleod.mp3",
+        "bgm_path": "core/static/bgm/easy-lemon-kevin-macleod.mp3",
         "bgm_gain": 0.672,
         "cover_frame_seconds": 0.03333333333333333,
         "intro": "slide_in_shutter",
@@ -63,18 +70,7 @@ SHOT_IMAGE_RULES_PATH = _ROOT / "prompts" / "shot_image_rules.md"
 STOCK_VIDEO_RULES_PATH = _ROOT / "prompts" / "stock_video_rules.md"
 
 
-def _project_root() -> Path:
-    for candidate in Path(__file__).resolve().parents:
-        if any((candidate / name).is_file() for name in ("AGENTS.md", "agents.md")):
-            return candidate
-    raise RuntimeError("找不到项目根目录：缺少 AGENTS.md 或 agents.md")
-
-
-_PROJECT_ROOT = _project_root()
-PROJECT_DATA_ROOT = _PROJECT_ROOT / "data"
-PROJECT_CACHE_ROOT = _PROJECT_ROOT / "cache"
-PROJECT_OUTPUT_ROOT = PROJECT_CACHE_ROOT / "output"
-PROJECT_TMP_ROOT = PROJECT_CACHE_ROOT / "tmp"
+COLLECTION_CACHE_ROOT = PROJECT_CACHE_ROOT / "collect_finance_copy"
 GENERATED_IMAGE_LIBRARY_ROOT = PROJECT_DATA_ROOT / "image_library_finance"
 BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 

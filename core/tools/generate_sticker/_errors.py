@@ -29,7 +29,7 @@ class StickerFontError(StickerError):
 
     def __init__(self, path: str):
         super().__init__(
-            f"贴图字体不存在：{path}；请确认 static/font 已包含 ArialMdm.ttf",
+            f"贴图字体不存在：{path}；请确认 core/static/font 已包含 ArialMdm.ttf",
             {"path": path},
         )
 

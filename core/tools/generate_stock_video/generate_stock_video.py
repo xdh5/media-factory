@@ -16,6 +16,8 @@ from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
 
+from core.paths import PROJECT_CACHE_ROOT
+
 from ._constants import (
     ALLOWED_DOWNLOAD_HOST_SUFFIXES,
     ATTRIBUTION_URLS,
@@ -41,18 +43,11 @@ from ._errors import (
 )
 
 
-def _project_root() -> Path:
-    for candidate in Path(__file__).resolve().parents:
-        if any((candidate / name).is_file() for name in ("AGENTS.md", "agents.md")):
-            return candidate
-    raise StockVideoConfigurationError("找不到项目根目录：缺少 AGENTS.md 或 agents.md")
-
-
 def _search_cache_path(provider: str, query: str, orientation: str, limit: int) -> Path:
     signature = hashlib.sha256(
         json.dumps([provider, query, orientation, limit], ensure_ascii=False).encode("utf-8")
     ).hexdigest()
-    return _project_root() / "cache" / "stock_video" / "search" / f"{signature}.json"
+    return PROJECT_CACHE_ROOT / "stock_video" / "search" / f"{signature}.json"
 
 
 def _read_search_cache(path: Path) -> list[dict] | None:

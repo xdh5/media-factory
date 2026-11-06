@@ -8,11 +8,9 @@ import os
 from pathlib import Path
 
 
+from core.paths import PROJECT_ROOT as PROJECT_ROOT
 from core.tools.qwen_text import generate_text
 from core.tools.media_files import upload_public_file
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def qwen(system_prompt: str, user_prompt: str, *, json_output: bool = False, max_tokens: int = 8192) -> dict:

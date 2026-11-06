@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+from core.paths import PROJECT_INTEGRATIONS_ROOT, PROJECT_ROOT as PROJECT_ROOT
 BEIJING_TIMEZONE = "Asia/Shanghai"
 MEDIA_PUBLISHER_EXECUTABLE_ENV = "MEDIA_PUBLISHER_EXECUTABLE"
 MEDIA_PUBLISHER_DIR_ENV = "MEDIA_PUBLISHER_DIR"
@@ -70,7 +70,7 @@ def media_publisher_root() -> Path:
     import os
 
     override = os.getenv(MEDIA_PUBLISHER_DIR_ENV, "").strip()
-    return Path(override or PROJECT_ROOT / "integrations" / "media-publisher").resolve()
+    return Path(override or PROJECT_INTEGRATIONS_ROOT / "media-publisher").resolve()
 
 
 def media_publisher_executable() -> str:

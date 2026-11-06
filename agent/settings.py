@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parents[1]
+from core.paths import PROJECT_DATA_ROOT, PROJECT_ROOT as ROOT
 SERVERS = {name: f"core.mcp.{name}" for name in (
     "finance", "language_learning", "anime", "publishing"
 )}
@@ -14,7 +14,7 @@ SERVERS = {name: f"core.mcp.{name}" for name in (
 
 @dataclass
 class AgentSettings:
-    database: Path = ROOT / "data/agent/checkpoints.sqlite"
+    database: Path = PROJECT_DATA_ROOT / "agent" / "checkpoints.sqlite"
     max_steps: int = 60
     max_attempts: int = 3
     tool_timeout: float = 180

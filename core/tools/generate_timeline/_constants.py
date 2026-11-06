@@ -8,7 +8,7 @@ from __future__ import annotations
 
 TIMELINE_POSITIONS = ("top", "bottom")
 
-# 段落标题字体：与正文 karaoke 字幕同款普推黑体（static/font/PUTUI-Regular.ttf）。
+# 段落标题字体：与正文 karaoke 字幕同款普推黑体（core/static/font/PUTUI-Regular.ttf）。
 TIMELINE_DEFAULT_FONT_FAMILY = "PUTUI"
 
 DEFAULT_TIMELINE_STYLE: dict = {

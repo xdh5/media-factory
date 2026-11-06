@@ -68,5 +68,5 @@ def publishing_login_status(login_id: str) -> dict:
 
 def publishing_review_session(account_ref: str, platform: str, screenshot_path: str, ready: bool, reason: str) -> dict:
     """仅在自动检测异常时，由宿主先查看 screenshot_path 的真实截图再提交。上传页正常且无登录、验证码、风控提示才可 ready=true；空白或无法确认则 ready=false 并告诉用户。不得仅凭 Cookie 或文字猜测。判断有效期五分钟，不能替代其他账号预检。"""
-    from core.tools.publish_media.accounts import review_publish_session
+    from core.tools.publish_media.browser_accounts import review_publish_session
     return review_publish_session(account_ref, platform, screenshot_path, ready, reason)

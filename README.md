@@ -1,292 +1,56 @@
 # Media Factory
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+Media Factory 用于制作和发布财经、语言学习和动漫视频。宿主 Agent 负责内容判断、文案、分镜与生图，MCP 负责校验、媒体处理、任务状态和产物交付。财经支持实拍素材与参考图生图，语言学习支持词包复用，动漫支持本地制作和 GitHub Runner 发布。
 
-An agent-orchestrated production and publishing system for short-form video.
+## 快速开始
 
-Media Factory turns source material into production-ready vertical videos through reusable media tools, Model Context Protocol (MCP) workflows, durable production records, and multi-platform publishing integrations.
+从仓库根目录初始化子模块并安装 Python 依赖。运行环境需要 Python 3.10+ 和 FFmpeg，运行 GitHub 生产入口及桌面构建时使用 Python 3.12。
 
-It currently operates two production lines: language-learning videos and finance knowledge videos built through a text-to-image workflow. Collecting finance copy and unified multi-platform publishing support both lines.
-
-## Why This Project Exists
-
-Producing one short video is straightforward. Operating a repeatable content pipeline is not.
-
-A production system must coordinate source selection, topic deduplication, script and image generation, text-to-speech, subtitles, video rendering, artifact delivery, publication scheduling, and failure recovery—without producing duplicate topics or publishing the same video twice.
-
-Media Factory treats these concerns as a stateful workflow rather than a collection of disconnected generation scripts.
-
-## Key Capabilities
-
-### Agent-Orchestrated Production
-
-Each business workflow is exposed as an independent MCP server. An AI agent can inspect source material, prepare content, start long-running jobs, review generated assets, and continue the pipeline through structured tool calls.
-
-Long-running operations use asynchronous start-and-poll tasks so MCP clients are not blocked by image generation or FFmpeg rendering.
-
-### Reusable Media Tooling
-
-The pipelines share Python packages for:
-
-- Text, image, and speech generation
-- Subtitle, cover, and shot composition
-- FFmpeg-based video assembly
-- Video downloading and transcription
-- Cloud storage and durable data access
-- Platform-specific publishing
-
-MCP servers orchestrate these public tool APIs instead of embedding media-processing logic in the protocol layer.
-
-### Durable and Idempotent Workflows
-
-Cloudflare D1 stores operational state such as topic reservations, source usage, production outputs, vocabulary history, generated images, and publication records.
-
-Production and publication writes are idempotent. A partially completed run can be inspected and resumed without blindly recreating assets or reposting successful platform deliveries.
-
-### Multi-Platform Publishing
-
-The unified publishing workflow supports YouTube, TikTok, Facebook, Instagram, Douyin, Kuaishou, Toutiao, and WeChat Channels.
-
-Before publishing, the system previews selected outputs, resolves the account group, and checks existing publication records. Successful platform operations are recorded individually so partial failures can be retried safely.
-
-### Scheduled Batch Production
-
-GitHub Actions runs a weekly production workflow for the following Monday through Sunday. Each target date is processed independently and sequentially, so one failed product or date does not stop the remainder of the schedule.
-
-Generated assets are delivered through Cloudflare R2.
-
-## Architecture
-
-![Media Factory system architecture](docs/assets/architecture.svg)
-
-The repository deliberately separates orchestration from implementation:
-
-```text
-core/
-├── mcp/             # MCP workflow servers and background-task orchestration
-└── tools/           # Reusable media, storage, data, and publishing packages
-
-ops/
-├── cloudflare/      # D1 data API and database migrations
-├── github_actions/  # Scheduled production orchestration
-└── youtube/         # YouTube OAuth utilities
-
-integrations/
-├── media-collector/ # Submodule: core/download_video and core/list_author_works; MIT
-└── media-publisher/ # Local multi-platform publishing integration
-
-dashboard/           # Publishing dashboard
-data/                # Persistent local libraries
-cache/               # Intermediate files, finished videos in cache/output, scratch files in cache/tmp
-```
-
-## Production Pipelines
-
-### Finance Visual Storytelling
-
-```text
-Source selection
-    → script adaptation
-    → topic validation
-    → metadata and title generation
-    → TTS and storyboard
-    → shot-image generation
-    → cover and video assembly
-    → production record
-    → R2 delivery
-```
-
-This text-to-image production line turns finance knowledge into visual short-form stories. Source scripts are reserved before use and marked as consumed only after the draft is saved. Generated images are tracked independently so failed database writes can be retried without regenerating the underlying asset.
-
-### Language Learning
-
-```text
-Topic selection
-    → vocabulary generation
-    → vocabulary-history validation
-    → subject-sheet generation
-    → visual review
-    → fixed-card composition
-    → bilingual TTS
-    → standard and quiz videos
-    → production record
-    → publishing
-```
-
-Vocabulary is checked against recent history to reduce repetition. The same run generates both a standard learning video and a countdown-based quiz variant.
-
-### Collect Finance Copy
-
-```text
-Shared link
-    → video download
-    → audio transcription
-    → category assignment
-    → D1 ingestion
-```
-
-This step runs inside the finance MCP. It collects finance copy from one Douyin share link for later production.
-
-## Technology Stack
-
-- Python 3.10+
-- Model Context Protocol with FastMCP
-- FFmpeg and Pillow
-- Qwen text, vision, and image models
-- Groq Whisper transcription
-- Cloudflare D1 and R2
-- GitHub Actions
-- YouTube Data API, Zernio, and media-publisher
-- Docker
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.10 or later
-- FFmpeg available on `PATH`
-- An MCP-compatible client
-- Credentials for the external services used by the selected workflow
-
-Not every integration is required. For example, local finance production does not require credentials for every publishing platform.
-
-### 1. Clone the Repository
-
-```bash
-git clone git@github.com:xdh5/media-factory.git
-cd media-factory
-```
-
-### 2. Configure the Environment
-
-```bash
-cp .env.example .env
-```
-
-Configure only the services required by the workflow you intend to run. Available settings are documented in `.env.example`. Never commit the populated `.env` file.
-
-### 3. Install the Runtime
-
-Install FFmpeg separately, then install the Python dependencies:
-
-```bash
+```powershell
+git submodule update --init --recursive
 python -m pip install .
+Copy-Item -LiteralPath .env.example -Destination .env
 ```
 
-Alternatively, build the included Docker image:
+首次创建 `.env` 后按所用业务填写凭据。MCP 使用 stdio，工具客户端可按需注册下列入口。
 
-```bash
+| 业务 | 启动命令 |
+| --- | --- |
+| 财经 | `python -m core.mcp.finance` |
+| 语言学习 | `python -m core.mcp.language_learning` |
+| 动漫 | `python -m core.mcp.anime` |
+| 统一发布 | `python -m core.mcp.publishing` |
+
+本地 Docker 镜像包含 Python、FFmpeg、业务代码和媒体资源。需要内置 Agent 时加 `--build-arg INSTALL_AGENT=true`。浏览器发布使用桌面环境中的 Electron 发布器。
+
+```powershell
 docker build -t media-factory .
+docker run --rm -it --env-file .env -v "${PWD}/data:/app/data" -v "${PWD}/cache:/app/cache" media-factory
 ```
 
-### 4. Configure the MCP Servers
+## 项目结构
 
-Each workflow runs as a separate stdio MCP server:
+| 目录 | 职责 |
+| --- | --- |
+| `core/mcp/` | 业务工具入口、工作流与后台任务 |
+| `core/tools/` | 可复用的媒体处理、数据读写和发布适配 |
+| `core/paths.py` | 工作区、数据、缓存和媒体资源路径 |
+| `agent/`、`.agents/skills/` | Agent 运行时与业务技能 |
+| `apps/` | 桌面客户端和网页看板 |
+| `integrations/` | 采集与发布子模块 |
+| `ops/` | GitHub Runner、Cloudflare Worker、桌面构建及运维入口 |
+| `core/static/` | 字体、封面底图、音乐和音效 |
 
-| Server | Entry point | Responsibility |
-| --- | --- | --- |
-| Finance Visual Storytelling | `python -m core.mcp.finance` | Finance video production, and collecting finance copy |
-| Language Learning | `python -m core.mcp.language_learning` | Vocabulary video production |
-| Publishing | `python -m core.mcp.publishing` | Output discovery and multi-platform publishing |
-| Anime Compile | `python -m core.mcp.anime` | Concatenate Douyin, Kuaishou, and other links in order and save locally |
+本地持久数据放在 `data/`，生产中间文件与工具缓存放在 `cache/`，成片在 `cache/output/`，临时文件在 `cache/tmp/`。桌面绿色版默认输出到 `dist/MediaFactory/`。这些目录均独立于源码提交。
 
-Example MCP client configuration:
+## 延伸说明
 
-```json
-{
-  "mcpServers": {
-    "media-factory-finance": {
-      "command": "python",
-      "args": ["-m", "core.mcp.finance"],
-      "env": {
-        "PYTHONPATH": "/absolute/path/to/media-factory",
-        "PYTHONUTF8": "1",
-        "DASHSCOPE_BUSINESS_LINE": "finance"
-      }
-    },
-    "media-factory-language-learning": {
-      "command": "python",
-      "args": ["-m", "core.mcp.language_learning"],
-      "env": {
-        "PYTHONPATH": "/absolute/path/to/media-factory",
-        "PYTHONUTF8": "1",
-        "DASHSCOPE_BUSINESS_LINE": "language_learning"
-      }
-    },
-    "media-factory-publishing": {
-      "command": "python",
-      "args": ["-m", "core.mcp.publishing"],
-      "env": {
-        "PYTHONPATH": "/absolute/path/to/media-factory",
-        "PYTHONUTF8": "1"
-      }
-    }
-  }
-}
-```
+- [Agent 使用说明](agent/README.md)
+- [桌面端构建与运行](apps/desktop/README.md)
+- [生产与部署运维](ops/README.md)
+- [发布账号配置](docs/publishing-accounts.md)
+- [MCP 模型调用边界](docs/mcp-model-boundary.md)
 
-Replace the repository path and Python executable with absolute paths appropriate for your machine.
+## 许可证
 
-## Output Model
-
-Local productions are stored by business line and planned publication date:
-
-```text
-cache/output/{business_line}/run-YYYYMMDD/
-```
-
-The date represents the intended publication date in the Asia/Shanghai timezone. Exact scheduled publication times are stored separately as timezone-aware timestamps. Anime compiles have no publication date and are stored directly under `cache/output/anime/run-*/`.
-
-Intermediate files remain under `cache/`, finished videos under `cache/output/`, and scratch files under `cache/tmp/`, so interrupted workflows can be diagnosed or resumed. Cleanup is an explicit operation and is never performed automatically after publishing.
-
-Production records preserve artifact provenance:
-
-- `local_mcp` records reference a local file path.
-- `github_workflow` records are committed only after successful R2 delivery.
-- Uploading a local artifact to R2 supplements its existing record without changing its origin.
-
-## Reliability Design
-
-- Topic reservations prevent concurrent duplicate production.
-- Publication records prevent duplicate platform uploads.
-- Source-script reservations expire when a run is abandoned.
-- Long-running jobs expose persistent task status.
-- Platform successes are committed independently.
-- Local and cloud-produced assets retain distinct provenance.
-- Publishing and local-file cleanup are separate operations.
-- Weekly jobs continue after an isolated date or product failure.
-
-These safeguards allow the system to recover from partial failures without treating every retry as a completely new run.
-
-## Workflow Automation
-
-The repository provides GitHub Actions workflows for:
-
-- Building the production runner image
-- Producing the following week's language-learning and finance visual content
-- Manually resuming missing language-learning publications
-- Deploying the publishing dashboard
-
-The weekly workflow runs every Saturday at 12:00 Asia/Shanghai and processes the next Monday-through-Sunday schedule.
-
-## Internal Documentation
-
-- [Finance MCP](core/mcp/finance/finance.md)
-- [Language Learning MCP](core/mcp/language_learning/language_learning.md)
-- [Publishing MCP](core/mcp/publishing/publishing.md)
-- [Anime Compile MCP](core/mcp/anime/anime.md)
-- [Operations](ops/README.md)
-
-## Current Scope
-
-Media Factory is an operational content-production system, not a generic drag-and-drop video editor.
-
-Its two production lines currently encode business rules for language learning and finance knowledge visual storytelling. The lower-level tools are reusable, while each new content vertical is expected to define its own prompts, validation rules, and MCP orchestration.
-
-## License
-
-Media Factory is licensed under the [MIT License](LICENSE).
-
-`integrations/media-collector` is a separate repository and uses the MIT License. Video download is `core/download_video`; author work lists are `core/list_author_works`.
-
-`integrations/media-publisher` is a separate repository and remains under GPL-2.0-only.
+主仓库使用 [MIT 许可证](LICENSE)。采集子模块使用 MIT，发布子模块使用 GPL-2.0-only。

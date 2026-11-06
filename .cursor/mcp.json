@@ -8,8 +8,7 @@
       ],
       "env": {
         "PYTHONPATH": "${workspaceFolder}",
-        "PYTHONUTF8": "1",
-        "DASHSCOPE_BUSINESS_LINE": "finance"
+        "PYTHONUTF8": "1"
       }
     },
     "media-factory-language-learning": {
@@ -20,8 +19,7 @@
       ],
       "env": {
         "PYTHONPATH": "${workspaceFolder}",
-        "PYTHONUTF8": "1",
-        "DASHSCOPE_BUSINESS_LINE": "language_learning"
+        "PYTHONUTF8": "1"
       }
     },
     "media-factory-publishing": {

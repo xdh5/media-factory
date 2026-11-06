@@ -1,17 +1,10 @@
 """生成封面图片常量。"""
 
-from pathlib import Path
+from core.paths import PROJECT_STATIC_ROOT
 
-def _project_root() -> Path:
-    for candidate in Path(__file__).resolve().parents:
-        if any((candidate / name).is_file() for name in ("AGENTS.md", "agents.md")):
-            return candidate
-    raise RuntimeError("找不到项目根目录：缺少 AGENTS.md 或 agents.md")
-
-
-DEFAULT_COVER_FONT_PATH = _project_root() / "static" / "font" / "MechSong-DemiBold-2.ttf"
+DEFAULT_COVER_FONT_PATH = PROJECT_STATIC_ROOT / "font" / "MechSong-DemiBold-2.ttf"
 # 固定封面底图（2026-09-23 用户指定）：不再从镜头候选图随机抽，统一用这张。
-DEFAULT_COVER_BACKGROUND_IMAGE = _project_root() / "static" / "cover" / "default-background.jpg"
+DEFAULT_COVER_BACKGROUND_IMAGE = PROJECT_STATIC_ROOT / "cover" / "default-background.jpg"
 DEFAULT_COVER_SIZE = "1920x1080"
 # 抖音资料页会从横屏正中裁出 3:4 小图，标题必须落在该裁切区内。
 DOUYIN_THUMB_ASPECT = 3 / 4

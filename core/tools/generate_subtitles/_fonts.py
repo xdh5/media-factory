@@ -13,6 +13,6 @@ def resolve_fontsdir() -> Path:
     if not SUBTITLE_DEFAULT_FONT_PATH.is_file():
         raise MediaFileNotFoundError(
             "font",
-            f"{SUBTITLE_DEFAULT_FONT_PATH}；请确认 static/font 已包含 PUTUI-Regular.ttf",
+            f"{SUBTITLE_DEFAULT_FONT_PATH}；请确认 core/static/font 已包含 PUTUI-Regular.ttf",
         )
     return SUBTITLE_DEFAULT_FONT_PATH.parent

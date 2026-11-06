@@ -67,7 +67,7 @@ _LINE_INK_CACHE: dict[tuple[str, str], tuple[float, float] | None] = {}
 
 
 def _title_font_metrics(font_name: str) -> tuple[float, float, Path] | None:
-    """按族名在 static/font 里找字体文件，返回 (ascent_ratio, descent_ratio, 路径)。
+    """按族名在 core/static/font 里找字体文件，返回 (ascent_ratio, descent_ratio, 路径)。
 
     descent 为负值；fontTools 缺失或找不到字体时返回 None（跳过墨迹居中校正）。
     """

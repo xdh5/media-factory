@@ -62,7 +62,7 @@ python -m agent resume finance-check-001 --response '{}'
 - `agent/streaming.py`：消费框架 `astream` 的消息、工具更新和业务进度，转换为聊天事件。
 - `agent/diagnostics/tracing.py`：配置 LangSmith 客户端及追踪项目。
 - `agent/diagnostics/evaluation.py`：导入 LangSmith 数据集，用原生评估器运行诊断实验。
-- `agent/__main__.py`、`desktop/runtime.py`：运行 Agent，读取结果并交给终端或聊天界面。
+- `agent/__main__.py`、`apps/desktop/runtime.py`：运行 Agent，读取结果并交给终端或聊天界面。
 
 核心结构如下：
 

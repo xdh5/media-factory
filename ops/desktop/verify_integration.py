@@ -21,7 +21,7 @@ import httpx
 
 
 def main():
-    from desktop.supervisor import windows_job
+    from apps.desktop.supervisor import windows_job
     process_job = windows_job()
     home = ROOT / "cache/desktop-verification" / uuid.uuid4().hex
     home.mkdir(parents=True)
@@ -31,7 +31,7 @@ def main():
         port = listener.getsockname()[1]
     environment = {**os.environ, "MEDIA_FACTORY_HOME": str(home), "MEDIA_FACTORY_SESSION_TOKEN": token,
                    "DASHSCOPE_BUSINESS_LINE": "finance", "PYTHONUTF8": "1"}
-    process = subprocess.Popen([sys.executable, "-m", "uvicorn", "desktop.gateway:app", "--host", "127.0.0.1", "--port", str(port), "--no-access-log"],
+    process = subprocess.Popen([sys.executable, "-m", "uvicorn", "apps.desktop.gateway:app", "--host", "127.0.0.1", "--port", str(port), "--no-access-log"],
                                cwd=ROOT, env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     report = {"database": str(home / "agent.sqlite"), "backend_pid": process.pid, "checks": []}
     base = f"http://127.0.0.1:{port}"
@@ -88,7 +88,7 @@ def main():
             checked("无效视频签名被拒绝", client.get(f"/media/{encoded}?signature=invalid").status_code == 403)
             process.terminate()
             process.wait(timeout=15)
-            process = subprocess.Popen([sys.executable, "-m", "uvicorn", "desktop.gateway:app", "--host", "127.0.0.1", "--port", str(port), "--no-access-log"],
+            process = subprocess.Popen([sys.executable, "-m", "uvicorn", "apps.desktop.gateway:app", "--host", "127.0.0.1", "--port", str(port), "--no-access-log"],
                 cwd=ROOT, env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             for _ in range(60):
                 try:

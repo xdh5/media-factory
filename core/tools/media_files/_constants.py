@@ -1,8 +1,8 @@
 """成片和图片文件存储常量。"""
 
-from pathlib import Path
-
 from dotenv import load_dotenv
+
+from core.paths import PROJECT_ROOT
 
 R2_REGION = "auto"
 R2_UPLOAD_TIMEOUT_SECONDS = 120
@@ -17,8 +17,4 @@ R2_REQUIRED_ENV = (
 
 
 def load_project_env() -> None:
-    for candidate in Path(__file__).resolve().parents:
-        if any((candidate / name).is_file() for name in ("AGENTS.md", "agents.md")):
-            load_dotenv(candidate / ".env", override=True)
-            return
-    load_dotenv(override=True)
+    load_dotenv(PROJECT_ROOT / ".env", override=True)

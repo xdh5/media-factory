@@ -5,11 +5,11 @@ import re
 from difflib import SequenceMatcher
 from pathlib import Path
 
+from ..config.settings import COLLECTION_CACHE_ROOT
 from ..errors import WorkflowStepError
 from ..infrastructure.source_scripts import remember_rejected_ad_video, save_transcribed_scripts
 from .editorial import validate_editorial, save_editorial_drafts
 
-_ROOT = Path(__file__).resolve().parents[4] / "cache" / "collect_finance_copy"
 _PROMPT = Path(__file__).resolve().parents[1] / "prompts" / "copy-host-review.md"
 
 
@@ -23,7 +23,7 @@ def save_review_context(path: Path, context: dict) -> None:
 def load_review_context(context_path: str) -> tuple[Path, dict]:
     """只读取采集缓存中的审稿上下文。"""
     path = Path(context_path).resolve()
-    if not path.is_relative_to(_ROOT.resolve()) or path.name != "copy-review.json":
+    if not path.is_relative_to(COLLECTION_CACHE_ROOT.resolve()) or path.name != "copy-review.json":
         raise WorkflowStepError("context_path 必须是采集任务返回的审稿上下文")
     return path, json.loads(path.read_text(encoding="utf-8"))
 

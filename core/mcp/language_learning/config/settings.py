@@ -4,6 +4,15 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from core.paths import (
+    PROJECT_ROOT as PROJECT_ROOT,
+    PROJECT_STATIC_ROOT,
+    PROJECT_DATA_ROOT as PROJECT_DATA_ROOT,
+    PROJECT_CACHE_ROOT as PROJECT_CACHE_ROOT,
+    PROJECT_OUTPUT_ROOT as PROJECT_OUTPUT_ROOT,
+    PROJECT_TMP_ROOT as PROJECT_TMP_ROOT,
+)
+
 WORKFLOW_ID = "language_learning"
 SUPPORTED_LEARNING_MODES = ("en-zh", "en-ko")
 SUPPORTED_VIDEO_FORMATS = ("standard", "quiz")
@@ -55,18 +64,6 @@ DEFAULT_PRODUCTION_CONFIG = {
 _ROOT = Path(__file__).resolve().parent.parent
 
 
-def _project_root() -> Path:
-    for candidate in Path(__file__).resolve().parents:
-        if any((candidate / name).is_file() for name in ("AGENTS.md", "agents.md")):
-            return candidate
-    raise RuntimeError("找不到项目根目录：缺少 AGENTS.md 或 agents.md")
-
-
-PROJECT_ROOT = _project_root()
-PROJECT_DATA_ROOT = PROJECT_ROOT / "data"
-PROJECT_CACHE_ROOT = PROJECT_ROOT / "cache"
-PROJECT_OUTPUT_ROOT = PROJECT_CACHE_ROOT / "output"
-PROJECT_TMP_ROOT = PROJECT_CACHE_ROOT / "tmp"
 DEFAULT_DATA_ROOT = PROJECT_DATA_ROOT / WORKFLOW_ID
 BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
@@ -114,9 +111,9 @@ def pack_cutout_cache_dir(pack_id: str) -> Path:
     return PROJECT_CACHE_ROOT / WORKFLOW_ID / "packs" / value / SUBJECT_CUTOUT_CACHE_DIR_NAME
 
 
-# 卡片模板仍在本包 static/；倒计时音效统一放项目根 static/sfx/
+# 卡片模板仍在本包 static/；倒计时音效统一放core/static/sfx/
 STATIC_ROOT = _ROOT / "static"
-COUNTDOWN_AUDIO_PATH = PROJECT_ROOT / "static" / "sfx" / "countdown.mp3"
+COUNTDOWN_AUDIO_PATH = PROJECT_STATIC_ROOT / "sfx" / "countdown.mp3"
 TEMPLATE_FILENAMES = {
     "en-ko": "korean-fixed-vocabulary-template.jpg",
     "en-zh": "chinese-fixed-vocabulary-template.jpg",

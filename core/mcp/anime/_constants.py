@@ -1,9 +1,8 @@
 """动漫拼接 MCP 常量。"""
 
-from pathlib import Path
+from core.paths import PROJECT_OUTPUT_ROOT, PROJECT_ROOT as PROJECT_ROOT
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-OUTPUT_ROOT = PROJECT_ROOT / "cache" / "output" / "anime"
+OUTPUT_ROOT = PROJECT_OUTPUT_ROOT / "anime"
 
 # 按三小时估算段数，只在完整剧集边界均衡分段，保全剧集优先。
 MAX_PART_SECONDS = 3 * 60 * 60

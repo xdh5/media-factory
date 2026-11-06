@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.ruff_cache/
 .eggs/
 build/
 dist/
@@ -41,8 +42,8 @@ Thumbs.db
 /.wrangler/
 
 # 本地运行、评估和验收记录
-/desktop/*-results.json
-/desktop/verification.md
+/apps/desktop/*-results.json
+/apps/desktop/verification.md
 /agent/verification.md
 /docs/*-observation-*.md
 /docs/diagnostics/

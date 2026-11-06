@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+
+from core.paths import PROJECT_ROOT, PROJECT_STATIC_ROOT
 from core.tools.generate_final_video._defaults import DEFAULT_CHAPTER_TIMELINE, DEFAULT_HOOK_SUBTITLE_POSITION, DEFAULT_HOOK_TITLE_DARK_OUTLINE, DEFAULT_HOOK_TITLE_FIRST_LINE_COLOR, DEFAULT_HOOK_TITLE_LIGHT_OUTLINE, DEFAULT_HOOK_TITLE_LINE_HEIGHT, DEFAULT_HOOK_TITLE_OTHER_LINE_COLOR, DEFAULT_HOOK_TITLE_POSITION, DEFAULT_HOOK_TITLE_SINGLE_COLOR, DEFAULT_HOOK_TITLE_STYLE, DEFAULT_BGM_GAIN, DEFAULT_EMPHASIS_LINES, DEFAULT_SECONDARY_SUBTITLES, DEFAULT_SUBTITLE_POSITION, DEFAULT_SUBTITLE_STYLE
 from ..errors import WorkflowStepError
 from .video_layers import _hook_title_lines_override
@@ -141,8 +143,15 @@ def _production_config(config: dict) -> dict:
             raise WorkflowStepError(
                 f"production_config.emphasis_lines 含未知字段：{sorted(unknown)}"
             )
+    bgm = Path(bgm_path)
+    legacy_bgm = PROJECT_ROOT / "static" / "bgm"
+    project_bgm = PROJECT_STATIC_ROOT / "bgm"
+    if not bgm.is_absolute() and bgm.is_relative_to(project_bgm.relative_to(PROJECT_ROOT)):
+        bgm = PROJECT_ROOT / bgm
+    if not bgm.is_file() and (PROJECT_ROOT / bgm).is_relative_to(legacy_bgm):
+        bgm = project_bgm / (PROJECT_ROOT / bgm).relative_to(legacy_bgm)
     return {
-        "bgm_path": Path(bgm_path),
+        "bgm_path": bgm,
         "bgm_gain": bgm_gain,
         "bgm_credit": str(config.get("bgm_credit") or "").strip() or None,
         "intro": intro,

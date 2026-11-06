@@ -1,29 +1,35 @@
-# 版本库与本地产物，不进镜像
-.git
-.gitignore
-.venv/
-.venv-agent/
-.venv-desktop/
-.env
+# 版本库、本机环境和工具状态
+**/.git
 **/.env
-integrations/*/data/
+**/.env.*
+**/.venv*
+**/venv
 **/__pycache__
 **/*.pyc
-tmp_audio/
-tmp_*.py
-data/*/cache/
-data/*/outputs/
-data/youtube/tokens/
-/cache/
-/output/
-/outputs/
-/tmp/
-/ops/
-**/*.db
-**/*.sqlite
-**/*.sqlite3
+**/*.egg-info
+**/.ruff_cache
+**/.pytest_cache
+**/.wrangler
+/.workbuddy
 
-# 输出产物（片头音效 wav 在 core/tools/generate_intro/static/，不在此列，会进镜像）
-*.mp3
-!core/tools/generate_bgm/static/*.mp3
-*.mp4
+# 本地数据、依赖和构建产物
+**/data
+**/cache
+**/node_modules
+**/build
+**/dist
+/output
+/outputs
+/tmp
+/evals
+**/*.db
+**/*.sqlite*
+**/*.log
+**/client_secret*.json
+**/*_token.json
+
+# 本地镜像的输入由 Dockerfile 明确列出
+/.github
+/.cursor
+/apps
+/ops

@@ -32,7 +32,7 @@ DEFAULT_SUBTITLE_POSITION = {"alignment": 5, "margin_vertical_ratio": 0.5}
 DEFAULT_HOOK_LINES = 3
 DEFAULT_HOOK_SUBTITLE_POSITION = {"alignment": 2, "margin_vertical_ratio": 0.1}
 # 钩子标题：字魂群英体（2026-09-23 用户指定，商用需授权）、字号 110×1.5=165。
-# 字体族名 zihunqunyingti（TTF 内英文族名），需保证 static/font/ 字魂群英体.ttf 在包内。
+# 字体族名 zihunqunyingti（TTF 内英文族名），需保证 core/static/font/ 字魂群英体.ttf 在包内。
 # 标题体自带粗壮笔画，不再叠加伪粗体；黑/白描边 7px 保证视频底上可读。
 DEFAULT_HOOK_TITLE_STYLE = {"font": "zihunqunyingti", "font_size": 165, "bold": False, "outline": 7}
 # 标题块位置：margin_vertical_ratio 是整块标题墨迹中心的画布高度占比。

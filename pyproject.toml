@@ -48,3 +48,6 @@ desktop = [
     "open-webui==0.12.3",
     "tzdata>=2025.2",
 ]
+
+[tool.ruff]
+cache-dir = "cache/ruff"

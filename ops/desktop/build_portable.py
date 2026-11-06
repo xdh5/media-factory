@@ -14,6 +14,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 CACHE = ROOT / "cache/desktop-build"
+DESKTOP_SOURCE = ROOT / "apps" / "desktop"
 
 
 def copy_changed(source, target):
@@ -32,6 +33,22 @@ def download(url, name):
                         "--continue-at", "-", "--output", str(temporary), url], check=True)
         temporary.replace(target)
     return target
+
+
+def copy_publisher_dependencies(publisher, destination):
+    """只打包运行依赖和发布器使用的 Electron。"""
+    packages = json.loads((publisher / "package-lock.json").read_text(encoding="utf-8"))["packages"]
+    for name, package in packages.items():
+        if not name.startswith("node_modules/"):
+            continue
+        if package.get("dev") and name != "node_modules/electron":
+            continue
+        source = publisher / name
+        if package.get("optional") and not source.is_dir():
+            continue
+        shutil.copytree(source, destination / name,
+                        ignore=shutil.ignore_patterns("node_modules", ".cache", "__pycache__"),
+                        dirs_exist_ok=True, copy_function=copy_changed)
 
 
 def main():
@@ -66,24 +83,34 @@ def main():
     application = output / "resources/app"
     application.mkdir(parents=True, exist_ok=True)
     for name in ("main.cjs", "package.json", "branding.js"):
-        shutil.copy2(ROOT / "desktop" / name, application / name)
+        shutil.copy2(DESKTOP_SOURCE / name, application / name)
     project = application / "project"
     project.mkdir(exist_ok=True)
     ignored = shutil.ignore_patterns(".git", "node_modules", "__pycache__", ".env", "data", "cache", "*.sqlite*", "*.db", "*.log", "client_secret*.json", "*token.json")
-    for name in ("core", "agent", "desktop", "integrations", "static", "docs", ".agents"):
-        shutil.copytree(ROOT / name, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
+    for name in ("core", "agent", "desktop", "docs", ".agents"):
+        source = DESKTOP_SOURCE if name == "desktop" else ROOT / name
+        shutil.copytree(source, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
     (project / "ops").mkdir(exist_ok=True)
     shutil.copy2(ROOT / "ops/__init__.py", project / "ops/__init__.py")
     for name in ("anime", "github_actions"):
         shutil.copytree(ROOT / "ops" / name, project / "ops" / name, ignore=ignored,
                         dirs_exist_ok=True, copy_function=copy_changed)
-    shutil.copytree(ROOT / "evals", project / "evals", ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
     publisher = ROOT / "integrations/media-publisher"
     if not (publisher / "node_modules/electron/dist/electron.exe").is_file() or not (publisher / "dist/electron/main.js").is_file():
         raise RuntimeError("构建机需要先在 integrations/media-publisher 执行 npm ci 与 npm run build:dir")
-    shutil.copytree(publisher / "node_modules", project / "integrations/media-publisher/node_modules",
-                    ignore=shutil.ignore_patterns(".cache", "__pycache__"), dirs_exist_ok=True, copy_function=copy_changed)
-    for name in ("agents.md", "pyproject.toml", "LICENSE", ".env.example"):
+    for integration, directories, files in (
+        ("media-collector", ("core",), ("LICENSE",)),
+        ("media-publisher", ("python", "dist/electron"), ("LICENSE", "package.json")),
+    ):
+        source = ROOT / "integrations" / integration
+        destination = project / "integrations" / integration
+        for name in directories:
+            shutil.copytree(source / name, destination / name, ignore=ignored,
+                            dirs_exist_ok=True, copy_function=copy_changed)
+        for name in files:
+            copy_changed(source / name, destination / name)
+    copy_publisher_dependencies(publisher, project / "integrations/media-publisher")
+    for name in ("AGENTS.md", "pyproject.toml", "LICENSE", ".env.example"):
         shutil.copy2(ROOT / name, project / name)
     runtime = application / "python"
     runtime.mkdir(exist_ok=True)
@@ -123,8 +150,9 @@ def main():
                         "--target", str(agent_packages), "--upgrade", "--only-binary=:all:", str(ROOT) + "[agent]"],
                        env=environment, check=True)
     for name in ("core", "agent", "desktop", "docs", ".agents"):
-        shutil.copytree(ROOT / name, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
-    shutil.copy2(ROOT / "desktop/main.cjs", application / "main.cjs")
+        source = DESKTOP_SOURCE if name == "desktop" else ROOT / name
+        shutil.copytree(source, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
+    shutil.copy2(DESKTOP_SOURCE / "main.cjs", application / "main.cjs")
     (CACHE / "build-check-webui").mkdir(parents=True, exist_ok=True)
     check_environment = {**environment, "DATA_DIR": str(CACHE / "build-check-webui"), "OFFLINE_MODE": "true",
                          "HF_HUB_OFFLINE": "1", "RAG_EMBEDDING_ENGINE": "openai", "FROM_INIT_PY": "true",
@@ -151,7 +179,7 @@ def main():
     (output / "构建信息.json").write_text(json.dumps({"electron": version, "python": "3.12.10", "open_webui": "0.12.3",
         "built_at": datetime.now(timezone.utc).isoformat(), "agent_dependencies": "resources/app/agent-packages",
         "entry": "MediaFactory.exe", "dependencies_verified": True}, ensure_ascii=False, indent=2), encoding="utf-8")
-    shutil.copy2(ROOT / "desktop/README.md", output / "使用说明.md")
+    shutil.copy2(DESKTOP_SOURCE / "README.md", output / "使用说明.md")
     if not reuse_electron:
         (output / "electron.exe").replace(executable)
     (output / "MediaFactory.incomplete.exe").unlink(missing_ok=True)

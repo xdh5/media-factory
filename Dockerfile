@@ -34,11 +34,16 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
         pip install -i https://pypi.tuna.tsinghua.edu.cn/simple '.[agent]'; \
     else \
         pip install -i https://pypi.tuna.tsinghua.edu.cn/simple .; \
-    fi
+    fi && rm -rf build media_factory.egg-info
 
 # ---- 层 3：项目代码与静态资源 ----
-# 日常改动只重建这一层（含根 static/bgm BGM 曲库与 static/sfx 提示音效）
-COPY . .
+# 只复制运行代码、技能和媒体资源。
+COPY AGENTS.md LICENSE ./
+COPY core/ core/
+COPY agent/ agent/
+COPY .agents/ .agents/
+COPY docs/ docs/
+COPY integrations/ integrations/
 
 # 库文件与缓存由部署侧挂载。成片在 /app/cache/output，临时文件在 /app/cache/tmp。
 VOLUME ["/app/data", "/app/cache"]

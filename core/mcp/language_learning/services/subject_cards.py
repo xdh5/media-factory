@@ -6,10 +6,10 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+from core.paths import PROJECT_STATIC_ROOT
 from core.tools.generate_final_video import safe_filename
 from ..config import (
     CARD_CANVAS_SIZE,
-    PROJECT_ROOT,
     STATIC_ROOT,
     SUBJECT_FRAME_ORIGIN,
     SUBJECT_FRAME_SIZE,
@@ -19,7 +19,7 @@ from ..config import (
 from ..errors import CardCompositionError
 from .subject_cutouts import _extract_subjects, _sheet
 
-_FONT_DIR = PROJECT_ROOT / "static" / "font"
+_FONT_DIR = PROJECT_STATIC_ROOT / "font"
 _SYSTEM_FONTS = {
     "latin": [Path("/usr/share/fonts/windows/arialbd.ttf"), Path("C:/Windows/Fonts/arialbd.ttf"), Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")],
     "cjk": [Path("/usr/share/fonts/windows/simhei.ttf"), Path("C:/Windows/Fonts/simhei.ttf"), Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"), Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")],
@@ -42,7 +42,7 @@ def _font(kind: str, size: int):
     for path in candidates:
         if path.is_file():
             return ImageFont.truetype(str(path), size=size)
-    raise CardCompositionError(f"找不到固定卡片所需的 {kind} 字体；请放到 static/font 或安装系统字体")
+    raise CardCompositionError(f"找不到固定卡片所需的 {kind} 字体；请放到 core/static/font 或安装系统字体")
 
 
 _SUBJECT_FRAME_BOX = (

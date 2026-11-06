@@ -10,14 +10,14 @@ from core.tools.media_records import MediaRecordsError
 from ..infrastructure.source_scripts import save_shot_images
 from core.tools.generate_image import submit_agent_image_tasks
 
-from ..config.settings import _PROJECT_ROOT
+from core.paths import PROJECT_ROOT
 from ..errors import WorkflowStepError
 
 
 def _project_relative(path: str | Path) -> str:
     resolved = Path(path).resolve()
     try:
-        return resolved.relative_to(_PROJECT_ROOT).as_posix()
+        return resolved.relative_to(PROJECT_ROOT).as_posix()
     except ValueError as exc:
         raise WorkflowStepError(f"生成图片不在项目目录中：{resolved}") from exc
 

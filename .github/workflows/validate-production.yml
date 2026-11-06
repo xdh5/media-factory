@@ -18,7 +18,7 @@ jobs:
       - name: 检查 Python 语法、入口和转码环境
         run: |
           docker run --rm -v "$PWD:/workspace" media-factory-runner:verify sh -ec '
-            python -m compileall -q core ops desktop
+            python -m compileall -q core ops apps/desktop
             python -m ops.github_actions --help
             python -m ops.anime.execute_github_package --help
             ffmpeg -version
