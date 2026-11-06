@@ -112,7 +112,8 @@ async function removeFinanceSourceAuthor(request, env) {
 
 async function listFinanceRejectedAwemes(env) {
   const result = await env.DB.prepare(
-    "SELECT aweme_id FROM finance_rejected_awemes ORDER BY created_at DESC",
+    `SELECT aweme_id FROM finance_rejected_awemes
+     UNION SELECT aweme_id FROM finance_collection_reviews WHERE decision != 'normal'`,
   ).all();
   return jsonResponse({
     aweme_ids: (result.results || []).map((row) => String(row.aweme_id)),

@@ -7,8 +7,9 @@ from pathlib import Path
 
 from ..config.settings import COLLECTION_CACHE_ROOT
 from ..errors import WorkflowStepError
-from ..infrastructure.source_scripts import remember_rejected_ad_video, save_transcribed_scripts
+from ..infrastructure.source_scripts import record_collection_review, save_transcribed_scripts
 from .editorial import validate_editorial, save_editorial_drafts
+from .narration import bare_text
 
 _PROMPT = Path(__file__).resolve().parents[1] / "prompts" / "copy-host-review.md"
 
@@ -37,7 +38,10 @@ def review_result(path: Path, context: dict) -> dict:
     return {
         "context_path": str(path), "status": "awaiting_host_review" if pending else "completed" if completed else "incomplete",
         "requested_count": context["requested_count"], "saved_count": context["saved_count"],
-        "skipped_ad_count": context["skipped_ad_count"], "pending": pending,
+        "skipped_ad_count": context["skipped_ad_count"],
+        "skipped_off_topic_count": sum(item["kind"] == "off_topic" for item in context.get("reviewed", [])),
+        "skipped_length_count": sum(item["kind"] == "length" for item in context.get("reviewed", [])),
+        "pending": pending,
         "needs_more": needs_more and not pending, "completed": completed,
         "authors": [{k: a[k] for k in ("sec_user_id", "display_name", "requested_count", "saved_count")} for a in context.get("authors", [])],
         "failures": context.get("failures", []),
@@ -47,15 +51,15 @@ def review_result(path: Path, context: dict) -> dict:
 
 def _validate_review(original: str, review: dict) -> dict:
     kind = review.get("kind")
-    if kind not in ("normal", "ad"):
-        raise WorkflowStepError("审核 kind 只能为 normal 或 ad")
+    if kind not in ("normal", "ad", "off_topic", "length"):
+        raise WorkflowStepError("审核 kind 必须为 normal、ad、off_topic 或 length")
     reason = str(review.get("reason") or "").strip()
     if not reason:
         raise WorkflowStepError("审核结果必须包含 reason")
     text = str(review.get("text") or "").strip()
-    if kind == "ad":
+    if kind in ("ad", "off_topic", "length"):
         if text:
-            raise WorkflowStepError("整篇广告的 text 必须为空")
+            raise WorkflowStepError("跳过稿件的 text 必须为空")
         return {"kind": kind, "text": "", "reason": reason}
     segments = review.get("ad_segments", [])
     if not isinstance(segments, list):
@@ -88,14 +92,23 @@ def submit_copy_reviews(context_path: str, reviews: list[dict]) -> dict:
                   for aweme_id, review in validated.items() if review["kind"] == "normal"}
     for record in list(context["pending"]):
         reviewed = validated[record["aweme_id"]]
-        if reviewed["kind"] == "ad":
-            remember_rejected_ad_video(record["aweme_id"])
-            context["skipped_ad_count"] += 1
-        else:
+        if reviewed["kind"] == "normal":
             saved = {k: v for k, v in record.items() if k != "sec_user_id"}
             saved["transcript_corrected"] = reviewed["text"]
             save_transcribed_scripts([saved])
             save_editorial_drafts([{"aweme_id": record["aweme_id"], "editorial": editorials[record["aweme_id"]]}])
+        source_author = next((author for author in context.get("authors", [])
+                              if author["sec_user_id"] == record.get("sec_user_id")), {})
+        record_collection_review({
+            "aweme_id": record["aweme_id"], "decision": reviewed["kind"], "reason": reviewed["reason"],
+            "author_id": record.get("sec_user_id", ""), "author_name": record["author_name"],
+            "author_profile_url": source_author.get("profile_url", ""),
+            "source": record["search_keyword"], "aweme_url": record["aweme_url"],
+            "source_character_count": len(bare_text(reviewed["text"] or record["transcript_raw"])),
+        })
+        if reviewed["kind"] == "ad":
+            context["skipped_ad_count"] += 1
+        elif reviewed["kind"] == "normal":
             context["saved_count"] += 1
             for author in context.get("authors", []):
                 if author["sec_user_id"] == record.get("sec_user_id"):

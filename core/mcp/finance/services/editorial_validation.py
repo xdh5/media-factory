@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from ..config.settings import ARTICLE_MAX_LINE_LENGTH
+from ..config.settings import ARTICLE_MAX_CHARACTERS, ARTICLE_MAX_LINE_LENGTH, ARTICLE_MIN_CHARACTERS, SOURCE_MAX_CHARACTERS, SOURCE_MIN_CHARACTERS
 from ..errors import WorkflowStepError
 from .narration import bare_text
 from .save_draft import _cover_highlights, _cover_lines
 
 BRAND_NAME = "财富研习岛"
-ARTICLE_LENGTH_RATIO_MIN = 0.80
-ARTICLE_LENGTH_RATIO_MAX = 1.20
 
 
 def _brand_replacements(value) -> list[tuple[str, str]]:
@@ -51,11 +49,13 @@ def validate_article(source_text: str, source_hook: str, editorial: dict) -> dic
         detail = "、".join(f"第{index}行 {size}字" for index, size in long_lines)
         raise WorkflowStepError(f"正文存在超过 {ARTICLE_MAX_LINE_LENGTH} 字的行：{detail}", {"long_lines": long_lines})
     source_size = len(bare_text(source_text))
-    ratio = len(bare_text(article)) / source_size if source_size else 0
-    if not ARTICLE_LENGTH_RATIO_MIN <= ratio <= ARTICLE_LENGTH_RATIO_MAX:
-        raise WorkflowStepError(
-            f"正文长度是原稿的 {ratio:.2f} 倍，必须在 {ARTICLE_LENGTH_RATIO_MIN}～{ARTICLE_LENGTH_RATIO_MAX} 之间"
-        )
+    if not SOURCE_MIN_CHARACTERS <= source_size <= SOURCE_MAX_CHARACTERS:
+        raise WorkflowStepError(f"校对稿有 {source_size} 字，超出 {SOURCE_MIN_CHARACTERS}～{SOURCE_MAX_CHARACTERS} 字，采集时须换稿")
+    article_size = len(bare_text(article))
+    if not ARTICLE_MIN_CHARACTERS <= article_size <= ARTICLE_MAX_CHARACTERS:
+        raise WorkflowStepError(f"定稿有 {article_size} 字，须控制在 {ARTICLE_MIN_CHARACTERS}～{ARTICLE_MAX_CHARACTERS} 字")
+    if article_size > len(bare_text(_replace(source_text, replacements))):
+        raise WorkflowStepError("定稿只能压缩细节，不得扩写补足字数")
     return {"article": article, "source_hook": processed_hook, "replacements": editorial.get("replacements") or []}
 
 

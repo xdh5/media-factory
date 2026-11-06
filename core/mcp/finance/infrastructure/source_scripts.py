@@ -79,24 +79,22 @@ def save_transcribed_scripts(records: list[dict]) -> dict:
     return payload
 
 
-def list_rejected_ad_video_ids() -> list[str]:
-    """返回已判定为整篇广告的作品 ID，避免下次重复下载。"""
+def list_rejected_video_ids() -> list[str]:
+    """返回已弃用的作品 ID，避免下次重复下载。"""
     payload = _request("GET", "/v1/finance-rejected-awemes")
     if not isinstance(payload, dict) or not isinstance(payload.get("aweme_ids"), list):
-        raise MediaRecordsRequestError("整篇广告记录接口缺少 aweme_ids 数组")
+        raise MediaRecordsRequestError("弃稿查询接口缺少 aweme_ids 数组")
     return [str(value) for value in payload["aweme_ids"] if str(value).strip()]
 
 
-def remember_rejected_ad_video(aweme_id: str) -> dict:
-    """记下整篇广告作品，下次抓取直接跳过。"""
-    payload = _request(
-        "POST",
-        "/v1/finance-rejected-awemes",
-        body={"aweme_id": aweme_id, "reason": "ad"},
-    )
-    if not isinstance(payload, dict) or not str(payload.get("aweme_id") or "").strip():
-        raise MediaRecordsRequestError("整篇广告记录接口缺少 aweme_id")
-    return payload
+def record_collection_review(record: dict) -> dict:
+    """按作品保存审核结果，供统计和后续采集去重。"""
+    return _request("POST", "/v1/finance-collection-reviews", body=record)
+
+
+def get_collection_review_stats() -> dict:
+    """读取采集审核量、弃稿率、原因和作者来源。"""
+    return _request("GET", "/v1/finance-collection-reviews")
 
 
 def get_source_script_stats(

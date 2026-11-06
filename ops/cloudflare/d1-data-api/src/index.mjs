@@ -4,6 +4,7 @@ import { listPublicationRecords, deletePublicationRecords, listPublishingAccount
 import { listFinanceGeneratedImages, commitFinanceGeneratedImages, listFinanceSourceAuthors, addFinanceSourceAuthor, removeFinanceSourceAuthor, listFinanceRejectedAwemes, rejectFinanceAweme, listDouyinResearchIds, getDouyinResearchScriptStats, reserveDouyinResearchScript, markDouyinResearchScriptUsed, commitDouyinResearch } from "./finance-data.mjs";
 import { validateWordEntries, commitLanguageLearningPack, claimLanguageLearningPack, releaseLanguageLearningPack, listRecentWords, validateAndRecordWords, listLanguageLearningPackTopics } from "./language-learning-data.mjs";
 
+import { financeCollectionReviewStats, recordFinanceCollectionReview } from "./finance-collection-reviews.mjs";
 import { listFinanceEditorialDrafts, commitFinanceEditorialDrafts } from "./finance-editorial.mjs";
 
 const ACTIVE_STATUSES = ["reserved", "completed", "published", "used"];
@@ -303,6 +304,8 @@ export default {
       if (request.method === "GET" && url.pathname === "/v1/production-outputs") return await listProductionOutputs(request, env);
       if (request.method === "DELETE" && url.pathname === "/v1/production-outputs") return await deleteProductionOutputs(request, env);
       if (request.method === "POST" && url.pathname === "/v1/production-outputs/commit") return await commitProductionOutputs(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/finance-collection-reviews") return await financeCollectionReviewStats(env);
+      if (request.method === "POST" && url.pathname === "/v1/finance-collection-reviews") return await recordFinanceCollectionReview(request, env);
       if (request.method === "GET" && url.pathname === "/v1/finance-editorial-drafts") return await listFinanceEditorialDrafts(request, env);
       if (request.method === "POST" && url.pathname === "/v1/finance-editorial-drafts") return await commitFinanceEditorialDrafts(request, env);
       if (request.method === "GET" && url.pathname === "/v1/finance-source-authors") {

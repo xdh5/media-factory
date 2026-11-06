@@ -7,7 +7,7 @@ from download_video import download
 from list_author_works import list_author_works
 
 from ..errors import WorkflowStepError
-from ..infrastructure.source_scripts import list_source_authors, list_saved_script_ids, list_rejected_ad_video_ids
+from ..infrastructure.source_scripts import list_source_authors, list_saved_script_ids, list_rejected_video_ids
 from .copy_review import save_review_context, load_review_context, review_result
 
 
@@ -40,11 +40,12 @@ def collect_author_copies(count: int, cache_dir: str | Path) -> dict:
 
 
 def continue_collect_author_copies(context_path: str) -> dict:
-    """沿用候选列表补足被广告或失败作品占用的配额，不重复启动原任务。"""
+    """沿用候选列表补足弃稿或失败作品占用的配额，不重复启动原任务。"""
     path, context = load_review_context(context_path)
     if context["pending"]:
         return review_result(path, context)
-    excluded = set(list_saved_script_ids()) | set(list_rejected_ad_video_ids())
+    excluded = set(list_saved_script_ids()) | set(list_rejected_video_ids())
+    excluded.update(item["aweme_id"] for item in context.get("reviewed", []) if item["kind"] == "off_topic")
     for author in context["authors"]:
         pending_count = 0
         while author["saved_count"] + pending_count < author["requested_count"]:

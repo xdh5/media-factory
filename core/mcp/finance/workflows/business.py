@@ -15,6 +15,7 @@ from ..config.settings import (
     MATERIAL_AGENT_REFERENCE, MATERIAL_STOCK_VIDEO, MATERIAL_STRATEGIES, normalize_publish_date,
 )
 from ..infrastructure.gateways import runner_submit_task
+from ..infrastructure.source_scripts import get_collection_review_stats
 from ..services.save_draft import load_draft
 from ..services.storyboard import prepare_storyboard
 from ..services.upload_to_r2 import upload_finance_assets_to_r2
@@ -23,7 +24,7 @@ from ..services.upload_to_r2 import upload_finance_assets_to_r2
 class CopyReview(TypedDict):
     """宿主一次提交的校对、广告审核与完整定稿。"""
     aweme_id: str
-    kind: Literal["normal", "ad"]
+    kind: Literal["normal", "ad", "off_topic", "length"]
     text: str
     reason: str
     ad_segments: NotRequired[list[str]]
@@ -65,7 +66,7 @@ def finance_start_collection(share_text: str = "", count: int = 0, context_path:
 
 
 def finance_finalize_collection(context_path: str, reviews: list[CopyReview]) -> dict:
-    """一次校验并保存宿主审核的原稿和完整 editorial。整篇广告剔除；配额不足自动启动续采，须继续审核至 completed=true。"""
+    """一次校验并保存宿主审核的原稿和完整 editorial。整篇广告、主题和字数弃稿均单独记录；配额不足自动启动续采，须继续审核至 completed=true。"""
     result = finance_submit_copy_reviews(context_path, reviews)
     if result.get("needs_more"):
         result["continuation"] = _task(finance_start_continue_collect_author_copies(context_path))
@@ -181,8 +182,8 @@ def finance_get_task(task_path: str) -> dict:
 
 
 def finance_get_inventory(publish_date: str = "") -> dict:
-    """只读查询稿件库存、近期话题；指定日期时同时返回成片及待生产分片，不占用稿件。"""
-    result = {"sources": a.finance_get_source_stats(), "topics": a.finance_get_topics()}
+    """只读查询稿件库存、近期话题和采集弃稿统计；指定日期时同时返回成片及待生产分片，不占用稿件。"""
+    result = {"sources": a.finance_get_source_stats(), "topics": a.finance_get_topics(), "collection_review": get_collection_review_stats()}
     if publish_date:
         date = normalize_publish_date(publish_date)
         result.update({"outputs": a.finance_get_production_outputs(date),
