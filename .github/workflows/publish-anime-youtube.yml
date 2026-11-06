@@ -16,19 +16,23 @@ on:
 
 permissions:
   contents: read
-  packages: read
+  packages: write
 
 concurrency:
   group: publish-anime-youtube-${{ inputs.execution_id }}
   cancel-in-progress: false
 
 jobs:
+  runner-image:
+    uses: ./.github/workflows/build-video-runner.yml
+
   execute:
+    needs: runner-image
     name: 下载、拼接并上传，无 LLM 调用
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     container:
-      image: ghcr.io/xdh5/media-factory-runner:latest
+      image: ${{ needs.runner-image.outputs.image }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

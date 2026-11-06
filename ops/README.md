@@ -16,3 +16,13 @@
 采集审核由宿主 Agent 完成正文改写、品牌替换、连载指涉改写、字幕断行、黄金钩子、话题、长短标题、四个标签、封面断行和重点词，正常稿件提交 `finance_finalize_collection` 时附带 `editorial`。原始转写与校对原稿保留，定稿写入 `finance_editorial_drafts`。
 
 未使用旧稿通过 `finance_manage_drafts(action="list")` 读取、`finance_manage_drafts(action="save")` 定稿；已使用记录不能修改。缺少有效定稿的文章计入待编辑，不进入生产队列。Action 只读取已定稿内容，调用 `finance_start_production` 固定到具体计划日期和分片并准备配音，宿主生成分镜后准备和提交素材，使用 `finance_start_render` 合成并交付 R2。
+
+## 生产镜像与动漫发布恢复
+
+生产任务按 Git 提交找到已构建的 Runner，并使用容器仓库返回的镜像摘要启动。镜像首次使用时自动构建，重新运行同一个提交时复用已有镜像。更新 Python 生产依赖时，在仓库根目录重新生成锁定文件并一同提交。
+
+```powershell
+uv pip compile pyproject.toml --python-version 3.12 --python-platform x86_64-manylinux_2_36 --generate-hashes --no-header --no-annotate -o ops/github_actions/runner-requirements.txt
+```
+
+动漫执行目录里的 `youtube-upload-attempt-*.json` 标记已开始的上传，`youtube-receipt-*.json` 保存确认的 YouTube 视频 ID。上传中断后优先用同一执行 ID 重跑。如果仍提示上传结果待核对，请按标记中的频道、标题和内容标签检查 YouTube Studio。只有人工确认该段确实未上传后，才清除对应分段的本地及 R2 尝试标记，再重跑同一执行。已确认的回执应保留。

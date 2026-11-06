@@ -24,7 +24,7 @@ on:
 
 permissions:
   contents: read
-  packages: read
+  packages: write
 
 concurrency:
   group: weekly-production
@@ -35,6 +35,9 @@ env:
   PYTHONUNBUFFERED: "1"
 
 jobs:
+  runner-image:
+    uses: ./.github/workflows/build-video-runner.yml
+
   plan:
     name: 计算下周计划发布日期
     runs-on: ubuntu-24.04
@@ -57,7 +60,7 @@ jobs:
 
   produce-day:
     name: 生产财经及语言 ${{ matrix.publish_date }}
-    needs: plan
+    needs: [plan, runner-image]
     strategy:
       matrix:
         publish_date: ${{ fromJSON(needs.plan.outputs.dates_json) }}
@@ -66,7 +69,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     container:
-      image: ghcr.io/xdh5/media-factory-runner:latest
+      image: ${{ needs.runner-image.outputs.image }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -134,8 +137,8 @@ jobs:
 
   publish-chinese:
     name: 发布学中文视频 ${{ matrix.publish_date }}
-    needs: [plan, produce-day]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && !inputs.finance_only }}
+    needs: [plan, runner-image, produce-day]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.runner-image.result == 'success' && !inputs.finance_only }}
     strategy:
       matrix:
         publish_date: ${{ fromJSON(needs.plan.outputs.dates_json) }}
@@ -144,4 +147,5 @@ jobs:
     uses: ./.github/workflows/publish-language-learning-video.yml
     with:
       publish_date: ${{ matrix.publish_date }}
+      runner_image: ${{ needs.runner-image.outputs.image }}
     secrets: inherit

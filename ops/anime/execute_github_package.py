@@ -87,6 +87,22 @@ def execute_package(execution_id: str) -> dict:
         _write_json(path, payload)
         upload_public_file(path, f"{prefix}/{name}", content_type="application/json")
 
+    def persist_upload_state(path: Path) -> None:
+        upload_public_file(path, f"{prefix}/{path.name}", content_type="application/json")
+
+    def restore_upload_state(index: int) -> None:
+        for kind in ("receipt", "upload-attempt"):
+            path = directory / f"youtube-{kind}-{index}.json"
+            if not path.is_file() and exists(f"{prefix}/{path.name}"):
+                download_public_file(f"{prefix}/{path.name}", path)
+
+    def verify_upload_attempt_digest(index: int, digest: str, channel_id: str) -> None:
+        path = directory / f"youtube-upload-attempt-{index}.json"
+        if path.is_file():
+            attempt = json.loads(path.read_text(encoding="utf-8"))
+            if attempt["channel_id"] == channel_id and attempt["video_sha256"] != digest:
+                raise AnimeError(f"第 {index} 段与已有上传尝试的成片摘要不一致，请先核对原成片及频道记录")
+
     last_progress_upload = 0.0
     def completed_upload_result(manifest, package):
         """全部上传回执已持久化即完成，不等待 YouTube 后台转码。"""
@@ -295,12 +311,14 @@ def execute_package(execution_id: str) -> dict:
                 part = partial_manifest["parts"][-1]
                 path = Path(part["video_path"])
                 part["sha256"] = _file_sha256(path)
-                phase = f"上传第 {part['part_index']}/{part['part_count']} 段成片"
+                index = int(part["part_index"])
+                restore_upload_state(index)
+                verify_upload_attempt_digest(index, part["sha256"], package["channel_id"])
+                phase = f"上传第 {index}/{part['part_count']} 段成片"
                 progress(phase)
                 upload_public_file(path, f"{prefix}/{path.name}")
                 parts_persisted = True
                 _write_json(assembled, partial_manifest)
-                index = int(part["part_index"])
                 count = int(part["part_count"])
                 if version == 1 and index > 1:
                     shutil.copy2(directory / "youtube-thumbnail-1.jpg",
@@ -309,16 +327,12 @@ def execute_package(execution_id: str) -> dict:
                     "title": _part_title(package["titles"][0], index, count),
                     "video_sha256": part["sha256"]})
                 for ready in partial_manifest["parts"]:
-                    name = f"youtube-receipt-{ready['part_index']}.json"
-                    receipt = directory / name
-                    if not receipt.is_file() and exists(f"{prefix}/{name}"):
-                        download_public_file(f"{prefix}/{name}", receipt)
+                    restore_upload_state(ready["part_index"])
                 phase = f"发布第 {part['part_index']}/{part['part_count']} 段到 YouTube"
                 publish_result = publish_youtube(
                     str(assembled), package["titles"], package["descriptions"], package["tags"],
                     package["account_group"], progress,
-                    receipt_saved=lambda receipt: upload_public_file(
-                        receipt, f"{prefix}/{receipt.name}", content_type="application/json"),
+                    receipt_saved=persist_upload_state, upload_attempt_saved=persist_upload_state,
                     playlist_title=package.get("series_name") or "",
                     require_completed=version >= 2,
                     verify_processing=False,
@@ -344,6 +358,9 @@ def execute_package(execution_id: str) -> dict:
                 for part in manifest["parts"]:
                     path = Path(part["video_path"])
                     part["sha256"] = _file_sha256(path)
+                    index = int(part["part_index"])
+                    restore_upload_state(index)
+                    verify_upload_attempt_digest(index, part["sha256"], package["channel_id"])
                     upload_public_file(path, f"{prefix}/{path.name}")
             for part in manifest["parts"]:
                 if "sha256" not in part:
@@ -361,17 +378,17 @@ def execute_package(execution_id: str) -> dict:
                 if version == 1 and index > 1:
                     shutil.copy2(directory / "youtube-thumbnail-1.jpg",
                                  directory / f"youtube-thumbnail-{index}.jpg")
+                digest = part.get("sha256") or _file_sha256(Path(part["video_path"]))
+                part["sha256"] = digest
                 _write_json(directory / f"youtube-thumbnail-{index}.json", {
                     "title": _part_title(package["titles"][0], index, count),
-                    "video_sha256": part.get("sha256") or _file_sha256(Path(part["video_path"]))})
-                name = f"youtube-receipt-{part['part_index']}.json"
-                if exists(f"{prefix}/{name}"):
-                    download_public_file(f"{prefix}/{name}", directory / name)
+                    "video_sha256": digest})
+                restore_upload_state(index)
+                verify_upload_attempt_digest(index, digest, package["channel_id"])
             publish_result = publish_youtube(
                 str(assembled), package["titles"], package["descriptions"], package["tags"],
                 package["account_group"], progress,
-                receipt_saved=lambda receipt: upload_public_file(
-                    receipt, f"{prefix}/{receipt.name}", content_type="application/json"),
+                receipt_saved=persist_upload_state, upload_attempt_saved=persist_upload_state,
                 playlist_title=package.get("series_name") or "",
                 require_completed=version >= 2, verify_processing=False)
             publish_result = completed_upload_result(manifest, package)

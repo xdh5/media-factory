@@ -376,10 +376,31 @@ def _ensure_playlist_video(route: dict, playlist_title: str, video_id: str,
                     "playlist_url": f"https://www.youtube.com/playlist?list={playlist_id}"}
 
 
+def _recover_youtube_upload(route: dict, attempt: dict, thumbnail: Path) -> dict:
+    from googleapiclient.discovery import build
+    from platform_api.youtube._transport import authorized_http
+    from platform_api.youtube.publish_to_youtube import _apply_thumbnail, _find_existing_video, _load_credentials
+    from platform_api.account_registry import account_context
+
+    channel_id = route["platform_account_id"]
+    with account_context(route) as account:
+        with build("youtube", "v3", http=authorized_http(_load_credentials(channel_id, account)),
+                   cache_discovery=False) as youtube:
+            existing = _find_existing_video(youtube, channel_id, attempt["title"], attempt["upload_tag"])
+            if not existing:
+                raise AnimeError("YouTube 上传结果待核对，频道暂未查到匹配的视频。请核查频道上传记录后再处理。",
+                                 {"channel_id": channel_id, "upload_tag": attempt["upload_tag"]})
+            video_id = existing["video_id"]
+            _apply_thumbnail(youtube, video_id, thumbnail)
+    return {"video_id": video_id, "video_url": f"https://www.youtube.com/watch?v={video_id}",
+            "channel_id": channel_id, "privacy_status": "public", "publish_at": None,
+            "scheduled": False, "reused": True}
+
+
 def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str],
                     account_group: str, progress=None, receipt_saved=None,
                     playlist_title: str = "", require_completed: bool = True,
-                    verify_processing: bool = True) -> dict:
+                    verify_processing: bool = True, *, upload_attempt_saved=None) -> dict:
     """逐段即时公开发布到指定动漫账号组，按文件摘要去重并逐条写回发布记录。"""
     from core.tools.media_records import list_publication_records, commit_publication_records, delete_publication_records
     from core.tools.publish_media.accounts import resolve_account_group
@@ -410,6 +431,7 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
     _publishing()
     from platform_api.account_registry import account_context, verify_account
     from platform_api.youtube import publish_to_youtube
+    from platform_api.youtube.publish_to_youtube import _upload_tag
 
     from .accounts import production_config
     account_group = production_config(account_group)["account_group"]
@@ -451,14 +473,21 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
                 continue
             live_record = row
             break
+        receipt = directory / f"youtube-receipt-{index}.json"
+        attempt_path = directory / f"youtube-upload-attempt-{index}.json"
+        metadata = {"title": title, "description": description, "tags": tags,
+                    "channel_id": route["platform_account_id"], "video_sha256": digest}
         if live_record:
+            if receipt_saved:
+                result = {"video_id": live_record["external_id"], "video_url": live_record["external_url"],
+                          "reused": True}
+                _write_json(receipt, {**metadata, "title": live_record["title"], "result": result})
+                receipt_saved(receipt)
             playlist = _ensure_playlist_video(
                 route, playlist_title, live_record["external_id"], index - 1, progress)
             results.append({"skipped": True, "record": live_record, "playlist": playlist})
             continue
-        receipt = directory / f"youtube-receipt-{index}.json"
-        metadata = {"title": title, "description": description, "tags": tags,
-                    "channel_id": route["platform_account_id"], "video_sha256": digest}
+        confirmed_invalid = bool(matching)
         _write_json(directory / f"youtube-metadata-{index}.json", metadata)
         # 平台成功而数据库写回失败时，重试复用本地回执，不重复上传。回执视频已失效时作废并重传。
         saved = json.loads(receipt.read_text(encoding="utf-8")) if receipt.is_file() else {}
@@ -474,6 +503,7 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
                     if not exc.details.get("reupload"):
                         raise
                     receipt.unlink(missing_ok=True)
+                    confirmed_invalid = True
                     result = None
                     if progress:
                         progress("本地回执中的 YouTube 视频已失效，重新上传")
@@ -485,17 +515,29 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
                 progress(
                     f"正在发布第 {index}/{int(part.get('part_count') or len(parts))} 段"
                     f"到 {account_group} YouTube")
-            with account_context(route) as account:
-                result = publish_to_youtube(route["platform_account_id"], path, title,
-                    description=description, tags=tags, account=account, privacy_status="public",
-                    publication_id=run_id, thumbnail_path=thumbnail,
-                    on_progress=lambda percent, message: progress(f"YouTube：{message}（{percent:.1%}）") if progress else None)
-            publish_title = title
+            attempt = json.loads(attempt_path.read_text(encoding="utf-8")) if attempt_path.is_file() else {}
+            if (not confirmed_invalid and attempt.get("video_sha256") == digest
+                    and attempt.get("channel_id") == route["platform_account_id"]):
+                result = _recover_youtube_upload(route, attempt, thumbnail)
+                publish_title = attempt["title"]
+            else:
+                _write_json(attempt_path, {"channel_id": route["platform_account_id"], "video_sha256": digest,
+                                           "title": title.strip()[:100], "upload_tag": _upload_tag(path, run_id)})
+                if upload_attempt_saved:
+                    upload_attempt_saved(attempt_path)
+                with account_context(route) as account:
+                    result = publish_to_youtube(route["platform_account_id"], path, title,
+                        description=description, tags=tags, account=account, privacy_status="public",
+                        publication_id=run_id, thumbnail_path=thumbnail,
+                        on_progress=lambda percent, message: progress(f"YouTube：{message}（{percent:.1%}）") if progress else None)
+                publish_title = title
             _write_json(receipt, {**metadata, "title": publish_title, "result": result})
             if receipt_saved:
                 receipt_saved(receipt)
             if verify_processing:
                 _verify_processed_video(route, result, part["duration_seconds"], progress)
+        elif receipt_saved:
+            receipt_saved(receipt)
         if not verify_processing:
             playlist = _ensure_playlist_video(
                 route, playlist_title, result["video_id"], index - 1, progress)

@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
-import sys
-
 import inspect
 import json
 import os
+import sys
 import tempfile
 import threading
 import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import Callable
+
+from filelock import FileLock, Timeout
 
 TASKS_DIR_NAME = "tasks"
 STATUS_RUNNING = "running"
@@ -24,7 +26,6 @@ STATUS_FAILED = "failed"
 _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="mcp-task")
 _registry_lock = threading.Lock()
 _run_locks: dict[str, threading.Lock] = {}
-_live_tasks: set[str] = set()
 
 
 class TaskNotFoundError(Exception):
@@ -63,54 +64,36 @@ def _run_lock(run_id: str) -> threading.Lock:
         return _run_locks[run_id]
 
 
-def _task_path(cache_dir: Path, task_id: str) -> Path:
-    return tasks_dir(cache_dir) / f"{task_id}.json"
+def _read_task(path: Path) -> dict:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data["status"] != STATUS_RUNNING:
+        return data
+    try:
+        with FileLock(path.with_suffix(".lock"), timeout=0):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data["status"] == STATUS_RUNNING:
+                data["status"] = STATUS_FAILED
+                data["progress"] = None
+                data["error"] = {
+                    "message": "MCP 进程已退出，后台任务已中断。请重新启动该步骤。",
+                    "type": "OrphanTaskError",
+                }
+                _write_task(path, data)
+    except Timeout:
+        pass
+    return data
 
 
-def _fail_orphan_tasks(cache_dir: Path, run_id: str, step: str) -> None:
-    """磁盘上仍写 running、但本进程没有 worker 的任务视为 MCP 重启后的孤儿。"""
-    base = tasks_dir(cache_dir)
-    with _registry_lock:
-        live = set(_live_tasks)
+def _find_running_task(base: Path, run_id: str, step: str) -> dict | None:
     for path in base.glob("task-*.json"):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        if (
-            data.get("run_id") != run_id
-            or data.get("step") != step
-            or data.get("status") != STATUS_RUNNING
-        ):
-            continue
-        task_id = str(data.get("task_id") or "")
-        if task_id in live:
-            continue
-        data["status"] = STATUS_FAILED
-        data["error"] = {
-            "message": "MCP 已重启，后台任务中断。请重新 start 该步骤，不要继续 poll 此任务。",
-            "type": "OrphanTaskError",
-        }
-        _write_task(path, data)
-
-
-def _find_running_task(cache_dir: Path, run_id: str, step: str) -> dict | None:
-    base = tasks_dir(cache_dir)
-    with _registry_lock:
-        live = set(_live_tasks)
-    for path in sorted(base.glob("task-*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        task_id = str(data.get("task_id") or "")
-        if (
-            data.get("run_id") == run_id
-            and data.get("step") == step
-            and data.get("status") == STATUS_RUNNING
-            and task_id in live
-        ):
-            return {**data, "task_path": str(path), "reused": True}
+        if data.get("run_id") == run_id and data.get("step") == step and data.get("status") == STATUS_RUNNING:
+            data = _read_task(path)
+            if data["status"] == STATUS_RUNNING:
+                return data
     return None
 
 
@@ -144,9 +127,13 @@ def submit_task(
     fn: Callable[..., dict],
 ) -> dict:
     """提交后台任务并立即返回 task_id。"""
-    cache_dir = Path(cache_dir).resolve()
-    _fail_orphan_tasks(cache_dir, run_id, step)
-    existing = _find_running_task(cache_dir, run_id, step)
+    base = tasks_dir(cache_dir)
+    with FileLock(base / "submit.lock"):
+        return _submit_task(base, run_id, step, fn)
+
+
+def _submit_task(base: Path, run_id: str, step: str, fn: Callable[..., dict]) -> dict:
+    existing = _find_running_task(base, run_id, step)
     if existing:
         return {
             "task_id": existing["task_id"],
@@ -158,7 +145,7 @@ def submit_task(
         }
 
     task_id = f"task-{uuid.uuid4().hex[:12]}"
-    path = _task_path(cache_dir, task_id)
+    path = base / f"{task_id}.json"
     created = _utc_now()
     payload = {
         "task_id": task_id,
@@ -172,9 +159,9 @@ def submit_task(
         "error": None,
         "task_path": str(path),
     }
-    _write_task(path, payload)
-    with _registry_lock:
-        _live_tasks.add(task_id)
+    ownership = FileLock(path.with_suffix(".lock"), thread_local=False)
+    ownership.acquire()
+    run_key = sha256(run_id.encode()).hexdigest()
 
     def _progress(message: str) -> None:
         try:
@@ -187,9 +174,11 @@ def submit_task(
         _write_task(path, data)
 
     def _worker() -> None:
+        run_file_lock = FileLock(base / f"run-{run_key}.lock")
         lock = _run_lock(run_id)
         lock.acquire()
         try:
+            run_file_lock.acquire()
             kwargs = {}
             try:
                 signature = inspect.signature(fn)
@@ -220,11 +209,16 @@ def submit_task(
                 data["error"]["details"] = extra.details
             _write_task(path, data)
         finally:
-            with _registry_lock:
-                _live_tasks.discard(task_id)
+            run_file_lock.release()
             lock.release()
+            ownership.release()
 
-    _executor.submit(_worker)
+    try:
+        _write_task(path, payload)
+        _executor.submit(_worker)
+    except BaseException:
+        ownership.release()
+        raise
     return {
         "task_id": task_id,
         "task_path": str(path),
@@ -241,19 +235,7 @@ def poll_task(*, task_path: str) -> dict:
     if not path.is_file():
         raise TaskNotFoundError(str(path))
 
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if data.get("status") == STATUS_RUNNING:
-        task_id = str(data.get("task_id") or "")
-        with _registry_lock:
-            is_live = task_id in _live_tasks
-        if not is_live:
-            data["status"] = STATUS_FAILED
-            data["progress"] = None
-            data["error"] = {
-                "message": "MCP 进程已退出，后台任务已中断。请重新 start 该步骤，不要继续 poll 此任务。",
-                "type": "OrphanTaskError",
-            }
-            _write_task(path, data)
+    data = _read_task(path)
 
     created = datetime.fromisoformat(str(data["created_at"]).replace("Z", "+00:00"))
     if data.get("status") == STATUS_RUNNING:

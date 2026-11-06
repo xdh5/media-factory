@@ -1,0 +1,42 @@
+name: 验证生产入口与数据 API
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  runner:
+    name: 构建镜像并检查生产入口
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: 构建生产镜像
+        run: docker build -t media-factory-runner:verify ops/github_actions
+      - name: 检查 Python 语法、入口和转码环境
+        run: |
+          docker run --rm -v "$PWD:/workspace" media-factory-runner:verify sh -ec '
+            python -m compileall -q core ops desktop
+            python -m ops.github_actions --help
+            python -m ops.anime.execute_github_package --help
+            ffmpeg -version
+          '
+
+  worker:
+    name: 打包 Worker 并演练 D1 迁移
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ops/cloudflare/d1-data-api
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: 打包数据 API
+        run: npx --yes wrangler@4.149.0 deploy --dry-run
+      - name: 应用全部本地迁移
+        run: npx --yes wrangler@4.149.0 d1 migrations apply media-factory --local
