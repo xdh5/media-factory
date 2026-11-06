@@ -9,7 +9,7 @@ BUSINESSES = {
     "language_learning": ("语言学习", ("language_learning",), (
         "produce-language-learning-pack", "produce-language-learning-video")),
     "publishing": ("发布", ("publishing", "anime"), (
-        "publish-finance", "publish-korean", "publish-anime-youtube", "publish-anime-split-youtube")),
+        "publish-finance", "publish-korean", "publish-anime-youtube")),
 }
 
 ANIME_PRODUCTION_TOOLS = {

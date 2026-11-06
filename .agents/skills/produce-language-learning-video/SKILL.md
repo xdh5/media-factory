@@ -1,25 +1,12 @@
 ---
 name: produce-language-learning-video
-description: 生产语言学习视频。使用语言学习 MCP 制作中英/韩英词汇短视频；适用于“做语言学习视频”“生产语言学习视频”“中韩学习视频”等请求。不用于提前制作预制图包。
+description: 制作中英或韩英词汇短视频，使用语言学习 MCP 的生产配置。
 ---
 
-# 生产语言学习视频
+# 制作语言学习视频
 
-使用 `language_learning` MCP。词表、图片和视觉验收 Prompt、标题格式、配音、停顿与成片参数以 MCP 返回值为准；账号组、平台路由和排期交给统一发布 MCP。提前制作预制图包使用 produce-language-learning-pack skill。禁止绕过 MCP 执行业务流程或读写内部文件。
-
-## 交互规则
-
-- 制作成片前，先确定用户要求的北京时间计划发布日期 `publish_date`，日期不明确时追问，不默认今天，不占用话题或创建 run。
-- 中间步骤无需逐项确认。彩色杂边可以接受，不得因此拒收、拒绝入库或重新生成，也不得改归其他失败类型。
-- 本地成片完成后展示路径、标题与标签；不在成片阶段自动上传 R2。需要发布时使用统一发布 MCP。
-
-## 成片编排
-
-1. 获取生产配置、最近主题与主题生成 Prompt，生成主题后调用主题校验工具；日期明确后占用话题。
-2. 获取词表 Prompt，生成词表后交给解析校验工具，不自行维护内容或去重规则。
-3. 用 `language_learning_prepare_images` 返回的 Prompt 生成主体图。每张生成后立即保存并启动提交任务；生图无能力或达到工具要求的失败次数时，按工具提供的兜底流程处理。
-4. 获取共用定位 Prompt，查看主体图并提取十个框，调用主体图校验工具切图。再获取共用整图验收 Prompt，打开工具返回的实际切图验收图，提交真实验收结论。
-5. 切图不完整或带入相邻主体时先重新定位；图片内容不合格时才重新生图，每张主题图最多生成 3 次，仍失败则报告并停止。彩色杂边不算失败。
-6. 为本次需要的语言方向分别启动拼卡、成片任务，原样传入生产配置返回的配音、停顿、视频格式与发布元数据。
-
-耗时步骤使用对应 `start` 工具，每 15～30 秒轮询同一 `task_path` 至完成；客户端超时不重复启动。
+1. 确定北京时间计划发布日期 `publish_date`；有歧义先问，确认后才占用话题。用 `language_learning_get_production_config` 读取语言方向、配音和成片参数。
+2. 用 `language_learning_get_topics` 读近期主题。按主题提示生成并校验，再用 `language_learning_occupy_topic` 占用。按词表提示生成并调用 `language_learning_parse_vocabulary_response` 校验。
+3. 按 `language_learning_prepare_images` 返回的提示生成主体图。每张保存后立即启动提交；生图不可用或达到失败上限时按工具返回的流程处理。
+4. 按定位提示找十个框，用 `language_learning_validate_subject_sheet` 切图。查看实际验收图后用 `language_learning_review_subject_sheet` 提交结果。切图缺边或混入相邻主体先重新定位；内容错误才重生，每张最多生成三次。彩色杂边可接受。
+5. 按语言方向启动拼卡和成片，原样使用配置中的配音、停顿、格式和元数据。用 `language_learning_poll_task` 查同一任务，交付本地成片、标题与标签。
