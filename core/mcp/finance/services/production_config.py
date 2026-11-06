@@ -66,7 +66,7 @@ def _production_config(config: dict) -> dict:
         raise WorkflowStepError("production_config.hook_title_line_height 必须是数字") from exc
     bgm_gain = config.get("bgm_gain")
     if bgm_gain is None:
-        # 2026-09-23 起财经线统一默认（0.84 基础上 -20%），两个生产入口保持一致。
+        # 生产入口复用统一音乐增益。
         bgm_gain = DEFAULT_BGM_GAIN
     try:
         bgm_gain = float(bgm_gain)
@@ -165,7 +165,7 @@ def _production_config(config: dict) -> dict:
         "hook_lines": hook_lines,
         "hook_subtitle_position": hook_subtitle_position,
         "hook_title_text": str(config.get("hook_title_text") or "").strip(),
-        # 2026-09-24 用户要求标题换行由宿主 LLM 语义决定：传了就用传入的行，
+        # 优先使用宿主给出的标题换行，
         # 不传时只按句读断行，超宽保留完整词句并缩小字号。
         "hook_title_lines": _hook_title_lines_override(config.get("hook_title_lines")),
         "hook_title_style": hook_title_style,

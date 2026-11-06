@@ -220,9 +220,8 @@ def prepare_agent_image_tasks(
                 "referenced_image_paths": [_agent_path(path) for path in task_reference_paths],
                 "reference_images_required": has_references,
                 "reference_failure_policy": (
-                    "必须把 referenced_image_paths 作为本地图片数组原样传给当前生图能力；"
-                    "若宿主不能传本地参考图，按 capability_unavailable=true 提交失败，"
-                    "禁止用文字描述、提示词复述或想象参考图替代。"
+                    "将 referenced_image_paths 原样作为本地参考图传给生图工具。"
+                    "无法传图时提交 capability_unavailable=true。"
                     if has_references
                     else "本任务没有参考图，不要附加画风或其它参考图。"
                 ),

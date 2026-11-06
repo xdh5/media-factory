@@ -70,8 +70,7 @@ DEFAULT_PRODUCTION_CONFIG = {
 }
 
 _ROOT = Path(__file__).resolve().parent.parent
-SHOT_IMAGE_RULES_PATH = _ROOT / "prompts" / "shot_image_rules.md"
-STOCK_VIDEO_RULES_PATH = _ROOT / "prompts" / "stock_video_rules.md"
+STORYBOARD_PROMPT_PATH = _ROOT / "prompts" / "storyboard.md"
 
 
 COLLECTION_CACHE_ROOT = PROJECT_CACHE_ROOT / "collect_finance_copy"

@@ -108,7 +108,7 @@ def _best_variant(variants: list[dict], orientation: str) -> dict | None:
     if not valid:
         return None
     # 成片统一规范化到 1920x1080，选最接近 Full HD 的版本即可，
-    # 避免为 4K 原片付出 10 倍下载体积（2026-09-23：163MB 原片拖垮整条生产线）。
+    # 避免为 4K 原片付出 10 倍下载体积。
     target_pixels = 1920 * 1080
 
     def score(row: dict) -> tuple[int, int]:

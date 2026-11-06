@@ -1,22 +1,7 @@
 """财经 MCP 服务名称和使用说明。"""
 
 SERVER_NAME = "media-factory-finance"
-SERVER_INSTRUCTIONS = (
-    "财经分为采集定稿入库和视频制作两项业务。先用 finance_get_config 读取唯一生产配置。"
-    "finance_manage_authors 管理作者；finance_start_collection 按链接或作者配额采集。"
-    "宿主按正文主旨筛选，收泛认知觉醒、个人成长、励志、心灵鸡汤和人生感悟。以投资理财、经商或赚钱技巧为主的稿件提交 kind=off_topic，由批量任务补采。合格稿件校对、去广告、改写、替换品牌、生成钩子、话题、长短标题、四个标签和封面文案，"
-    "再用 finance_finalize_collection 一次提交 reviews 和完整 editorial。广告、主题不符和字数弃稿均登记原因及来源。校对稿少于400字或多于1200字填 kind=length；定稿700～900字，只删次要细节，保留原结构和观点，无法达标就换稿。"
-    "返回 continuation 时查询其中 task_path，继续审核 pending，直到 completed=true 或候选用尽。"
-    "补齐旧稿通过 finance_manage_drafts，不能修改已使用稿件。用 finance_get_inventory 查库存及弃稿统计。"
-    "制作前必须明确北京时间计划发布日期，禁止默认日期或提前占用稿件。"
-    "finance_start_production 领取定稿、保存生产稿并生成配音及分镜输入；生产不重新编辑原稿定稿。"
-    "宿主按返回 Prompt 写分镜，用 finance_prepare_visuals 准备参考图生图任务或实拍候选。"
-    "finance_submit_visuals 保存图片或下载视频，只准备素材，不自动合成。实拍默认按搜索顺序选择尺寸达标候选。"
-    "finance_prepare_editorial 返回真实字幕和章节输入；宿主生成 emphasis_lines.groups、"
-    "secondary_subtitles.translations、chapter_timeline.titles，合入统一 production_config。"
-    "finance_start_render 使用完整配置合成，默认上传 R2，成功后才标记来源已使用，不发布平台。"
-    "所有后台任务使用 finance_get_task 查询至 done=true，超时继续同一任务，禁止重复启动。"
-    "素材、配音、BGM、片头和字幕配置复用统一标准；成片保存 cover.png 并交付路径、标题和标签。"
-    "MCP 不调用外部通用生成模型，内容判断、改写、翻译、分镜和生图由宿主 Agent 完成。"
-    "专用配音与语音转写保留。GitHub Runner 在 MCP 外的既有模型调用保持独立。禁止绕过 MCP 执行业务脚本。"
-)
+SERVER_INSTRUCTIONS = """先用 finance_get_config 读生产配置。作者用 finance_manage_authors 管理；库存和弃稿统计用 finance_get_inventory 查询。
+采集调用 finance_start_collection。按待审回执的提示筛主题、校对和定稿，再用 finance_finalize_collection 提交整批；有 continuation 就继续审核。未使用旧稿可用 finance_manage_drafts 补定稿。
+制作前确认北京时间计划发布日期。finance_start_production 领取定稿并准备配音和分镜输入。宿主写分镜，依次准备和提交素材，再用 finance_prepare_editorial 定稿重点句、英文字幕和章节。合入配置后用 finance_start_render 合成及交付。
+后台任务用 finance_get_task 查询原 task_path，直至完成。宿主负责内容判断、生成和翻译，MCP 负责校验、专用语音和媒体处理。"""

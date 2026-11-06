@@ -27,7 +27,7 @@ __all__ = ["mix_body"]
 
 def _padded_bgm(bgm: Path, duration: float) -> tuple[Path, Path | None]:
     """BGM 比片长短时，用 concat demuxer 无损循环补长（-stream_loop 对 mp3 在
-    filter_complex 场景下会静音失效，见 2026-09-22 run-20260923 踩坑）。
+    filter_complex 场景下会静音失效）。
 
     统一返回 (BGM 路径, 临时目录或 None)；无需补长时临时目录为 None。
     """

@@ -317,7 +317,7 @@ def _hook_layer(
             hook_end = 0.0
     if hook_end <= 0:
         return []
-    # 2026-09-24 用户要求第一镜头钩子标题用短标题，标题缺失时回退全称。
+    # 首镜头钩子优先使用短标题。
     title_text = settings["hook_title_text"] or metadata.get("short_title") or metadata["title"]
     canvas_width, canvas_height = parse_size(VIDEO_SIZE)
     return _hook_title_layers(

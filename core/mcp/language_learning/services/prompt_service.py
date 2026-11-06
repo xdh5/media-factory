@@ -25,24 +25,23 @@ def _read_prompt(name: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def build_visual_validation_prompt() -> dict:
-    """返回给宿主 Agent 使用的主题图坐标定位 Prompt。"""
+def _validation_prompt(template: str, next_tool: str) -> dict:
     return {
-        "system_prompt": _read_prompt("visual-validation-system.md"),
-        "user_prompt": _read_prompt("visual-validation-user.md"),
+        "system_prompt": "只返回符合指定字段的 JSON 对象。",
+        "user_prompt": _read_prompt(template),
         "response_format": "json",
-        "next_tool": "language_learning_validate_subject_sheet",
+        "next_tool": next_tool,
     }
+
+
+def build_visual_validation_prompt() -> dict:
+    """定位主体边界框。"""
+    return _validation_prompt("visual-validation-user.md", "language_learning_validate_subject_sheet")
 
 
 def build_sheet_validation_prompt() -> dict:
-    """返回宿主 Agent 检查十张透明切图整体验收图所需的 Prompt。"""
-    return {
-        "system_prompt": _read_prompt("sheet-validation-system.md"),
-        "user_prompt": _read_prompt("sheet-validation-user.md"),
-        "response_format": "json",
-        "next_tool": "language_learning_review_subject_sheet",
-    }
+    """验收实际透明切图。"""
+    return _validation_prompt("sheet-validation-user.md", "language_learning_review_subject_sheet")
 
 
 def _format(modes: list[str]) -> tuple[str, list[str]]:
@@ -107,7 +106,7 @@ def build_vocabulary_prompt(topic: str, learning_modes: list[str], recent_words:
         "recent_words": history,
         "word_history_days": WORD_HISTORY_DAYS,
         "minimum_new_words": MINIMUM_NEW_WORDS,
-        "system_prompt": "你是语言学习词表编辑。只输出用户规定的纯文本表格；第一行必须是‘英文主题｜单个英文单词 TOPIC’，禁止 Markdown、标题、解释或省略首行。",
+        "system_prompt": "按指定格式只输出纯文本词表。",
     }
 
 
@@ -116,11 +115,11 @@ def build_topic_prompt(recent_topics: list[str], requested_topic: str = "", feed
     prompt = (
         "选择一个能扩展出10个初学者生活常用词的英文类别词。"
         f"不得与最近30天主题重复：{recent_topics}。"
-        f"用户指定主题：{requested or '无'}。只返回一个不含空格的英文单词。"
+        f"用户指定主题：{requested or '无'}。"
     )
     if feedback:
         prompt += f"\n上一次校验失败：{feedback}"
-    return {"system_prompt": "你是语言学习短视频选题编辑，只返回一个不含空格的英文单词，不加说明。", "user_prompt": prompt}
+    return {"system_prompt": "只返回一个英文单词。", "user_prompt": prompt}
 
 
 def validate_topic_response(response_text: str, recent_topics: list[str]) -> dict:

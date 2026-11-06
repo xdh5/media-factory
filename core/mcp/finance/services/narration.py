@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 
 # 兼容旧分镜里的【】重点标记：去掉标记后与 karaoke 逐词动画一致，不再单独上色。
-# 字号随 karaoke 预设（2026-09-24 用户要求整体字幕 -20%：130 → 104）。
 SUBTITLE_EMPHASIS_STYLE = {"font_size": 104, "primary_color": "#FFD54A"}
 _ENUMERATION = re.compile(
     r"[\u4e00-\u9fffA-Za-z0-9]{1,8}(?:、[\u4e00-\u9fffA-Za-z0-9]{1,8})+"

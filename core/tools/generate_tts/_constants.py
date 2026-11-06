@@ -3,11 +3,7 @@
 # Edge TTS 默认原速；工作流如需加速由 generate_tts(rate=...) 传入，例如 "+20%"。
 TTS_DEFAULT_RATE = "+0%"
 
-# Edge TTS 合成端点（2026-10-13 更新）：
-# 2026-10 起旧域名 speech.platform.bing.com 对合成请求一律返回 403
-# （上游 issue rany2/edge-tts#490），微软新端点迁移到 api.msedgeservices.com，
-# 沿用同一 TrustedClientToken 作为 Ocp-Apim-Subscription-Key。
-# 语音列表仍走旧域名；edge-tts 7.2.8 尚未发版修复（PR #491），这里在导入后覆写。
+# 使用现有 Edge TTS 合成端点，语音列表由上游 SDK 获取。
 TTS_EDGE_WSS_URL = (
     "wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1"
     "?Ocp-Apim-Subscription-Key=6A5AA1D4EAFF4E9FB37E23D68491D6F4"
@@ -68,7 +64,7 @@ FISH_AUDIO_RETRY_JITTER_SECONDS = 0.25
 
 # 音色绑定的语速：脚本行用到该 reference_id 时，**只要没在行内显式写 rate**，就用这里的值，
 # 优先级高于调用方的 rate 参数（即"这个音色天然就是 +10%"）。
-# 2026-09-23 用户要求：财经线（原心灵鸡汤）音色固定 +10%。
+# 财经配音固定加速 10%。
 FISH_VOICE_RATES = {
     "28df7fe4d3ec45f692af03d0a372805b": "+10%",
 }

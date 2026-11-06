@@ -3,7 +3,7 @@
 from core.paths import PROJECT_STATIC_ROOT
 
 DEFAULT_COVER_FONT_PATH = PROJECT_STATIC_ROOT / "font" / "MechSong-DemiBold-2.ttf"
-# 固定封面底图（2026-09-23 用户指定）：不再从镜头候选图随机抽，统一用这张。
+# 封面使用统一底图。
 DEFAULT_COVER_BACKGROUND_IMAGE = PROJECT_STATIC_ROOT / "cover" / "default-background.jpg"
 DEFAULT_COVER_SIZE = "1920x1080"
 # 抖音资料页会从横屏正中裁出 3:4 小图，标题必须落在该裁切区内。

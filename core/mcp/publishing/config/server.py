@@ -2,20 +2,8 @@
 
 SERVER_NAME = "media-factory-publishing"
 
-SERVER_INSTRUCTIONS = (
-    "publishing_list_account_groups只查配置；读取平台后调用publishing_start_account_check，再用publishing_poll_task查看预检进度和all_accounts_ready，禁止将配置查询视为登录通过。"
-    "统一视频发布 MCP。必须明确业务线、产物计划发布日期、账号组、平台和发布方式。"
-    "立即发布使用 immediate + now，预约发布使用 scheduled + 带时区的未来 ISO 8601 时间。"
-    "优先使用本地产物，本地缺失时允许从 GitHub Workflow 的 R2 产物恢复。"
-    "先检查本次账号组和目标平台的真实发布页，全部通过后才恢复成片或发布。"
-    "自动检测异常且返回screenshot_path时，由宿主先查看截图，使用publishing_review_session提交判断；页面正常可继续，异常或无法确认则告诉用户，不把检测异常误说成登录失效。"
-    "Cookie 存在不代表登录有效；login_required 才需要扫码，检测失败不可说成账号过期。"
-    "账号异常立即通知并提供登录入口；all_accounts_ready=true 后先用醒目粗体提示全部账号已登录，开始发布，再自动执行。"
-    "发布前查询 publication_records 去重，成功或预约成功后逐条写回数据库。"
-    "抖音、快手、头条或视频号登录失效时返回二维码，并轮询扫码结果。"
-    "多日期发布优先调用publishing_start_batch一次提交，返回后结束模型等待；后台程序独立执行，不写临时脚本。"
-    "publishing_batch_status只在用户查询、登录恢复或核对结果时按需调用，不要循环读状态或空终端。"
-    "单日交互调试才用publishing_start_publish与publishing_poll_task。"
-    "财经未指定时间时默认北京时间14点、18点各一篇；只有一篇或14点已过时只排18点一篇。"
-    "财经仅指定一个预约时间时只安排一篇；明确立即发布时使用immediate和now。"
-)
+SERVER_INSTRUCTIONS = """按业务线、计划日期、账号组、平台和发布方式发布。立即发布用 immediate + now；预约用 scheduled 和带时区的未来 ISO 8601。
+publishing_list_account_groups 只查配置。用 publishing_start_account_check 与 publishing_poll_task 核验本次目标的真实发布页或官方授权。仅 login_required 提供登录入口或二维码；检测异常有截图时先查看，再用 publishing_review_session 提交判断。页面或网络失败单独报告。
+账号未全部通过前不恢复或上传成片。all_accounts_ready=true 后先提示 **全部账号已登录，开始发布**，再自动继续。优先本地成片，缺失时从 GitHub R2 产物恢复；查重复记录，按平台保存成功回执。
+多日用 publishing_start_batch，交给后台执行，按需查 publishing_batch_status。单日用 publishing_start_publish 和 publishing_poll_task。提交结果不明先查回执。
+财经默认北京时间第一篇 14:00、第二篇 18:00。只有一篇或 14:00 已过时只排 18:00 一篇。用户指定单个预约时刻时只排一篇。"""

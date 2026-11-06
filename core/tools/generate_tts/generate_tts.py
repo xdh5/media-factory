@@ -40,7 +40,7 @@ from ._pipeline import parse_bool, parse_pause, synthesize_pipeline
 
 __all__ = ["generate_tts"]
 
-# 2026-10 起旧合成域名 403，覆写 edge-tts 的 WebSocket 端点（见 _constants.TTS_EDGE_WSS_URL）。
+# 统一使用配置中的 Edge TTS 合成端点。
 _edge_communicate.WSS_URL = TTS_EDGE_WSS_URL
 
 

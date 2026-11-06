@@ -48,7 +48,7 @@ def get_video_editorial_input(draft_path: str, storyboard_text: str, production_
             "secondary_subtitles": "translations：中文原文到英文译文的对象，逐条对应 subtitle_texts，简短口语化",
             "chapter_timeline": "titles：与 chapters 等长的非空短标题数组，每项最多 6 字",
         },
-        "instruction": "由宿主完成定稿，将结果分别合并到 production_config 对应对象后调用 finance_start_render。保留统一生产配置；不得为了省略定稿关闭图层。",
+        "instruction": "将宿主定稿合入 production_config 后调用 finance_start_render，保留统一配置和必需图层。",
     }
 
 
