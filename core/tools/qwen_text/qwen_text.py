@@ -110,27 +110,29 @@ def generate_text(
     temperature: float | None = None,
     max_tokens: int | None = None,
     json_output: bool = False,
+    model: str | None = None,
 ) -> dict:
-    """使用配置中的千问文本模型生成内容并返回 Token 用量。"""
+    """使用百炼文本模型生成内容并返回 Token 用量。"""
     system = str(system_prompt or "").strip()
     user = str(user_prompt or "").strip()
     if not system or not user:
         raise QwenConfigurationError("system_prompt 和 user_prompt 不能为空")
     settings = get_qwen_configuration()
+    selected_model = model or settings["model"]
     request_temperature = settings["temperature"] if temperature is None else float(temperature)
     if not 0 <= request_temperature <= 2:
         raise QwenConfigurationError("temperature 必须在 0 到 2 之间")
     body = {
-        "model": settings["model"],
+        "model": selected_model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
         "stream": False,
-        "temperature": request_temperature,
         "enable_thinking": settings["enable_thinking"],
-        "preserve_thinking": False,
     }
+    if selected_model != "kimi-k3":
+        body.update(temperature=request_temperature, preserve_thinking=False)
     if max_tokens is not None:
         if isinstance(max_tokens, bool) or int(max_tokens) < 1:
             raise QwenConfigurationError("max_tokens 必须是正整数")
@@ -180,7 +182,7 @@ def generate_text(
     usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
     return {
         "text": text,
-        "model": str(payload.get("model") or settings["model"]),
+        "model": str(payload.get("model") or selected_model),
         "finish_reason": choice.get("finish_reason"),
         "usage": {
             "prompt_tokens": int(usage.get("prompt_tokens") or 0),

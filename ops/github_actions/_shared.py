@@ -13,16 +13,18 @@ from core.tools.qwen_text import generate_text
 from core.tools.media_files import upload_public_file
 
 
-def qwen(system_prompt: str, user_prompt: str, *, json_output: bool = False, max_tokens: int = 8192) -> dict:
+def qwen(system_prompt: str, user_prompt: str, *, json_output: bool = False, max_tokens: int = 8192,
+         model: str | None = None) -> dict:
     result = generate_text(
         system_prompt,
         user_prompt,
         temperature=0.7,
         max_tokens=max_tokens,
         json_output=json_output,
+        model=model,
     )
     print(
-        f"千问文本完成：model={result['model']}，"
+        f"文本生成完成：model={result['model']}，"
         f"prompt_tokens={result['usage']['prompt_tokens']}，"
         f"completion_tokens={result['usage']['completion_tokens']}"
     )

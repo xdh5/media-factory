@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
@@ -16,6 +17,7 @@ async def _storyboard(mcp, draft, config, attempts, context):
             str(context["storyboard_system_prompt"]),
             str(context["storyboard_prompt"]) + (f"\n\n上一次校验失败：{feedback}" if feedback else ""),
             max_tokens=12000,
+            model=os.getenv("DASHSCOPE_FINANCE_MODEL"),
         )["text"]
         try:
             started = await mcp.call("finance_prepare_visuals", {
