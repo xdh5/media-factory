@@ -76,6 +76,8 @@ SUBTITLE_STYLE_SCHEMA = {
         "bold": {"type": "boolean"},
         "italic": {"type": "boolean"},
         "max_lines": {"type": "integer", "minimum": 1, "maximum": 4, "default": 2},
+        "word_wrap_after": {"type": "integer", "minimum": 1, "description": "逐词字幕超过此字符数才换行"},
+        "word_wrap_line_length": {"type": "integer", "minimum": 1, "description": "逐词字幕换行后的每行字符数"},
         "canvas_width_ratio": {
             "type": "number",
             "minimum": 0.1,

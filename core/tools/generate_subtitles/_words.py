@@ -95,14 +95,14 @@ def _units_from_text(text: str, cue_start: float, cue_duration: float) -> list[d
 
 
 def _split_display_lines(
-    units: list[dict], *, max_width: int,
+    units: list[dict], *, max_width: int, measure=_line_width,
 ) -> list[list[dict]]:
     """按逻辑宽度切显示行；单行超宽时由 libass 兜底换行（WrapStyle: 0）。"""
     lines: list[list[dict]] = []
     current: list[dict] = []
     width = 0
     for unit in units:
-        unit_width = _line_width(unit["text"])
+        unit_width = measure(unit["text"])
         if current and width + unit_width > max_width:
             lines.append(current)
             current = [unit]
@@ -116,10 +116,18 @@ def _split_display_lines(
 
 
 def _group_into_blocks(
-    units: list[dict], *, max_width: int, max_lines: int,
+    units: list[dict], resolved: dict,
 ) -> list[list[list[dict]]]:
     """块-行-词：一个块最多 max_lines 行同屏；行数超出时新开一块。"""
-    display_lines = _split_display_lines(units, max_width=max_width)
+    wrap_after = resolved["word_wrap_after"]
+    line_length = resolved["word_wrap_line_length"]
+    if wrap_after is not None and line_length is not None:
+        if sum(len(unit["text"]) for unit in units) <= wrap_after:
+            return [[units]]
+        display_lines = _split_display_lines(units, max_width=line_length, measure=len)
+    else:
+        display_lines = _split_display_lines(units, max_width=resolved["max_width"])
+    max_lines = resolved["max_lines"]
     blocks: list[list[list[dict]]] = []
     for start in range(0, len(display_lines), max_lines):
         blocks.append(display_lines[start:start + max_lines])
@@ -165,11 +173,12 @@ def build_word_events(
             "style", "逐词动画需要设置 highlight_color（或使用内置 preset）",
         )
 
-    blocks = _group_into_blocks(
-        units, max_width=resolved["max_width"], max_lines=resolved["max_lines"],
-    )
+    blocks = _group_into_blocks(units, resolved)
     uppercase = resolved.get("uppercase", False)
     letter_spacing = resolved.get("letter_spacing")
+    spacing = rf"\fsp{letter_spacing}" if letter_spacing else ""
+    wrap = r"\q2" if resolved["word_wrap_after"] is not None and resolved["word_wrap_line_length"] is not None else ""
+    reset = rf"{{\r{spacing}{wrap}}}"
 
     events: list[tuple[float, float, str]] = []
     for block in blocks:
@@ -195,9 +204,9 @@ def build_word_events(
                         if row == line_index and position == word_index:
                             parts.append(_animation_tag(animation, candidate, highlight_color))
                             parts.append(escaped)
-                            parts.append(r"{\r}")
+                            parts.append(reset)
                         elif animation == "karaoke" and (sung_row or position < word_index):
-                            parts.append(rf"{{\c{highlight_color}&}}{escaped}{{\r}}")
+                            parts.append(rf"{{\c{highlight_color}&}}{escaped}{reset}")
                         else:
                             parts.append(escaped)
                         if position + 1 < len(candidate_line):
@@ -206,8 +215,8 @@ def build_word_events(
                             if _is_latinish(text) or _is_latinish(neighbor_text):
                                 parts.append(" ")
                 body = "".join(parts)
-                if letter_spacing:
-                    body = rf"{{\fsp{letter_spacing}}}{body}"
+                if spacing or wrap:
+                    body = f"{{{spacing}{wrap}}}{body}"
                 events.append((unit["start"], event_end, body))
 
     return events

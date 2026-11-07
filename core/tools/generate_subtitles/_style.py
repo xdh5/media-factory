@@ -53,9 +53,11 @@ _STYLE_KEYS = frozenset({
     "animation",
     "uppercase",
     "max_lines",
+    "word_wrap_after",
+    "word_wrap_line_length",
     "canvas_width_ratio",
 })
-INLINE_STYLE_KEYS = _STYLE_KEYS - {"max_lines", "canvas_width_ratio"}
+INLINE_STYLE_KEYS = _STYLE_KEYS - {"max_lines", "canvas_width_ratio", "word_wrap_after", "word_wrap_line_length"}
 
 
 def _validate_options(options: dict | None, parameter: str, allowed: frozenset[str]) -> dict:
@@ -222,6 +224,8 @@ def resolve_subtitle_style(
     if max_lines is None:
         max_lines = SUBTITLE_MAX_LINES
     max_lines = int(max_lines)
+    word_wrap_after = _pick_number(style_layers, "word_wrap_after", parameter=style_parameter, minimum=1)
+    word_wrap_line_length = _pick_number(style_layers, "word_wrap_line_length", parameter=style_parameter, minimum=1)
 
     bold = _pick_bool(style_layers, "bold", parameter=style_parameter)
     if bold is None:
@@ -338,6 +342,8 @@ def resolve_subtitle_style(
         "margin_right": int(margin_right),
         "margin_vertical": int(margin_vertical),
         "max_lines": max_lines,
+        "word_wrap_after": word_wrap_after,
+        "word_wrap_line_length": word_wrap_line_length,
         "max_width": logical_max_width,
         "canvas_width": width,
         "canvas_height": height,

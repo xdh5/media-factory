@@ -8,7 +8,11 @@
 from __future__ import annotations
 
 # 字幕：karaoke 预设（白字黑边，逐字从左到右扫过金黄色），整屏居中。
-DEFAULT_SUBTITLE_STYLE = {"preset": "karaoke", "highlight_color": "#FFD54A", "font_size": 104}
+DEFAULT_SUBTITLE_STYLE = {
+    "preset": "karaoke", "highlight_color": "#FFD54A", "font_size": 100,
+    "canvas_width_ratio": 0.97, "letter_spacing": 2,
+    "word_wrap_after": 18, "word_wrap_line_length": 15,
+}
 
 DEFAULT_BGM_GAIN = 0.672
 
