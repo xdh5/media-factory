@@ -19,6 +19,7 @@ from ..infrastructure.source_scripts import get_collection_review_stats
 from ..services.save_draft import load_draft
 from ..services.storyboard import prepare_storyboard
 from ..services.upload_to_r2 import upload_finance_assets_to_r2
+from ..services.video_editorial import validate_video_editorial
 
 
 class CopyReview(TypedDict):
@@ -150,12 +151,17 @@ def finance_prepare_editorial(draft_path: str, storyboard_text: str,
         production_config if production_config is not None else finance_get_config()["production_config"])
 
 
+def finance_validate_editorial(draft_path: str, storyboard_text: str, production_config: dict) -> dict:
+    """在下载素材前校验定稿的重点句、字幕和章节。"""
+    validate_video_editorial(draft_path, storyboard_text, production_config)
+    return {"valid": True}
+
+
 def finance_start_render(draft_path: str, production_config: dict, material_manifest_path: str,
                           storyboard_text: str, upload_r2: bool = True,
                           production_source: str = "local_mcp", intro_image_path: str = "",
                           force_shot_ids: list[str] | None = None) -> dict:
     """后台合成，成功后标记原稿已使用；默认上传 R2 并返回本地成片与远程产物。必须提供宿主定稿的字幕、重点句和章节。"""
-    from ..services.video_editorial import validate_video_editorial
     validate_video_editorial(draft_path, storyboard_text, production_config)
     if production_source not in {"local_mcp", "github_workflow"}:
         raise WorkflowStepError("生产来源必须为 local_mcp 或 github_workflow")
@@ -194,5 +200,5 @@ def finance_get_inventory(publish_date: str = "") -> dict:
 BUSINESS_TOOLS = (
     finance_get_config, finance_manage_authors, finance_start_collection, finance_finalize_collection,
     finance_manage_drafts, finance_start_production, finance_prepare_visuals, finance_submit_visuals,
-    finance_prepare_editorial, finance_start_render, finance_get_task, finance_get_inventory,
+    finance_prepare_editorial, finance_validate_editorial, finance_start_render, finance_get_task, finance_get_inventory,
 )

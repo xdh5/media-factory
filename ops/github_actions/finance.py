@@ -29,6 +29,40 @@ async def _storyboard(mcp, draft, config, attempts, context):
     raise RuntimeError(f"财经分镜连续 {attempts} 次不合格：{feedback}")
 
 
+async def _editorial(mcp, draft_path, storyboard, production_config, attempts):
+    arguments = {"draft_path": draft_path, "storyboard_text": storyboard}
+    inputs = await mcp.call("finance_prepare_editorial", {**arguments, "production_config": production_config})
+    subtitle_input = json.dumps({
+        "subtitle_texts": inputs["subtitle_texts"],
+        "chapters": inputs["chapters"],
+    }, ensure_ascii=False)
+    feedback = ""
+    for _ in range(attempts):
+        try:
+            emphasis = json_text(qwen(
+                inputs["system_prompt"], inputs["emphasis_prompt"] + feedback,
+                json_output=True,
+            ))
+            subtitles = json_text(qwen(
+                "逐条把字幕译成简短口语英文，翻译对象的键逐字保留中文原文。按章节顺序拟标题，每条 1 至 6 字。"
+                '只输出 JSON：{"translations":{"中文原文":"英文译文"},"titles":["章节标题"]}。',
+                subtitle_input + feedback, json_output=True, max_tokens=16000,
+            ))
+            layout = {
+                "emphasis_lines": {"groups": emphasis.get("groups")},
+                "secondary_subtitles": {"translations": subtitles.get("translations")},
+                "chapter_timeline": {"titles": subtitles.get("titles")},
+            }
+            finalized = production_config | {
+                key: {**production_config.get(key, {}), **value} for key, value in layout.items()
+            }
+            await mcp.call("finance_validate_editorial", {**arguments, "production_config": finalized})
+            return finalized
+        except (ValueError, MCPCallError) as exc:
+            feedback = f"\n上一次校验失败：{exc}"
+    raise RuntimeError(f"财经定稿连续 {attempts} 次不合格：{feedback.strip()}")
+
+
 async def run(
     publish_date: str = "",
     content_part: int = 1,
@@ -48,18 +82,9 @@ async def run(
         draft = context["draft"]
         topic = context["source"]["editorial"]["topic"]
         storyboard, prepared = await _storyboard(mcp, draft, config, int(retries["storyboard"]), context)
-        editorial_input = await mcp.call("finance_prepare_editorial", {
-            "draft_path": draft["draft_path"], "storyboard_text": storyboard,
-            "production_config": config["production_config"],
-        })
-        layout = json_text(qwen(
-            editorial_input["system_prompt"],
-            json.dumps(editorial_input, ensure_ascii=False) +
-            '\n只输出 JSON：{"emphasis_lines":{"groups":[]},"secondary_subtitles":{"translations":{"中文原文":"英文译文"}},"chapter_timeline":{"titles":["章节标题"]}}。按输入真实定稿，不得省略字段。',
-            json_output=True, max_tokens=16000,
-        ))
-        for key in ("emphasis_lines", "secondary_subtitles", "chapter_timeline"):
-            config["production_config"][key] = {**config["production_config"].get(key, {}), **layout[key]}
+        production_config = await _editorial(
+            mcp, draft["draft_path"], storyboard, config["production_config"], int(retries["editorial"]),
+        )
         started = await mcp.call("finance_submit_visuals", {
             "context_path": prepared["context_path"], "material_strategy": "stock_video",
         })
@@ -67,7 +92,7 @@ async def run(
         started = await mcp.call("finance_start_render", {
             "draft_path": draft["draft_path"], "storyboard_text": storyboard,
             "material_manifest_path": materials["manifest_path"],
-            "production_config": config["production_config"],
+            "production_config": production_config,
             "production_source": "github_workflow", "upload_r2": True,
         })
         manifest = await mcp.poll("finance_get_task", started["task_path"])

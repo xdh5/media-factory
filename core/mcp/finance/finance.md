@@ -13,6 +13,7 @@
 | finance_prepare_visuals | 提交分镜，准备生图任务或搜索视频 |
 | finance_submit_visuals | 图片保存和图库入库，或下载所选视频；不合成 |
 | finance_prepare_editorial | 返回重点句、翻译、章节的宿主定稿输入 |
+| finance_validate_editorial | 校验重点句、英文字幕和章节标题 |
 | finance_start_render | 合成、提交来源使用状态、默认上传 R2 |
 | finance_get_task | 查询所有后台任务 |
 | finance_get_inventory | 只读库存、话题、某日成片和生产计划 |
