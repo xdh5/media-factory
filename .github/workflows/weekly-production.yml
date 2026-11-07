@@ -6,21 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       week_start:
-        description: 可选；目标周起始周一 YYYY-MM-DD，留空检查并补齐下周缺失内容
-        required: false
-        type: string
-      publish_date:
-        description: 可选；只补齐指定计划发布日期 YYYY-MM-DD
+        description: 发布一周，填写该周周一日期（YYYY-MM-DD）
         required: false
         type: string
       publish_dates:
-        description: 可选；只补齐这些计划发布日期，使用英文逗号分隔
+        description: 发布指定日期，填写一个或多个日期（YYYY-MM-DD），用英文逗号分隔。两项都留空时生产下周
         required: false
         type: string
-      finance_only:
-        description: 仅补齐财经成片，不生产语言内容或启动发布
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -50,13 +42,12 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      - name: 生成周一至周日日期列表
+      - name: 生成计划发布日期列表
         id: plan
         env:
           INPUT_WEEK_START: ${{ inputs.week_start }}
-          INPUT_PUBLISH_DATE: ${{ inputs.publish_date }}
           INPUT_PUBLISH_DATES: ${{ inputs.publish_dates }}
-        run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START" --publish-date "$INPUT_PUBLISH_DATE" --publish-dates "$INPUT_PUBLISH_DATES"
+        run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START" --publish-dates "$INPUT_PUBLISH_DATES"
 
   produce-day:
     name: 生产财经及语言 ${{ matrix.publish_date }}
@@ -115,14 +106,12 @@ jobs:
       - name: 按日期生产并交付 R2
         env:
           PUBLISH_DATE: ${{ matrix.publish_date }}
-          FINANCE_ONLY: ${{ inputs.finance_only && 'true' || 'false' }}
         run: >-
           python -m ops.github_actions weekly_day
           --publish-date "$PUBLISH_DATE"
-          --finance-only "$FINANCE_ONLY"
 
       - name: 归还失败或取消任务占用的语言词包
-        if: ${{ (failure() || cancelled()) && !inputs.finance_only }}
+        if: ${{ failure() || cancelled() }}
         env:
           PUBLISH_DATE: ${{ matrix.publish_date }}
         run: python -m ops.github_actions language_learning_release_pack --publish-date "$PUBLISH_DATE"
@@ -139,7 +128,7 @@ jobs:
   publish-chinese:
     name: 发布学中文视频 ${{ matrix.publish_date }}
     needs: [plan, runner-image, produce-day]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.runner-image.result == 'success' && !inputs.finance_only }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.runner-image.result == 'success' }}
     strategy:
       matrix:
         publish_date: ${{ fromJSON(needs.plan.outputs.dates_json) }}
