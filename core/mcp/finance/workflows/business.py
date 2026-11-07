@@ -151,12 +151,6 @@ def finance_prepare_editorial(draft_path: str, storyboard_text: str,
         production_config if production_config is not None else finance_get_config()["production_config"])
 
 
-def finance_validate_editorial(draft_path: str, storyboard_text: str, production_config: dict) -> dict:
-    """在下载素材前校验定稿的重点句、字幕和章节。"""
-    validate_video_editorial(draft_path, storyboard_text, production_config)
-    return {"valid": True}
-
-
 def finance_start_render(draft_path: str, production_config: dict, material_manifest_path: str,
                           storyboard_text: str, upload_r2: bool = True,
                           production_source: str = "local_mcp", intro_image_path: str = "",
@@ -200,5 +194,5 @@ def finance_get_inventory(publish_date: str = "") -> dict:
 BUSINESS_TOOLS = (
     finance_get_config, finance_manage_authors, finance_start_collection, finance_finalize_collection,
     finance_manage_drafts, finance_start_production, finance_prepare_visuals, finance_submit_visuals,
-    finance_prepare_editorial, finance_validate_editorial, finance_start_render, finance_get_task, finance_get_inventory,
+    finance_prepare_editorial, finance_start_render, finance_get_task, finance_get_inventory,
 )

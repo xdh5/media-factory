@@ -55,14 +55,16 @@ def get_video_editorial_input(draft_path: str, storyboard_text: str, production_
 def validate_video_editorial(draft_path: str, storyboard_text: str, production_config: dict) -> None:
     """在渲染前校验宿主定稿，缺失时直接返回可修正的参数错误。"""
     from core.tools.generate_emphasis_lines._detect import validate_emphasis_groups
-    inputs = get_video_editorial_input(draft_path, storyboard_text, production_config)
     settings = _production_config(production_config)
     emphasis = settings["emphasis_lines"]
+    secondary = settings["secondary_subtitles"]
+    if not (emphasis["enabled"] or secondary["enabled"] or settings["chapter_timeline"]["enabled"]):
+        return
+    inputs = get_video_editorial_input(draft_path, storyboard_text, production_config)
     if emphasis.get("enabled", True):
         groups = emphasis.get("groups")
         if not isinstance(groups, list) or len(validate_emphasis_groups({"groups": groups}, inputs["sentences"])) != len(groups):
             raise WorkflowStepError("emphasis_lines.groups 必须包含宿主定稿的完整重点句、断行和逐行重点词；无重点句传 []")
-    secondary = settings["secondary_subtitles"]
     if secondary.get("enabled", True) and inputs["subtitle_texts"]:
         translations = secondary.get("translations")
         if not isinstance(translations, dict) or any(not isinstance(translations.get(text), str) or not translations[text].strip() for text in inputs["subtitle_texts"]):

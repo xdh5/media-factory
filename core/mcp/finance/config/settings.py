@@ -66,7 +66,6 @@ DEFAULT_PRODUCTION_CONFIG = {
     },
     "runner_retry_config": {
         "storyboard": 3,
-        "editorial": 3,
     },
 }
 
