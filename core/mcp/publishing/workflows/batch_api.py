@@ -1,6 +1,6 @@
 """共享后台发布批次工具。"""
 
-from core.tools.publish_media.content import normalize_platforms, normalize_publish_date
+from core.tools.publish_media.content import normalize_platforms, normalize_publish_date, resolve_publication_content_kind
 from ..infrastructure.batch_jobs import launch_batch, read_batch, batch_summary
 
 
@@ -23,7 +23,11 @@ def publishing_start_batch(
         unknown = set(publication) - keys
         if unknown:
             raise ValueError(f"不支持的发布参数：{', '.join(sorted(unknown))}")
-        normalized.append({**publication, "publish_date": normalize_publish_date(publication.get("publish_date"))})
+        normalized.append({
+            **publication,
+            "publish_date": normalize_publish_date(publication.get("publish_date")),
+            "content_kind": resolve_publication_content_kind(business_line, account_group, publication.get("content_kind")),
+        })
     return launch_batch({"business_line": business_line, "account_group": account_group,
                          "platforms": normalize_platforms(platforms), "publications": normalized,
                          "prepare_only": prepare_only})

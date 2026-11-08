@@ -18,7 +18,7 @@ from core.tools.media_files import upload_public_file
 from ._constants import PUBLIC_URL_PLATFORMS, media_publisher_root
 from ._errors import DuplicatePublicationError, InvalidPublishRequestError, MediaPublisherCommandError
 from .accounts import resolve_account_group
-from .content import local_publish_items, normalize_platforms, normalize_publish_date
+from .content import local_publish_items, normalize_platforms, normalize_publish_date, resolve_publication_content_kind
 from .finance_schedule import plan_finance_publications
 
 _PREPARED_PREVIEWS: dict[tuple, tuple[float, list]] = {}
@@ -106,6 +106,7 @@ def preview_publication(
     started = time.monotonic()
     normalized_date = normalize_publish_date(publish_date)
     normalized_platforms = normalize_platforms(platforms)
+    content_kind = resolve_publication_content_kind(business_line, account_group, content_kind)
     cache_key = (business_line, normalized_date, account_group, tuple(normalized_platforms), content_kind, production_id)
     cached = _PREPARED_PREVIEWS.get(cache_key) if reuse_prepared else None
     reused = bool(cached and time.monotonic() - cached[0] < 300

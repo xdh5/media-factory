@@ -11,8 +11,8 @@ python -m core.mcp.publishing
 - 必须明确 `business_line`：`finance` 或 `language_learning`。
 - 必须明确本地产物的计划发布日期 `publish_date`；没有日期时必须先询问用户。
 - 优先读取 D1 `production_outputs` 中仍存在的 `source=local_mcp` 成片；本地缺失时自动把 `source=github_workflow` 的 R2 成片拉回发布缓存。
-- 语言学习中文传 `content_kind="en-zh"` 时，同时发布原版 `en-zh` 和问答版 `en-zh-quiz`。
-- 语言学习韩语传 `content_kind="en-ko"` 时，同时发布原版 `en-ko` 和问答版 `en-ko-quiz`。
+- `chinese` 组只接收 `en-zh` 和 `en-zh-quiz`，`korean` 组只接收 `en-ko` 和 `en-ko-quiz`。
+- 省略 `content_kind` 或传账号组对应的原版类型时，同时选中原版和问答版。指定问答版时只选问答版。
 - 平台支持 YouTube、Facebook、Instagram、TikTok、快手、抖音、头条号和视频号。
 - `publish_mode=immediate` 时必须明确传 `publish_at=now`；`publish_mode=scheduled` 时必须传带时区的未来 ISO 8601 时间。media-publisher 的抖音、快手、头条号和视频号预约必须由平台官方确认，应用内定时任务不得视为成功。
 

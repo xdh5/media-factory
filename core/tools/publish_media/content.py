@@ -13,6 +13,21 @@ from .local_assets import (
 )
 
 
+def resolve_publication_content_kind(
+    business_line: str, account_group: str, content_kind: str | None,
+) -> str | None:
+    """按语言账号组限定可发布的原版和问答版。"""
+    default_kind = {"chinese": "en-zh", "korean": "en-ko"}.get(account_group.strip())
+    if business_line != "language_learning" or default_kind is None:
+        return content_kind
+    selected_kind = (content_kind or "").strip() or default_kind
+    if selected_kind not in matching_content_kinds(default_kind):
+        raise InvalidPublishRequestError(
+            f"账号组 {account_group} 只接收 {default_kind} 或 {default_kind}-quiz，收到 {selected_kind}"
+        )
+    return selected_kind
+
+
 def normalize_publish_date(value: str) -> str:
     text = str(value or "").strip()
     if not text:
