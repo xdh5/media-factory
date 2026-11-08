@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import re
+from random import Random
 from pathlib import Path
 
 from core.tools.media_files import upload_public_file
@@ -16,7 +16,6 @@ from ..config import (
     TOPIC_DEDUPLICATION_DAYS,
     WORD_HISTORY_DAYS,
     WORKFLOW_ID,
-    QUIZ_TITLE_SUFFIXES,
     video_content_kind,
     video_production_id,
 )
@@ -26,28 +25,18 @@ from .vocabulary import build_database_word_entries
 
 def build_video_title(
     mode: str,
-    topic: str = "",
-    words: list[dict] | None = None,
-    *,
-    part: int | None = None,
-    part_count: int | None = None,
+    topic: str,
+    words: list[dict],
+    video_format: str,
+    run_id: str = "",
 ) -> str:
-    """成品标题：中文用主题句加分段，韩语用该段里的中文词。"""
-    if mode == "en-zh":
-        english_topic = str(topic or "").strip() or "Vocabulary"
-        if not re.fullmatch(r"[A-Za-z][A-Za-z '&-]*", english_topic):
-            english_topic = "Vocabulary"
-        title = f"10 Essential {english_topic.title()} Words in Chinese"
-        if part is not None and part_count is not None and part_count > 1:
-            return f"{title} {part}/{part_count}"
-        return title
-    rows = list(words or [])
-    selected = rows[0] if rows else {}
-    word = str(selected.get("chinese") or selected.get("english") or "单词").strip()
-    title = f"韩语｜{word}的韩语怎么说？"
-    if part is not None and part_count is not None and part_count > 1:
-        return f"{title} {part}/{part_count}"
-    return title
+    """问答版用主题，原版从当期词表抽词，同一批次重试沿用标题。"""
+    if video_format == "quiz":
+        if mode == "en-ko":
+            return f"韩语|{topic or '词汇'}的韩语怎么说"
+        return f"Chinese Quiz | {topic or 'Vocabulary'}"
+    word = Random(f"{run_id}:{mode}").choice(words)
+    return f"韩语|{word['chinese']}" if mode == "en-ko" else f"Chinese | {word['english']}"
 
 
 def _normalized_tags(tags: list[str]) -> list[str]:
@@ -100,68 +89,24 @@ def _item_key(item: dict) -> str:
     return f"{item.get('learning_mode') or ''}:{_video_format(item)}"
 
 
-def strip_quiz_title_suffix(title: str) -> str:
-    """问答版与原版使用同一套标题，去掉历史上加过的 guess / 看图猜词后缀。"""
-    text = str(title or "").strip()
-    changed = True
-    while changed:
-        changed = False
-        for marker in QUIZ_TITLE_SUFFIXES:
-            if text.endswith(marker):
-                text = text[: -len(marker)].rstrip()
-                changed = True
-    return text
-
-
-def _titled(base: str, video_format: str, mode: str = "en-zh") -> str:
-    del video_format, mode
-    return strip_quiz_title_suffix(base)
-
-
 def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_config: dict[str, dict]) -> dict:
     """给成片补上交付清单；这里只记录内容元数据，不包含平台和账号路由。"""
     topic = str(video_result.get("topic") or "").strip()
-    topic_english = str(words_by_mode.get("_topic_english") or topic).strip()
     delivery_items = []
     for video in video_result.get("videos") or []:
         mode = str(video.get("learning_mode") or "")
         video_format = _video_format(video)
-        if mode == "en-zh":
-            zh_config = _mode_config(publish_config, "en-zh")
-            title = _titled(build_video_title("en-zh", topic_english), video_format, "en-zh")
-            delivery_items.append({
-                "learning_mode": "en-zh",
-                "video_format": video_format,
-                "title": title,
-                "tags": list(zh_config.get("tags") or []),
-                "short_title": _titled(
-                    str(zh_config.get("short_title") or f"中文{topic or '单词'}怎么说"),
-                    video_format,
-                    "en-zh",
-                ),
-                "videos": _video_parts(video, title, empty_error="en-zh 没有可发布的视频文件"),
-            })
-            continue
-        if mode == "en-ko":
-            ko_config = _mode_config(publish_config, "en-ko")
-            title = _titled(
-                build_video_title("en-ko", topic, words_by_mode.get("en-ko") or []),
-                video_format,
-                "en-ko",
-            )
-            short_title = _titled(
-                str(ko_config.get("short_title") or "韩语单词怎么说"),
-                video_format,
-                "en-ko",
-            )
-            delivery_items.append({
-                "learning_mode": "en-ko",
-                "video_format": video_format,
-                "title": title,
-                "tags": list(ko_config.get("tags") or []),
-                "short_title": short_title,
-                "videos": _video_parts(video, title, empty_error="en-ko 没有可发布的视频文件"),
-            })
+        config = _mode_config(publish_config, mode)
+        parts = _video_parts(video, "", empty_error=f"{mode} 没有可发布的视频文件")
+        title = parts[0]["title"]
+        delivery_items.append({
+            "learning_mode": mode,
+            "video_format": video_format,
+            "title": title,
+            "tags": list(config.get("tags") or []),
+            "short_title": str(config.get("short_title") or title),
+            "videos": parts,
+        })
     if not delivery_items:
         return {**video_result, "status": "done"}
     output_dir = Path(video_result["output_dir"]).resolve()
@@ -177,13 +122,8 @@ def attach_publish_manifest(video_result: dict, words_by_mode: dict, publish_con
         except (OSError, json.JSONDecodeError):
             previous = {}
         for item in previous.get("items") or []:
-            if _item_key(item) in new_keys:
-                replacement = next(row for row in delivery_items if _item_key(row) == _item_key(item))
-                merged = {int(video.get("content_part") or index): video for index, video in enumerate(item.get("videos") or [], 1)}
-                merged.update({int(video["content_part"]): video for video in replacement["videos"]})
-                replacement["videos"] = [merged[part] for part in sorted(merged)]
-                continue
-            kept_items.append(item)
+            if _item_key(item) not in new_keys:
+                kept_items.append(item)
     items = [*kept_items, *delivery_items]
     status = "produced"
     manifest = {

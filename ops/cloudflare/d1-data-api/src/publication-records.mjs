@@ -274,11 +274,17 @@ async function commitProductionOutputs(request, env) {
     statements.push(env.DB.prepare(
       `UPDATE language_learning_packs SET used_at = COALESCE(used_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), reservation_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
        WHERE run_id = ? AND status = 'claimed' AND (
-         SELECT COUNT(DISTINCT content_kind || ':' || content_part) FROM production_outputs
-         WHERE business_line = 'language_learning' AND source = 'github_workflow' AND run_id = ? AND r2_url IS NOT NULL
-           AND ((content_kind IN ('en-zh', 'en-ko') AND content_part IN (1, 2))
-             OR (content_kind IN ('en-zh-quiz', 'en-ko-quiz') AND content_part = 1))
-       ) = 6`,
+         SELECT COUNT(DISTINCT video.content_kind) FROM production_outputs AS video
+         WHERE video.business_line = 'language_learning' AND video.source = 'github_workflow'
+           AND video.run_id = ? AND video.r2_url IS NOT NULL AND video.content_part = 1
+           AND video.content_kind IN ('en-zh', 'en-ko', 'en-zh-quiz', 'en-ko-quiz')
+           AND (video.title NOT LIKE '% 1/2' OR EXISTS (
+             SELECT 1 FROM production_outputs AS second_part
+             WHERE second_part.business_line = video.business_line AND second_part.source = video.source
+               AND second_part.run_id = video.run_id AND second_part.content_kind = video.content_kind
+               AND second_part.content_part = 2 AND second_part.r2_url IS NOT NULL
+           ))
+       ) = 4`,
     ).bind(runId, runId));
   }
   const results = await env.DB.batch(statements);

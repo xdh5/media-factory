@@ -36,6 +36,27 @@ def matching_content_kinds(content_kind: str | None) -> set[str] | None:
     return {wanted}
 
 
+def current_language_outputs(rows: list[dict]) -> list[dict]:
+    """优先选整条原版，旧版必须同时具备两段。"""
+    standard = {"en-zh", "en-ko"}
+    grouped: dict[tuple[str, str, str], dict[int, dict]] = {}
+    for row in rows:
+        if row["content_kind"] in standard:
+            key = (row["source"], row["run_id"], row["content_kind"])
+            grouped.setdefault(key, {})[int(row["content_part"])] = row
+    selected = set()
+    for parts in grouped.values():
+        first = parts.get(1)
+        if first is None:
+            continue
+        if first["title"].endswith(" 1/2"):
+            if 2 not in parts:
+                continue
+            selected.add(id(parts[2]))
+        selected.add(id(first))
+    return [row for row in rows if row["content_kind"] not in standard or id(row) in selected]
+
+
 def stored_video_filename(record: dict) -> str:
     """本地/R2 成片文件名：优先使用 r2_url 里的对象名，避免与标题字段二次转换不一致。"""
     r2_url = str(record.get("r2_url") or "").strip()
@@ -160,6 +181,8 @@ def ensure_local_publish_items(
         business_line=business_line,
         source="local_mcp",
     )
+    if business_line == "language_learning":
+        local_rows = current_language_outputs(local_rows)
     if wanted_kinds is not None:
         local_rows = [item for item in local_rows if str(item.get("content_kind") or "") in wanted_kinds]
 
@@ -176,6 +199,8 @@ def ensure_local_publish_items(
             local_rows[index] = row
 
     valid_local_rows = [row for row in local_rows if _is_valid(row)]
+    if business_line == "language_learning":
+        valid_local_rows = current_language_outputs(valid_local_rows)
     valid_kinds = {str(row.get("content_kind") or "") for row in valid_local_rows}
     if wanted_kinds is None:
         if valid_local_rows:
@@ -192,6 +217,8 @@ def ensure_local_publish_items(
         business_line=business_line,
         source="github_workflow",
     )
+    if business_line == "language_learning":
+        github_rows = current_language_outputs(github_rows)
     if missing_kinds is not None:
         github_rows = [item for item in github_rows if str(item.get("content_kind") or "") in missing_kinds]
     elif wanted_kinds is not None:

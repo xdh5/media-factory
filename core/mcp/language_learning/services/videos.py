@@ -19,14 +19,13 @@ from ..config import (
     QUIZ_POST_QUESTION_TRIM_SECONDS,
     SUPPORTED_VIDEO_FORMATS,
     WORDS_PER_TASK,
-    WORDS_PER_VIDEO,
     publish_date_from_run_id,
     production_dirs,
     video_content_kind,
     video_production_id,
 )
 from ..errors import VocabularyVideoError
-from .delivery import build_video_title, strip_quiz_title_suffix
+from .delivery import build_video_title
 
 VIDEO_SIZE = f"{CARD_CANVAS_SIZE[0]}x{CARD_CANVAS_SIZE[1]}"
 QUIZ_VIDEO_FPS = 30
@@ -184,7 +183,7 @@ def _one_mode(
     language_pause: float,
     word_pause: float,
     voices: dict[str, str],
-    content_parts: list[int] | None = None,
+    run_id: str,
 ) -> dict:
     rows, cards = _items(words), _load_cards(card_dir, words)
     target_key = "chinese" if mode == "en-zh" else "korean"
@@ -193,80 +192,73 @@ def _one_mode(
     if not english_voice or not target_voice:
         raise VocabularyVideoError("voices 必须包含 en 与目标语言音色（zh 或 ko）")
 
-    outputs = []
     timeline = []
     cursor = 0.0
-    part_count = (len(rows) + WORDS_PER_VIDEO - 1) // WORDS_PER_VIDEO
-    for part, start in enumerate(range(0, len(rows), WORDS_PER_VIDEO), 1):
-        if content_parts is not None and part not in content_parts:
-            continue
-        part_words = rows[start:start + WORDS_PER_VIDEO]
-        part_cards = cards[start:start + WORDS_PER_VIDEO]
-        title = build_video_title(mode, topic, part_words, part=part, part_count=part_count)
-        segment_dir = cache_root / "segments" / f"part-{part}"
-        segment_dir.mkdir(parents=True, exist_ok=True)
-        script = []
-        for word in part_words:
-            script.append({"text": word["english"], "voice": english_voice})
-            script.append({"text": word[target_key], "voice": target_voice})
-        try:
-            tts = generate_tts(
-                script,
-                segment_dir / "narration.wav",
-                pause_between=language_pause,
-                pause_end=word_pause,
-            )
-        except Exception as extra:
-            raise VocabularyVideoError(f"第 {part} 段配音失败：{extra}") from extra
-        cues = tts["timeline"]
-        if len(cues) != len(script):
-            raise VocabularyVideoError(
-                f"第 {part} 段配音时间轴条数是 {len(cues)}，期望 {len(script)}"
-            )
-        part_shots = []
-        for offset, (word, card) in enumerate(zip(part_words, part_cards)):
-            english_cue = cues[offset * 2]
-            target_cue = cues[offset * 2 + 1]
-            duration = float(target_cue["end"]) - float(english_cue["start"])
-            if duration <= 0:
-                raise VocabularyVideoError(f"第 {start + offset + 1} 个单词配音时长无效")
-            part_shots.append({
-                "id": f"w{start + offset + 1:02d}",
-                "image_path": str(card),
-                "duration": duration,
-            })
-            timeline.append({
-                **word,
-                "start": round(cursor, 3),
-                "end": round(cursor + duration, 3),
-                "duration": round(duration, 3),
-            })
-            cursor += duration
-
-        try:
-            video = generate_final_video(
-                part_shots,
-                output_root / f"{safe_filename(title)}.mp4",
-                segment_dir / "final-cache",
-                size=VIDEO_SIZE,
-                tts_path=tts["output_path"],
-            )
-        except Exception as extra:
-            raise VocabularyVideoError(f"第 {part} 段拼接失败：{extra}") from extra
-        outputs.append({
-            "part": part,
-            "output_path": video["output_path"],
-            "title": title,
-            "word_start": start + 1,
-            "word_end": min(start + WORDS_PER_VIDEO, len(rows)),
-            "duration": round(video["duration"], 3),
+    title = build_video_title(mode, topic, rows, "standard", run_id)
+    segment_dir = cache_root / "segments" / "standard"
+    segment_dir.mkdir(parents=True, exist_ok=True)
+    script = []
+    for word in rows:
+        script.append({"text": word["english"], "voice": english_voice})
+        script.append({"text": word[target_key], "voice": target_voice})
+    try:
+        tts = generate_tts(
+            script,
+            segment_dir / "narration.wav",
+            pause_between=language_pause,
+            pause_end=word_pause,
+        )
+    except Exception as extra:
+        raise VocabularyVideoError(f"原版配音失败：{extra}") from extra
+    cues = tts["timeline"]
+    if len(cues) != len(script):
+        raise VocabularyVideoError(
+            f"原版配音时间轴条数是 {len(cues)}，期望 {len(script)}"
+        )
+    shots = []
+    for offset, (word, card) in enumerate(zip(rows, cards)):
+        english_cue = cues[offset * 2]
+        target_cue = cues[offset * 2 + 1]
+        duration = float(target_cue["end"]) - float(english_cue["start"])
+        if duration <= 0:
+            raise VocabularyVideoError(f"第 {offset + 1} 个单词配音时长无效")
+        shots.append({
+            "id": f"w{offset + 1:02d}",
+            "image_path": str(card),
+            "duration": duration,
         })
+        timeline.append({
+            **word,
+            "start": round(cursor, 3),
+            "end": round(cursor + duration, 3),
+            "duration": round(duration, 3),
+        })
+        cursor += duration
+
+    try:
+        video = generate_final_video(
+            shots,
+            output_root / f"{safe_filename(title)}.mp4",
+            segment_dir / "final-cache",
+            size=VIDEO_SIZE,
+            tts_path=tts["output_path"],
+        )
+    except Exception as extra:
+        raise VocabularyVideoError(f"原版拼接失败：{extra}") from extra
+    part = {
+        "part": 1,
+        "output_path": video["output_path"],
+        "title": title,
+        "word_start": 1,
+        "word_end": len(rows),
+        "duration": round(video["duration"], 3),
+    }
     (cache_root / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
     return {
         "video_format": "standard",
         "learning_mode": mode,
-        "output_paths": [item["output_path"] for item in outputs],
-        "video_parts": outputs,
+        "output_paths": [part["output_path"]],
+        "video_parts": [part],
         "duration": round(cursor, 3),
         "word_count": len(rows),
         "timeline": timeline,
@@ -390,7 +382,7 @@ def _one_quiz_mode(
         })
         cursor += word_duration
 
-    title = strip_quiz_title_suffix(build_video_title(mode, topic, rows))
+    title = build_video_title(mode, topic, rows, "quiz")
     try:
         video = generate_final_video(
             shots,
@@ -472,10 +464,7 @@ def create_vocabulary_videos(
     results_by_key: dict[tuple[str, str], dict] = {}
     configured_question_voices = question_voices or voices
     requested = None if pending_outputs is None else {
-        (item["learning_mode"], item["video_format"]): [
-            int(row["content_part"]) for row in pending_outputs
-            if row["learning_mode"] == item["learning_mode"] and row["video_format"] == item["video_format"]
-        ] for item in pending_outputs
+        (item["learning_mode"], item["video_format"]) for item in pending_outputs
     }
     total_jobs = sum(1 for mode in modes if "standard" in formats) + sum(
         1 for mode in modes if "quiz" in formats and resolved_countdown_audio is not None
@@ -500,7 +489,7 @@ def create_vocabulary_videos(
                 language_pause,
                 word_pause,
                 voices,
-                None if requested is None else requested[(mode, "standard")],
+                run_id,
             )
             if progress is not None:
                 progress(f"已完成出片 {mode}/standard（{len(results_by_key)}/{total_jobs}）")

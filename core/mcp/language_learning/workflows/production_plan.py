@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from core.tools.publish_media.local_assets import current_language_outputs
 
 from ..infrastructure import (
     list_production_outputs,
@@ -12,8 +13,6 @@ from ..infrastructure import (
 
 from ..config import (
     DEFAULT_PRODUCTION_CONFIG,
-    WORDS_PER_TASK,
-    WORDS_PER_VIDEO,
     video_content_kind,
     WORKFLOW_ID,
     normalize_publish_date,
@@ -46,7 +45,7 @@ def language_learning_get_automation_plan(publish_date: str) -> dict:
     """返回 GitHub 生产与发布工作流共用的预检结果。"""
     try:
         normalized_date = normalize_publish_date(publish_date)
-        outputs = list_production_outputs(publish_date=normalized_date, business_line=WORKFLOW_ID)
+        outputs = current_language_outputs(list_production_outputs(publish_date=normalized_date, business_line=WORKFLOW_ID))
         publications = list_publication_records(business_line=WORKFLOW_ID, publish_date=normalized_date)
         github_outputs = [row for row in outputs if row.get("source") == "github_workflow" and row.get("r2_url")]
         existing_run_id = str(github_outputs[0].get("run_id") or "") if github_outputs else ""
@@ -54,20 +53,19 @@ def language_learning_get_automation_plan(publish_date: str) -> dict:
             (str(row.get("title") or "").strip(), str(row.get("platform") or "").strip(), int(row.get("content_part") or 1))
             for row in publications
         }
-        publishable = [row for row in (github_outputs or outputs) if str(row.get("content_kind") or "") == "en-zh"]
+        publishable = [row for row in (github_outputs or outputs) if row["content_kind"] in {"en-zh", "en-zh-quiz"}]
         targets = list(DEFAULT_PRODUCTION_CONFIG["publish_targets"])
         pending = [
             target for target in targets
             if any((str(row.get("title") or "").strip(), target, int(row.get("content_part") or 1)) not in published for row in publishable)
         ]
         expected = [
-            {"learning_mode": mode, "video_format": video_format, "content_part": part}
+            {"learning_mode": mode, "video_format": video_format, "content_part": 1}
             for mode in DEFAULT_PRODUCTION_CONFIG["learning_modes"]
             for video_format in DEFAULT_PRODUCTION_CONFIG["video_formats"]
-            for part in range(1, (WORDS_PER_TASK + WORDS_PER_VIDEO - 1) // WORDS_PER_VIDEO + 1 if video_format == "standard" else 2)
         ]
-        existing_parts = {(str(row.get("content_kind") or ""), int(row.get("content_part") or 1)) for row in outputs}
-        pending_outputs = [item for item in expected if (video_content_kind(item["learning_mode"], item["video_format"]), item["content_part"]) not in existing_parts]
+        existing_kinds = {row["content_kind"] for row in outputs if int(row["content_part"]) == 1}
+        pending_outputs = [item for item in expected if video_content_kind(item["learning_mode"], item["video_format"]) not in existing_kinds]
         should_generate = bool(pending_outputs)
         return {
             "publish_date": normalized_date,
