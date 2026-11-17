@@ -24,13 +24,13 @@ WORK_METRICS_FIELDS = "metrics,review,play_info"
 WORK_METRICS_HEADERS = {"Agw-Js-Conv": "str"}
 
 
-def read_creator_works(account_group: str) -> dict:
+def read_creator_works(account_group: str, *, metrics_only: bool = False) -> dict:
     """使用发布器的账号会话读取抖音作品和指标。"""
     endpoints = {
         "listPath": urlsplit(WORK_LIST_API).path,
         "metricsPath": urlsplit(WORK_METRICS_API).path,
         "listParams": WORK_LIST_PARAMS,
-        "metricsFields": WORK_METRICS_FIELDS,
+        "metricsFields": "metrics" if metrics_only else WORK_METRICS_FIELDS,
         "metricsHeaders": WORK_METRICS_HEADERS,
     }
     return run_publisher_cli([

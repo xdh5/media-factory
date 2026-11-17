@@ -5,7 +5,7 @@ import { listFinanceGeneratedImages, commitFinanceGeneratedImages, listFinanceSo
 import { validateWordEntries, commitLanguageLearningPack, claimLanguageLearningPack, releaseLanguageLearningPack, listRecentWords, validateAndRecordWords, listLanguageLearningPackTopics } from "./language-learning-data.mjs";
 
 import { financeCollectionReviewStats, recordFinanceCollectionReview } from "./finance-collection-reviews.mjs";
-import { listFinanceEditorialDrafts, commitFinanceEditorialDrafts } from "./finance-editorial.mjs";
+import { listFinanceEditorialDrafts, commitFinanceEditorialDrafts, listUsedFinanceEditorialDrafts } from "./finance-editorial.mjs";
 
 const ACTIVE_STATUSES = ["reserved", "completed", "published", "used"];
 function isAuthorized(request, env) {
@@ -307,6 +307,7 @@ export default {
       if (request.method === "GET" && url.pathname === "/v1/finance-collection-reviews") return await financeCollectionReviewStats(env);
       if (request.method === "POST" && url.pathname === "/v1/finance-collection-reviews") return await recordFinanceCollectionReview(request, env);
       if (request.method === "GET" && url.pathname === "/v1/finance-editorial-drafts") return await listFinanceEditorialDrafts(request, env);
+      if (request.method === "GET" && url.pathname === "/v1/finance-editorial-drafts/used") return await listUsedFinanceEditorialDrafts(request, env);
       if (request.method === "POST" && url.pathname === "/v1/finance-editorial-drafts") return await commitFinanceEditorialDrafts(request, env);
       if (request.method === "GET" && url.pathname === "/v1/finance-source-authors") {
         return await listFinanceSourceAuthors(env);

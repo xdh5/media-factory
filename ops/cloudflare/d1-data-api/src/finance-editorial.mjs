@@ -47,3 +47,19 @@ export async function commitFinanceEditorialDrafts(request, env) {
   const results = await env.DB.batch(statements);
   return Response.json({ saved_count: results.reduce((sum, row) => sum + Number(row.meta.changes), 0) });
 }
+
+export async function listUsedFinanceEditorialDrafts(request, env) {
+  const runIds = new URL(request.url).searchParams.get('run_ids')?.split(',') ?? [];
+  if (runIds.length < 1 || runIds.length > 100 || runIds.some(id => !id.trim() || id.length > 200)) {
+    throw new Error('run_ids 必须包含 1 至 100 个财经生产批次');
+  }
+  const { results } = await env.DB.prepare(`SELECT u.run_id, u.aweme_id, e.content_json
+    FROM douyin_research_script_usage u
+    JOIN finance_editorial_drafts e ON e.aweme_id = u.aweme_id
+    WHERE u.workflow = 'finance' AND u.status = 'used'
+      AND u.run_id IN (SELECT value FROM json_each(?))
+    ORDER BY u.run_id, u.aweme_id`).bind(JSON.stringify(runIds)).all();
+  return Response.json({ records: results.map(({ content_json, ...row }) => ({
+    ...row, editorial: JSON.parse(content_json),
+  })) });
+}

@@ -199,3 +199,14 @@ def save_shot_images(records: list[dict]) -> dict:
     if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
         raise MediaRecordsRequestError("财经镜头图写入接口缺少 records 数组")
     return payload
+
+
+def list_used_editorial_drafts(run_ids: list[str]) -> list[dict]:
+    """按生产批次读取已使用的财经定稿。"""
+    payload = _request(
+        "GET", "/v1/finance-editorial-drafts/used",
+        query={"run_ids": ",".join(run_ids)},
+    )
+    if not isinstance(payload, dict) or not isinstance(payload.get("records"), list):
+        raise MediaRecordsRequestError("已使用定稿接口缺少 records 数组")
+    return payload["records"]
