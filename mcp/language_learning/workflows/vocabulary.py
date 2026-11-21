@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 
-from workflows.language_learning.infrastructure.packs import list_language_learning_pack_topics
+from media_factory_mcp.language_learning.infrastructure.packs import list_language_learning_pack_topics
 from tools.database.topic_history import list_recent_topics as get_topic
 from tools.database.production_records import list_production_outputs
 
@@ -22,7 +22,7 @@ from media_factory_mcp.language_learning.services.prompt_service import (
     build_topic_prompt,
     build_vocabulary_prompt, parse_vocabulary_response, validate_topic_response,
 )
-from workflows.language_learning.tools.packs import list_recent_words, validate_words
+from media_factory_mcp.language_learning.services.vocabulary import list_recent_words, validate_words
 from .tasks import _map_error
 
 

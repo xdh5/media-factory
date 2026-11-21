@@ -1,12 +1,11 @@
-"""语言词包领取、词表校验与生产计划。"""
+"""语言生产计划、词包领取与入库词表整理。"""
 
 from __future__ import annotations
 from datetime import date
 import json, re, unicodedata
-from tools.database._errors import DatabaseError
 from tools.database.production_records import list_production_outputs
 from tools.database.publication_records import list_publication_records
-from workflows.language_learning.infrastructure.packs import list_recent_words as records_list_recent_words, claim_language_learning_pack, release_language_learning_pack
+from workflows.language_learning.infrastructure.packs import claim_language_learning_pack, release_language_learning_pack
 from workflows.language_learning.parameters import (
     MINIMUM_NEW_WORDS,
     SUPPORTED_LEARNING_MODES,
@@ -21,7 +20,6 @@ from workflows.language_learning.parameters import (
     production_dirs,
     production_run_id,
 )
-from workflows.language_learning.errors.exceptions import VocabularyHistoryError, VocabularyReuseError
 from copy import deepcopy
 from tools.publish_media.local_assets import current_language_outputs
 from workflows.language_learning.errors.mapping import _map_error
@@ -31,17 +29,6 @@ def normalize_english_word(value: str) -> str:
     """归一化英语单词：NFKC + 大小写折叠 + 弯引号替换 + 空白折叠，与词库入库口径一致。"""
     normalized = unicodedata.normalize("NFKC", str(value or "")).casefold().replace("’", "'")
     return re.sub(r"\s+", " ", normalized).strip()
-
-
-def list_recent_words() -> list[str]:
-    """返回 D1 最近 100 天使用过的英语词汇。"""
-    try:
-        return records_list_recent_words(WORD_HISTORY_DAYS)
-    except DatabaseError as exc:
-        raise VocabularyHistoryError(
-            f"读取 Cloudflare D1 最近 {WORD_HISTORY_DAYS} 天单词历史失败：{exc.message}",
-            exc.details,
-        ) from exc
 
 
 def _word_entries(words_by_mode: dict) -> list[dict]:
@@ -74,49 +61,6 @@ def build_database_word_entries(words_by_mode: dict) -> list[dict]:
         }
         for entry in _word_entries(words_by_mode)
     ]
-
-
-def validate_words(*, run_id: str, topic: str, words_by_mode: dict) -> dict:
-    """生产阶段只读取 D1 校验新词比例，不写入任何话题或单词。"""
-    rid = str(run_id or "").strip()
-    clean_topic = str(topic or "").strip()
-    if not rid or not clean_topic:
-        raise VocabularyHistoryError("校验单词历史时 run_id 和 topic 不能为空")
-    if re.fullmatch(r"run-(\d{6,})", rid) is None:
-        raise VocabularyHistoryError(f"run_id 格式不正确：{rid}")
-    entries = _word_entries(words_by_mode)
-    try:
-        recent = {normalize_english_word(word) for word in records_list_recent_words(WORD_HISTORY_DAYS)}
-    except DatabaseError as exc:
-        raise VocabularyHistoryError(
-            f"读取 Cloudflare D1 单词历史失败：{exc.message}",
-            exc.details,
-        ) from exc
-    repeated_words = [entry["english"] for entry in entries if entry["normalized_english"] in recent]
-    new_word_count = len(entries) - len(repeated_words)
-    if new_word_count < MINIMUM_NEW_WORDS:
-        raise VocabularyReuseError(
-            f"本次只有 {new_word_count} 个新词；{WORDS_PER_TASK} 个单词中至少需要 "
-            f"{MINIMUM_NEW_WORDS} 个未在最近 {WORD_HISTORY_DAYS} 天使用",
-            {
-                "history_days": WORD_HISTORY_DAYS,
-                "minimum_new_words": MINIMUM_NEW_WORDS,
-                "new_word_count": new_word_count,
-                "repeated_word_count": len(repeated_words),
-                "repeated_words": repeated_words,
-            },
-        )
-    return {
-        "recorded": False,
-        "pending_publish": True,
-        "run_id": rid,
-        "word_count": len(entries),
-        "new_word_count": new_word_count,
-        "repeated_word_count": len(repeated_words),
-        "repeated_words": repeated_words,
-        "history_days": WORD_HISTORY_DAYS,
-        "minimum_new_words": MINIMUM_NEW_WORDS,
-    }
 
 
 def language_learning_get_production_config(topic: str = "", learning_modes: list[str] | None = None) -> dict:

@@ -8,7 +8,7 @@ from tools.database.publication_records import list_publication_records
 from tools.database.account_groups import list_publishing_account_groups
 
 from workflows.finance.parameters import BEIJING_TIMEZONE
-from workflows.finance.infrastructure.scripts import list_used_editorial_drafts
+from media_factory_mcp.finance.infrastructure.collection import list_used_editorial_drafts
 
 
 def _title_key(title: str) -> str:

@@ -16,7 +16,7 @@ from workflows.finance.errors.exceptions import WorkflowStepError
 from workflows.finance.parameters import (
     normalize_publish_date,
 )
-from workflows.finance.infrastructure.scripts import get_collection_review_stats
+from media_factory_mcp.finance.infrastructure.collection import get_collection_review_stats
 
 
 class CopyReview(TypedDict):

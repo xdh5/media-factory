@@ -1,6 +1,7 @@
 """财经未使用稿件的宿主定稿入口。"""
 
-from workflows.finance.tools.drafts import list_editorial_drafts, save_editorial_drafts
+from workflows.finance.tools.drafts import list_editorial_drafts
+from media_factory_mcp.finance.services.editorial import save_editorial_drafts
 from .common import _map_error
 
 

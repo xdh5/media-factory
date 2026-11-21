@@ -1,7 +1,7 @@
 """财经稿件和生产计划编排。"""
 from __future__ import annotations
 
-from workflows.finance.infrastructure.scripts import get_source_script_stats
+from media_factory_mcp.finance.infrastructure.collection import get_source_script_stats
 from tools.database.production_records import list_production_outputs
 from workflows.finance.tools.drafts import finance_get_automation_plan
 from tools.database.topic_history import list_recent_topics as get_topic

@@ -9,8 +9,8 @@ from pathlib import Path
 
 from workflows.finance.parameters import COLLECTION_CACHE_ROOT
 from workflows.finance.errors.exceptions import WorkflowStepError
-from workflows.finance.infrastructure.scripts import record_collection_review, save_transcribed_scripts
-from workflows.finance.tools.drafts import validate_editorial, save_editorial_drafts
+from media_factory_mcp.finance.infrastructure.collection import record_collection_review, save_transcribed_scripts
+from media_factory_mcp.finance.services.editorial import validate_editorial, save_editorial_drafts
 from workflows.finance.tools.drafts import bare_text
 
 _PROMPT = package_resource_path("media_factory_mcp", "finance", "prompts", "copy-host-review.md")

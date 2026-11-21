@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 from list_author_works import AuthorWorksError, resolve_author_nickname, resolve_author_profile
-from workflows.finance.infrastructure.scripts import (
-    add_source_author,
-    list_source_authors,
-    remove_source_author,
-)
+from media_factory_mcp.finance.infrastructure.collection import add_source_author, list_source_authors, remove_source_author
 
 from workflows.finance.errors.exceptions import WorkflowStepError
 from .common import _map_error

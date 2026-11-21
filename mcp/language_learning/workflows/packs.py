@@ -8,8 +8,8 @@ from pathlib import Path
 
 
 from workflows.language_learning.infrastructure.packs import claim_language_learning_pack
-from workflows.language_learning.infrastructure.packs import commit_language_learning_pack
-from workflows.language_learning.infrastructure.packs import list_language_learning_pack_topics
+from media_factory_mcp.language_learning.infrastructure.packs import commit_language_learning_pack
+from media_factory_mcp.language_learning.infrastructure.packs import list_language_learning_pack_topics
 from tools.r2_files import upload_file
 
 from workflows.language_learning.parameters import (
@@ -26,7 +26,8 @@ from media_factory_mcp.language_learning.services.subject_cutouts import (
 from media_factory_mcp.language_learning.services.prompt_service import (
     build_subject_sheet_prompt, build_vocabulary_prompt, parse_vocabulary_response,
 )
-from workflows.language_learning.tools.packs import list_recent_words, normalize_english_word
+from media_factory_mcp.language_learning.services.vocabulary import list_recent_words
+from workflows.language_learning.tools.packs import normalize_english_word
 from .tasks import _map_error
 
 
