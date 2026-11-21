@@ -6,8 +6,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from core.paths import PROJECT_DATA_ROOT, PROJECT_ROOT as ROOT
-SERVERS = {name: f"core.mcp.{name}" for name in (
+from tools.paths import PROJECT_DATA_ROOT, PROJECT_ROOT as ROOT
+SERVERS = {name: f"media_factory_mcp.{name}" for name in (
     "finance", "language_learning", "anime", "publishing"
 )}
 
@@ -35,5 +35,5 @@ def llm_configuration() -> dict:
             "base_url": os.environ["AGENT_BASE_URL"].rstrip("/"),
             "model": os.environ["AGENT_MODEL"],
         }
-    from core.tools.qwen_text.qwen_text import get_qwen_configuration
+    from tools.qwen_text.qwen_text import get_qwen_configuration
     return get_qwen_configuration()

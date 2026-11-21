@@ -1,0 +1,84 @@
+"""财经生产参数、运行目录和资源位置。"""
+
+from tools.resources import package_resource_path
+from tools.production_dates import (
+    BEIJING_TIMEZONE as BEIJING_TIMEZONE,
+    normalize_publish_date as normalize_publish_date,
+    production_run_id as production_run_id,
+    publish_date_from_run_id as publish_date_from_run_id,
+)
+
+from pathlib import Path
+
+from tools.paths import (
+    PROJECT_DATA_ROOT as PROJECT_DATA_ROOT,
+    PROJECT_CACHE_ROOT as PROJECT_CACHE_ROOT,
+    PROJECT_OUTPUT_ROOT as PROJECT_OUTPUT_ROOT,
+    PROJECT_TMP_ROOT as PROJECT_TMP_ROOT,
+)
+
+MCP_ID = "finance"
+SOURCE_COLLECTION_CODE = "finance"
+SOURCE_RESERVATION_MINUTES = 120
+DRAFT_FILE_NAME = "draft.json"
+STORYBOARD_CONTEXT_FILE_NAME = "storyboard-context.json"
+STORYBOARD_TEXT_FILE_NAME = "storyboard.txt"
+
+TOPIC_DEDUPLICATION_DAYS = 30
+VIDEO_SIZE = "1920x1080"
+VIDEO_RADIO = "16:9"
+CONTENT_KIND = "finance"
+AUTOMATION_DAILY_OUTPUT_COUNT = 2
+
+# 正文在两类必做改动（品牌替换、连载指涉改写）之外允许措辞级改写。
+# 原稿入库前已补标点并修正错别字，制作时视为文字和标点正确。
+# 但大结构与信息量必须与原稿一致；
+# 每行上限约两行字幕容量（显示层再按词边界均衡换行），只挡超长行。
+ARTICLE_MAX_LINE_LENGTH = 36
+
+# 财经生产使用正版实拍视频。
+MATERIAL_STOCK_VIDEO = "stock_video"
+MATERIAL_STRATEGIES = (MATERIAL_STOCK_VIDEO,)
+
+# 财经生产参数由 workflow 统一维护。
+DEFAULT_PRODUCTION_CONFIG = {
+    "material_strategy": MATERIAL_STOCK_VIDEO,
+    "tts_config": {
+        "voice": "fish:28df7fe4d3ec45f692af03d0a372805b",
+        "rate": "+10%",
+        "trim_trailing_silence": True,
+    },
+    "video_config": {
+        "orientation": "landscape",
+        "per_provider": 8,
+        "providers": ["pexels", "pixabay", "coverr"],
+        "soft_blur_sigma": 0.55,
+    },
+    "production_config": {
+        "bgm_path": "tools/static/bgm/easy-lemon-kevin-macleod.mp3",
+        "bgm_gain": 0.672,
+        "cover_frame_seconds": 0.03333333333333333,
+        "intro": "slide_in_shutter",
+        "shot_stickers": ["rec"],
+    },
+}
+
+STORYBOARD_PROMPT_PATH = package_resource_path("workflows", "finance", "prompts", "storyboard.md")
+
+
+COLLECTION_CACHE_ROOT = PROJECT_CACHE_ROOT / "collect_finance_copy"
+
+
+def production_dirs(run_id: str, content_part: int = 1) -> tuple[Path, Path]:
+    """本次生产目录：(cache_dir, output_dir)。
+
+    同一天第二条及以后（content_part >= 2）使用 run-YYYYMMDD-partN 后缀目录；
+    run_id 本身保持 run-YYYYMMDD，供 D1 唯一键 (run_id, content_part) 使用。
+    """
+    rid = str(run_id).strip()
+    part = int(content_part or 1)
+    suffix = "" if part <= 1 else f"-part{part}"
+    return (
+        PROJECT_CACHE_ROOT / MCP_ID / f"{rid}{suffix}",
+        PROJECT_OUTPUT_ROOT / MCP_ID / f"{rid}{suffix}",
+    )

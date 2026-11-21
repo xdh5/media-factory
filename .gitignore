@@ -45,8 +45,6 @@ Thumbs.db
 /apps/desktop/*-results.json
 /apps/desktop/verification.md
 /agent/verification.md
-/docs/*-observation-*.md
-/docs/diagnostics/
 /evals/diagnostics/historical_cases.json
 
 # 本地 OAuth 凭据，不进入版本库

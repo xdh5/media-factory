@@ -1,0 +1,269 @@
+"""把 GitHub Workflow 成片拉回本地，文件名与 R2 对象名保持一致。"""
+
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+from tools.media_records import commit_production_outputs, list_production_outputs
+from tools.generate_final_video import safe_filename
+from tools.media_files import MediaFilesError, download_public_file
+
+from ._constants import PROJECT_ROOT
+from ._errors import InvalidPublishRequestError
+
+
+def _record_local_path(record: dict) -> Path:
+    """容器挂载工作区时读取宿主登记的本地成片路径。"""
+    if _r2_asset_subdirectory(record):
+        return local_video_path(record)
+    value = str(record.get("local_path") or "")
+    normalized = value.replace("\\", "/")
+    marker = "/cache/output/"
+    if Path("/.dockerenv").exists() and marker in normalized:
+        return (PROJECT_ROOT / "cache" / "output" / normalized.split(marker, 1)[1]).resolve()
+    return Path(value).resolve()
+
+
+def matching_content_kinds(content_kind: str | None) -> set[str] | None:
+    """en-zh / en-ko 同时包含对应问答版；显式 *-quiz 只匹配问答版。"""
+    wanted = str(content_kind or "").strip()
+    if not wanted:
+        return None
+    if wanted in {"en-zh", "en-ko"}:
+        return {wanted, f"{wanted}-quiz"}
+    return {wanted}
+
+
+def current_language_outputs(rows: list[dict]) -> list[dict]:
+    """优先选整条原版，旧版必须同时具备两段。"""
+    standard = {"en-zh", "en-ko"}
+    grouped: dict[tuple[str, str, str], dict[int, dict]] = {}
+    for row in rows:
+        if row["content_kind"] in standard:
+            key = (row["source"], row["run_id"], row["content_kind"])
+            grouped.setdefault(key, {})[int(row["content_part"])] = row
+    selected = set()
+    for parts in grouped.values():
+        first = parts.get(1)
+        if first is None:
+            continue
+        if first["title"].endswith(" 1/2"):
+            if 2 not in parts:
+                continue
+            selected.add(id(parts[2]))
+        selected.add(id(first))
+    return [row for row in rows if row["content_kind"] not in standard or id(row) in selected]
+
+
+def stored_video_filename(record: dict) -> str:
+    """本地/R2 成片文件名：优先使用 r2_url 里的对象名，避免与标题字段二次转换不一致。"""
+    r2_url = str(record.get("r2_url") or "").strip()
+    if r2_url:
+        name = unquote(Path(urlparse(r2_url).path).name).strip()
+        if name:
+            return name
+    title = str(record.get("title") or "").strip()
+    if not title:
+        raise InvalidPublishRequestError("production_outputs 缺少 r2_url 或 title，无法确定本地文件名")
+    return f"{safe_filename(title)}.mp4"
+
+
+def _r2_dir_for_record(record: dict) -> str:
+    """part≥2 的目录带 -partN 后缀，与 finance upload_to_r2 的 r2_dir 规则一致。"""
+    run_id = str(record.get("run_id") or "").strip()
+    part = int(record.get("content_part") or 1)
+    return run_id if part <= 1 else f"{run_id}-part{part}"
+
+
+def _r2_asset_subdirectory(record: dict) -> str:
+    """保留云端产物版本目录，避免新版成片复用同名旧文件。"""
+    key = unquote(urlparse(str(record.get("r2_url") or "")).path.lstrip("/"))
+    prefix = f"runs/{record.get('business_line')}/{_r2_dir_for_record(record)}/"
+    if not key.startswith(prefix):
+        return ""
+    parent = str(Path(key[len(prefix):]).parent)
+    return "" if parent == "." else parent
+
+
+def local_video_path(record: dict) -> Path:
+    """本地成片路径：cache/output/{业务线}/{run_id}[-partN]/{R2对象名}。"""
+    business_line = str(record.get("business_line") or "").strip()
+    run_id = str(record.get("run_id") or "").strip()
+    if not business_line or not run_id:
+        raise InvalidPublishRequestError("production_outputs 缺少 business_line 或 run_id")
+    filename = stored_video_filename(record)
+    relative_dirs = (Path(business_line) / _r2_dir_for_record(record) / _r2_asset_subdirectory(record),)
+    # 新成片写在 cache/output；根目录 output 只用于读取尚未迁走的旧文件。
+    roots = (PROJECT_ROOT / "cache" / "output", PROJECT_ROOT / "output")
+    for root in roots:
+        for relative in relative_dirs:
+            base = root / relative
+            if base.is_dir():
+                return (base / filename).resolve()
+    return (roots[0] / relative_dirs[0] / filename).resolve()
+
+
+def r2_object_key(record: dict) -> str:
+    """优先使用已登记的完整对象路径，保留语言类型目录和分段文件名。"""
+    r2_url = str(record.get("r2_url") or "").strip()
+    if r2_url:
+        key = unquote(urlparse(r2_url).path.lstrip("/"))
+        if not key or key.endswith("/"):
+            raise InvalidPublishRequestError("production_outputs 的 r2_url 缺少成片对象路径")
+        return key
+    return f"runs/{record['business_line']}/{_r2_dir_for_record(record)}/{stored_video_filename(record)}"
+
+
+def _materialize_finance_publish_metadata(record: dict, output_dir: Path) -> None:
+    """从 R2 拉取财经发布文本；兼容尚未上传这些文件的旧任务。"""
+    if str(record.get("business_line") or "").strip() != "finance":
+        return
+
+    prefix = f"runs/finance/{_r2_dir_for_record(record)}"
+    for filename in ("title.txt", "short-title.txt", "publish-copy.txt"):
+        destination = output_dir / filename
+        if destination.is_file():
+            continue
+        try:
+            download_public_file(f"{prefix}/{filename}", destination)
+        except MediaFilesError:
+            # 旧 Workflow 产物可能只有视频，保留 D1 标题和标签兜底。
+            continue
+
+
+def materialize_github_workflow_output(record: dict) -> dict:
+    """从 R2 下载 github_workflow 成片，本地文件名与 R2 对象名一致，并写入 local_mcp 记录。"""
+    business_line = str(record.get("business_line") or "").strip()
+    run_id = str(record.get("run_id") or "").strip()
+    content_kind = str(record.get("content_kind") or "").strip()
+    content_part = int(record.get("content_part") or 1)
+    title = str(record.get("title") or "").strip()
+    if not business_line or not run_id or not content_kind or not title:
+        raise InvalidPublishRequestError("production_outputs 缺少 business_line、run_id、content_kind 或 title")
+
+    destination = local_video_path(record)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if not destination.is_file():
+        download_public_file(r2_object_key(record), destination)
+    _materialize_finance_publish_metadata(record, destination.parent)
+
+    payload = {
+        "production_id": f"local_mcp:{business_line}:{run_id}:{content_kind}:{content_part}",
+        "run_id": run_id,
+        "publish_date": str(record.get("publish_date") or "").strip(),
+        "business_line": business_line,
+        "content_kind": content_kind,
+        "content_part": content_part,
+        "title": title,
+        "hashtags": str(record.get("hashtags") or ""),
+        "source": "local_mcp",
+        "local_path": str(destination),
+    }
+    r2_url = str(record.get("r2_url") or "").strip()
+    if r2_url:
+        payload["r2_url"] = r2_url
+    saved = commit_production_outputs([payload])["records"][0]
+    return {**saved, "local_path": str(destination)}
+
+
+def ensure_local_publish_items(
+    business_line: str,
+    publish_date: str,
+    *,
+    content_kind: str | None = None,
+) -> list[dict]:
+    """若 local_mcp 缺失或本地文件不存在，则从 R2 拉回 github_workflow 成片。"""
+    wanted_kinds = matching_content_kinds(content_kind)
+    local_rows = list_production_outputs(
+        publish_date=publish_date,
+        business_line=business_line,
+        source="local_mcp",
+    )
+    if business_line == "language_learning":
+        local_rows = current_language_outputs(local_rows)
+    if wanted_kinds is not None:
+        local_rows = [item for item in local_rows if str(item.get("content_kind") or "") in wanted_kinds]
+
+    def _is_valid(row: dict) -> bool:
+        current = _record_local_path(row)
+        # 兼容历史本地产物文件名与 R2 对象名不一致的情况；发布时使用 D1 已登记且存在的本地文件。
+        return current.is_file() or local_video_path(row).is_file()
+
+    # 本地产物已有 R2 地址时，仅在本地文件缺失后恢复该文件。
+    missing = [(index, row) for index, row in enumerate(local_rows) if not _is_valid(row) and row.get("r2_url")]
+    with ThreadPoolExecutor(max_workers=2) as downloads:
+        restored = downloads.map(materialize_github_workflow_output, [row for _, row in missing])
+        for (index, _), row in zip(missing, restored):
+            local_rows[index] = row
+
+    valid_local_rows = [row for row in local_rows if _is_valid(row)]
+    if business_line == "language_learning":
+        valid_local_rows = current_language_outputs(valid_local_rows)
+    valid_kinds = {str(row.get("content_kind") or "") for row in valid_local_rows}
+    if wanted_kinds is None:
+        if valid_local_rows:
+            return valid_local_rows
+        missing_kinds = None
+    else:
+        missing_kinds = wanted_kinds - valid_kinds
+        if valid_local_rows:
+            if not missing_kinds:
+                return valid_local_rows
+
+    github_rows = list_production_outputs(
+        publish_date=publish_date,
+        business_line=business_line,
+        source="github_workflow",
+    )
+    if business_line == "language_learning":
+        github_rows = current_language_outputs(github_rows)
+    if missing_kinds is not None:
+        github_rows = [item for item in github_rows if str(item.get("content_kind") or "") in missing_kinds]
+    elif wanted_kinds is not None:
+        github_rows = [item for item in github_rows if str(item.get("content_kind") or "") in wanted_kinds]
+    with ThreadPoolExecutor(max_workers=2) as downloads:
+        valid_local_rows.extend(downloads.map(materialize_github_workflow_output, github_rows))
+    return valid_local_rows
+
+
+def enrich_local_publish_item(row: dict) -> dict | None:
+    """读取 local_mcp 记录及同目录 short-title / publish-copy。"""
+    title = str(row.get("title") or "").strip()
+    if not title:
+        return None
+    expected = local_video_path(row)
+    local_path = _record_local_path(row)
+    if local_path.is_file():
+        pass
+    elif expected.is_file():
+        local_path = expected
+        if str(row.get("local_path") or "").strip() != str(expected):
+            commit_production_outputs([{**row, "source": "local_mcp", "local_path": str(expected)}])
+    else:
+        return None
+
+    output_dir = expected.parent
+    if not output_dir.is_dir() and row.get("r2_url"):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        _materialize_finance_publish_metadata(row, output_dir)
+    title_path = output_dir / "title.txt"
+    short_title_path = output_dir / "short-title.txt"
+    copy_path = output_dir / "publish-copy.txt"
+    content_kind = str(row.get("content_kind") or "").strip()
+    hashtags = str(row.get("hashtags") or "").strip()
+    if content_kind.startswith(("en-ko", "en-zh")):
+        publish_copy = hashtags
+    elif copy_path.is_file():
+        publish_copy = copy_path.read_text(encoding="utf-8").strip()
+    else:
+        publish_copy = title
+    return {
+        **row,
+        "local_path": str(local_path),
+        "title": title,
+        "short_title": short_title_path.read_text(encoding="utf-8").strip() if short_title_path.is_file() else "",
+        "publish_copy": publish_copy,
+        "hashtags": hashtags,
+    }

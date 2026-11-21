@@ -46,10 +46,11 @@ async function start() {
   window.on('closed', () => app.quit());
   const python = path.join(bundle, 'python', 'python.exe');
   if (!fs.existsSync(python)) throw new Error('缺少内嵌 Python，请运行完整构建脚本。');
-  backend = spawn(python, ['-m', 'desktop.supervisor', '--home', dataRoot, '--bundle', bundle,
+  backend = spawn(python, ['-X', 'pycache_prefix=' + path.join(dataRoot, 'workspace', 'cache', 'pycache'), '-m', 'desktop.supervisor', '--home', dataRoot, '--bundle', bundle,
     '--parent-pid', String(process.pid), '--ready-file', readyFile], {
-    cwd: path.join(bundle, 'project'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: path.join(bundle, 'services'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
     env: {...process.env, MEDIA_FACTORY_SESSION_TOKEN: token, PYTHONUTF8: '1',
+      PYTHONPYCACHEPREFIX: path.join(dataRoot, 'workspace', 'cache', 'pycache'),
       PATH: path.join(bundle, 'bin') + path.delimiter + process.env.PATH}
   });
   // 服务日志由 Python 写入。

@@ -1,52 +1,42 @@
 # syntax=docker/dockerfile:1
-
-# 基础镜像：Python 3.12（Debian trixie）
 FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /uvx /bin/
 
 ENV PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PYTHONUTF8=1 \
+    PYTHONPYCACHEPREFIX=/app/cache/pycache \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-# ---- 层 1：apt 换国内源（阿里云）并安装 ffmpeg ----
-# 缓存挂载：deb 包与索引留在本机缓存，即使以后修改此层（如新增 apt 包），
-# ffmpeg 等旧包也直接从缓存读，不再联网下载
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    set -eux; \
-    rm -f /etc/apt/apt.conf.d/docker-clean; \
-    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-        sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources; \
-    fi; \
-    if [ -f /etc/apt/sources.list ]; then \
-        sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list; \
-    fi; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends ffmpeg
-
-# ---- 层 2：Python 依赖（清华 PyPI 源）----
-# 只先拷贝依赖声明：pyproject.toml 不变时此层缓存命中，改代码不重装依赖；
-# 变动重装时 wheel 从本机 pip 缓存读，不再联网下载
-COPY pyproject.toml ./
-ARG INSTALL_AGENT=false
-RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-    if [ "$INSTALL_AGENT" = "true" ]; then \
-        pip install -i https://pypi.tuna.tsinghua.edu.cn/simple '.[agent]'; \
-    else \
-        pip install -i https://pypi.tuna.tsinghua.edu.cn/simple .; \
-    fi && rm -rf build media_factory.egg-info
-
-# ---- 层 3：项目代码与静态资源 ----
-# 只复制运行代码、技能和媒体资源。
-COPY AGENTS.md LICENSE ./
-COPY core/ core/
+COPY pyproject.toml uv.lock LICENSE ./
+COPY integrations/media-collector/pyproject.toml integrations/media-collector/pyproject.toml
+COPY integrations/media-publisher/python/pyproject.toml integrations/media-publisher/python/pyproject.toml
+COPY integrations/media-collector/ integrations/media-collector/
+COPY integrations/media-publisher/python/ integrations/media-publisher/python/
+COPY tools/ tools/
 COPY agent/ agent/
-COPY .agents/ .agents/
-COPY docs/ docs/
-COPY integrations/ integrations/
-
-# 库文件与缓存由部署侧挂载。成片在 /app/cache/output，临时文件在 /app/cache/tmp。
+COPY mcp/ mcp/
+COPY workflows/ workflows/
+COPY apps/desktop/ apps/desktop/
+COPY ops/anime/ ops/anime/
+COPY .github/scripts/ .github/scripts/
+COPY .agents/skills/ .agents/skills/
+ARG INSTALL_AGENT=false
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ "$INSTALL_AGENT" = "true" ]; then \
+        uv sync --locked --no-editable --no-dev --extra agent; \
+    else \
+        uv sync --locked --no-editable --no-dev; \
+    fi
+ENV MEDIA_FACTORY_WORKSPACE=/app \
+    MEDIA_PUBLISHER_DIR=/app/integrations/media-publisher \
+    PYTHONSAFEPATH=1
+WORKDIR /app
 VOLUME ["/app/data", "/app/cache"]
-
-# 工作流 MCP 在本机 stdio 运行；镜像内默认进入 python 供调试
 CMD ["python"]

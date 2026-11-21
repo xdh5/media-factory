@@ -84,23 +84,19 @@ def main():
     application.mkdir(parents=True, exist_ok=True)
     for name in ("main.cjs", "package.json", "branding.js"):
         shutil.copy2(DESKTOP_SOURCE / name, application / name)
-    project = application / "project"
+    # 运行目录只交付发布器资源，Python 业务代码通过 uv 安装。
+    for legacy in (application / "project", application / "agent-packages"):
+        if legacy.exists():
+            legacy.resolve().relative_to(output)
+            shutil.rmtree(legacy)
+    project = application / "services"
     project.mkdir(exist_ok=True)
     ignored = shutil.ignore_patterns(".git", "node_modules", "__pycache__", ".env", "data", "cache", "*.sqlite*", "*.db", "*.log", "client_secret*.json", "*token.json")
-    for name in ("core", "agent", "desktop", "docs", ".agents"):
-        source = DESKTOP_SOURCE if name == "desktop" else ROOT / name
-        shutil.copytree(source, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
-    (project / "ops").mkdir(exist_ok=True)
-    shutil.copy2(ROOT / "ops/__init__.py", project / "ops/__init__.py")
-    for name in ("anime", "github_actions"):
-        shutil.copytree(ROOT / "ops" / name, project / "ops" / name, ignore=ignored,
-                        dirs_exist_ok=True, copy_function=copy_changed)
     publisher = ROOT / "integrations/media-publisher"
     if not (publisher / "node_modules/electron/dist/electron.exe").is_file() or not (publisher / "dist/electron/main.js").is_file():
         raise RuntimeError("构建机需要先在 integrations/media-publisher 执行 npm ci 与 npm run build:dir")
     for integration, directories, files in (
-        ("media-collector", ("core",), ("LICENSE",)),
-        ("media-publisher", ("python", "dist/electron"), ("LICENSE", "package.json")),
+        ("media-publisher", ("dist/electron",), ("LICENSE", "package.json")),
     ):
         source = ROOT / "integrations" / integration
         destination = project / "integrations" / integration
@@ -110,26 +106,20 @@ def main():
         for name in files:
             copy_changed(source / name, destination / name)
     copy_publisher_dependencies(publisher, project / "integrations/media-publisher")
-    for name in ("AGENTS.md", "pyproject.toml", "LICENSE", ".env.example"):
+    for name in ("LICENSE", ".env.example"):
         shutil.copy2(ROOT / name, project / name)
     runtime = application / "python"
-    runtime.mkdir(exist_ok=True)
+    agent_runtime = application / "agent-python"
     python_archive = download("https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip", "python-3.12.10-embed-amd64.zip")
-    if not args.reuse_runtime or not (runtime / "python.exe").is_file():
-        with zipfile.ZipFile(python_archive) as source:
-            source.extractall(runtime)
-    (runtime / "python312._pth").write_text("python312.zip\n.\nLib/site-packages\n../project\nimport site\n", encoding="utf-8")
-    agent_packages = application / "agent-packages"
-    agent_packages.mkdir(exist_ok=True)
-    site = runtime / "Lib/site-packages"
-    site.mkdir(parents=True, exist_ok=True)
-    (site / "sitecustomize.py").write_text(
-        '\"\"\"加载外部工作区与进程专用依赖。\"\"\"\n'
-        'import os, sys\n'
-        'root = os.getenv("MEDIA_FACTORY_WORKSPACE")\n'
-        'if root:\n    sys.path.insert(0, root)\n'
-        'packages = os.getenv("MEDIA_FACTORY_AGENT_PACKAGES")\n'
-        'if packages:\n    sys.path.insert(0, packages)\n', encoding="utf-8")
+    for environment_root in (runtime, agent_runtime):
+        environment_root.mkdir(exist_ok=True)
+        if not args.reuse_runtime or not (environment_root / "python.exe").is_file():
+            with zipfile.ZipFile(python_archive) as source:
+                source.extractall(environment_root)
+        (environment_root / "python312._pth").write_text(
+            "python312.zip\n.\nLib/site-packages\nimport site\n", encoding="utf-8")
+        (environment_root / "Lib/site-packages").mkdir(parents=True, exist_ok=True)
+        (environment_root / "Lib/site-packages/sitecustomize.py").unlink(missing_ok=True)
     binaries = application / "bin"
     binaries.mkdir(exist_ok=True)
     ffmpeg = shutil.which("ffmpeg")
@@ -137,22 +127,26 @@ def main():
         raise RuntimeError("构建机缺少 ffmpeg；请准备 ffmpeg 与 ffprobe 后重新构建")
     for name in ("ffmpeg.exe", "ffprobe.exe"):
         copy_changed(Path(ffmpeg).parent / name, binaries / name)
-    requirements = ROOT / "ops/desktop/runtime-requirements.txt"
     if args.prepare_only:
         print("只完成资源准备，尚未安装依赖，不是可用绿色版。", flush=True)
         return
-    environment = dict(os.environ, PYTHONUTF8="1", PIP_DISABLE_PIP_VERSION_CHECK="1")
-    if not args.reuse_runtime:
-        subprocess.run([sys.executable, "-m", "pip", "install", "--no-compile", "--timeout", "120", "--retries", "4", "--target", str(runtime / "Lib/site-packages"),
-                        "--upgrade", "--only-binary=:all:", "-r", str(requirements), str(ROOT) + "[desktop]"], env=environment, check=True)
-    if not args.reuse_runtime:
-        subprocess.run([sys.executable, "-m", "pip", "install", "--no-compile", "--timeout", "120", "--retries", "4",
-                        "--target", str(agent_packages), "--upgrade", "--only-binary=:all:", str(ROOT) + "[agent]"],
-                       env=environment, check=True)
-    for name in ("core", "agent", "desktop", "docs", ".agents"):
-        source = DESKTOP_SOURCE if name == "desktop" else ROOT / name
-        shutil.copytree(source, project / name, ignore=ignored, dirs_exist_ok=True, copy_function=copy_changed)
-    shutil.copy2(DESKTOP_SOURCE / "main.cjs", application / "main.cjs")
+    environment = dict(os.environ, PYTHONUTF8="1")
+    packages = [str(ROOT), str(ROOT / "integrations/media-collector"),
+                str(ROOT / "integrations/media-publisher/python")]
+    dependency_identity = hashlib.sha256((ROOT / "uv.lock").read_bytes()).hexdigest()
+    for extra, environment_root in (("desktop", runtime), ("agent", agent_runtime)):
+        requirements = CACHE / f"{extra}-requirements.txt"
+        dependency_marker = environment_root / "dependency-lock.txt"
+        if not args.reuse_runtime or not dependency_marker.is_file() or dependency_marker.read_text() != dependency_identity:
+            subprocess.run(["uv", "export", "--locked", "--no-dev", "--no-emit-workspace",
+                            "--extra", extra, "--output-file", str(requirements), "--quiet"],
+                           cwd=ROOT, env=environment, check=True)
+            subprocess.run(["uv", "pip", "sync", "--python", str(environment_root / "python.exe"),
+                            "--only-binary", ":all:", "--require-hashes", str(requirements)],
+                           cwd=ROOT, env=environment, check=True)
+            dependency_marker.write_text(dependency_identity, encoding="utf-8")
+        subprocess.run(["uv", "pip", "install", "--python", str(environment_root / "python.exe"),
+                        "--no-deps", "--reinstall", *packages], cwd=ROOT, env=environment, check=True)
     (CACHE / "build-check-webui").mkdir(parents=True, exist_ok=True)
     check_environment = {**environment, "DATA_DIR": str(CACHE / "build-check-webui"), "OFFLINE_MODE": "true",
                          "HF_HUB_OFFLINE": "1", "RAG_EMBEDDING_ENGINE": "openai", "FROM_INIT_PY": "true",
@@ -163,21 +157,21 @@ def main():
                          "MEDIA_FACTORY_AGENT_DATABASE": str(CACHE / "gateway-check/agent.sqlite")}
     subprocess.run([str(runtime / "python.exe"), "-c", "import open_webui.main"],
                    cwd=project, env=check_environment, check=True)
-    agent_environment = {**check_environment, "MEDIA_FACTORY_AGENT_PACKAGES": str(agent_packages)}
-    subprocess.run([str(runtime / "python.exe"), "-c",
-                    "import desktop.gateway; import core.mcp.finance.server; import core.mcp.language_learning.server; "
-                    "import core.mcp.anime.__main__; import core.mcp.publishing.server"],
+    agent_environment = {**check_environment, "MEDIA_FACTORY_WORKSPACE": str(CACHE / "gateway-check/workspace")}
+    subprocess.run([str(agent_runtime / "python.exe"), "-c",
+                    "import desktop.gateway; import media_factory_mcp.finance.server; import media_factory_mcp.language_learning.server; "
+                    "import media_factory_mcp.anime.__main__; import media_factory_mcp.publishing.server"],
                    cwd=project, env=agent_environment, check=True)
     with (output / "依赖版本.txt").open("w", encoding="utf-8") as versions:
-        for label, version_environment in (("界面依赖", check_environment), ("Agent 依赖", agent_environment)):
+        for label, environment_root, version_environment in (("界面依赖", runtime, check_environment), ("Agent 依赖", agent_runtime, agent_environment)):
             versions.write(label + "\n")
             versions.flush()
-            subprocess.run([str(runtime / "python.exe"), "-c",
+            subprocess.run([str(environment_root / "python.exe"), "-c",
                 "import importlib.metadata as m; print(*(name+'=='+m.version(name) for name in "
                 "sorted({d.metadata['Name'] for d in m.distributions()})), sep=chr(10))"],
                 stdout=versions, env=version_environment, check=True)
     (output / "构建信息.json").write_text(json.dumps({"electron": version, "python": "3.12.10", "open_webui": "0.12.3",
-        "built_at": datetime.now(timezone.utc).isoformat(), "agent_dependencies": "resources/app/agent-packages",
+        "built_at": datetime.now(timezone.utc).isoformat(), "agent_runtime": "resources/app/agent-python",
         "entry": "MediaFactory.exe", "dependencies_verified": True}, ensure_ascii=False, indent=2), encoding="utf-8")
     shutil.copy2(DESKTOP_SOURCE / "README.md", output / "使用说明.md")
     if not reuse_electron:

@@ -1,5 +1,7 @@
 """OpenAI 兼容网关、人工审批、视频预览与诊断管理入口。"""
 
+from tools.resources import package_resource_path
+
 from contextlib import asynccontextmanager
 import asyncio
 import base64
@@ -83,7 +85,7 @@ async def console(request: Request):
         response.set_cookie("media_factory_session", TOKEN, httponly=True, samesite="strict")
         return response
     authenticated(request)
-    return HTMLResponse((Path(__file__).parent / "console.html").read_text(encoding="utf-8"))
+    return HTMLResponse(package_resource_path("desktop", "console.html").read_text(encoding="utf-8"))
 
 
 @app.get("/v1/models", dependencies=[Depends(authenticated)])
@@ -345,7 +347,7 @@ async def import_project():
     from agent.diagnostics.knowledge import KnowledgeBase
     knowledge = KnowledgeBase(DATABASE)
     documents = []
-    paths = list((WORKSPACE / "docs").rglob("*.md")) + list((WORKSPACE / "agent").glob("*.md"))
+    paths = list((WORKSPACE / "agent").glob("*.md"))
     for path in paths:
         with agent_tracing():
             documents.append(await knowledge.ingest(str(path.relative_to(WORKSPACE)), path.read_text(encoding="utf-8")))

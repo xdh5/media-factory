@@ -5,13 +5,13 @@ import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from core.mcp.anime._constants import SEGMENTATION_DURATION, SEGMENTATION_EPISODES
-from core.mcp.anime._errors import AnimeError
-from core.mcp.anime.services.compile import assemble_videos
-from core.mcp.anime.services.ffmpeg import probe_video
-from core.mcp.anime.services.media_artifacts import file_sha256, write_json
-from core.mcp.anime.services.segmentation import part_ranges, split_ranges
-from core.mcp.anime.services.video_rendering import validate_audio
+from media_factory_mcp.anime._constants import SEGMENTATION_DURATION, SEGMENTATION_EPISODES
+from media_factory_mcp.anime._errors import AnimeError
+from media_factory_mcp.anime.services.compile import assemble_videos
+from media_factory_mcp.anime.services.ffmpeg import probe_video
+from media_factory_mcp.anime.services.media_artifacts import file_sha256, write_json
+from media_factory_mcp.anime.services.segmentation import part_ranges, split_ranges
+from media_factory_mcp.anime.services.video_rendering import validate_audio
 
 CHECKPOINT_NAME = "block-checkpoint.json"
 

@@ -1,0 +1,125 @@
+"""财经采集定稿与视频生产的业务入口。"""
+from __future__ import annotations
+
+import workflows.finance.production as _production
+
+from pathlib import Path
+from typing import Literal
+from typing_extensions import NotRequired, TypedDict
+
+from . import articles as a, editorial as e, source_authors as authors
+from .collect_copy import finance_start_collect_copy
+from .collect_author_copies import finance_start_collect_author_copies
+from .copy_review import finance_submit_copy_reviews, finance_start_continue_collect_author_copies
+from .tasks import finance_poll_task
+from workflows.finance.errors.exceptions import WorkflowStepError
+from workflows.finance.parameters import (
+    normalize_publish_date,
+)
+from tools.media_records.finance_scripts import get_collection_review_stats
+
+
+class CopyReview(TypedDict):
+    """宿主一次提交的校对、广告审核与完整定稿。"""
+    aweme_id: str
+    kind: Literal["normal", "ad", "off_topic", "length"]
+    text: str
+    reason: str
+    ad_segments: NotRequired[list[str]]
+    editorial: NotRequired[dict]
+
+
+def _task(result: dict) -> dict:
+    """统一后台任务的查询入口。"""
+    return {**result, "poll_tool": "finance_get_task"} if "task_path" in result else result
+
+
+def finance_get_config() -> dict:
+    """读取配音、素材、片头、字幕与合成的唯一生产配置。"""
+    return _production.finance_get_config()
+
+
+def finance_manage_authors(action: str = "list", profile_url: str = "", display_name: str = "") -> dict:
+    """管理采集作者。action 为 list、add、remove；增删后返回最新名单。"""
+    if action == "list":
+        return authors.finance_list_source_authors()
+    if action == "add":
+        changed = authors.finance_add_source_author(profile_url, display_name)
+    elif action == "remove":
+        changed = authors.finance_remove_source_author(profile_url)
+    else:
+        raise WorkflowStepError("作者操作必须为 list、add 或 remove")
+    return {**changed, **authors.finance_list_source_authors()}
+
+
+def finance_start_collection(share_text: str = "", count: int = 0, context_path: str = "") -> dict:
+    """按单条链接、作者配额或已有上下文采集，三选一。完成后返回待审原文，由宿主去广告、改写和定稿，尚未入库。"""
+    if sum((bool(share_text), count > 0, bool(context_path))) != 1:
+        raise WorkflowStepError("必须且只能提供分享链接、正整数数量或续采上下文")
+    if context_path:
+        return _task(finance_start_continue_collect_author_copies(context_path))
+    if share_text:
+        return _task(finance_start_collect_copy(share_text, "财经"))
+    return _task(finance_start_collect_author_copies(count))
+
+
+def finance_finalize_collection(context_path: str, reviews: list[CopyReview]) -> dict:
+    """一次校验并保存宿主审核的原稿和完整 editorial。整篇广告、主题和字数弃稿均单独记录；配额不足自动启动续采，须继续审核至 completed=true。"""
+    result = finance_submit_copy_reviews(context_path, reviews)
+    if result.get("needs_more"):
+        result["continuation"] = _task(finance_start_continue_collect_author_copies(context_path))
+    return result
+
+
+def finance_manage_drafts(action: str = "list", missing_only: bool = True,
+                           records: list[dict] | None = None) -> dict:
+    """读取或保存未使用稿件完整定稿。action 为 list 或 save；不占用、不修改已使用稿件。"""
+    if action == "list":
+        return {**e.finance_list_editorial_drafts(missing_only), **a.finance_get_topics()}
+    if action == "save" and records is not None:
+        return e.finance_save_editorial_drafts(records)
+    raise WorkflowStepError("稿件操作必须为 list 或携带 records 的 save")
+
+
+def finance_start_production(publish_date: str, content_part: int=1) -> dict:
+    """明确计划日期后领取定稿、保存生产稿、后台生成配音及分镜输入。同一日期和分片重复启动时恢复原流程。宿主据此写分镜，不重写定稿。"""
+    return _task(_production.finance_start_production(publish_date, content_part))
+
+
+
+
+
+
+
+
+
+
+def finance_get_task(task_path: str = "", workflow_id: str = "") -> dict:
+    """查询采集、配音、素材和合成任务；done=true 只代表当前步骤完成，采集须另核对 completed。"""
+    if workflow_id:
+        return _production.get_production(workflow_id)
+    result = finance_poll_task(task_path)
+    if isinstance(result.get("result"), dict):
+        result["result"] = _task(result["result"])
+    return result
+
+
+def finance_get_inventory(publish_date: str = "") -> dict:
+    """只读查询稿件库存、近期话题和采集弃稿统计；指定日期时同时返回成片及待生产分片，不占用稿件。"""
+    result = {"sources": a.finance_get_source_stats(), "topics": a.finance_get_topics(), "collection_review": get_collection_review_stats()}
+    if publish_date:
+        date = normalize_publish_date(publish_date)
+        result.update({"outputs": a.finance_get_production_outputs(date),
+                       "plan": a.finance_get_automation_plan(date)})
+    return result
+
+
+def finance_continue_production(workflow_id: str, storyboard_text: str = "") -> dict:
+    """提交分镜，由 workflow 自动完成实拍素材、合成和 R2 交付。"""
+    return _task(_production.continue_production(workflow_id, storyboard_text))
+
+
+BUSINESS_TOOLS = (
+    finance_get_config, finance_manage_authors, finance_start_collection, finance_finalize_collection,
+    finance_manage_drafts, finance_start_production, finance_continue_production, finance_get_task, finance_get_inventory,
+)

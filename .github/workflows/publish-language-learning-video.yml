@@ -26,6 +26,9 @@ concurrency:
   group: publish-language-learning-video
   cancel-in-progress: false
 
+env:
+  PYTHONPYCACHEPREFIX: ${{ github.workspace }}/cache/pycache
+
 jobs:
   runner-image:
     if: github.event_name == 'workflow_dispatch' && inputs.runner_image == ''
@@ -51,6 +54,8 @@ jobs:
     steps:
       - name: 检出发布代码
         uses: actions/checkout@v5
+        with:
+          submodules: recursive
 
       - name: 查询可复用的 GitHub R2 成片和待发布平台
         id: preflight
@@ -58,7 +63,7 @@ jobs:
           CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
           CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
           INPUT_PUBLISH_DATE: ${{ inputs.publish_date }}
-        run: python -m ops.github_actions language_learning_preflight --publish-date "$INPUT_PUBLISH_DATE"
+        run: python -m github_actions language_learning_preflight --publish-date "$INPUT_PUBLISH_DATE"
 
       - name: 说明无需发布的原因
         if: ${{ steps.preflight.outputs.should_resume_publish != 'true' }}
@@ -89,28 +94,15 @@ jobs:
     steps:
       - name: 检出发布代码
         uses: actions/checkout@v5
+        with:
+          submodules: recursive
 
-      - name: 检出 media-publisher
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule update --init integrations/media-publisher
-
-      - name: 使用统一发布 MCP 预约缺少的平台（最多重试 3 次）
+      - name: 通过官方接口预约缺少的平台
         env:
           RUN_ID: ${{ needs.preflight.outputs.run_id }}
           TARGETS: ${{ needs.preflight.outputs.pending_targets }}
         shell: bash
         run: |
-          for attempt in 1 2 3; do
-            if python -m ops.github_actions language_learning_publish \
-              --run-id "$RUN_ID" \
-              --targets "$TARGETS"; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "第 ${attempt} 次发布失败，30 秒后重试..."
-              sleep $((30 * attempt))
-            fi
-          done
-          echo "语言学习发布连续 3 次失败" >&2
-          exit 1
+          python -m github_actions language_learning_publish \
+            --run-id "$RUN_ID" \
+            --targets "$TARGETS"

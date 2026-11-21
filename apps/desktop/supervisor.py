@@ -61,12 +61,12 @@ def main():
     job = windows_job()
     home = args.home.resolve()
     workspace = home / "workspace"
-    # 代码随版本刷新，data/cache 和配置始终保留在外部工作目录。
+    # 发布器资源随版本刷新，业务代码由安装包提供。
     def copy_changed(source, target):
         if not Path(target).is_file() or Path(source).stat().st_size != Path(target).stat().st_size or Path(source).stat().st_mtime != Path(target).stat().st_mtime:
             shutil.copy2(source, target)
         return target
-    project_directory = args.bundle / "project"
+    project_directory = args.bundle / "services"
     build_identity = (args.bundle.parents[1] / "构建信息.json").read_text(encoding="utf-8")
     workspace_version = home / "workspace-version.txt"
     if not workspace_version.is_file() or workspace_version.read_text(encoding="utf-8") != build_identity:
@@ -74,7 +74,7 @@ def main():
                         ignore=shutil.ignore_patterns("data", "cache", ".env", "__pycache__", "node_modules"))
         workspace_version.write_text(build_identity, encoding="utf-8")
     publisher_modules = workspace / "integrations/media-publisher/node_modules"
-    packaged_modules = (args.bundle / "project/integrations/media-publisher/node_modules").resolve()
+    packaged_modules = (args.bundle / "services/integrations/media-publisher/node_modules").resolve()
     if os.path.isjunction(publisher_modules) and publisher_modules.resolve() != packaged_modules:
         publisher_modules.rmdir()
     if not publisher_modules.exists():
@@ -86,13 +86,10 @@ def main():
     home.mkdir(parents=True, exist_ok=True)
     (home / "logs").mkdir(exist_ok=True)
     (home / "open-webui").mkdir(exist_ok=True)
-    sys.path.insert(0, str(workspace))
-    import desktop
-    desktop.__path__ = [str(workspace / "desktop")]
     from dotenv import dotenv_values
     # 项目内运行直接复用原配置；绿色版搬离项目后仍使用外部持久化配置。
     project_root = next((parent for parent in args.bundle.resolve().parents
-                         if (parent / "pyproject.toml").is_file() and (parent / "core").is_dir()), None)
+                         if (parent / "pyproject.toml").is_file() and (parent / "tools").is_dir()), None)
     source_configuration = project_root / ".env" if project_root else home / "workspace/.env"
     if project_root:
         # 各集成仍从自己的目录读取配置，密钥只同步到外部工作区，不进入绿色版资源。
@@ -111,13 +108,14 @@ def main():
                               "AGENT_BASE_URL": configuration.get("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1",
                               "AGENT_MODEL": configuration.get("AGENT_MODEL") or "qwen3.7-plus"})
     os.environ.update(configuration)
+    os.environ["MEDIA_PUBLISHER_DIR"] = str(workspace / "integrations/media-publisher")
     if project_root:
         # 项目内桌面启动与命令行共用发布服务及其账号会话目录。
         os.environ["MEDIA_PUBLISHER_DIR"] = str(project_root / "integrations" / "media-publisher")
     (home / "shutdown.request").unlink(missing_ok=True)
     os.environ.update({"MEDIA_FACTORY_HOME": str(home), "MEDIA_FACTORY_WORKSPACE": str(workspace),
-                       "MEDIA_FACTORY_AGENT_DATABASE": str(home / "agent.sqlite"), "PYTHONPATH": str(workspace),
-                       "PYTHONUTF8": "1", "DASHSCOPE_BUSINESS_LINE": configuration.get("DASHSCOPE_BUSINESS_LINE", "finance")})
+                       "MEDIA_FACTORY_AGENT_DATABASE": str(home / "agent.sqlite"),
+                       "PYTHONUTF8": "1", "PYTHONPYCACHEPREFIX": str(workspace / "cache/pycache"), "DASHSCOPE_BUSINESS_LINE": configuration.get("DASHSCOPE_BUSINESS_LINE", "finance")})
     ports = {"agent": free_port(), "webui": free_port()}
     os.environ["MEDIA_FACTORY_AGENT_PORT"] = str(ports["agent"])
     os.environ["MEDIA_FACTORY_WEBUI_PORT"] = str(ports["webui"])
@@ -140,8 +138,8 @@ def main():
              "DO_NOT_TRACK": "true", "SCARF_NO_ANALYTICS": "true", "WEBUI_SECRET_KEY": webui_secret_file.read_text(encoding="utf-8")}
     webui.update({"RAG_EMBEDDING_MODEL_AUTO_UPDATE": "false", "RAG_RERANKING_MODEL_AUTO_UPDATE": "false",
                   "WHISPER_MODEL_AUTO_UPDATE": "false", "ENABLE_VERSION_UPDATE_CHECK": "false"})
-    # 界面与 Agent 分别加载自己的 LangChain 依赖。
-    agent_environment = {**common, "MEDIA_FACTORY_AGENT_PACKAGES": str(args.bundle / "agent-packages")}
+    # 界面与 Agent 使用各自的 Python 运行时。
+    agent_environment = dict(common)
     webui["LANGSMITH_TRACING"] = "false"
     webui["LANGCHAIN_TRACING_V2"] = "false"
     children = []
@@ -153,8 +151,8 @@ def main():
     try:
         for name, module, environment, port in (("agent", "desktop.gateway:app", agent_environment, ports["agent"]),
                                                   ("open-webui", "open_webui.main:app", webui, ports["webui"])):
-            command = ([sys.executable, "-m", "uvicorn", module, "--host", "127.0.0.1", "--port", str(port), "--no-access-log"]
-                       if name == "agent" else [sys.executable, "-c", f"from open_webui import serve; serve(host='127.0.0.1', port={port})"])
+            command = ([str(args.bundle / "agent-python/python.exe"), "-X", f"pycache_prefix={workspace / 'cache/pycache'}", "-m", "uvicorn", module, "--host", "127.0.0.1", "--port", str(port), "--no-access-log"]
+                       if name == "agent" else [sys.executable, "-X", f"pycache_prefix={workspace / 'cache/pycache'}", "-c", f"from open_webui import serve; serve(host='127.0.0.1', port={port})"])
             process = subprocess.Popen(command,
                 cwd=workspace, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace", creationflags=0x08000000 if sys.platform == "win32" else 0)

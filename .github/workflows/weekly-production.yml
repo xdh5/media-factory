@@ -23,6 +23,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  PYTHONPYCACHEPREFIX: ${{ github.workspace }}/cache/pycache
   PYTHONUTF8: "1"
   PYTHONUNBUFFERED: "1"
 
@@ -40,14 +41,23 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v5
         with:
+          submodules: recursive
           ref: ${{ github.ref_name }}
+
+      - name: 准备 uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.9"
+
+      - name: 同步锁定依赖与项目包
+        run: uv sync --locked --no-editable --no-dev
 
       - name: 生成计划发布日期列表
         id: plan
         env:
           INPUT_WEEK_START: ${{ inputs.week_start }}
           INPUT_PUBLISH_DATES: ${{ inputs.publish_dates }}
-        run: python -m ops.github_actions weekly_plan --week-start "$INPUT_WEEK_START" --publish-dates "$INPUT_PUBLISH_DATES"
+        run: uv run --locked --no-editable --no-dev python -m github_actions weekly_plan --week-start "$INPUT_WEEK_START" --publish-dates "$INPUT_PUBLISH_DATES"
 
   produce-day:
     name: 生产财经及语言 ${{ matrix.publish_date }}
@@ -85,12 +95,8 @@ jobs:
       - name: 检出生产代码
         uses: actions/checkout@v5
         with:
+          submodules: recursive
           ref: ${{ github.ref_name }}
-
-      - name: 检出采集与发布服务
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule update --init integrations/media-collector integrations/media-publisher
 
       - name: 检查生产所需配置
         shell: bash
@@ -107,14 +113,14 @@ jobs:
         env:
           PUBLISH_DATE: ${{ matrix.publish_date }}
         run: >-
-          python -m ops.github_actions weekly_day
+          python -m github_actions weekly_day
           --publish-date "$PUBLISH_DATE"
 
       - name: 归还失败或取消任务占用的语言词包
         if: ${{ failure() || cancelled() }}
         env:
           PUBLISH_DATE: ${{ matrix.publish_date }}
-        run: python -m ops.github_actions language_learning_release_pack --publish-date "$PUBLISH_DATE"
+        run: python -m github_actions language_learning_release_pack --publish-date "$PUBLISH_DATE"
 
       - name: 保存配音失败诊断
         if: failure()

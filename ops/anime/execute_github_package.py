@@ -14,17 +14,17 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core.mcp.anime._constants import OUTPUT_ROOT, SEGMENTATION_DURATION, SEGMENTATION_EPISODES
-from core.mcp.anime._errors import AnimeError
-from core.mcp.anime.services.compile import assemble_videos
-from core.mcp.anime.services.ffmpeg import probe_video
-from core.mcp.anime.services.media_artifacts import file_sha256, write_json
-from core.mcp.anime.services.segmentation import planned_part_count
-from core.mcp.anime.services.youtube import publish_youtube
-from core.mcp.anime.services.youtube_metadata import part_title, validate_copy
-from core.tools.media_files import download_public_file, upload_public_file
-from core.tools.media_files.storage import _client, _settings
-from core.tools.publish_media.accounts import resolve_account_group
+from media_factory_mcp.anime._constants import OUTPUT_ROOT, SEGMENTATION_DURATION, SEGMENTATION_EPISODES
+from media_factory_mcp.anime._errors import AnimeError
+from media_factory_mcp.anime.services.compile import assemble_videos
+from media_factory_mcp.anime.services.ffmpeg import probe_video
+from media_factory_mcp.anime.services.media_artifacts import file_sha256, write_json
+from media_factory_mcp.anime.services.segmentation import planned_part_count
+from media_factory_mcp.anime.services.youtube import publish_youtube
+from media_factory_mcp.anime.services.youtube_metadata import part_title, validate_copy
+from tools.media_files import download_public_file, upload_public_file
+from tools.media_files.storage import _client, _settings
+from tools.publish_media.accounts import resolve_account_group
 from download_video import download
 from ops.anime.download_checkpoint import CheckpointUploader
 
@@ -32,8 +32,8 @@ from ops.anime.download_checkpoint import CheckpointUploader
 def verify_authorization() -> None:
     """只读核验 Action Secret 的 OAuth、频道身份和上传权限，不发布视频。"""
     import requests
-    from core.tools.media_records import list_publishing_account_groups
-    from core.tools.publish_media.publisher import _publishing
+    from tools.media_records import list_publishing_account_groups
+    from tools.publish_media.publisher import _publishing
 
     _publishing()
     from platform_api.account_registry import account_context, verify_account
@@ -109,7 +109,7 @@ def execute_package(execution_id: str) -> dict:
     last_progress_upload = 0.0
     def completed_upload_result(manifest, package):
         """全部上传回执已持久化即完成，不等待 YouTube 后台转码。"""
-        from core.tools.media_records import commit_publication_records
+        from tools.media_records import commit_publication_records
         parts = manifest.get("parts") or []
         if not parts or len(parts) != int(manifest.get("part_count") or parts[0].get("part_count") or len(parts)):
             return None

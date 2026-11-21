@@ -11,13 +11,27 @@ on:
     branches:
       - main
     paths:
-      - ops/github_actions/Dockerfile
-      - ops/github_actions/runner-requirements.txt
+      - .github/Dockerfile
+      - pyproject.toml
+      - uv.lock
+      - workflows/**
+      - mcp/**
+      - tools/**
+      - agent/**
+      - apps/desktop/**
+      - ops/anime/**
+      - .github/scripts/**
+      - .agents/skills/**
+      - integrations/media-collector
+      - integrations/media-publisher
       - .github/workflows/build-video-runner.yml
 
 permissions:
   contents: read
   packages: write
+
+env:
+  PYTHONPYCACHEPREFIX: ${{ github.workspace }}/cache/pycache
 
 jobs:
   build:
@@ -32,6 +46,8 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v5
+        with:
+          submodules: recursive
 
       - name: 配置 Docker 构建器
         uses: docker/setup-buildx-action@v3
@@ -65,8 +81,8 @@ jobs:
         if: steps.existing.outputs.digest == ''
         uses: docker/build-push-action@v6
         with:
-          context: ops/github_actions
-          file: ops/github_actions/Dockerfile
+          context: .
+          file: .github/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ steps.existing.outputs.tag }}

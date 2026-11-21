@@ -124,7 +124,9 @@ async function dashboardRecords(request, env) {
   const itemKey = (item) => [
     item.business_line,
     item.publish_date || runDate(item.run_id, item.publish_at),
-    item.title,
+    item.business_line === "language_learning"
+      ? item.content_kind || item.publication_id?.split(":").at(-2) || item.title
+      : item.title,
     Number(item.content_part || 1),
   ].join("|");
   for (const output of outputResult.results || []) {

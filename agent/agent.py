@@ -1,5 +1,7 @@
 """组合模型、工具、提示词和持久化配置，创建媒体业务 Agent。"""
 
+from tools.resources import package_resource_path
+
 import uuid
 
 from deepagents import (
@@ -9,7 +11,7 @@ from deepagents import (
 from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend, StoreBackend
 from deepagents.middleware.filesystem import FilesystemMiddleware
 
-from .settings import ROOT
+
 from langchain.agents.middleware import ModelCallLimitMiddleware, ToolRetryMiddleware
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.tools import tool
@@ -70,7 +72,7 @@ def create_media_agent(tools, journal, saver, settings, task_id, *, store=None, 
     if business:
         label, _, skills = BUSINESSES[business]
         skill_backend = CompositeBackend(default=state_backend, routes={
-            f"/{skill}/": FilesystemBackend(root_dir=ROOT / ".agents" / "skills" / skill, virtual_mode=True)
+            f"/{skill}/": FilesystemBackend(root_dir=package_resource_path("agent", "skills", skill), virtual_mode=True)
             for skill in skills
         })
         routes["/skills/"] = skill_backend

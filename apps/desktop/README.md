@@ -2,11 +2,11 @@
 
 ## 运行与持久化
 
-完整交付目录包含 `MediaFactory.exe`、Electron 资源、内嵌 Python、原版 Open WebUI、独立 Agent 依赖、项目源码和 FFmpeg。无需安装 Python、Node.js 或 Docker，不创建服务，不修改系统环境变量，不需要管理员权限。不要只复制 EXE，必须保留同目录资源。
+完整交付目录包含 `MediaFactory.exe`、Electron 资源、两个独立内嵌 Python、原版 Open WebUI、已安装的业务包和 FFmpeg。无需安装 Python、Node.js 或 Docker，不创建服务，不修改系统环境变量，不需要管理员权限。不要只复制 EXE，必须保留同目录资源。
 
 双击 `MediaFactory.exe` 会先显示启动提示，随后打开原版 Open WebUI。界面默认启用上游轻量模式，跳过本地向量库及部分本地音频组件；需要界面自带本地文档检索或语音组件时，可设置 `USE_SLIM_DOCKER=false`。项目故障知识与视频生产由独立 Agent 和 MCP 提供。项目内启动自动读取现有 `.env`，不弹配置窗口；模型列表显示 `AGENT_MODEL` 配置的实际模型，业务路由将请求交给动漫、财经、语言学习或发布 Agent。关闭主聊天窗口会退出客户端并回收它启动的服务、MCP、浏览器发布进程和 FFmpeg；不会终止其他软件启动的 Python 进程。
 
-默认数据目录为 `%APPDATA%\MediaFactory`，与程序目录分离。可通过启动进程的 `MEDIA_FACTORY_HOME` 指定另一个可写目录。升级时替换程序目录，保留数据目录。同一构建版本仅在首次启动时同步工作区源码；Agent 模型与故障检索模块在实际请求时加载，MCP 在 GUI 启动等待页期间连接，工具就绪后进入聊天界面，随后保持会话供后续任务使用。
+默认数据目录为 `%APPDATA%\MediaFactory`，与程序目录分离。可通过启动进程的 `MEDIA_FACTORY_HOME` 指定另一个可写目录。升级时替换程序目录，保留数据目录。同一构建版本仅在首次启动时同步发布器运行资源；Agent 模型与故障检索模块在实际请求时加载，MCP 在 GUI 启动等待页期间连接，工具就绪后进入聊天界面，随后保持会话供后续任务使用。
 
 数据目录内容：
 
@@ -74,11 +74,13 @@ python ops/desktop/diagnostics_cli.py rag-eval --database cache/rag-eval.sqlite 
 
 ## 从源码构建
 
-构建机需要 Windows x64、Python 3.12，以及可访问官方 Python、Electron 和 PyPI 下载服务的网络。先在 `integrations/media-publisher` 准备 `npm ci` 和 `npm run build:dir`，并准备 PATH 中的 `ffmpeg.exe` 与同目录 `ffprobe.exe`。这些要求只适用于构建机。界面依赖安装到内嵌 Python，Agent 依赖安装到 `resources/app/agent-packages`，两个进程分别加载，避免上游 LangChain 版本约束冲突。
+构建机需要 Windows x64、Python 3.12，以及可访问官方 Python、Electron 和 PyPI 下载服务的网络。先在 `integrations/media-publisher` 准备 `npm ci` 和 `npm run build:dir`，并准备 PATH 中的 `ffmpeg.exe` 与同目录 `ffprobe.exe`。这些要求只适用于构建机。界面运行时位于 `resources/app/python`，Agent 运行时位于 `resources/app/agent-python`，各自安装依赖与业务包，避免上游 LangChain 版本约束冲突。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File ops/desktop/build_portable.ps1
+uv run --locked --no-editable --no-dev python ops/desktop/build_portable.py
 ```
+
+依赖统一读取根目录 `pyproject.toml` 和 `uv.lock`，界面与 Agent 分别按锁文件导出并校验哈希安装。临时 requirements 保存在 `cache/desktop-build/`，不单独维护依赖清单。Python 业务代码全部安装进各自的 `site-packages`，发布器运行资源位于 `resources/app/services`，用户工作区只保存可写数据和外部发布器资源。
 
 输出目录为 `dist/MediaFactory`，不生成 Setup 安装包。构建脚本会校验 Electron SHA256、打包内嵌 Python、安装实际依赖并验证 Open WebUI 和网关导入。`--prepare-only` 仅准备资源，不是完整构建，也不能视为可用交付。
 

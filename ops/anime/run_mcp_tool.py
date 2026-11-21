@@ -27,7 +27,8 @@ async def main():
     parser.add_argument("--result-file", required=True, type=Path)
     args = parser.parse_args()
     parameters = json.loads(args.arguments_file.read_text(encoding="utf-8-sig"))
-    root = Path(__file__).resolve().parents[2]
+    from tools.paths import PROJECT_ROOT
+    root = PROJECT_ROOT
     # 与采集库直接调用保持一致：采集库自己的登录配置先加载，工厂配置仅补充缺项。
     for key, value in dotenv_values(root / "integrations/media-collector/.env").items():
         if key.startswith("DY_") and value is not None:
@@ -39,7 +40,7 @@ async def main():
     credential_file = root / "integrations/media-publisher/data/credentials.json"
     if Path("/.dockerenv").exists() and credential_file.is_file():
         environment["PUBLISHING_CREDENTIALS_FILE"] = str(credential_file)
-    server = StdioServerParameters(command=sys.executable, args=["-m", "core.mcp.anime"], env=environment)
+    server = StdioServerParameters(command=sys.executable, args=["-m", "media_factory_mcp.anime"], env=environment)
     async with stdio_client(server) as (reader, writer):
         async with ClientSession(reader, writer) as session:
             await session.initialize()

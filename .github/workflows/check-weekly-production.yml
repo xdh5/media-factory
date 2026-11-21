@@ -13,6 +13,9 @@ concurrency:
   group: check-weekly-production
   cancel-in-progress: false
 
+env:
+  PYTHONPYCACHEPREFIX: ${{ github.workspace }}/cache/pycache
+
 jobs:
   check:
     name: 使用最新代码检查并补齐周生产

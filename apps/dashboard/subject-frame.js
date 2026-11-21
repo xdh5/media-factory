@@ -1,4 +1,4 @@
-// 与 core/mcp/language_learning/services/subject_cards.py 的 fit_subject_into_frame 使用同一规则。
+// 与 workflows/language_learning/services/subject_cards.py 的 fit_subject_into_frame 使用同一规则。
 const SUBJECT_FRAME = { width: 410, height: 268 };
 
 function fitSubjectIntoFrame(subjectWidth, subjectHeight, frame = SUBJECT_FRAME) {

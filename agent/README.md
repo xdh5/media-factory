@@ -4,11 +4,10 @@
 
 ## 安装与配置
 
-在项目根目录执行（Python 3.11 及以上）：
+在项目根目录执行（Python 3.12）：
 
 ```powershell
-pip install deepagents langchain-openai langsmith
-python -m pip install -e ".[agent]"
+uv sync --locked --no-editable --no-dev --extra agent
 ```
 
 默认复用 `.env` 中现有的百炼配置，包括 `DASHSCOPE_API_KEY`、`DASHSCOPE_BASE_URL`、`DASHSCOPE_MODEL` 和业务线密钥选择规则。模型必须支持 OpenAI 兼容的 `tools` 和 `tool_calls`。
@@ -29,9 +28,9 @@ AGENT_MODEL=支持工具调用的模型名称
 
 ```powershell
 $env:DASHSCOPE_BUSINESS_LINE = "finance"
-python -m agent run finance-check-001 "读取财经生产配置，查询稿件余量并汇总" --business finance
-python -m agent status finance-check-001
-python -m agent resume finance-check-001
+uv run --locked --no-editable --no-dev --extra agent python -m agent run finance-check-001 "读取财经生产配置，查询稿件余量并汇总" --business finance
+uv run --locked --no-editable --no-dev --extra agent python -m agent status finance-check-001
+uv run --locked --no-editable --no-dev --extra agent python -m agent resume finance-check-001
 ```
 
 `--business` 可选 `anime`、`finance`、`language_learning` 和 `publishing`。省略时由无工具的模型路由识别业务。专用 Agent 只加载对应技能和工具。发布 Agent 使用统一发布 MCP，并加载动漫 YouTube 发布需要的动漫工具。`agent_request_input` 用于询问日期等缺失信息。
@@ -43,8 +42,8 @@ python -m agent resume finance-check-001
 ## 暂停与人工审批
 
 ```powershell
-python -m agent pause finance-check-001
-python -m agent resume finance-check-001 --response '{}'
+uv run --locked --no-editable --no-dev --extra agent python -m agent pause finance-check-001
+uv run --locked --no-editable --no-dev --extra agent python -m agent resume finance-check-001 --response '{}'
 ```
 
 暂停请求在当前操作结束后的图节点边界生效，不会强行终止当前工具调用。独立部署的远程工作流继续运行；原有 stdio MCP 的本地线程任务仍受 MCP 子进程生命周期约束，退出或进程崩溃可能中断这些后台任务，恢复后应先查询任务文件与实际产物，再决定是否重新启动，不能把图检查点视作媒体计算进程的检查点。

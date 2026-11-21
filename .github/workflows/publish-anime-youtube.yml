@@ -22,6 +22,9 @@ concurrency:
   group: publish-anime-youtube-${{ inputs.execution_id }}
   cancel-in-progress: false
 
+env:
+  PYTHONPYCACHEPREFIX: ${{ github.workspace }}/cache/pycache
+
 jobs:
   runner-image:
     uses: ./.github/workflows/build-video-runner.yml
@@ -51,11 +54,8 @@ jobs:
     steps:
       - name: 检出执行代码
         uses: actions/checkout@v5
-
-      - name: 检出采集及发布服务
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule update --init integrations/media-collector integrations/media-publisher
+        with:
+          submodules: recursive
 
       - name: 检查执行环境
         shell: bash

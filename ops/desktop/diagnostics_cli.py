@@ -7,7 +7,6 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
 
 from agent.diagnostics.evaluation import evaluate_rag, upload_diagnostic_cases
 from agent.diagnostics.knowledge import KnowledgeBase

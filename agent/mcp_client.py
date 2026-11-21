@@ -9,7 +9,7 @@ from langgraph.config import get_stream_writer
 
 from .streaming import tool_event
 
-from core.mcp.client import ProjectMCP
+from media_factory_mcp.client import ProjectMCP
 from .settings import ROOT, SERVERS
 
 # 只列经业务代码确认无写入的查询，用于重试和回执去重。
@@ -138,7 +138,7 @@ def adapt_mcp_tool(definition, mcp_tools, settings):
             result = await asyncio.wait_for(
                 mcp_tools.call(name, arguments, settings.tool_timeout), settings.tool_timeout)
         if name == "publishing_preview" and isinstance(result, dict) and "tasks" in result:
-            from core.mcp.publishing.workflows.responses import preview_summary
+            from media_factory_mcp.publishing.workflows.responses import preview_summary
             result = preview_summary(result)
         if isinstance(result, dict) and (result.get("error") or result.get("status") == "failed"):
             raise ToolException(json.dumps(result, ensure_ascii=False))

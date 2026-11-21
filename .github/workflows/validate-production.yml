@@ -6,6 +6,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONPYCACHEPREFIX: ${{ github.workspace }}/cache/pycache
+
 jobs:
   runner:
     name: 构建镜像并检查生产入口
@@ -13,13 +16,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: recursive
       - name: 构建生产镜像
-        run: docker build -t media-factory-runner:verify ops/github_actions
+        run: docker build -f .github/Dockerfile -t media-factory-runner:verify .
       - name: 检查 Python 语法、入口和转码环境
         run: |
           docker run --rm -v "$PWD:/workspace" media-factory-runner:verify sh -ec '
-            python -m compileall -q core ops apps/desktop
-            python -m ops.github_actions --help
+            python -m compileall -q workflows tools mcp ops apps/desktop .github/scripts
+            python -m github_actions --help
             python -m ops.anime.execute_github_package --help
             ffmpeg -version
           '
@@ -33,6 +38,8 @@ jobs:
         working-directory: ops/cloudflare/d1-data-api
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version: 24

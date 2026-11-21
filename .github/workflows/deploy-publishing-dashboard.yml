@@ -17,6 +17,9 @@ concurrency:
   group: publishing-dashboard-pages
   cancel-in-progress: true
 
+env:
+  PYTHONPYCACHEPREFIX: ${{ github.workspace }}/cache/pycache
+
 jobs:
   deploy:
     name: 部署到 GitHub Pages

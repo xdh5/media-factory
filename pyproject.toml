@@ -1,14 +1,16 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "media-factory"
 version = "0.1.0"
 description = "媒体内容自动生产与发布"
 license = { text = "MIT" }
-requires-python = ">=3.10"
+requires-python = ">=3.12,<3.13"
 dependencies = [
+    "media-collector==0.1.0",
+    "media-publisher-python==0.1.0",
     "edge-tts>=7.2",
     "google-api-python-client>=2.140.0",
     "google-auth>=2.34.0",
@@ -16,6 +18,7 @@ dependencies = [
     "google-auth-httplib2>=0.2.0",
     "PySocks>=1.7.1",
     "boto3>=1.34",
+    "botocore>=1.34",
     "Pillow>=10.0",
     "mcp>=1.26,<2",
     "msgpack>=1.0",
@@ -27,15 +30,29 @@ dependencies = [
     "lxml>=5.3",
     "py-mini-racer>=0.6.0",
     "fonttools>=4.53",
+    "typing-extensions>=4.12",
+    "tzdata>=2025.2; sys_platform == 'win32'",
     # 系统依赖（非 pip 包）：ffmpeg 需自行安装并加入 PATH（如 winget install Gyan.FFmpeg）
 ]
 
-[tool.setuptools]
-packages = []
+[tool.hatch.build.targets.wheel]
+only-include = ["workflows", "mcp", "tools", "agent", "apps/desktop", "ops/anime", ".github/scripts", ".agents/skills"]
+
+[tool.hatch.build.targets.wheel.sources]
+"mcp" = "media_factory_mcp"
+".github/scripts" = "github_actions"
+"apps/desktop" = "desktop"
+".agents/skills" = "agent/skills"
+
+[tool.hatch.build.targets.sdist]
+only-include = ["workflows", "mcp", "tools", "agent", "apps/desktop", "ops", ".github/scripts", ".agents/skills", "integrations/media-collector", "integrations/media-publisher/python", "pyproject.toml", "uv.lock", "LICENSE"]
 
 [project.optional-dependencies]
 agent = [
     "deepagents>=0.7.32,<0.8",
+    "langchain>=1,<2",
+    "langchain-core>=1,<2",
+    "openai>=2,<4",
     "langchain-openai>=1.7.3,<2",
     "langsmith>=0.14.16,<1",
     "langgraph>=1.0,<2",
@@ -43,11 +60,24 @@ agent = [
     "langchain-text-splitters>=1,<2",
     "httpx>=0.28,<1",
     "jsonschema>=4.23,<5",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
 ]
 desktop = [
     "open-webui==0.12.3",
-    "tzdata>=2025.2",
+    "greenlet==3.5.6",
 ]
 
 [tool.ruff]
 cache-dir = "cache/ruff"
+
+[tool.uv]
+required-version = "==0.13.9"
+conflicts = [[{ extra = "agent" }, { extra = "desktop" }]]
+
+[tool.uv.workspace]
+members = ["integrations/media-collector", "integrations/media-publisher/python"]
+
+[tool.uv.sources]
+media-collector = { workspace = true }
+media-publisher-python = { workspace = true }

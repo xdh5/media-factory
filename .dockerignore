@@ -29,7 +29,5 @@
 **/*_token.json
 
 # 本地镜像的输入由 Dockerfile 明确列出
-/.github
+/.github/workflows
 /.cursor
-/apps
-/ops
