@@ -9,6 +9,8 @@
         "--locked",
         "--no-editable",
         "--no-dev",
+        "--extra",
+        "mcp",
         "python",
         "-m",
         "media_factory_mcp.finance"
@@ -29,6 +31,8 @@
         "--locked",
         "--no-editable",
         "--no-dev",
+        "--extra",
+        "mcp",
         "python",
         "-m",
         "media_factory_mcp.language_learning"
@@ -49,6 +53,8 @@
         "--locked",
         "--no-editable",
         "--no-dev",
+        "--extra",
+        "mcp",
         "python",
         "-m",
         "media_factory_mcp.publishing"
@@ -69,6 +75,8 @@
         "--locked",
         "--no-editable",
         "--no-dev",
+        "--extra",
+        "mcp",
         "python",
         "-m",
         "media_factory_mcp.anime"

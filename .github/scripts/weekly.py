@@ -1,4 +1,4 @@
-"""按日期串行生产；财经和语言成片交付 R2。"""
+"""按日期串行生产；财经交付 R2，语言完成后立即预约发布。"""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from tools.paths import (
     PROJECT_ROOT,
 )
 from .finance import run as run_finance
+from .language_learning import schedule_publication
+from tools.publish_media.accounts import resolve_account_group
 from workflows.finance.tools.drafts import finance_get_automation_plan
 from workflows.language_learning.tools.packs import (
     language_learning_get_automation_plan, language_learning_release_pack,
@@ -79,23 +81,33 @@ async def run_day(
         return results
 
     lang_preflight = await asyncio.to_thread(language_learning_get_automation_plan, publish_date)
-    if not lang_preflight["should_generate"]:
-        results["language"] = {"status": "skipped", "reason": lang_preflight["skip_reason"]}
-        return results
+    targets = lang_preflight["publish_targets"] if lang_preflight["should_generate"] else lang_preflight["pending_targets"]
+    if targets:
+        await asyncio.to_thread(resolve_account_group, "chinese", "language_learning", targets)
+        print("**全部账号已登录，开始发布**", flush=True)
 
-    try:
-        print(f"[{publish_date}] 开始语言生产", flush=True)
-        os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
-        upload_result = await _run_language_produce(publish_date, work_dir, lang_preflight, production_source="github_workflow")
-        run_id = str(upload_result["run_id"])
-        results["language"] = {"status": "produced", "run_id": run_id}
-    except Exception as exc:
-        results["language"] = {"status": "produce_failed", "error": str(exc)}
+    if lang_preflight["should_generate"]:
+        try:
+            print(f"[{publish_date}] 开始语言生产", flush=True)
+            os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
+            upload_result = await _run_language_produce(publish_date, work_dir, lang_preflight, production_source="github_workflow")
+            results["language"] = {"status": "produced", "run_id": str(upload_result["run_id"])}
+        except Exception as exc:
+            results["language"] = {"status": "produce_failed", "error": str(exc)}
+    else:
+        results["language"] = {"status": "skipped", "reason": lang_preflight["skip_reason"]}
 
     remaining = await asyncio.to_thread(language_learning_get_automation_plan, publish_date)
     if remaining["should_generate"]:
         await asyncio.to_thread(language_learning_release_pack, publish_date)
         results["language"]["status"] = "produce_failed"
         results["language"]["pending_outputs"] = remaining["pending_outputs"]
-
+        return results
+    if remaining["pending_targets"]:
+        run_id = remaining["existing_run_id"] or f"run-{publish_date.replace('-', '')}"
+        try:
+            results["language"]["publication"] = await schedule_publication(run_id, targets=remaining["pending_targets"])
+            results["language"]["status"] = "scheduled"
+        except Exception as exc:
+            results["language"].update({"status": "publish_failed", "error": str(exc)})
     return results

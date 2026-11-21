@@ -28,6 +28,8 @@ env:
 jobs:
   runner-image:
     uses: ./.github/workflows/build-video-runner.yml
+    with:
+      runtime: anime
 
   execute:
     needs: runner-image

@@ -8,11 +8,11 @@ Media Factory 用于制作和发布财经、语言学习和动漫视频。宿主
 
 ```powershell
 git submodule update --init --recursive
-uv sync --locked --no-editable --no-dev
+uv sync --locked --no-editable --no-dev --extra mcp
 Copy-Item -LiteralPath .env.example -Destination .env
 ```
 
-项目 MCP 源码位于 `mcp/`，由 `pyproject.toml` 映射为 Python 包 `media_factory_mcp`。安装后通过该包名导入和启动，第三方 SDK 使用 `mcp`。修改业务代码、提示词、技能或资源后需重新执行 `uv sync --locked --no-editable --no-dev --reinstall-package media-factory`。
+项目 MCP 源码位于 `mcp/`，由 `pyproject.toml` 映射为 Python 包 `media_factory_mcp`。安装后通过该包名导入和启动，第三方 SDK 使用 `mcp`。修改业务代码、提示词、技能或资源后需重新执行 `uv sync --locked --no-editable --no-dev --extra mcp --reinstall-package media-factory`。
 
 安装 uv 可使用官方安装器；依赖变更后执行 `uv lock`，升级单个包执行 `uv lock --upgrade-package 包名`，并提交 `pyproject.toml` 和 `uv.lock`。Agent 使用 `--extra agent`，桌面界面使用 `--extra desktop`，两者使用独立环境。
 
@@ -69,3 +69,5 @@ docker run --rm -it --env-file .env -v "${PWD}/data:/app/data" -v "${PWD}/cache:
 财经与语言学习的生产参数分别维护在 `workflows/finance/parameters.py` 和 `workflows/language_learning/parameters.py`。MCP 和 GitHub 仅调用公共 workflow；业务步骤封装放在各自 workflow 的 tools/，外部存储接入和包内资源放在 infrastructure/，提示词放在独立 prompts/。公共任务执行、日期处理和媒体能力放在根目录 tools/；workflow 不导入 MCP 业务包。
 
 Python 字节码缓存统一保存在工作目录的 `cache/pycache/`。本地命令使用 `uv run --env-file .env` 加载缓存配置；直接运行 `python` 时需先设置 `PYTHONPYCACHEPREFIX`。Docker、MCP、GitHub Actions 和桌面启动已配置对应目录。
+
+周生产镜像只安装基础生产与官方发布依赖，不包含 MCP、采集、Agent、桌面或技能。MCP 使用 `--extra mcp`，动漫执行镜像使用独立 `anime` 目标。每个日期的语言成片交付 R2 后立即预约发布，已有成片仅补发缺少的平台。

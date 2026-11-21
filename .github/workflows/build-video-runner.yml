@@ -2,6 +2,11 @@ name: 构建视频生产环境
 
 on:
   workflow_call:
+    inputs:
+      runtime:
+        description: 生产发布或动漫下载发布环境
+        type: string
+        default: production
     outputs:
       image:
         description: 以摘要固定的视频生产镜像
@@ -15,13 +20,9 @@ on:
       - pyproject.toml
       - uv.lock
       - workflows/**
-      - mcp/**
       - tools/**
-      - agent/**
-      - apps/desktop/**
       - ops/anime/**
       - .github/scripts/**
-      - .agents/skills/**
       - integrations/media-collector
       - integrations/media-publisher
       - .github/workflows/build-video-runner.yml
@@ -39,7 +40,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     concurrency:
-      group: video-runner-${{ github.sha }}
+      group: video-runner-${{ inputs.runtime || 'production' }}-${{ github.sha }}
       cancel-in-progress: false
     outputs:
       image: ${{ steps.result.outputs.image }}
@@ -65,7 +66,7 @@ jobs:
           OWNER: ${{ github.repository_owner }}
         run: |
           repository="ghcr.io/${OWNER,,}/media-factory-runner"
-          tag="$repository:locked-$GITHUB_SHA"
+          tag="$repository:${{ inputs.runtime || 'production' }}-$GITHUB_SHA"
           echo "repository=$repository" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           if digest=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}' 2>inspect-error.log); then
@@ -83,11 +84,12 @@ jobs:
         with:
           context: .
           file: .github/Dockerfile
+          target: ${{ inputs.runtime || 'production' }}
           platforms: linux/amd64
           push: true
           tags: ${{ steps.existing.outputs.tag }}
-          cache-from: type=gha,scope=video-runner
-          cache-to: type=gha,scope=video-runner,mode=max
+          cache-from: type=gha,scope=video-runner-${{ inputs.runtime || 'production' }}
+          cache-to: type=gha,scope=video-runner-${{ inputs.runtime || 'production' }},mode=max
 
       - name: 输出镜像摘要
         id: result

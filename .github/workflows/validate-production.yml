@@ -19,13 +19,13 @@ jobs:
         with:
           submodules: recursive
       - name: 构建生产镜像
-        run: docker build -f .github/Dockerfile -t media-factory-runner:verify .
+        run: docker build --target production -f .github/Dockerfile -t media-factory-runner:verify .
       - name: 检查 Python 语法、入口和转码环境
         run: |
           docker run --rm -v "$PWD:/workspace" media-factory-runner:verify sh -ec '
-            python -m compileall -q workflows tools mcp ops apps/desktop .github/scripts
+            python -m compileall -q workflows tools .github/scripts
             python -m github_actions --help
-            python -m ops.anime.execute_github_package --help
+            python -c "import workflows.finance.production, workflows.language_learning.production, github_actions.weekly; import importlib.util; assert importlib.util.find_spec(\"mcp\") is None"
             ffmpeg -version
           '
 

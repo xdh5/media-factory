@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     if [ "$INSTALL_AGENT" = "true" ]; then \
         uv sync --locked --no-editable --no-dev --extra agent; \
     else \
-        uv sync --locked --no-editable --no-dev; \
+        uv sync --locked --no-editable --no-dev --extra mcp; \
     fi
 ENV MEDIA_FACTORY_WORKSPACE=/app \
     MEDIA_PUBLISHER_DIR=/app/integrations/media-publisher \

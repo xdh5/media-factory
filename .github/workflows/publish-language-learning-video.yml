@@ -52,11 +52,6 @@ jobs:
       publish_date: ${{ steps.preflight.outputs.publish_date }}
       skip_reason: ${{ steps.preflight.outputs.skip_reason }}
     steps:
-      - name: 检出发布代码
-        uses: actions/checkout@v5
-        with:
-          submodules: recursive
-
       - name: 查询可复用的 GitHub R2 成片和待发布平台
         id: preflight
         env:
@@ -83,6 +78,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     env:
+      MEDIA_FACTORY_WORKSPACE: ${{ github.workspace }}
       CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
       CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -92,11 +88,6 @@ jobs:
       R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
       PUBLISHING_CREDENTIALS_JSON: ${{ secrets.PUBLISHING_CREDENTIALS_JSON }}
     steps:
-      - name: 检出发布代码
-        uses: actions/checkout@v5
-        with:
-          submodules: recursive
-
       - name: 通过官方接口预约缺少的平台
         env:
           RUN_ID: ${{ needs.preflight.outputs.run_id }}
