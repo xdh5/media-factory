@@ -11,7 +11,6 @@ from uuid import uuid4
 
 from tools.generate_sticker import generate_sticker
 from tools.generate_subtitles import generate_subtitles
-from tools.generate_emphasis_lines import generate_emphasis_lines
 from tools.generate_subtitles._constants import SUBTITLE_DEFAULT_FONT_SIZE
 
 from ._compose_shots import compose_shots, _hash_file
@@ -256,37 +255,6 @@ def _secondary_subtitle_ass(
     return secondary["output_path"]
 
 
-def _emphasis_lines_ass(
-    cues: list[dict],
-    settings: dict | None,
-    cache_root: Path,
-    width: int,
-    height: int,
-    progress: ProgressCallback | None,
-) -> dict | None:
-    """重点句大字图层；内容句普通字幕就地让位到底部。失败静默跳过。"""
-    if not settings or not cues:
-        return None
-    try:
-        result = generate_emphasis_lines(
-            cues,
-            cache_root / "emphasis-lines.ass",
-            width,
-            height,
-            settings,
-            progress=progress,
-        )
-    except Exception as exc:  # noqa: BLE001 - 大字层失败不阻断成片
-        if progress:
-            progress(f"重点句大字层生成失败，已跳过：{exc}")
-        return None
-    if not result:
-        return None
-    if progress:
-        progress(f"重点句大字层：{len(result['groups'])} 组，{len(result['repositioned'])} 句让位")
-    return result
-
-
 def _sticker_overlays(names: list[str] | tuple[str, ...] | None, cache_root: Path, width: int, height: int) -> list[dict]:
     overlays: list[dict] = []
     for index, name in enumerate(names or ()):
@@ -322,7 +290,6 @@ def generate_final_video(
     subtitle_style: dict | None = None,
     subtitle_position: dict | None = None,
     secondary_subtitles: dict | None = None,
-    emphasis_lines: dict | None = None,
     extra_ass_paths: list[str | Path] | None = None,
     normalize_composed: bool = False,
     progress: ProgressCallback | None = None,
@@ -361,18 +328,12 @@ def generate_final_video(
     width, height = parse_size(size)
     normalize_seconds = time.monotonic() - started - compose_seconds
     cues = _subtitle_cues(shots, composed["shots"])
-    emphasis_result = _emphasis_lines_ass(
-        cues, emphasis_lines, cache_root, width, height, progress
-    )
-    emphasis_path = emphasis_result["output_path"] if emphasis_result else None
     overlays = _sticker_overlays(stickers, cache_root, width, height)
-    # 大字驻留期间普通字幕不展示：过滤掉被重点句标记 hidden 的 cue。
-    visible_cues = [cue for cue in cues if not cue.get("hidden")]
     ass_path = None
     fontsdir = None
-    if visible_cues:
+    if cues:
         subtitles = generate_subtitles(
-            visible_cues,
+            cues,
             cache_root / "timeline.ass",
             width,
             height,
@@ -384,11 +345,9 @@ def generate_final_video(
     if progress:
         progress("正在合成配音与字幕")
     extra_ass = list(extra_ass_paths or [])
-    if emphasis_path:
-        extra_ass.append(emphasis_path)
     opening_sfx_items = list(opening_sfx or [])
     secondary_path = _secondary_subtitle_ass(
-        visible_cues, secondary_subtitles or {}, subtitle_style, cache_root, width, height, progress
+        cues, secondary_subtitles or {}, subtitle_style, cache_root, width, height, progress
     )
     if secondary_path:
         extra_ass.append(secondary_path)

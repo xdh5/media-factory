@@ -8,9 +8,8 @@ import tempfile
 from pathlib import Path
 from uuid import uuid4
 
-from tools.generate_bgm import BGM_FADE_IN_SECONDS, BGM_FADE_OUT_SECONDS, BGM_GAIN
-
 from ._constants import (
+    BGM_FADE_IN_SECONDS, BGM_FADE_OUT_SECONDS, BGM_GAIN,
     VIDEO_AUDIO_CHANNELS,
     VIDEO_AUDIO_CODEC,
     VIDEO_AUDIO_RATE,

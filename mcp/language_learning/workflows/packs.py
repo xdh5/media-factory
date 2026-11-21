@@ -7,10 +7,10 @@ import uuid
 from pathlib import Path
 
 
-from tools.media_records import claim_language_learning_pack
-from tools.media_records import commit_language_learning_pack
-from tools.media_records import list_language_learning_pack_topics
-from tools.media_files import upload_public_file
+from workflows.language_learning.infrastructure.packs import claim_language_learning_pack
+from workflows.language_learning.infrastructure.packs import commit_language_learning_pack
+from workflows.language_learning.infrastructure.packs import list_language_learning_pack_topics
+from tools.r2_files import upload_file
 
 from workflows.language_learning.parameters import (
     MINIMUM_NEW_WORDS,
@@ -132,7 +132,7 @@ def language_learning_commit_pack(pack_id: str, topic: str, words: dict, subject
         require_transparent_subject_sheet(path)
         cutout_paths = approved_subject_cutout_paths(path, pack_cutout_cache_dir(pack_id))
         urls = [
-            upload_public_file(
+            upload_file(
                 cutout_path,
                 f"language-learning-packs/{pack_id}/subjects/{index:02d}.png",
                 content_type="image/png",

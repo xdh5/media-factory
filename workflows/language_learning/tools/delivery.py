@@ -3,9 +3,9 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-from tools.media_files import upload_public_file, upload_public_manifest
-from tools.media_records import commit_production_outputs
-from tools.topic_dedup import commit as commit_topic
+from tools.r2_files import upload_file, upload_manifest
+from tools.database.production_records import commit_production_outputs
+from tools.database.topic_history import record_topic_usage as commit_topic
 from workflows.language_learning.parameters import (
     MINIMUM_NEW_WORDS,
     VIDEO_TITLE_TEMPLATES,
@@ -183,7 +183,7 @@ def upload_publish_assets_to_r2(
                 uploaded.append({"kind": "video", "source_name": Path(str(video.get("r2_key") or "")).name, "learning_mode": mode, "video_format": video_format, "url": video["video_url"], "key": video["r2_key"]})
                 continue
             video_path = Path(str(video.get("output_path") or "")).resolve()
-            stored = upload_public_file(
+            stored = upload_file(
                 video_path,
                 f"runs/{WORKFLOW_ID}/{run_id}/{content_kind}/{index:02d}-{video_path.name}",
                 content_type="video/mp4",
@@ -209,7 +209,7 @@ def upload_publish_assets_to_r2(
         sheet_path = Path(subject_sheet_path).resolve()
         suffix = sheet_path.suffix.lower()
         content_type = "image/png" if suffix == ".png" else "image/jpeg"
-        stored = upload_public_file(
+        stored = upload_file(
             sheet_path,
             f"runs/{WORKFLOW_ID}/{run_id}/subject-sheet{suffix or '.png'}",
             content_type=content_type,
@@ -221,7 +221,7 @@ def upload_publish_assets_to_r2(
     manifest["production_outputs"] = commit_production_outputs(output_records) if output_records else []
     if production_source == "github_workflow":
         manifest["database_commit_result"] = _commit_manifest_database(manifest)
-    stored_manifest = upload_public_manifest(
+    stored_manifest = upload_manifest(
         path, manifest, f"runs/{WORKFLOW_ID}/{run_id}/publish-manifest.json",
     )
     uploaded.append({"kind": "manifest", "source_name": PUBLISH_MANIFEST_FILE_NAME, **stored_manifest})
@@ -242,7 +242,7 @@ def upload_publish_assets_to_r2(
     }
     delivery_path = path.parent / "r2-manifest.json"
     delivery_path.write_text(json.dumps(delivery_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    stored_delivery = upload_public_file(
+    stored_delivery = upload_file(
         delivery_path,
         f"runs/{WORKFLOW_ID}/{run_id}/r2-manifest.json",
         content_type="application/json",

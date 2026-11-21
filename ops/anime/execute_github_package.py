@@ -22,8 +22,8 @@ from media_factory_mcp.anime.services.media_artifacts import file_sha256, write_
 from media_factory_mcp.anime.services.segmentation import planned_part_count
 from media_factory_mcp.anime.services.youtube import publish_youtube
 from media_factory_mcp.anime.services.youtube_metadata import part_title, validate_copy
-from tools.media_files import download_public_file, upload_public_file
-from tools.media_files.storage import _client, _settings
+from tools.r2_files import download_file, upload_file
+from tools.r2_files.storage import _client, _settings
 from tools.publish_media.accounts import resolve_account_group
 from download_video import download
 from ops.anime.download_checkpoint import CheckpointUploader
@@ -32,7 +32,7 @@ from ops.anime.download_checkpoint import CheckpointUploader
 def verify_authorization() -> None:
     """只读核验 Action Secret 的 OAuth、频道身份和上传权限，不发布视频。"""
     import requests
-    from tools.media_records import list_publishing_account_groups
+    from tools.database.account_groups import list_publishing_account_groups
     from tools.publish_media.publisher import _publishing
 
     _publishing()
@@ -88,16 +88,16 @@ def execute_package(execution_id: str) -> dict:
     def save_json(name: str, payload: dict) -> None:
         path = directory / name
         write_json(path, payload)
-        upload_public_file(path, f"{prefix}/{name}", content_type="application/json")
+        upload_file(path, f"{prefix}/{name}", content_type="application/json")
 
     def persist_upload_state(path: Path) -> None:
-        upload_public_file(path, f"{prefix}/{path.name}", content_type="application/json")
+        upload_file(path, f"{prefix}/{path.name}", content_type="application/json")
 
     def restore_upload_state(index: int) -> None:
         for kind in ("receipt", "upload-attempt"):
             path = directory / f"youtube-{kind}-{index}.json"
             if not path.is_file() and exists(f"{prefix}/{path.name}"):
-                download_public_file(f"{prefix}/{path.name}", path)
+                download_file(f"{prefix}/{path.name}", path)
 
     def verify_upload_attempt_digest(index: int, digest: str, channel_id: str) -> None:
         path = directory / f"youtube-upload-attempt-{index}.json"
@@ -109,7 +109,7 @@ def execute_package(execution_id: str) -> dict:
     last_progress_upload = 0.0
     def completed_upload_result(manifest, package):
         """全部上传回执已持久化即完成，不等待 YouTube 后台转码。"""
-        from tools.media_records import commit_publication_records
+        from tools.database.publication_records import commit_publication_records
         parts = manifest.get("parts") or []
         if not parts or len(parts) != int(manifest.get("part_count") or parts[0].get("part_count") or len(parts)):
             return None
@@ -118,7 +118,7 @@ def execute_package(execution_id: str) -> dict:
             path = directory / f"youtube-receipt-{part['part_index']}.json"
             if not exists(f"{prefix}/{path.name}"):
                 return None
-            download_public_file(f"{prefix}/{path.name}", path)
+            download_file(f"{prefix}/{path.name}", path)
             saved = json.loads(path.read_text(encoding="utf-8"))
             uploaded = saved.get("result") or {}
             if (saved.get("channel_id") != package["channel_id"]
@@ -174,12 +174,12 @@ def execute_package(execution_id: str) -> dict:
             write_json(directory / "result.json", payload)
             # 状态最多每分钟上传一次，检查点上传独立在后台执行。
             if time.monotonic() - last_progress_upload >= 60:
-                upload_public_file(directory / "result.json", f"{prefix}/result.json", content_type="application/json")
+                upload_file(directory / "result.json", f"{prefix}/result.json", content_type="application/json")
                 last_progress_upload = time.monotonic()
 
     run_url = f"{os.getenv('GITHUB_SERVER_URL', 'https://github.com')}/{os.getenv('GITHUB_REPOSITORY', '')}/actions/runs/{os.getenv('GITHUB_RUN_ID', '')}"
     try:
-        download_public_file(f"{prefix}/package.json", directory / "package.json")
+        download_file(f"{prefix}/package.json", directory / "package.json")
         package = json.loads((directory / "package.json").read_text(encoding="utf-8"))
         version = int(package.get("version") or 0)
         if version not in {1, 2, 3} or package.get("execution_id") != execution_id:
@@ -198,7 +198,7 @@ def execute_package(execution_id: str) -> dict:
             require_completed=version >= 2)
         if exists(f"{prefix}/result.json"):
             previous_path = directory / "previous-result.json"
-            download_public_file(f"{prefix}/result.json", previous_path)
+            download_file(f"{prefix}/result.json", previous_path)
             previous = json.loads(previous_path.read_text(encoding="utf-8"))
             if previous.get("status") == "succeeded" and previous.get("execution_id") == execution_id:
                 print("该执行已成功发布，复用结果，不重新下载或上传", flush=True)
@@ -213,7 +213,7 @@ def execute_package(execution_id: str) -> dict:
         if version == 1:
             if package["thumbnail_key"] != f"{prefix}/thumbnail.jpg":
                 raise AnimeError("执行包封面对象路径不一致")
-            download_public_file(package["thumbnail_key"], directory / "youtube-thumbnail-1.jpg")
+            download_file(package["thumbnail_key"], directory / "youtube-thumbnail-1.jpg")
             if file_sha256(directory / "youtube-thumbnail-1.jpg") != package["thumbnail_sha256"]:
                 raise AnimeError("封面摘要与执行包不一致")
         else:
@@ -225,7 +225,7 @@ def execute_package(execution_id: str) -> dict:
                 if item.get("key") != expected_key:
                     raise AnimeError("执行包分段封面对象路径不一致")
                 path = directory / f"youtube-thumbnail-{index}.jpg"
-                download_public_file(expected_key, path)
+                download_file(expected_key, path)
                 if file_sha256(path) != item["sha256"]:
                     raise AnimeError("分段封面摘要与执行包不一致")
         write_json(directory / "youtube-intro-1.json", package["intro"])
@@ -233,21 +233,21 @@ def execute_package(execution_id: str) -> dict:
         if exists(f"{prefix}/manifest.json"):
             phase = "恢复最终成片"
             progress("恢复已拼接成片")
-            download_public_file(f"{prefix}/manifest.json", assembled)
+            download_file(f"{prefix}/manifest.json", assembled)
             manifest = json.loads(assembled.read_text(encoding="utf-8"))
             publish_result = completed_upload_result(manifest, package)
             for part in manifest["parts"]:
                 receipt_name = f"youtube-receipt-{part['part_index']}.json"
                 if exists(f"{prefix}/{receipt_name}"):
                     receipt = directory / receipt_name
-                    download_public_file(f"{prefix}/{receipt_name}", receipt)
+                    download_file(f"{prefix}/{receipt_name}", receipt)
                     saved = json.loads(receipt.read_text(encoding="utf-8"))
                     if saved.get("video_sha256") != part.get("sha256"):
                         raise AnimeError("YouTube 回执与成片清单摘要不一致")
                     part["video_path"] = str(directory / Path(part["video_path"]).name)
                     continue
                 path = directory / Path(part["video_path"]).name
-                download_public_file(f"{prefix}/{path.name}", path)
+                download_file(f"{prefix}/{path.name}", path)
                 if file_sha256(path) != part["sha256"]:
                     raise AnimeError("恢复成片摘要不一致")
                 part["video_path"] = str(path)
@@ -256,7 +256,7 @@ def execute_package(execution_id: str) -> dict:
         else:
             phase = "恢复下载检查点"
             checkpoints = CheckpointUploader(
-                directory, prefix, execution_id, sources, exists, download_public_file, upload_public_file,
+                directory, prefix, execution_id, sources, exists, download_file, upload_file,
                 lambda message: print(message, flush=True), segmentation=segmentation)
             restored_count = checkpoints.completed_count
             completed_count = restored_count
@@ -299,7 +299,7 @@ def execute_package(execution_id: str) -> dict:
                 if not exists(f"{prefix}/{receipt_name}"):
                     continue
                 receipt = directory / receipt_name
-                download_public_file(f"{prefix}/{receipt_name}", receipt)
+                download_file(f"{prefix}/{receipt_name}", receipt)
                 saved = json.loads(receipt.read_text(encoding="utf-8"))
                 if not saved.get("video_sha256") or not (saved.get("result") or {}).get("video_id"):
                     raise AnimeError(f"第 {index} 段 YouTube 回执不完整")
@@ -319,7 +319,7 @@ def execute_package(execution_id: str) -> dict:
                 verify_upload_attempt_digest(index, part["sha256"], package["channel_id"])
                 phase = f"上传第 {index}/{part['part_count']} 段成片"
                 progress(phase)
-                upload_public_file(path, f"{prefix}/{path.name}")
+                upload_file(path, f"{prefix}/{path.name}")
                 parts_persisted = True
                 write_json(assembled, partial_manifest)
                 count = int(part["part_count"])
@@ -364,7 +364,7 @@ def execute_package(execution_id: str) -> dict:
                     index = int(part["part_index"])
                     restore_upload_state(index)
                     verify_upload_attempt_digest(index, part["sha256"], package["channel_id"])
-                    upload_public_file(path, f"{prefix}/{path.name}")
+                    upload_file(path, f"{prefix}/{path.name}")
             for part in manifest["parts"]:
                 if "sha256" not in part:
                     part["sha256"] = file_sha256(Path(part["video_path"]))

@@ -3,14 +3,10 @@
 from __future__ import annotations
 from datetime import date
 import json, re, unicodedata
-from tools.media_records import (
-    MediaRecordsError,
-    list_recent_words as records_list_recent_words,
-    list_production_outputs,
-    list_publication_records,
-    claim_language_learning_pack,
-    release_language_learning_pack,
-)
+from tools.database._errors import DatabaseError
+from tools.database.production_records import list_production_outputs
+from tools.database.publication_records import list_publication_records
+from workflows.language_learning.infrastructure.packs import list_recent_words as records_list_recent_words, claim_language_learning_pack, release_language_learning_pack
 from workflows.language_learning.parameters import (
     MINIMUM_NEW_WORDS,
     SUPPORTED_LEARNING_MODES,
@@ -41,7 +37,7 @@ def list_recent_words() -> list[str]:
     """返回 D1 最近 100 天使用过的英语词汇。"""
     try:
         return records_list_recent_words(WORD_HISTORY_DAYS)
-    except MediaRecordsError as exc:
+    except DatabaseError as exc:
         raise VocabularyHistoryError(
             f"读取 Cloudflare D1 最近 {WORD_HISTORY_DAYS} 天单词历史失败：{exc.message}",
             exc.details,
@@ -91,7 +87,7 @@ def validate_words(*, run_id: str, topic: str, words_by_mode: dict) -> dict:
     entries = _word_entries(words_by_mode)
     try:
         recent = {normalize_english_word(word) for word in records_list_recent_words(WORD_HISTORY_DAYS)}
-    except MediaRecordsError as exc:
+    except DatabaseError as exc:
         raise VocabularyHistoryError(
             f"读取 Cloudflare D1 单词历史失败：{exc.message}",
             exc.details,

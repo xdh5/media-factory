@@ -2,7 +2,7 @@
 
 import os
 
-from tools.media_records import list_publishing_account_groups
+from tools.database.account_groups import list_publishing_account_groups
 
 from .._errors import AnimeError
 

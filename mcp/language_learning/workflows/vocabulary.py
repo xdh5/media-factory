@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 
 
-from tools.media_records import list_language_learning_pack_topics
-from tools.topic_dedup import get_topic
-from tools.media_records import list_production_outputs
+from workflows.language_learning.infrastructure.packs import list_language_learning_pack_topics
+from tools.database.topic_history import list_recent_topics as get_topic
+from tools.database.production_records import list_production_outputs
 
 from workflows.language_learning.parameters import (
     MINIMUM_NEW_WORDS,

@@ -63,7 +63,7 @@ def _github_request(method: str, endpoint: str, payload: dict | None = None) -> 
 def dispatch_execution(manifest_path: str, titles: list[str], descriptions: list[str], tags: list[str],
                        account_group: str = "") -> dict:
     """上传不可变执行包并启动 Action；只在用户授权发布后调用。"""
-    from tools.media_files import upload_public_file
+    from tools.r2_files import upload_file
     from tools.publish_media.accounts import resolve_account_group
 
     validate_copy(titles, descriptions, tags)
@@ -101,11 +101,11 @@ def dispatch_execution(manifest_path: str, titles: list[str], descriptions: list
     repository = _repository()
     _github_request("GET", f"repos/{repository}/actions/workflows/{WORKFLOW}")
     for item in package["thumbnails"]:
-        upload_public_file(
+        upload_file(
             directory / f"youtube-thumbnail-{item['index']}.jpg",
             item["key"], content_type="image/jpeg")
     key = f"{prefix}/package.json"
-    upload_public_file(package_file, key, content_type="application/json")
+    upload_file(package_file, key, content_type="application/json")
     _github_request("POST", f"repos/{repository}/actions/workflows/{WORKFLOW}/dispatches",
                     {"ref": "main", "inputs": {"execution_id": execution_id}})
     result = {"status": "dispatched", "execution_id": execution_id, "package_key": key,
@@ -117,7 +117,7 @@ def dispatch_execution(manifest_path: str, titles: list[str], descriptions: list
 
 def read_execution_result(execution_id: str) -> dict:
     """读取 Action 保存的进度或最终结果，不在宿主等待耗时任务。"""
-    from tools.media_files.storage import _client, _settings
+    from tools.r2_files.storage import _client, _settings
 
     if not re.fullmatch(r"[a-f0-9]{32}", execution_id):
         raise AnimeError("执行 ID 格式无效")

@@ -10,7 +10,7 @@ from pathlib import Path
 from .._constants import SEGMENTATION_DURATION
 from .._errors import AnimeError
 from .ffmpeg import media_executable, subprocess_options
-from .media_artifacts import file_sha256, resolve_output_path, write_json, load_manifest
+from .media_artifacts import file_sha256, write_json, load_manifest
 from .segmentation import part_ranges, split_ranges
 from .youtube_metadata import part_title
 
@@ -38,17 +38,7 @@ def transcribe_intros(manifest_path: str, progress=None) -> dict:
     return {"manifest_path": manifest_path, "intros": results}
 
 
-_THUMBNAIL_SIZE = "1280x720"
 _THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024
-
-
-def _thumbnail_prompt(title: str) -> str:
-    """一次生成同时包含画面和标题，不接受先出图再叠字。"""
-    return (
-        "一次生成 16:9 YouTube 封面，画面和标题同时出图。沿用参考帧的线条、上色和角色画风。"
-        "只把下列标题完整画在画面中央，原字不变，不另加文字或后期叠字。\n"
-        f"{title}"
-    )
 
 
 def _extract_style_frame(video: Path, destination: Path, duration: float) -> None:
@@ -65,10 +55,10 @@ def _extract_style_frame(video: Path, destination: Path, duration: float) -> Non
 
 def _jpeg_under_limit(source: Path, destination: Path) -> None:
     """压成 YouTube 封面要求的 2MB 以内 JPEG。"""
-    from PIL import Image
+    from PIL import Image, ImageOps
 
     with Image.open(source) as image:
-        rgb = image.convert("RGB")
+        rgb = ImageOps.fit(image.convert("RGB"), (1280, 720))
         quality = 90
         while True:
             buffer = BytesIO()
@@ -82,104 +72,45 @@ def _jpeg_under_limit(source: Path, destination: Path) -> None:
 
 
 def prepare_youtube_thumbnails(manifest_path: str, titles: list[str]) -> dict:
-    """只抽一帧画风参考，按预计分段数分别生成带集数标题的封面任务。"""
-    from tools.generate_image import ImageGenerationError, prepare_agent_image_tasks
-
+    """提取画风参考帧，返回各段所需标题，供宿主直接生成封面。"""
     directory, parts = load_manifest(manifest_path)
-    if len(titles) != 1:
-        raise AnimeError("只需提供一个共用封面标题")
-    if any(not str(title).strip() for title in titles):
-        raise AnimeError("封面标题不能为空")
+    if len(titles) != 1 or not titles[0].strip():
+        raise AnimeError("需要一个共用封面标题")
+    count = len(parts)
     selection_path = directory / "selection.json"
-    expected_part_count = len(parts)
     if selection_path.is_file():
         selection = json.loads(selection_path.read_text(encoding="utf-8"))
         durations = [float(item["duration_seconds"]) for item in selection.get("sources") or []]
         if durations and sum(durations) > 0:
-            if selection.get("segmentation") == SEGMENTATION_DURATION:
-                expected_part_count = len(split_ranges(sum(durations)))
-            else:
-                expected_part_count = len(part_ranges(durations))
-    prepared_tasks = []
-    titles_by_image_id = {}
-    digests = {}
-    version = None
+            count = (len(split_ranges(sum(durations))) if selection.get("segmentation") == SEGMENTATION_DURATION
+                     else len(part_ranges(durations)))
     frame = directory / "youtube-style-frame.jpg"
     sample = parts[0]
     _extract_style_frame(Path(sample["video_path"]), frame, float(sample["duration_seconds"]))
-    preview_digest = file_sha256(Path(sample["video_path"]))
-    for index in range(1, expected_part_count + 1):
-        image_id = f"youtube-thumbnail-{index}"
-        text = part_title(titles[0], index, expected_part_count)
-        titles_by_image_id[image_id] = text
-        digests[image_id] = preview_digest
-        try:
-            one = prepare_agent_image_tasks(
-                [{"image_id": image_id, "kind": "youtube-thumbnail", "prompt": _thumbnail_prompt(text)}],
-                None,
-                "16:9",
-                _THUMBNAIL_SIZE,
-                directory,
-                additional_reference_image_paths=[frame],
-                context_path=directory / f".{image_id}-context.json",
-                reference_usage="style_only",
-            )
-        except ImageGenerationError as exc:
-            raise AnimeError(exc.message, exc.details) from exc
-        version = one["version"]
-        for task in one["tasks"]:
-            task["reference_failure_policy"] = (
-                "宿主先查看这一张参考帧，再一次生成封面。画风以这张参考帧为准。"
-                "标题必须和画面在同一次出图里一起生成，并且放在画面正中间，禁止先出无字图再叠字。"
-                "不要调用千问或其他生图接口代替宿主。"
-            )
-        prepared_tasks.extend(one["tasks"])
-    context_path = directory / "youtube-thumbnail-context.json"
-    context = {
-        "version": version,
-        "status": "awaiting_agent_images",
-        "tasks": prepared_tasks,
-        "metadata": {
-            "workflow": "anime-youtube-thumbnail",
-            "titles_by_image_id": titles_by_image_id,
-            "video_sha256_by_image_id": digests,
-        },
-        "context_path": context_path.resolve().as_posix(),
+    return {
+        "reference_image_path": str(frame.resolve()),
+        "thumbnails": [{"part_index": index, "title": part_title(titles[0], index, count)}
+                       for index in range(1, count + 1)],
     }
-    context_path.write_text(json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8")
-    return context
 
 
-def save_youtube_thumbnails(context_path: str, images: list[dict]) -> dict:
-    """保存宿主生成的封面，并压成 YouTube 可上传的 JPEG。"""
-    from tools.generate_image import ImageGenerationError, save_agent_image_tasks
-
-    resolved = resolve_output_path(context_path)
-    if resolved.name != "youtube-thumbnail-context.json":
-        raise AnimeError("必须传 prepare 返回的 youtube-thumbnail-context.json")
-    try:
-        context = json.loads(resolved.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise AnimeError(f"读取封面任务失败：{exc}") from exc
-    tasks = context.get("tasks") or []
-    if images:
-        try:
-            save_agent_image_tasks(resolved, images)
-        except ImageGenerationError as exc:
-            raise AnimeError(exc.message, exc.details) from exc
-    titles = (context.get("metadata") or {}).get("titles_by_image_id") or {}
-    digests = (context.get("metadata") or {}).get("video_sha256_by_image_id") or {}
+def save_youtube_thumbnails(manifest_path: str, titles: list[str], images: list[dict]) -> dict:
+    """接收宿主生成的图片路径，保存为 YouTube 可上传的 JPEG。"""
+    directory, parts = load_manifest(manifest_path)
+    reference = prepare_youtube_thumbnails(manifest_path, titles)
+    provided = {int(item["part_index"]): Path(item["image_path"]).resolve() for item in images}
+    expected = {item["part_index"] for item in reference["thumbnails"]}
+    if set(provided) != expected or len(images) != len(expected):
+        raise AnimeError("封面图片必须完整对应每个分段，且不能重复")
+    digest = file_sha256(Path(parts[0]["video_path"]))
     saved = []
-    for task in tasks:
-        image_id = str(task["image_id"])
-        png = Path(task["output_path"])
-        if not png.is_file():
-            raise AnimeError(f"封面 {image_id} 尚未由宿主生成")
-        thumbnail = png.with_suffix(".jpg")
-        _jpeg_under_limit(png, thumbnail)
-        write_json(thumbnail.with_suffix(".json"), {"title": titles.get(image_id), "video_sha256": digests.get(image_id)})
-        saved.append({"image_id": image_id, "thumbnail_path": thumbnail.resolve().as_posix()})
-    return {"context_path": resolved.resolve().as_posix(), "thumbnails": saved}
+    for item in reference["thumbnails"]:
+        index = item["part_index"]
+        thumbnail = directory / f"youtube-thumbnail-{index}.jpg"
+        _jpeg_under_limit(provided[index], thumbnail)
+        write_json(thumbnail.with_suffix(".json"), {"title": item["title"], "video_sha256": digest})
+        saved.append({"part_index": index, "thumbnail_path": str(thumbnail.resolve())})
+    return {"thumbnails": saved}
 
 
 def require_host_thumbnail(directory: Path, index: int, title: str, digest: str) -> Path:

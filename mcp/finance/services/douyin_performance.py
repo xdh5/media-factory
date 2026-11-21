@@ -4,10 +4,11 @@ from collections import Counter, defaultdict
 from datetime import datetime
 
 from tools.douyin_creator_works import read_creator_works
-from tools.media_records import list_publication_records, list_publishing_account_groups
+from tools.database.publication_records import list_publication_records
+from tools.database.account_groups import list_publishing_account_groups
 
 from workflows.finance.parameters import BEIJING_TIMEZONE
-from tools.media_records.finance_scripts import list_used_editorial_drafts
+from workflows.finance.infrastructure.scripts import list_used_editorial_drafts
 
 
 def _title_key(title: str) -> str:

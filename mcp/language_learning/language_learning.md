@@ -15,7 +15,7 @@ language_learning_get_topic_generation_prompt / language_learning_validate_topic
 ```
 language_learning_get_topics
 └─ topic_dedup.get_topic
-└─ media_records.list_language_learning_pack_topics（所有已入库图包主题，返回 pack_topics）
+└─ workflows.language_learning.infrastructure.packs.list_language_learning_pack_topics（所有已入库图包主题，返回 pack_topics）
 └─ services.vocabulary.list_recent_words（最近 100 天）
 
 language_learning_occupy_topic(topic, learning_modes, publish_date)
@@ -53,19 +53,7 @@ language_learning_commit_pack
 language_learning_claim_pack / language_learning_start_compose_pack_cards
 └─ GitHub Action 领取十张已验收切图后直接拼卡，不再执行首次切图和视觉验收
 
-language_learning_prepare_images
-└─ services.prompt_service.build_subject_sheet_prompt
-   └─ prompts/subject-sheet.md
-   └─ generate_image.prepare_agent_image_tasks
-
-language_learning_save_images
-└─ generate_image.save_agent_image_tasks
-
-language_learning_submit_images
-└─ generate_image.submit_agent_image_tasks  （同步，仅提交宿主生成的图片）
-
-language_learning_start_submit_images
-└─ media_factory_mcp._task_runner.submit_task
+宿主 Agent 直接生成透明主体图，将图片路径交给切图验收接口，不登记图片任务。
 
 language_learning_get_visual_validation_prompt
 └─ 返回宿主 Agent 只定位十个主体坐标所需的 Prompt

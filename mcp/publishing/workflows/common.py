@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 from ..infrastructure import (
-    MediaRecordsError,
+    DatabaseError,
     PublishMediaError,
 )
 
@@ -16,6 +16,6 @@ def _map_error(exc: Exception) -> PublishingError:
         return exc
     if isinstance(exc, PublishMediaError):
         return PublishingRequestError(str(exc), {"tool_code": exc.code, **exc.details})
-    if isinstance(exc, MediaRecordsError):
+    if isinstance(exc, DatabaseError):
         return PublishingRequestError(exc.message, exc.details)
     raise exc

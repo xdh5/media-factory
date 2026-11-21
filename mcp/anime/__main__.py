@@ -216,14 +216,13 @@ def anime_prepare_publication(source_type: str, series_name: str = "", selection
 @mcp.tool()
 def anime_save_publication_assets(manifest_path: str, titles: list[str], descriptions: list[str],
                                    tags: list[str], images: list[dict] | None = None) -> dict:
-    """提交共用文案并准备各段封面参考和生图任务；宿主生图后再次传 images 保存全部封面。尚未提交图片时返回待生成任务，不发布。"""
+    """提交共用文案和宿主生成的封面。images 每项为 part_index、image_path；不传图片时只返回参考帧和各段标题，不发布。"""
     import json
     directory, _ = load_manifest(manifest_path)
     validate_copy(titles, descriptions, tags)
-    context = prepare_youtube_thumbnails(manifest_path, titles)
     if images is None:
-        return {**context, "assets_ready": False}
-    saved = save_youtube_thumbnails(context["context_path"], images)
+        return {**prepare_youtube_thumbnails(manifest_path, titles), "assets_ready": False}
+    saved = save_youtube_thumbnails(manifest_path, titles, images)
     assets = directory / "publication-assets.json"
     assets.write_text(json.dumps({"titles": titles, "descriptions": descriptions, "tags": tags},
                                  ensure_ascii=False, indent=2), encoding="utf-8")

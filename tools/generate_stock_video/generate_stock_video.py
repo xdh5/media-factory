@@ -441,6 +441,15 @@ def download_stock_video(candidate: dict, output_path: str | Path) -> dict:
     raise last_error
 
 
+def _frost_filter(params: dict) -> str:
+    """白蒙版磨砂滤镜链：降对比/褪色 -> 整屏半透明白色蒙版 -> 轻微高斯模糊。"""
+    return (
+        f"eq=contrast={params['contrast']}:saturation={params['saturation']},"
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=white@{params['white_alpha']}:t=fill,"
+        f"gblur=sigma={params['sigma']}"
+    )
+
+
 def prepare_stock_clip(
     source_path: str | Path | list[str | Path],
     output_path: str | Path,
@@ -451,10 +460,9 @@ def prepare_stock_clip(
     soft_blur_sigma: float = 0,
 ) -> dict:
     """最多两段素材一次编码完成裁切、拼接与磨砂，按签名复用已完成镜头。"""
-    from tools.generate_soft_blur._constants import (
+    from ._constants import (
         SOFT_BLUR_CONTRAST, SOFT_BLUR_SATURATION, SOFT_BLUR_WHITE_ALPHA,
     )
-    from tools.generate_soft_blur.generate_soft_blur import _frost_filter
 
     sources = [Path(value).resolve() for value in (source_path if isinstance(source_path, list) else [source_path])]
     if not 1 <= len(sources) <= 2:

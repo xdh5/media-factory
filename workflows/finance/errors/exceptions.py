@@ -27,3 +27,26 @@ class DraftNotFoundError(FinanceError):
 
 class TaskNotFoundError(FinanceError):
     code = "TASK_NOT_FOUND"
+
+
+class CoverError(FinanceError):
+    code = "COVER_ERROR"
+
+
+class CoverParameterError(CoverError):
+    code = "INVALID_PARAMETER"
+
+    def __init__(self, parameter: str, message: str):
+        super().__init__(message, {"parameter": parameter})
+
+
+class CoverSourceImageError(CoverError):
+    code = "COVER_SOURCE_IMAGE_ERROR"
+
+
+class CoverFontError(CoverError):
+    code = "COVER_FONT_ERROR"
+
+
+class CoverRenderError(CoverError):
+    code = "COVER_RENDER_ERROR"

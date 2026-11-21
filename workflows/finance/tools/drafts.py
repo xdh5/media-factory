@@ -18,11 +18,11 @@ from workflows.finance.parameters import (
     SOURCE_RESERVATION_MINUTES,
     TOPIC_DEDUPLICATION_DAYS,
 )
-from tools.media_records.client import _request
-from tools.media_records import list_production_outputs
+from workflows.finance.infrastructure.scripts import list_editorial_drafts, write_editorial_drafts
+from tools.database.production_records import list_production_outputs
 from copy import deepcopy
-from tools.media_records.finance_scripts import reserve_source_script
-from tools.topic_dedup import get_topic
+from workflows.finance.infrastructure.scripts import reserve_source_script
+from tools.database.topic_history import list_recent_topics as get_topic
 from workflows.finance.errors.mapping import _map_error
 
 
@@ -290,11 +290,6 @@ def validate_editorial(source_text: str, editorial: dict) -> dict:
     return {**editorial, **article, **metadata, **visual, "topic": topic, "db_source_hook": original_hook}
 
 
-def list_editorial_drafts(missing_only: bool = True) -> dict:
-    """只读返回未使用稿件及其定稿，不占用稿件。"""
-    return _request("GET", "/v1/finance-editorial-drafts", query={"missing_only": str(missing_only).lower()})
-
-
 def save_editorial_drafts(records: list[dict]) -> dict:
     """保存宿主 Agent 编写的未使用稿件定稿。"""
     sources = {row["aweme_id"]: row for row in list_editorial_drafts(False)["records"]}
@@ -304,7 +299,7 @@ def save_editorial_drafts(records: list[dict]) -> dict:
         if source is None:
             raise WorkflowStepError("只能定稿未使用的财经稿件")
         validated.append({"aweme_id": record["aweme_id"], "editorial": validate_editorial(source["transcript_corrected"], record["editorial"])})
-    return _request("POST", "/v1/finance-editorial-drafts", body={"records": validated})
+    return write_editorial_drafts(validated)
 
 
 def finance_get_production_config() -> dict:

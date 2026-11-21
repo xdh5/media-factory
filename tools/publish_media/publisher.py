@@ -8,12 +8,9 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from copy import deepcopy
 from pathlib import Path
 
-from tools.media_records import (
-    commit_production_outputs,
-    commit_publication_records,
-    list_publication_records,
-)
-from tools.media_files import upload_public_file
+from tools.database.production_records import commit_production_outputs
+from tools.database.publication_records import commit_publication_records, list_publication_records
+from tools.r2_files import upload_file
 
 from ._constants import PUBLIC_URL_PLATFORMS, media_publisher_root
 from ._errors import DuplicatePublicationError, InvalidPublishRequestError, MediaPublisherCommandError
@@ -160,7 +157,7 @@ def _public_video_url(item: dict) -> str:
     if existing:
         return existing
     local_path = Path(item["local_path"])
-    remote = upload_public_file(
+    remote = upload_file(
         local_path,
         f"runs/{item['business_line']}/{item['run_id']}/publish/{local_path.name}",
         content_type="video/mp4",

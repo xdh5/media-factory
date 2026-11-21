@@ -9,7 +9,7 @@ from pathlib import Path
 
 from workflows.finance.parameters import COLLECTION_CACHE_ROOT
 from workflows.finance.errors.exceptions import WorkflowStepError
-from tools.media_records.finance_scripts import record_collection_review, save_transcribed_scripts
+from workflows.finance.infrastructure.scripts import record_collection_review, save_transcribed_scripts
 from workflows.finance.tools.drafts import validate_editorial, save_editorial_drafts
 from workflows.finance.tools.drafts import bare_text
 

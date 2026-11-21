@@ -252,7 +252,7 @@ def review_subject_sheet(
         "next_tool": (
             "language_learning_validate_subject_sheet"
             if action == "relocalize"
-            else "language_learning_prepare_images"
+            else None
         ),
     }
 
@@ -454,7 +454,7 @@ def validate_subject_sheet(
         "cutout_review_sheet_path": str(cutout_review_sheet_path) if cutout_review_sheet_path else "",
         "cutout_paths": cutout_paths,
         "inspection_required": valid,
-        "next_tool": "language_learning_review_subject_sheet" if valid else "language_learning_prepare_images",
+        "next_tool": "language_learning_review_subject_sheet" if valid else None,
         "vision": vision,
     }
 

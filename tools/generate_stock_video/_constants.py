@@ -24,3 +24,8 @@ ATTRIBUTION_URLS = {
     "pixabay": "https://pixabay.com",
     "coverr": "https://coverr.co",
 }
+
+# 素材规范化时在同一滤镜链中施加磨砂效果。
+SOFT_BLUR_WHITE_ALPHA = 0.18
+SOFT_BLUR_CONTRAST = 0.85
+SOFT_BLUR_SATURATION = 0.78

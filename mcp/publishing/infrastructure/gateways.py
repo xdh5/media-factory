@@ -3,7 +3,7 @@
 from tools.task_runner import TaskNotFoundError as RunnerTaskNotFoundError
 from tools.task_runner import poll_task as runner_poll_task
 from tools.task_runner import submit_task as runner_submit_task
-from tools.media_records import MediaRecordsError
+from tools.database._errors import DatabaseError
 from tools.publish_media import (
     PublishMediaError,
     list_account_groups,

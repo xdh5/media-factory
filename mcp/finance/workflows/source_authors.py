@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from list_author_works import AuthorWorksError, resolve_author_nickname, resolve_author_profile
-from tools.media_records.finance_scripts import (
+from workflows.finance.infrastructure.scripts import (
     add_source_author,
     list_source_authors,
     remove_source_author,

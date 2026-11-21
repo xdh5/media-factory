@@ -28,10 +28,11 @@ import json
 import mimetypes
 import shutil
 from datetime import datetime, timezone
-from tools.generate_cover_image import CoverError, generate_cover_image
-from tools.media_records import commit_production_outputs
-from tools.media_files import upload_public_file, upload_public_manifest
-from tools.topic_dedup import commit as commit_topic
+from workflows.finance.errors.exceptions import CoverError
+from workflows.finance.tools.cover import generate_cover_image
+from tools.database.production_records import commit_production_outputs
+from tools.r2_files import upload_file, upload_manifest
+from tools.database.topic_history import record_topic_usage as commit_topic
 from tools.generate_final_video import generate_final_video, safe_filename
 from tools.generate_shot import intro_bgm_start_seconds
 from workflows.finance.parameters import (
@@ -45,7 +46,7 @@ from workflows.finance.parameters import (
 from workflows.finance.tools.drafts import load_draft, save_source_usage
 from workflows.finance.tools.storyboard import load_prepared_tts, parse_storyboard
 from workflows.finance.tools.materials import _load_saved_storyboard, _apply_material, _write_attributions
-from tools.media_records.finance_scripts import mark_source_script_used
+from workflows.finance.infrastructure.scripts import mark_source_script_used
 
 
 def _positive_int(value, field: str) -> int:
@@ -270,7 +271,6 @@ def finish_finance_video(
             subtitle_position=settings["subtitle_position"],
             subtitle_style=settings["subtitle_style"],
             secondary_subtitles={"enabled": False},
-            emphasis_lines={"enabled": False},
             extra_ass_paths=extra_ass_paths,
             normalize_composed=stock_video and not material_manifest.get("normalized_cfr"),
             progress=progress,
@@ -412,7 +412,7 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
         if not asset_path.is_file():
             raise WorkflowStepError(f"财经生产清单中的资产不存在：{field}={asset_path}")
         content_type = mimetypes.guess_type(asset_path.name)[0] or "application/octet-stream"
-        uploaded_assets[field] = upload_public_file(
+        uploaded_assets[field] = upload_file(
             asset_path,
             f"runs/{MCP_ID}/{r2_dir}/{asset_path.name}",
             content_type=content_type,
@@ -444,7 +444,7 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
         "r2_expires_at": None,
     }])
     manifest["production_outputs"] = production_outputs
-    remote = upload_public_manifest(path, manifest, f"runs/{MCP_ID}/{r2_dir}/manifest.json")
+    remote = upload_manifest(path, manifest, f"runs/{MCP_ID}/{r2_dir}/manifest.json")
     return {
         "manifest_path": str(path),
         "manifest_url": remote["url"],

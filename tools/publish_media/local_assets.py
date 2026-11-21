@@ -6,9 +6,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from tools.media_records import commit_production_outputs, list_production_outputs
+from tools.database.production_records import commit_production_outputs, list_production_outputs
 from tools.generate_final_video import safe_filename
-from tools.media_files import MediaFilesError, download_public_file
+from tools.r2_files import R2FilesError, download_file
 
 from ._constants import PROJECT_ROOT
 from ._errors import InvalidPublishRequestError
@@ -127,8 +127,8 @@ def _materialize_finance_publish_metadata(record: dict, output_dir: Path) -> Non
         if destination.is_file():
             continue
         try:
-            download_public_file(f"{prefix}/{filename}", destination)
-        except MediaFilesError:
+            download_file(f"{prefix}/{filename}", destination)
+        except R2FilesError:
             # 旧 Workflow 产物可能只有视频，保留 D1 标题和标签兜底。
             continue
 
@@ -146,7 +146,7 @@ def materialize_github_workflow_output(record: dict) -> dict:
     destination = local_video_path(record)
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.is_file():
-        download_public_file(r2_object_key(record), destination)
+        download_file(r2_object_key(record), destination)
     _materialize_finance_publish_metadata(record, destination.parent)
 
     payload = {

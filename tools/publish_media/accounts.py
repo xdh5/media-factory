@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from tools.media_records import list_publishing_account_groups
+from tools.database.account_groups import list_publishing_account_groups
 
 from ._constants import (
     media_publisher_root,

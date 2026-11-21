@@ -1,10 +1,10 @@
 """财经稿件和生产计划编排。"""
 from __future__ import annotations
 
-from tools.media_records.finance_scripts import get_source_script_stats
-from tools.media_records import list_production_outputs
+from workflows.finance.infrastructure.scripts import get_source_script_stats
+from tools.database.production_records import list_production_outputs
 from workflows.finance.tools.drafts import finance_get_automation_plan
-from tools.topic_dedup import get_topic
+from tools.database.topic_history import list_recent_topics as get_topic
 from workflows.finance.parameters import MCP_ID, SOURCE_COLLECTION_CODE, SOURCE_RESERVATION_MINUTES, TOPIC_DEDUPLICATION_DAYS
 from workflows.finance.tools.drafts import save_draft
 from .common import _map_error

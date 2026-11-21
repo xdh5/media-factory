@@ -10,7 +10,7 @@ from .tools.subject_cards import compose_fixed_cards_from_subjects
 from .tools.videos import create_vocabulary_videos
 from .tools.delivery import attach_publish_manifest, upload_publish_assets_to_r2
 from .parameters import production_dirs, WORDS_PER_TASK
-from tools.media_files import download_public_file
+from tools.r2_files import download_file
 
 
 async def run(publish_date: str, work_dir: Path, plan: dict, *, production_source: str = "local_mcp") -> dict:
@@ -42,7 +42,7 @@ async def run(publish_date: str, work_dir: Path, plan: dict, *, production_sourc
     subject_paths = []
     for index, url in enumerate(pack["image_urls"], 1):
         path = work_dir / "pack-subjects" / run_id / f"{index:02d}.png"
-        await asyncio.to_thread(download_public_file, unquote(urlparse(url).path).lstrip("/"), path)
+        await asyncio.to_thread(download_file, unquote(urlparse(url).path).lstrip("/"), path)
         subject_paths.append(str(path))
     card_dirs = {}
     for mode in modes:

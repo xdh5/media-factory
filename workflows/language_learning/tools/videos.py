@@ -3,7 +3,7 @@
 import json, shutil, subprocess
 from pathlib import Path
 from PIL import Image, ImageDraw
-from tools.media_records import commit_production_outputs
+from tools.database.production_records import commit_production_outputs
 from tools.generate_final_video import generate_final_video, safe_filename
 from tools.generate_sticker import generate_sticker
 from tools.generate_tts import generate_tts
@@ -176,7 +176,7 @@ def _one_mode(
     try:
         video = generate_final_video(
             shots,
-            output_root / f"{safe_filename(title)}.mp4",
+            output_root / mode / "standard" / f"{safe_filename(topic)}.mp4",
             segment_dir / "final-cache",
             size=VIDEO_SIZE,
             tts_path=tts["output_path"],
@@ -321,7 +321,7 @@ def _one_quiz_mode(
     try:
         video = generate_final_video(
             shots,
-            output_root / f"{safe_filename(title)}.mp4",
+            output_root / mode / "quiz" / f"{safe_filename(rows[0]['english'])}.mp4",
             segment_dir / "final-cache",
             size=VIDEO_SIZE,
             tts_path=narration_path,

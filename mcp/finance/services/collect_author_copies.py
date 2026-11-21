@@ -7,7 +7,7 @@ from download_video import download
 from list_author_works import list_author_works
 
 from workflows.finance.errors.exceptions import WorkflowStepError
-from tools.media_records.finance_scripts import list_source_authors, list_saved_script_ids, list_rejected_video_ids
+from workflows.finance.infrastructure.scripts import list_source_authors, list_saved_script_ids, list_rejected_video_ids
 from .copy_review import save_review_context, load_review_context, review_result
 
 

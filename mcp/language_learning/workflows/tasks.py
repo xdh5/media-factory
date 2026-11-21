@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 
-from tools.media_records import MediaRecordsError
-from tools.generate_image import ImageGenerationError
-from tools.media_files import MediaFilesError
+from tools.database._errors import DatabaseError
+from tools.r2_files import R2FilesError
 from tools.task_runner import TaskNotFoundError as RunnerTaskNotFoundError
-from tools.topic_dedup import TopicDedupError
+from tools.database._errors import TopicHistoryError
 from tools.task_runner import poll_task as runner_poll_task
 
 from workflows.language_learning.errors.exceptions import LanguageLearningError, TaskNotFoundError

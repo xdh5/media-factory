@@ -18,7 +18,7 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
                     playlist_title: str = "", require_completed: bool = True,
                     verify_processing: bool = True, *, upload_attempt_saved=None) -> dict:
     """逐段即时公开发布到指定动漫账号组，按文件摘要去重并逐条写回发布记录。"""
-    from tools.media_records import list_publication_records, commit_publication_records, delete_publication_records
+    from tools.database.publication_records import list_publication_records, commit_publication_records, delete_publication_records
     from tools.publish_media.accounts import resolve_account_group
     from tools.publish_media.publisher import _publishing
 
