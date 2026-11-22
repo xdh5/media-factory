@@ -13,10 +13,11 @@ from media_factory_mcp.finance.infrastructure.collection import record_collectio
 from media_factory_mcp.finance.services.editorial import validate_editorial, save_editorial_drafts
 from workflows.finance.tools.drafts import bare_text
 
-_PROMPT = package_resource_path("media_factory_mcp", "finance", "prompts", "copy-host-review.md")
+_PROMPT_DIRECTORY = package_resource_path("media_factory_mcp", "finance", "prompts")
 _STAGE_PROMPTS = {
-    "review": "copy-review.md",
-    "copy": "editorial-copy.md",
+    "review": "topic-review.md",
+    "rewrite": "editorial-rewrite.md",
+    "metadata": "editorial-metadata.md",
     "storyboard": "editorial-storyboard.md",
 }
 
@@ -52,9 +53,8 @@ def review_result(path: Path, context: dict) -> dict:
         "needs_more": needs_more and not pending, "completed": completed,
         "authors": [{k: a[k] for k in ("sec_user_id", "display_name", "requested_count", "saved_count")} for a in context.get("authors", [])],
         "failures": context.get("failures", []),
-        "prompt": _PROMPT.read_text(encoding="utf-8") if pending else "",
         "prompts": {
-            stage: _PROMPT.with_name(filename).read_text(encoding="utf-8")
+            stage: (_PROMPT_DIRECTORY / filename).read_text(encoding="utf-8")
             for stage, filename in _STAGE_PROMPTS.items()
         } if pending else {},
     }
