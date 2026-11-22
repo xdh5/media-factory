@@ -9,6 +9,7 @@ from tools.generate_stock_video import (
     prepare_stock_clip,
     search_stock_videos,
     select_stock_candidates,
+    StockVideoError,
 )
 from tools.generate_stock_video._constants import SELECTION_DURATION_MARGIN_SECONDS
 from workflows.finance.parameters import (
@@ -17,6 +18,7 @@ from workflows.finance.parameters import (
     STORYBOARD_CONTEXT_FILE_NAME,
     STORYBOARD_TEXT_FILE_NAME,
     VIDEO_SIZE,
+    VIDEO_RADIO,
 )
 from workflows.finance.errors.exceptions import WorkflowStepError
 from workflows.finance.tools.storyboard import display_subtitle_text, parse_storyboard
@@ -58,15 +60,42 @@ def prepare_video_searches(
     # 片头也独立选片，避免借用下一镜头后再次从头播放。
     stock_shots = shots
     def search_shot(shot):
-        search = search_stock_videos(
-            str(shot["keywords"]),
-            orientation=orientation,
-            per_provider=per_provider,
-            min_duration=float(shot["duration"]),
-            min_width=int(VIDEO_SIZE.split("x")[0]),
-            min_height=int(VIDEO_SIZE.split("x")[1]),
-            max_clips=2,
-        )
+        label = f"[素材检索 {shot['id']}]"
+        try:
+            search = search_stock_videos(
+                str(shot["keywords"]),
+                orientation=orientation,
+                aspect_ratio=VIDEO_RADIO,
+                per_provider=per_provider,
+                min_duration=float(shot["duration"]),
+                max_clips=2,
+            )
+        except StockVideoError as exc:
+            required = float(shot["duration"]) + SELECTION_DURATION_MARGIN_SECONDS
+            lines = [f"{label} 失败：{exc}",
+                     f"台词：{','.join(shot['line_ids'])}",
+                     f"画面：{shot['description']}",
+                     f"关键词：{shot['keywords']}",
+                     f"镜头 {shot['duration']:.3f} 秒；素材需 ≥{required:.3f} 秒，最多拼 2 段；比例 {VIDEO_RADIO}，不限制分辨率"]
+            for attempt in exc.details.get("attempts", []):
+                lines.append(f"Pexels 返回 {attempt['count']} 条，缓存命中：{attempt['cache_hit']}")
+            for candidate in exc.details.get("candidates", []):
+                reasons = candidate["excluded_reasons"]
+                status = "；".join(reasons) if reasons else (
+                    "比例合格，单段时长足够" if candidate["duration"] >= required
+                    else "比例合格，单段时长不足，可参与拼接")
+                lines.append(f"候选 {candidate['id']}：{candidate['width']}×{candidate['height']}，"
+                             f"{candidate['duration']:.3f} 秒；{status}")
+            if exc.details.get("candidates"):
+                durations = sorted((row["duration"] for row in exc.details["candidates"]
+                                    if not row["excluded_reasons"]), reverse=True)
+                lines.append(f"比例合格 {len(durations)} 条；最长两段合计 {sum(durations[:2]):.3f} 秒，"
+                             f"要求 ≥{required:.3f} 秒。")
+                lines.append("结论：上述候选中不存在满足要求的单段或两段组合。")
+            print("\n".join(lines), flush=True)
+            raise
+        print(f"{label} 成功：关键词={shot['keywords']}；镜头={shot['duration']:.3f} 秒；"
+              f"达标候选={len(search['candidates'])} 条", flush=True)
         return {
             "video_id": shot["id"],
             "subtitle": display_subtitle_text(str(shot.get("subtitle") or "")),
@@ -109,7 +138,7 @@ def prepare_video_searches(
         },
         "searches": searches,
         "selection_instructions": (
-            "按搜索顺序取尺寸达标的素材。网站标注时长须比镜头实际需要多 "
+            f"按搜索顺序取 {VIDEO_RADIO} 素材，不限制分辨率。网站标注时长须比镜头实际需要多 "
             f"{SELECTION_DURATION_MARGIN_SECONDS:g} 秒，单段不足时拼两段，合计也要多出这 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒；"
             "调用下载工具时无需传 selections。"
         ),
@@ -139,7 +168,6 @@ def download_selected_videos(context_path: str | Path, selections: list[dict] | 
         if len(selections) != len(by_video_id) or {str(item.get("video_id") or "") for item in selections} != set(by_video_id):
             raise WorkflowStepError("视频选择没有完整覆盖全部镜头")
     selected_by_id = {str(item["video_id"]): item for item in selections or []}
-    width, height = map(int, VIDEO_SIZE.split("x"))
     planned = {}
     used_sources: set[tuple[str, str]] = set()
     for video_id, search in by_video_id.items():
@@ -149,12 +177,16 @@ def download_selected_videos(context_path: str | Path, selections: list[dict] | 
             candidates = [row for row in candidates if str(row.get("provider")) == str(selection.get("provider"))
                           and str(row.get("id")) == str(selection.get("id"))]
         candidates = [row for row in candidates if (str(row.get("provider")), str(row.get("id"))) not in used_sources]
-        chosen = select_stock_candidates(candidates, float(search["duration"]), width, height)
+        chosen = select_stock_candidates(candidates, float(search["duration"]), 0, 0)
         if not chosen:
             raise WorkflowStepError(
-                f"镜头 {video_id} 没有单段或两段合计比实际需要多 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒、尺寸达标且未被其他镜头使用的视频，请重新搜索"
+                f"镜头 {video_id} 没有单段或两段合计比实际需要多 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒、且未被其他镜头使用的视频"
             )
         planned[video_id] = chosen
+        print(f"[素材选片 {video_id}] 采用 "
+              + " + ".join(f"{row['id']}（{row['width']}×{row['height']}，{float(row['duration']):.3f} 秒）"
+                           for row in chosen)
+              + f"；目标镜头 {float(search['duration']):.3f} 秒", flush=True)
         used_sources.update((str(row["provider"]), str(row["id"])) for row in chosen)
 
     output_root = resolved_context.parent

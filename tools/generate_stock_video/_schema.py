@@ -28,6 +28,7 @@ SEARCH_STOCK_VIDEOS_INPUT_SCHEMA = {
     "properties": {
         "query": {"type": "string"},
         "orientation": {"type": "string", "enum": ["landscape", "portrait", "square"]},
+        "aspect_ratio": {"type": "string"},
         "per_provider": {"type": "integer", "minimum": 1, "maximum": 40},
     },
     "required": ["query"],

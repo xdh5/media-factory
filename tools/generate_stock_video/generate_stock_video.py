@@ -122,7 +122,6 @@ def _search_pexels(query: str, orientation: str, limit: int, api_key: str) -> li
         PEXELS_API_URL + "?" + urlencode({
             "query": query,
             "orientation": orientation,
-            "size": "medium",
             "locale": "en-US",
             "per_page": limit,
         }),
@@ -176,13 +175,14 @@ def search_stock_videos(
     query: str,
     *,
     orientation: str = "landscape",
+    aspect_ratio: str | None = None,
     per_provider: int = DEFAULT_RESULTS_PER_PROVIDER,
     min_duration: float = 0,
     min_width: int = 0,
     min_height: int = 0,
     max_clips: int = 1,
 ) -> dict:
-    """搜索 Pexels，并筛选满足尺寸和时长要求的候选素材。"""
+    """搜索 Pexels，并筛选满足画面比例和时长要求的候选素材。"""
     normalized_query = str(query or "").strip()
     if orientation not in {"landscape", "portrait", "square"}:
         raise StockVideoConfigurationError("orientation 必须是 landscape、portrait 或 square")
@@ -200,17 +200,30 @@ def search_stock_videos(
         candidates = _search_pexels(normalized_query, orientation, limit, api_key)
         _write_search_cache(cache_path, candidates)
     attempts = [{"provider": provider, "status": "succeeded", "count": len(candidates), "cache_hit": cache_hit}]
-    candidates = [
-        row for row in candidates
-        if float(row.get("duration") or 0) > 0
-        and int(row.get("width") or 0) >= min_width
-        and int(row.get("height") or 0) >= min_height
-        and (
-            (orientation == "landscape" and int(row.get("width") or 0) >= int(row.get("height") or 0))
-            or (orientation == "portrait" and int(row.get("height") or 0) > int(row.get("width") or 0))
-            or (orientation == "square" and abs(int(row.get("width") or 0) - int(row.get("height") or 0)) <= max(int(row.get("width") or 0), int(row.get("height") or 0)) * 0.15)
+    ratio = tuple(map(int, aspect_ratio.split(":"))) if aspect_ratio else None
+    diagnostics, valid = [], []
+    for row in candidates:
+        width, height = int(row.get("width") or 0), int(row.get("height") or 0)
+        duration = float(row.get("duration") or 0)
+        reasons = []
+        if width < min_width or height < min_height:
+            reasons.append(f"尺寸不足，要求至少 {min_width}×{min_height}")
+        if duration <= 0:
+            reasons.append("无有效时长")
+        matches_orientation = (
+            (orientation == "landscape" and width >= height)
+            or (orientation == "portrait" and height > width)
+            or (orientation == "square" and abs(width - height) <= max(width, height) * 0.15)
         )
-    ]
+        if not matches_orientation:
+            reasons.append(f"方向不符，要求 {orientation}")
+        if ratio and width * ratio[1] != height * ratio[0]:
+            reasons.append(f"画面比例不符，要求 {aspect_ratio}")
+        diagnostics.append({"id": row["id"], "width": width, "height": height,
+                            "duration": duration, "excluded_reasons": reasons})
+        if not reasons:
+            valid.append(row)
+    candidates = valid
     if select_stock_candidates(candidates, min_duration, min_width, min_height, max_clips=max_clips):
         return {
             "query": normalized_query,
@@ -220,8 +233,10 @@ def search_stock_videos(
             "attempts": attempts,
         }
     raise StockVideoRequestError(
-        "Pexels 未返回尺寸和时长达标的素材，请更换英文关键词",
-        {"query": normalized_query, "attempts": attempts},
+        "Pexels 未返回画面规格和时长达标的素材",
+        {"query": normalized_query, "attempts": attempts, "candidates": diagnostics,
+         "required_duration": float(min_duration) + SELECTION_DURATION_MARGIN_SECONDS,
+         "max_clips": max_clips},
     )
 
 
