@@ -85,6 +85,7 @@ jobs:
       FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
     steps:
       - name: 检查生产所需配置
+        id: configuration
         shell: bash
         run: |
           for name in \
@@ -95,18 +96,22 @@ jobs:
             test -n "${!name}" || { echo "缺少 GitHub Secret：$name" >&2; exit 1; }
           done
 
-      - name: 按日期生产并立即预约语言发布
-        env:
-          PUBLISH_DATE: ${{ matrix.publish_date }}
-        run: >-
-          python -m github_actions weekly_day
-          --publish-date "$PUBLISH_DATE"
+      - name: 生产财经视频
+        run: python -m github_actions finance_produce_day --publish-date "${{ matrix.publish_date }}"
 
-      - name: 归还失败或取消任务占用的语言词包
-        if: ${{ failure() || cancelled() }}
-        env:
-          PUBLISH_DATE: ${{ matrix.publish_date }}
-        run: python -m github_actions language_learning_release_pack --publish-date "$PUBLISH_DATE"
+      - name: 检查语言发布账号
+        id: language-accounts
+        if: ${{ !cancelled() && steps.configuration.outcome == 'success' }}
+        run: python -m github_actions language_learning_account_check --publish-date "${{ matrix.publish_date }}"
+
+      - name: 生产语言视频
+        id: language-production
+        if: ${{ !cancelled() && steps.language-accounts.outcome == 'success' }}
+        run: python -m github_actions language_learning_produce_day --publish-date "${{ matrix.publish_date }}"
+
+      - name: 预约发布学中文
+        if: ${{ !cancelled() && steps.language-production.outcome == 'success' }}
+        run: python -m github_actions language_learning_publish_day --publish-date "${{ matrix.publish_date }}"
 
       - name: 保存配音失败诊断
         if: failure()

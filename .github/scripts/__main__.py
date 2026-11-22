@@ -17,17 +17,18 @@ def main() -> None:
             "finance_preflight",
             "finance",
             "language_learning_preflight",
-            "language_learning_release_pack",
             "language_learning_publish",
             "weekly_plan",
-            "weekly_day",
+            "finance_produce_day",
+            "language_learning_account_check",
+            "language_learning_produce_day",
+            "language_learning_publish_day",
         ],
     )
     parser.add_argument("--run-id", default="")
     parser.add_argument("--targets", default="")
     parser.add_argument("--publish-date", default="")
     parser.add_argument("--publish-dates", default="")
-    parser.add_argument("--finance-only", choices=("true", "false"), default="false")
     parser.add_argument("--default-days-ahead", type=int, choices=(0, 1), default=0)
     parser.add_argument("--week-start", default="")
     arguments = parser.parse_args()
@@ -54,10 +55,6 @@ def main() -> None:
                     stream.write(f"existing_run_id={payload['existing_run_id']}\n")
                     stream.write(f"pending_targets={','.join(payload['pending_targets'])}\n")
                 stream.write(f"skip_reason={payload['skip_reason']}\n")
-    elif arguments.workflow == "language_learning_release_pack":
-        from workflows.language_learning.tools.packs import language_learning_release_pack
-
-        payload = asyncio.run(asyncio.to_thread(language_learning_release_pack, arguments.publish_date))
     elif arguments.workflow == "finance":
         from .finance import run as run_finance
 
@@ -91,19 +88,19 @@ def main() -> None:
         if output_path:
             with Path(output_path).open("a", encoding="utf-8") as stream:
                 stream.write(f"dates_json={json.dumps(dates, ensure_ascii=False)}\n")
-    elif arguments.workflow == "weekly_day":
-        from .weekly import run_day
+    elif arguments.workflow in {"finance_produce_day", "language_learning_account_check", "language_learning_produce_day", "language_learning_publish_day"}:
+        from ._dates import resolve_publish_date
+        from .finance import produce_day as produce_finance
+        from .language_learning import check_accounts, produce_day as produce_language, publish_day
 
-        payload = asyncio.run(run_day(arguments.publish_date, finance_only=arguments.finance_only == "true"))
+        handlers = {
+            "finance_produce_day": produce_finance,
+            "language_learning_account_check": check_accounts,
+            "language_learning_produce_day": produce_language,
+            "language_learning_publish_day": publish_day,
+        }
+        payload = asyncio.run(handlers[arguments.workflow](resolve_publish_date(arguments.publish_date)))
     print(json.dumps(payload, ensure_ascii=False))
-    if arguments.workflow == "weekly_day":
-        failed = any(
-            payload.get(name, {}).get("failed")
-            or payload.get(name, {}).get("status") in {"produce_failed", "publish_failed", "partially_produced"}
-            for name in ("finance", "language")
-        )
-        if failed:
-            raise SystemExit("当日生产失败，请查看上方业务结果")
 
 
 if __name__ == "__main__":
