@@ -128,8 +128,7 @@ def save_draft(
     normalized_source_aweme_id = str(source_aweme_id or "").strip()
     normalized_source_token = str(source_reservation_token or "").strip()
     normalized_source_hook = str(source_hook or "").strip()
-    # 数据库逐字钩子：mark_used 用它校验 transcript_corrected 的逐字前缀。
-    # 配音钩子包含品牌替换及标点校对，原文钩子用于来源核对。
+    # 原文片段用于 mark_used 来源核对，配音使用重新创作的定稿钩子。
     normalized_db_hook = str(db_source_hook or "").strip()
     if not normalized_source_aweme_id.isdigit():
         raise WorkflowStepError("source_aweme_id 必须是有效的抖音作品 ID")
@@ -256,8 +255,8 @@ def finance_save_draft(
 
     同一天制作第二条时传 content_part=2：缓存与产物目录独立（run-YYYYMMDD-part2），
     D1 落库使用 content_part 区分，run_id 仍为 run-YYYYMMDD。
-    db_source_hook：数据库原稿中未经改动的逐字钩子（mark_used 校验用）；
-    source_hook 为品牌替换及标点校对后的钩子，db_source_hook 保留对应原文。
+    db_source_hook：数据库原稿中的连续原文片段（mark_used 来源核对用）；
+    source_hook 为重新创作的配音钩子，两者不要求逐字对应。
     """
     try:
         stored = next((row["editorial"] for row in list_editorial_drafts(False)["records"]

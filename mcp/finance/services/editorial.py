@@ -21,30 +21,21 @@ def _brand_replacements(value) -> list[tuple[str, str]]:
     return rows
 
 
-def _replace(text: str, rows: list[tuple[str, str]]) -> str:
-    result = str(text or "")
-    for source, target in rows:
-        result = result.replace(source, target)
-    return result
-
-
 def validate_source_hook(source_text: str, hook: str) -> None:
     source = str(source_text or "").strip()
     if not hook or hook not in source:
         raise WorkflowStepError("db_source_hook 必须是数据库原稿中的连续原文片段")
 
 
-def validate_article(source_text: str, source_hook: str, editorial: dict) -> dict:
+def validate_article(editorial: dict) -> dict:
     replacements = _brand_replacements(editorial.get("replacements"))
     mismatched = [row for row in replacements if bare_text(row[1]) != bare_text(BRAND_NAME)]
     if mismatched:
         raise WorkflowStepError(f"所有品牌只能替换为「{BRAND_NAME}」")
     processed_hook = str(editorial["source_hook"]).strip()
-    if bare_text(processed_hook) != bare_text(_replace(source_hook, replacements)):
-        raise WorkflowStepError("source_hook 须对应原文钩子的品牌替换及标点校对结果")
     article = str(editorial.get("article") or "").strip()
     if not bare_text(article).startswith(bare_text(processed_hook)):
-        raise WorkflowStepError("正文必须以完成品牌替换后的黄金钩子原样开头")
+        raise WorkflowStepError("正文必须以定稿黄金钩子开头")
     long_lines = [(index, len(line.strip())) for index, line in enumerate(article.splitlines(), 1) if len(line.strip()) > ARTICLE_MAX_LINE_LENGTH]
     if long_lines:
         detail = "、".join(f"第{index}行 {size}字" for index, size in long_lines)
@@ -66,7 +57,7 @@ def validate_editorial(source_text: str, editorial: dict) -> dict:
         raise WorkflowStepError("正常稿件必须提供 editorial 定稿对象")
     original_hook = str(editorial.get("db_source_hook") or "").strip()
     validate_source_hook(source_text, original_hook)
-    article = validate_article(source_text, original_hook, editorial)
+    article = validate_article(editorial)
     if _SERIAL_REFERENCE_PATTERN.search(article["article"]):
         raise WorkflowStepError("定稿正文不能包含连载指涉")
     metadata = validate_metadata(
