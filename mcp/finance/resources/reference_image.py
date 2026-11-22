@@ -8,7 +8,7 @@ def storyboard_reference_path():
 
 
 def read_storyboard_reference() -> bytes:
-    """读取财经分镜手绘插画风格参考图。"""
+    """读取财经分镜的拟人大鹅角色与动物漫画风格参考图。"""
     return storyboard_reference_path().read_bytes()
 
 
