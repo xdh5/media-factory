@@ -15,9 +15,12 @@ from .tasks import finance_poll_task
 from workflows.finance.errors.exceptions import WorkflowStepError
 from workflows.finance.parameters import (
     normalize_publish_date,
+    PROJECT_CACHE_ROOT,
 )
 from media_factory_mcp.finance.infrastructure.collection import get_collection_review_stats
 from media_factory_mcp.finance.resources.reference_image import image_generation_reference
+from workflows.finance.infrastructure.scripts import list_editorial_drafts
+from workflows.finance.tools.storyboard_images import save_storyboard_images, storyboard_hash
 
 
 class CopyReview(TypedDict):
@@ -90,6 +93,26 @@ def finance_start_production(publish_date: str, content_part: int=1, generate_im
     return result
 
 
+def finance_manage_storyboard_images(aweme_id: str, image_paths: list[str] | None = None) -> dict:
+    """按未使用稿件准备生图清单；传入逐镜 image_paths 则上传 R2 并入库，供 GitHub Runner 下载使用。"""
+    source = next(row for row in list_editorial_drafts(False)["records"] if row["aweme_id"] == aweme_id)
+    editorial = source["editorial"]
+    rows = [row for row in editorial["storyboard"].splitlines() if row.strip()]
+    if image_paths is not None:
+        if len(image_paths) != len(rows):
+            raise WorkflowStepError(f"本稿需要 {len(rows)} 张分镜图片")
+        return save_storyboard_images(aweme_id, editorial["storyboard"],
+                                      {f"shot-{i:03d}": path for i, path in enumerate(image_paths, 1)})
+    image_root = PROJECT_CACHE_ROOT / "finance" / "storyboard-images" / aweme_id / storyboard_hash(editorial["storyboard"])
+    image_root.mkdir(parents=True, exist_ok=True)
+    narration = [row for row in editorial["article"].splitlines() if row.strip()]
+    return {"aweme_id": aweme_id, "image_generation_reference": image_generation_reference(),
+            "image_requests": [
+                {"id": f"shot-{i:03d}", "description": row.split("|", 1)[0], "narration": text,
+                 "output_path": str(image_root / f"shot-{i:03d}.png")}
+                for i, (row, text) in enumerate(zip(rows, narration), 1)]}
+
+
 
 
 
@@ -128,5 +151,5 @@ def finance_continue_production(workflow_id: str, image_paths: list[str] | None 
 
 BUSINESS_TOOLS = (
     finance_get_config, finance_manage_authors, finance_start_collection, finance_finalize_collection,
-    finance_manage_drafts, finance_start_production, finance_continue_production, finance_get_task, finance_get_inventory,
+    finance_manage_drafts, finance_manage_storyboard_images, finance_start_production, finance_continue_production, finance_get_task, finance_get_inventory,
 )

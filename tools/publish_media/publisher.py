@@ -10,6 +10,7 @@ from pathlib import Path
 
 from tools.database.production_records import commit_production_outputs
 from tools.database.publication_records import commit_publication_records, list_publication_records
+from tools.database.publication_targets import commit_publication_targets
 from tools.r2_files import upload_file
 
 from ._constants import PUBLIC_URL_PLATFORMS, media_publisher_root
@@ -272,6 +273,11 @@ def publish_local_outputs(
             [task["route"]["platform"]], task.get("publish_mode", publish_mode),
             task.get("publish_at", publish_at), None,
         )[task["route"]["platform"]]
+    commit_publication_targets([
+        {"production_id": task["item"]["production_id"], "platform": task["route"]["platform"],
+         "account_id": task["route"]["platform_account_id"]}
+        for task in preview["tasks"]
+    ])
     publish_batch, _, _ = _publishing()
     outcome = {"published": [], "failed": [], "publish_timings": {}}
     published = []

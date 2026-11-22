@@ -8,5 +8,7 @@
 - 只生成静态图片，workflow 为各镜随机添加轻微缩放或平移动效。
 - 默认保存为 generated-images/shot-001.png 等逐镜路径；workflow 优先使用已有图片，没有图片的镜头仍搜索实拍视频。生图模式需先完成全部图片再继续。
 - 宿主 Agent 使用可用生图工具，将参考图作为图像输入，逐镜保存到 image_requests 的 output_path。完成后调用 finance_continue_production(workflow_id)；若另存位置，按镜头顺序传 image_paths。
+- 预先生图供 GitHub 使用时，用 finance_manage_storyboard_images(aweme_id) 领取图片任务，完成后传入 image_paths 再调用该工具，上传 R2 并入库。Runner 按稿件和分镜版本下载，不使用宿主本地路径。
+- 分镜图按视频单独关联；北京时间过了计划发布日期、全部目标已有发布或到时预约回执后，由 Cloudflare 定时删除这些图片。参考图、封面和成片保留。
 
 MCP 不调用生图模型，只提供参考图、分镜和输出位置，接收图片并执行合成。

@@ -26,6 +26,7 @@ from workflows.finance.tools.storyboard import display_subtitle_text, parse_stor
 from workflows.finance.tools.drafts import load_draft
 from tools.generate_final_video._ffmpeg import _probe
 from tools.generate_shot import generate_shot_from_image
+from workflows.finance.tools.storyboard_images import save_storyboard_images, bind_storyboard_images
 
 
 DEFAULT_SOFT_BLUR_SIGMA = 0.55
@@ -45,6 +46,8 @@ def prepare_image_materials(draft_path: str | Path, image_paths: list[str]) -> d
         if not path.is_file():
             raise WorkflowStepError(f"镜头 {shot['id']} 的图片不存在：{path}")
         images[shot["id"]] = str(path)
+    save_storyboard_images(draft["source_aweme_id"], draft["storyboard"], images)
+    bind_storyboard_images(draft)
     manifest_path = cache_root / "generated-images" / "image-material-manifest.json"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest = {"images": images, "image_motion": {key: dict(random.choice(IMAGE_MOTION_EFFECTS)) for key in images},
@@ -86,8 +89,16 @@ def prepare_video_searches(
     storyboard_path.write_text(normalized_storyboard, encoding="utf-8")
     searches = []
     # 片头也独立选片，避免借用下一镜头后再次从头播放。
-    images = {shot["id"]: str(path) for shot in shots
-              if (path := cache_root / "generated-images" / f"{shot['id']}.png").is_file()}
+    images = {}
+    for shot in shots:
+        for suffix in (".png", ".jpg", ".jpeg", ".webp"):
+            path = cache_root / "generated-images" / f"{shot['id']}{suffix}"
+            if path.is_file():
+                images[shot["id"]] = str(path)
+                break
+    if images:
+        save_storyboard_images(draft["source_aweme_id"], draft["storyboard"], images)
+        bind_storyboard_images(draft)
     stock_shots = [shot for shot in shots if shot["id"] not in images]
     for shot_id in images:
         print(f"[素材选择 {shot_id}] 发现图片，跳过视频检索", flush=True)

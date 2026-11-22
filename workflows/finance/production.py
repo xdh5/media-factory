@@ -13,6 +13,7 @@ from tools.task_runner import submit_task as runner_submit_task
 from workflows.finance.tools.storyboard import prepare_storyboard, parse_storyboard
 from workflows.finance.tools.assemble_finance_video import upload_finance_assets_to_r2
 from tools.task_runner import poll_task
+from workflows.finance.tools.storyboard_images import restore_storyboard_images, bind_storyboard_images
 
 def finance_get_config():
     return a.finance_get_production_config()
@@ -35,10 +36,16 @@ def _submit_preparation(state_path: Path, state: dict) -> dict:
     def work():
         current = json.loads(state_path.read_text(encoding="utf-8"))
         result = prepare_storyboard(current["draft_path"], tts_config=config["tts_config"], material_strategy=MATERIAL_STOCK_VIDEO)
-        current["stage"] = "awaiting_images" if current["generate_images"] else "ready_to_search"
-        if current["generate_images"]:
-            image_root = state_path.parent / "generated-images"
-            image_root.mkdir(parents=True, exist_ok=True)
+        draft = json.loads(Path(current["draft_path"]).read_text(encoding="utf-8"))
+        image_root = state_path.parent / "generated-images"
+        image_root.mkdir(parents=True, exist_ok=True)
+        restored = restore_storyboard_images(draft["source_aweme_id"], draft["storyboard"], image_root)
+        if restored:
+            bind_storyboard_images(draft)
+        shot_count = len([row for row in draft["storyboard"].splitlines() if row.strip()])
+        needs_images = current["generate_images"] and len(restored) != shot_count
+        current["stage"] = "awaiting_images" if needs_images else "ready_to_search"
+        if needs_images:
             result["image_requests"] = [
                 {"id": shot["id"], "narration": shot["subtitle"], "description": shot["description"],
                  "output_path": str(image_root / f"{shot['id']}.png")}

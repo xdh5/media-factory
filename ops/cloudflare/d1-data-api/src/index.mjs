@@ -6,6 +6,7 @@ import { validateWordEntries, commitLanguageLearningPack, claimLanguageLearningP
 
 import { financeCollectionReviewStats, recordFinanceCollectionReview } from "./finance-collection-reviews.mjs";
 import { listFinanceEditorialDrafts, commitFinanceEditorialDrafts, listUsedFinanceEditorialDrafts } from "./finance-editorial.mjs";
+import { listStoryboardImages, saveStoryboardImages, bindStoryboardImages, cleanupStoryboardImages, savePublicationTargets } from "./finance-storyboard-images.mjs";
 
 const ACTIVE_STATUSES = ["reserved", "completed", "published", "used"];
 function isAuthorized(request, env) {
@@ -270,6 +271,9 @@ async function commitScenarioQuizQuestion(request, env) {
 }
 
 export default {
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(cleanupStoryboardImages(null, env).then(async response => console.log(await response.text())));
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
@@ -284,6 +288,11 @@ export default {
       return errorResponse("UNAUTHORIZED", "鉴权失败", 401);
     }
     try {
+      if (url.pathname === "/v1/finance-storyboard-images" && request.method === "GET") return await listStoryboardImages(request, env);
+      if (url.pathname === "/v1/finance-storyboard-images" && request.method === "POST") return await saveStoryboardImages(request, env);
+      if (url.pathname === "/v1/finance-storyboard-images/bind" && request.method === "POST") return await bindStoryboardImages(request, env);
+      if (url.pathname === "/v1/finance-storyboard-images/cleanup" && request.method === "POST") return await cleanupStoryboardImages(request, env);
+      if (url.pathname === "/v1/production-publication-targets" && request.method === "POST") return await savePublicationTargets(request, env);
       if (request.method === "GET" && url.pathname === "/v1/topics") return await listTopics(request, env);
       if (request.method === "POST" && url.pathname === "/v1/topics/reserve") return await reserveTopic(request, env);
       if (request.method === "POST" && url.pathname === "/v1/publications/commit") return await commitPublication(request, env);
