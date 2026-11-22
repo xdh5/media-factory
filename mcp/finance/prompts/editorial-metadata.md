@@ -54,11 +54,3 @@
 开会时总怕被评价，
 怎样把注意力拉回来
 重点字：怕被评价、注意力
-
-## 教学依据
-
-- [YouTube 标题与缩略图建议](https://support.google.com/youtube/answer/12340300?hl=en)：准确、简洁，重要词放在前面，明确内容或激发好奇。
-- [NN/g 标题写作教学](https://www.nngroup.com/articles/headings-pickup-lines/)：脱离上下文也要看得懂，提供具体价值，避免空泛口号。
-- [YouTube 话题标签说明](https://support.google.com/youtube/answer/6390658?hl=en)：标签直接关联内容，不堆砌、不误导。
-
-以上中文好坏案例为本项目根据教学原则改编，不是实测爆款。字数和四个标签是本项目的交付要求，不代表平台统一规则。

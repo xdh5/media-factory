@@ -4,6 +4,7 @@ from __future__ import annotations
 import workflows.finance.production as _production
 
 from pathlib import Path
+import hashlib
 from typing import Literal
 from typing_extensions import NotRequired, TypedDict
 
@@ -21,6 +22,9 @@ from media_factory_mcp.finance.infrastructure.collection import get_collection_r
 from media_factory_mcp.finance.resources.reference_image import image_generation_reference
 from workflows.finance.infrastructure.scripts import list_editorial_drafts
 from workflows.finance.tools.storyboard_images import save_storyboard_images, storyboard_hash
+from tools.resources import package_resource_path
+from tools.r2_files import upload_file
+from PIL import Image
 
 
 class CopyReview(TypedDict):
@@ -93,6 +97,40 @@ def finance_start_production(publish_date: str, content_part: int=1, generate_im
     return result
 
 
+def finance_manage_cover(aweme_id: str, image_paths: dict[str, str] | None = None) -> dict:
+    """领取横竖双封面任务；提交landscape、portrait两张成图后上传R2并登记。"""
+    source = next(row for row in list_editorial_drafts(False)["records"] if row["aweme_id"] == aweme_id)
+    editorial = source["editorial"]
+    ratios = {"landscape": (16, 9), "portrait": (9, 16)}
+    if image_paths is None:
+        return {"aweme_id": aweme_id, "topic": editorial["topic"], "article": editorial["article"],
+                "title": editorial["title"], "short_title": editorial["short_title"],
+                "highlighted_words": editorial["cover_highlights"],
+                "reference_image_paths": [str(package_resource_path("media_factory_mcp", "finance", "resources", name))
+                                          for name in ("cover-style-reference.png", "cover-goose-reference.png")],
+                "instructions": package_resource_path("media_factory_mcp", "finance", "prompts", "cover-image.md").read_text(encoding="utf-8"),
+                "image_requests": [{"id": orientation, "aspect_ratio": f"{width}:{height}",
+                                    "output_path": str(PROJECT_CACHE_ROOT / "finance" / "covers" / aweme_id / f"cover-{orientation}.png")}
+                                   for orientation, (width, height) in ratios.items()]}
+    if set(image_paths) != set(ratios):
+        raise WorkflowStepError("请同时提交landscape横版与portrait竖版封面")
+    for orientation, (expected_width, expected_height) in ratios.items():
+        with Image.open(image_paths[orientation]) as picture:
+            width, height = picture.size
+            if abs(width / height - expected_width / expected_height) > 0.02:
+                raise WorkflowStepError(f"{orientation}封面须为{expected_width}:{expected_height}")
+    assets = {}
+    for orientation, value in image_paths.items():
+        path = Path(value).resolve()
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        stored = upload_file(path, f"finance/covers/{aweme_id}/{orientation}/{digest}{path.suffix.lower()}",
+                             content_type="image/png" if path.suffix.lower() == ".png" else "image/jpeg")
+        assets[orientation] = {"key": stored["key"], "url": stored["url"], "sha256": digest,
+                               "title": editorial["title"], "short_title": editorial["short_title"]}
+    e.finance_save_editorial_drafts([{"aweme_id": aweme_id, "editorial": {**editorial, "cover_images": assets}}])
+    return {"aweme_id": aweme_id, "cover_images": assets}
+
+
 def finance_manage_storyboard_images(aweme_id: str, image_paths: list[str] | None = None) -> dict:
     """按未使用稿件准备生图清单；传入逐镜 image_paths 则上传 R2 并入库，供 GitHub Runner 下载使用。"""
     source = next(row for row in list_editorial_drafts(False)["records"] if row["aweme_id"] == aweme_id)
@@ -151,5 +189,5 @@ def finance_continue_production(workflow_id: str, image_paths: list[str] | None 
 
 BUSINESS_TOOLS = (
     finance_get_config, finance_manage_authors, finance_start_collection, finance_finalize_collection,
-    finance_manage_drafts, finance_manage_storyboard_images, finance_start_production, finance_continue_production, finance_get_task, finance_get_inventory,
+    finance_manage_drafts, finance_manage_cover, finance_manage_storyboard_images, finance_start_production, finance_continue_production, finance_get_task, finance_get_inventory,
 )

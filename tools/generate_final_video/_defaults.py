@@ -7,14 +7,14 @@
 
 from __future__ import annotations
 
-# 字幕：karaoke 预设（白字黑边，逐字从左到右扫过金黄色），整屏居中。
+# 字幕：karaoke 预设（白字黑边，逐字从左到右扫过金黄色），统一底部居中。
 DEFAULT_SUBTITLE_STYLE = {
     "preset": "karaoke", "highlight_color": "#FFD54A", "font_size": 100,
     "canvas_width_ratio": 0.97, "letter_spacing": 6,
     "word_wrap_after": 18, "word_wrap_line_length": 15,
 }
 
-DEFAULT_BGM_GAIN = 0.672
+DEFAULT_BGM_GAIN = 0.336
 
 # 双语字幕：默认关闭。
 # 英文字号 = 中文字号 × font_size_ratio；白字黑边静态显示，不参与 karaoke 动画。
@@ -26,7 +26,7 @@ DEFAULT_SECONDARY_SUBTITLES: dict = {
     "style": {"primary_color": "#FFFFFF", "outline_color": "#000000", "bold": True, "uppercase": False},
     "position": {"follow_chinese": True, "gap": 25},
 }
-DEFAULT_SUBTITLE_POSITION = {"alignment": 5, "margin_vertical_ratio": 0.5}
+DEFAULT_SUBTITLE_POSITION = {"alignment": 2, "margin_vertical_ratio": 0.1}
 
 # 片头钩子：首个镜头的前 N 行（数据库原稿的黄金钩子）在底部逐行显示，
 # 同一时间段用稿件标题居中做覆盖标题；读完钩子后正文回到 DEFAULT_SUBTITLE_POSITION。

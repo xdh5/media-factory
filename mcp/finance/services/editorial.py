@@ -67,7 +67,7 @@ def validate_editorial(source_text: str, editorial: dict) -> dict:
     storyboard = str(editorial.get("storyboard") or "").strip()
     shots = [row for row in storyboard.splitlines() if row.strip()]
     narration = [row for row in article["article"].splitlines() if row.strip()]
-    if len(shots) != len(narration) or any(len(row.split("|")) != 2 for row in shots):
+    if editorial.get("storyboard_status") != "pending" and (len(shots) != len(narration) or any(len(row.split("|")) != 2 for row in shots)):
         raise WorkflowStepError("storyboard 须与正文逐行对应，格式为：画面描述|搜索关键词")
     topic = str(editorial.get("topic") or "").strip()
     if not topic:

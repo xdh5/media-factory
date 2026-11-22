@@ -28,8 +28,7 @@ import json
 import mimetypes
 import shutil
 from datetime import datetime, timezone
-from workflows.finance.errors.exceptions import CoverError
-from workflows.finance.tools.cover import generate_cover_image
+from workflows.finance.tools.cover import restore_cover_image
 from tools.database.production_records import commit_production_outputs
 from tools.r2_files import upload_file, upload_manifest
 from tools.database.topic_history import record_topic_usage as commit_topic
@@ -63,10 +62,6 @@ def _production_config(config: dict) -> dict:
         raise WorkflowStepError("production_config.bgm_path 不能为空")
     if not intro:
         raise WorkflowStepError("production_config.intro 不能为空")
-    try:
-        cover_frame_seconds = float(config.get("cover_frame_seconds"))
-    except (TypeError, ValueError) as exc:
-        raise WorkflowStepError("production_config.cover_frame_seconds 必须是数字") from exc
     stickers = config.get("shot_stickers")
     if not isinstance(stickers, list) or not stickers:
         raise WorkflowStepError("production_config.shot_stickers 必须是非空列表")
@@ -121,7 +116,6 @@ def _production_config(config: dict) -> dict:
         "bgm_credit": str(config.get("bgm_credit") or "").strip() or None,
         "intro": intro,
         "intro_sfx_path": Path(str(config["intro_sfx_path"])) if config.get("intro_sfx_path") else None,
-        "cover_frame_seconds": cover_frame_seconds,
         "shot_stickers": tuple(str(item) for item in stickers),
         "subtitle_position": subtitle_position,
         "subtitle_style": subtitle_style,
@@ -184,7 +178,7 @@ def finish_finance_video(
     material_metadata = material_manifest["metadata"]
     storyboard_output = _load_saved_storyboard(material_metadata)
     shots = parse_storyboard(storyboard_output, tts["timeline"])
-    stock_video, cover_sources = _apply_material(
+    stock_video, _ = _apply_material(
         material_manifest,
         shots,
         resolved_draft=resolved_draft,
@@ -192,23 +186,8 @@ def finish_finance_video(
         progress=progress,
     )
     material_strategy = str(material_metadata.get("material_strategy") or "")
-    try:
-        # 封面使用本期素材画面，统一添加标题排版、重点词和描边。
-        cover_image_sources = cover_sources
-        cover = generate_cover_image(
-            cover_image_sources,
-            metadata["title"],
-            cache_root / "cover.png",
-            size=VIDEO_SIZE,
-            lines=metadata["cover_lines"],
-            highlighted_words=metadata["cover_highlights"],
-        )
-    except CoverError as exc:
-        raise WorkflowStepError(exc.message, exc.details) from exc
-    # 合成与平台上传共用同一张封面，随成片保存在产物目录。
-    saved_cover_path = output_root / "cover.png"
-    shutil.copyfile(cover["output_path"], saved_cover_path)
-    cover["output_path"] = str(saved_cover_path)
+    cover = restore_cover_image(draft["cover_images"]["landscape"], output_root / "cover.png")
+    portrait_cover = restore_cover_image(draft["cover_images"]["portrait"], output_root / "cover-portrait.png")
 
     forced = set(force_shot_ids or [])
     unknown_forced = forced.difference(shot["id"] for shot in shots)
@@ -246,8 +225,6 @@ def finish_finance_video(
             cache_root / "shot-cache",
             size=VIDEO_SIZE,
             tts_path=tts_path,
-            cover_path=cover["output_path"],
-            cover_duration=settings["cover_frame_seconds"],
             bgm_path=settings["bgm_path"],
             bgm_start_seconds=intro_bgm_start_seconds(
                 settings["intro"],
@@ -315,6 +292,7 @@ def finish_finance_video(
         "article": article,
         **metadata,
         "cover_path": cover["output_path"],
+        "portrait_cover_path": portrait_cover["output_path"],
         "video_path": str(final_path),
         "cache_dir": str(cache_root),
         "output_dir": str(output_root),
@@ -384,6 +362,7 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
     asset_fields = (
         "video_path",
         "cover_path",
+        "portrait_cover_path",
         "title_path",
         "short_title_path",
         "publish_copy_path",
@@ -410,6 +389,9 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
     manifest["video_r2_key"] = video["key"]
     manifest["cover_url"] = cover["url"]
     manifest["cover_r2_key"] = cover["key"]
+    portrait_cover = uploaded_assets["portrait_cover_path"]
+    manifest["portrait_cover_url"] = portrait_cover["url"]
+    manifest["portrait_cover_r2_key"] = portrait_cover["key"]
     manifest["r2_uploaded"] = True
     # 成片记录固定写在 local_mcp 这一条上。GitHub 运行器销毁后本地路径会失效，发布端靠 r2_url 拉回。
     production_outputs = commit_production_outputs([{
@@ -437,6 +419,7 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
         "manifest_url": remote["url"],
         "video_url": video["url"],
         "cover_url": cover["url"],
+        "portrait_cover_url": portrait_cover["url"],
         "uploaded": [*uploaded_assets.values(), remote],
         "production_outputs": production_outputs,
     }

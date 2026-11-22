@@ -6,6 +6,7 @@ description: 使用财经库定稿制作财经、理财或情感短视频。
 # 制作财经视频
 
 1. 确认北京时间计划发布日期，缺失或有歧义时询问。用 `finance_get_config` 查配置，查库存或缺片用 `finance_get_inventory`。
+   封面使用采集定稿阶段由宿主整体生图、上传 R2 并登记的成图，包含长短标题和适应内容的风景；生产只下载使用，不重新生成或代码叠字。缺少封面时先完成采集技能的封面步骤。
    为 GitHub 预制分镜图时，先调用 `finance_manage_storyboard_images(aweme_id)` 获取参考图、生图指令和 `image_requests`。宿主使用生图工具，将参考图作为图像输入，按返回指令逐镜生成并保存到各项 `output_path`；完成全部图片后，按镜头顺序向同一工具提交 `image_paths`。图片上传 R2 并登记，运行器按稿件和分镜版本下载。
 2. 用 `finance_start_production` 启动生产，日内两篇分别传 `content_part=1`、`2`。默认 `generate_images=false` 搜索实拍；需要生图时传 `true`。用 `finance_get_task` 通过 workflow_id 查询准备结果，同一流程恢复原素材模式。
 3. `stage=ready_to_search` 时调用 `finance_continue_production(workflow_id)`；正文和分镜均读取稿库定稿，不再现场生成。
@@ -16,3 +17,5 @@ description: 使用财经库定稿制作财经、理财或情感短视频。
 末句固定使用项目内大鹅片尾视频，保留 TTS 配音与字幕，不使用视频原声，也不搜索或生成这一镜的素材。画面按末句 TTS 时长裁剪，原视频不足时放慢至等长；生图任务只包含片尾之前的镜头。
 
 分镜图在北京时间过了计划发布日期、全部目标已有发布或到时预约回执后，由 Cloudflare 每小时清理；未预约或未到期保留。参考图、封面和成片不在清理范围。
+
+横竖封面作为独立发布图片交付。视频不插入首帧封面，直接从第一幕开始；横竖版均不参与视频画面的拼接。

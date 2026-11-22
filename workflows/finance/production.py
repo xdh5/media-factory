@@ -88,12 +88,24 @@ def finance_start_production(publish_date: str, content_part: int = 1, *, genera
             state.update({"source": selected["source"], "reservation": selected["reservation"]})
             _save_state(state_path, state)
         source, reservation = state["source"], state["reservation"]
-        editorial = source["editorial"]
+        editorial = next(row["editorial"] for row in a.list_editorial_drafts(False)["records"]
+                         if row["aweme_id"] == source["aweme_id"])
+        if editorial.get("storyboard_status") == "pending":
+            raise WorkflowStepError("正文已更新，分镜待同步，暂不能生产")
+        cover_images = editorial.get("cover_images", {})
+        if set(cover_images) != {"landscape", "portrait"} or any(
+                (asset["title"], asset["short_title"]) != (editorial["title"], editorial["short_title"])
+                for asset in cover_images.values()):
+            raise WorkflowStepError("稿件缺少与当前标题一致的横竖双封面成图，请由宿主完成封面生图并登记")
         draft = a.finance_save_draft(
             **{key: editorial[key] for key in ("topic", "article", "storyboard", "title", "short_title", "hashtags",
                "cover_lines", "cover_highlights", "source_hook", "db_source_hook")},
             source_aweme_id=str(source["aweme_id"]), source_reservation_token=str(reservation["reservation_token"]),
             publish_date=date, content_part=content_part)
+        draft_path = Path(draft["draft_path"])
+        saved_draft = json.loads(draft_path.read_text(encoding="utf-8"))
+        saved_draft["cover_images"] = cover_images
+        draft_path.write_text(json.dumps(saved_draft, ensure_ascii=False, indent=2), encoding="utf-8")
         state.update({"draft_path": draft["draft_path"], "stage": "preparing"})
         _save_state(state_path, state)
         return _submit_preparation(state_path, state)

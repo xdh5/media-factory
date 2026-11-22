@@ -16,7 +16,7 @@ from workflows.finance.tools.drafts import bare_text
 _PROMPT_DIRECTORY = package_resource_path("media_factory_mcp", "finance", "prompts")
 _STAGE_PROMPTS = {
     "review": "topic-review.md",
-    "rewrite": "editorial-rewrite.md",
+    "writing": "editorial-writing.md",
     "metadata": "editorial-metadata.md",
     "storyboard": "editorial-storyboard.md",
 }
