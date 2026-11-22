@@ -37,7 +37,6 @@ from tools.generate_final_video import generate_final_video, safe_filename
 from tools.generate_shot import intro_bgm_start_seconds
 from workflows.finance.parameters import (
     CONTENT_KIND,
-    MATERIAL_STOCK_VIDEO,
     MCP_ID,
     TOPIC_DEDUPLICATION_DAYS,
     publish_date_from_run_id,
@@ -193,8 +192,6 @@ def finish_finance_video(
         progress=progress,
     )
     material_strategy = str(material_metadata.get("material_strategy") or "")
-    if stock_video:
-        material_strategy = MATERIAL_STOCK_VIDEO
     try:
         # 封面使用本期素材画面，统一添加标题排版、重点词和描边。
         cover_image_sources = cover_sources

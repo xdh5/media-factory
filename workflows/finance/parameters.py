@@ -28,6 +28,14 @@ STORYBOARD_TEXT_FILE_NAME = "storyboard.txt"
 TOPIC_DEDUPLICATION_DAYS = 30
 VIDEO_SIZE = "1920x1080"
 VIDEO_RADIO = "16:9"
+# 图片运镜最多放大 4%，平移仅使用裁切余量，避免明显晃动。
+IMAGE_MOTION_EFFECTS = (
+    {"name": "缓慢放大", "zoom_from": 1.00, "zoom_to": 1.03},
+    {"name": "缓慢缩小", "zoom_from": 1.03, "zoom_to": 1.00},
+    {"name": "从上向下", "zoom_from": 1.04, "zoom_to": 1.04, "pan_from_y": 0.25, "pan_to_y": 0.75},
+    {"name": "从下向上", "zoom_from": 1.04, "zoom_to": 1.04, "pan_from_y": 0.75, "pan_to_y": 0.25},
+    {"name": "从左向右", "zoom_from": 1.04, "zoom_to": 1.04, "pan_from_x": 0.25, "pan_to_x": 0.75},
+)
 CONTENT_KIND = "finance"
 AUTOMATION_DAILY_OUTPUT_COUNT = 2
 

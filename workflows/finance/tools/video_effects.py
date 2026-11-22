@@ -345,6 +345,7 @@ def _render_first_shot_cached(
         "sfx_sha256": _hash_file(sfx_path) if intro == "page_flip" and sfx_path and sfx_path.is_file() else None,
         "alert_sha256": _hash_file(SFX_ALERT_PATH) if intro == "slide_in_shutter" and SFX_ALERT_PATH.is_file() else None,
         "duration": shot["duration"],
+        "motion": shot.get("motion"),
     }
     signature = hashlib.sha256(
         json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -363,6 +364,7 @@ def _render_first_shot_cached(
             image_path=shot["image_path"],
             image_paths=page_images or None,
             sfx_path=sfx_path,
+            motion=shot.get("motion"),
             video_path=follow_video or None,
         )
     except ShotToolError as extra:

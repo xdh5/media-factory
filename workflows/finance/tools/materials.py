@@ -1,7 +1,7 @@
-"""财经实拍素材搜索、下载和镜头挂载。"""
+"""财经图片运镜、实拍素材搜索下载与混合镜头挂载。"""
 
 from __future__ import annotations
-import hashlib, json, threading, time, shutil, subprocess
+import hashlib, json, threading, time, shutil, subprocess, random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from tools.generate_stock_video import (
@@ -14,6 +14,7 @@ from tools.generate_stock_video import (
 from tools.generate_stock_video._constants import SELECTION_DURATION_MARGIN_SECONDS
 from workflows.finance.parameters import (
     MATERIAL_STOCK_VIDEO,
+    IMAGE_MOTION_EFFECTS,
     MCP_ID,
     STORYBOARD_CONTEXT_FILE_NAME,
     STORYBOARD_TEXT_FILE_NAME,
@@ -46,7 +47,8 @@ def prepare_image_materials(draft_path: str | Path, image_paths: list[str]) -> d
         images[shot["id"]] = str(path)
     manifest_path = cache_root / "generated-images" / "image-material-manifest.json"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest = {"images": images, "normalized_cfr": True,
+    manifest = {"images": images, "image_motion": {key: dict(random.choice(IMAGE_MOTION_EFFECTS)) for key in images},
+                "normalized_cfr": True,
                 "metadata": {"draft_path": str(resolved_draft), "material_strategy": "generated_images",
                              "storyboard_text": draft["storyboard"],
                              "storyboard_sha256": _storyboard_hash(draft["storyboard"])},
@@ -62,7 +64,7 @@ def prepare_video_searches(
     video_config: dict,
     progress=None,
 ) -> dict:
-    """逐镜头搜索 Pexels 候选视频，暂不下载。"""
+    """优先使用已有图片，仅为其余镜头搜索 Pexels 视频。"""
     normalized_storyboard = str(storyboard_text or "").strip()
     if not normalized_storyboard:
         raise WorkflowStepError("storyboard_text 不能为空")
@@ -84,7 +86,11 @@ def prepare_video_searches(
     storyboard_path.write_text(normalized_storyboard, encoding="utf-8")
     searches = []
     # 片头也独立选片，避免借用下一镜头后再次从头播放。
-    stock_shots = shots
+    images = {shot["id"]: str(path) for shot in shots
+              if (path := cache_root / "generated-images" / f"{shot['id']}.png").is_file()}
+    stock_shots = [shot for shot in shots if shot["id"] not in images]
+    for shot_id in images:
+        print(f"[素材选择 {shot_id}] 发现图片，跳过视频检索", flush=True)
     def search_shot(shot):
         label = f"[素材检索 {shot['id']}]"
         try:
@@ -133,7 +139,7 @@ def prepare_video_searches(
             "candidates": search["candidates"],
         }
     # 网络搜索有限并发；按分镜原顺序保存，完成顺序不影响选片与成片顺序。
-    with ThreadPoolExecutor(max_workers=min(3, len(stock_shots))) as executor:
+    with ThreadPoolExecutor(max_workers=max(1, min(3, len(stock_shots)))) as executor:
         futures = [executor.submit(search_shot, shot) for shot in stock_shots]
         completed = {}
         for future in as_completed(futures):
@@ -150,7 +156,7 @@ def prepare_video_searches(
         "metadata": {
             "workflow": MCP_ID,
             "line": MCP_ID,
-            "material_strategy": MATERIAL_STOCK_VIDEO,
+            "material_strategy": "mixed_media" if images and stock_shots else "generated_images" if images else MATERIAL_STOCK_VIDEO,
             "draft_path": str(resolved_draft),
             "storyboard_text": normalized_storyboard,
             "storyboard_path": str(storyboard_path),
@@ -163,6 +169,8 @@ def prepare_video_searches(
             "tts_path": context.get("tts_path"),
         },
         "searches": searches,
+        "images": images,
+        "image_motion": {key: dict(random.choice(IMAGE_MOTION_EFFECTS)) for key in images},
         "selection_instructions": (
             f"按搜索顺序取 {VIDEO_RADIO} 素材，不限制分辨率。网站标注时长须比镜头实际需要多 "
             f"{SELECTION_DURATION_MARGIN_SECONDS:g} 秒，单段不足时拼两段，合计也要多出这 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒；"
@@ -179,7 +187,7 @@ def download_selected_videos(context_path: str | Path, selections: list[dict] | 
     started = time.monotonic()
     resolved_context, context = load_draft(context_path, "正版视频搜索上下文")
     searches, metadata = context.get("searches"), context.get("metadata")
-    if not isinstance(searches, list) or not searches or not isinstance(metadata, dict):
+    if not isinstance(searches, list) or not isinstance(metadata, dict):
         raise WorkflowStepError("正版视频搜索上下文缺少 searches 或 metadata")
     video_config = metadata.get("video_config") or {}
     try:
@@ -247,7 +255,7 @@ def download_selected_videos(context_path: str | Path, selections: list[dict] | 
 
     results = {}
     # 限制并发与每个编码进程的线程数，避免所有镜头抢满 CPU 和内存。
-    with ThreadPoolExecutor(max_workers=min(3, len(planned))) as executor:
+    with ThreadPoolExecutor(max_workers=max(1, min(3, len(planned)))) as executor:
         futures = {executor.submit(process, video_id): video_id for video_id in planned}
         for future in as_completed(futures):
             video_id = futures[future]
@@ -257,8 +265,9 @@ def download_selected_videos(context_path: str | Path, selections: list[dict] | 
                 progress(f"{action} {len(results)}/{len(planned)}：{video_id}")
     manifest_path = output_root / "stock-video-manifest.json"
     manifest = {
-        "version": 2, "status": "ready", "material_strategy": MATERIAL_STOCK_VIDEO,
+        "version": 2, "status": "ready", "material_strategy": metadata["material_strategy"],
         "soft_blur_sigma": sigma, "normalized_cfr": True,
+        "images": context["images"], "image_motion": context["image_motion"],
         "videos": {key: results[key]["prepared"]["output_path"] for key in planned},
         "frames": {key: results[key]["prepared"]["frame_path"] for key in planned},
         "raw_sources": {key: results[key]["sources"] for key in planned},
@@ -327,25 +336,27 @@ def _apply_material(
     material_metadata = manifest["metadata"]
     if Path(str(material_metadata.get("draft_path") or "")).resolve() != resolved_draft:
         raise WorkflowStepError("素材清单不属于当前稿件，请重新准备镜头素材")
-    if "images" in manifest:
-        for shot in shots:
-            shot["image_path"] = manifest["images"][shot["id"]]
-            shot["frame_path"] = shot["image_path"]
-        for shot in shots[1:]:
-            if progress:
-                progress(f"图片合成镜头：{shot['id']}")
-            rendered = generate_shot_from_image(
-                shot["image_path"], cache_root / "image-clips" / f"{shot['id']}.mp4",
-                size=VIDEO_SIZE, duration=shot["duration"],
-            )
-            shot["segment_path"] = rendered["output_path"]
-        return False, [shot["image_path"] for shot in shots]
+    images = manifest.get("images", {})
+    for shot in shots:
+        if shot["id"] not in images:
+            continue
+        shot["image_path"] = images[shot["id"]]
+        shot["frame_path"] = shot["image_path"]
+        shot["motion"] = manifest["image_motion"][shot["id"]]
+        print(f"[图片动效 {shot['id']}] {shot['motion']['name']}，时长 {shot['duration']:.3f} 秒", flush=True)
+        if shot is shots[0]:
+            continue
+        rendered = generate_shot_from_image(
+            shot["image_path"], cache_root / "image-clips" / f"{shot['id']}.mp4",
+            size=VIDEO_SIZE, duration=shot["duration"], motion=shot["motion"],
+        )
+        shot["segment_path"] = rendered["output_path"]
     videos = manifest.get("videos")
     if isinstance(videos, dict) and videos:
         frames = manifest.get("frames")
         if len(shots) < 2:
             raise WorkflowStepError("分镜至少需要两个镜头：片头动画后必须有正文视频素材")
-        expected_ids = {shot["id"] for shot in shots}
+        expected_ids = {shot["id"] for shot in shots} - set(images)
         if set(videos) != expected_ids:
             raise WorkflowStepError(
                 "视频素材清单必须为片头和正文各自提供独立素材，请重新搜索并下载素材",
@@ -356,30 +367,34 @@ def _apply_material(
         for video_id, video_path in videos.items():
             if not Path(str(video_path)).resolve().is_file():
                 raise WorkflowStepError(f"视频素材不存在：{video_id} -> {video_path}")
-        for shot in shots:
+        video_shots = [shot for shot in shots if shot["id"] not in images]
+        for shot in video_shots:
             shot["segment_path"] = str(Path(videos[shot["id"]]).resolve())
             shot["frame_path"] = str(Path(frames[shot["id"]]).resolve())
         raw_sources = manifest["raw_sources"]
-        _ensure_clip_durations(shots, cache_root, raw_sources, progress,
+        _ensure_clip_durations(video_shots, cache_root, raw_sources, progress,
                                float(manifest["soft_blur_sigma"]))
-        first_video = raw_sources[shots[0]["id"]][0]
-        ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg:
-            raise WorkflowStepError("找不到 ffmpeg，无法提取片头首帧")
-        resolved_intro_image = cache_root / "stock-videos" / "intro-first-frame.png"
-        extracted = subprocess.run(
-            [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(first_video),
-             "-frames:v", "1", str(resolved_intro_image)],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
-        )
-        if extracted.returncode or not resolved_intro_image.is_file():
-            raise WorkflowStepError(f"提取原视频首帧失败：{extracted.stderr[-1500:]}")
-        shots[0]["intro_video_path"] = shots[0]["segment_path"]
-        shots[0]["image_path"] = str(resolved_intro_image)
-        shots[0]["frame_path"] = str(resolved_intro_image)
-        # 片头与正文使用独立素材，封面底图仍取正文实拍视频帧。
+        if shots[0]["id"] not in images:
+            first_video = raw_sources[shots[0]["id"]][0]
+            ffmpeg = shutil.which("ffmpeg")
+            if not ffmpeg:
+                raise WorkflowStepError("找不到 ffmpeg，无法提取片头首帧")
+            resolved_intro_image = cache_root / "stock-videos" / "intro-first-frame.png"
+            extracted = subprocess.run(
+                [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(first_video),
+                 "-frames:v", "1", str(resolved_intro_image)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+            )
+            if extracted.returncode or not resolved_intro_image.is_file():
+                raise WorkflowStepError(f"提取原视频首帧失败：{extracted.stderr[-1500:]}")
+            shots[0]["intro_video_path"] = shots[0]["segment_path"]
+            shots[0]["image_path"] = str(resolved_intro_image)
+            shots[0]["frame_path"] = str(resolved_intro_image)
+        # 封面可使用正文视频帧或替代对应镜头的图片。
         return True, [str(shot["frame_path"]) for shot in shots[1:]]
-    raise WorkflowStepError("素材清单缺少实拍视频")
+    if images:
+        return False, [str(shot["frame_path"]) for shot in shots]
+    raise WorkflowStepError("素材清单缺少图片或视频")
 
 
 def _write_attributions(
