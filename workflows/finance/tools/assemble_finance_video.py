@@ -235,15 +235,7 @@ def finish_finance_video(
             "id": shot["id"],
             "subtitle": shot["subtitle"],
             "subtitle_lines": shot.get("subtitle_lines") or [],
-            **(
-                {"segment_path": shot["segment_path"]}
-                if shot.get("segment_path")
-                else {
-                    "image_path": shot["image_path"],
-                    "duration": shot["duration"],
-                    "motion": shot["motion"],
-                }
-            ),
+            "segment_path": shot["segment_path"],
         }
         for shot in shots
     ]

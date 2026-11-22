@@ -155,10 +155,6 @@ def split_narration_lines(article: str) -> list[str]:
     return lines
 
 
-# 实拍视频分镜使用 VIDEO 标记。
-SHOT_MARKERS = ("VIDEO",)
-
-
 def _tts_config(config: dict) -> tuple[str, str, bool]:
     voice = str(config.get("voice") or "").strip()
     rate = str(config.get("rate") or "").strip()
@@ -186,111 +182,40 @@ def compose_tts(article: str, cache_root: Path, tts_config: dict) -> dict:
     )
 
 
-def _parse_motion(value: str) -> dict:
-    parts = [part.strip() for part in value.split("^")]
-    if len(parts) != 8:
-        raise AgentOutputFormatError(f"动效参数必须包含 8 个 ^ 分隔值：{value}")
-    try:
-        numbers = [float(part) for part in parts]
-    except ValueError as exc:
-        raise AgentOutputFormatError(f"动效参数必须全部是数字：{value}") from exc
-    if numbers[6] != 0 or numbers[7] != 0:
-        raise AgentOutputFormatError("分镜淡入和淡出必须固定为 0")
-    return {
-        "zoom_from": numbers[0],
-        "zoom_to": numbers[1],
-        "pan_from_x": numbers[2],
-        "pan_from_y": numbers[3],
-        "pan_to_x": numbers[4],
-        "pan_to_y": numbers[5],
-    }
-
-
-def _parse_subtitle_marks(value: str, timeline_by_id: dict) -> dict[str, str]:
-    """读取 SUB|台词ID|屏上文本；兼容旧分镜中的【】重点标记。"""
-    marks: dict[str, str] = {}
-    for row in value.splitlines():
-        if "|" not in row:
-            continue
-        fields = [field.strip() for field in row.split("|", 2)]
-        if len(fields) != 3 or fields[0].upper() != "SUB":
-            continue
-        line_id, annotated = fields[1], fields[2]
-        if line_id not in timeline_by_id:
-            raise AgentOutputFormatError(f"字幕标注包含未知台词 ID：{line_id}")
-        if line_id in marks:
-            raise AgentOutputFormatError(f"台词 {line_id} 的字幕标注重复")
-        try:
-            parse_emphasis_segments(annotated)
-        except ValueError as extra:
-            raise AgentOutputFormatError(f"台词 {line_id} 的重点标记无效：{extra}") from extra
-        expected = display_subtitle_text(str(timeline_by_id[line_id].get("text") or ""))
-        actual = display_subtitle_text(annotated)
-        if actual != expected:
-            # 分镜模型偶尔会顺手改一个字。画面与镜头仍可使用，此时只放弃该句重点样式，
-            # 后续会自动采用时间轴中的配音原文，避免无损降级被判为整条视频失败。
-            marks[line_id] = str(timeline_by_id[line_id].get("text") or "")
-            continue
-        marks[line_id] = annotated
-    return marks
-
-
 def parse_storyboard(value: str, timeline: list[dict]) -> list[dict]:
+    """解析台词分组、画面和关键词；时长与字幕直接取配音时间轴。"""
     timeline_by_id = {item["id"]: item for item in timeline}
-    subtitle_marks = _parse_subtitle_marks(value, timeline_by_id)
-    shots: list[dict] = []
-    used_ids: list[str] = []
+    expected_ids = list(timeline_by_id)
+    shots, used_ids = [], []
     for row in value.splitlines():
-        if "|" not in row:
+        if not row.strip():
             continue
-        fields = [field.strip() for field in row.split("|", 4)]
-        if len(fields) != 5 or fields[2].upper() not in SHOT_MARKERS:
-            continue
-        line_ids = [item.strip() for item in fields[0].split(",") if item.strip()]
-        if not line_ids or any(line_id not in timeline_by_id for line_id in line_ids):
-            raise AgentOutputFormatError(f"分镜包含未知台词 ID：{fields[0]}")
-        indices = [list(timeline_by_id).index(line_id) for line_id in line_ids]
+        fields = [field.strip() for field in row.split("|")]
+        if len(fields) != 3:
+            raise AgentOutputFormatError("每行分镜格式必须为：台词ID列表|画面描述|搜索关键词")
+        line_ids = [line_id.strip() for line_id in fields[0].split(",")]
+        if any(line_id not in timeline_by_id for line_id in line_ids):
+            raise AgentOutputFormatError(f"分镜台词 ID 无效：{line_ids}")
+        indices = [expected_ids.index(line_id) for line_id in line_ids]
         if indices != list(range(indices[0], indices[0] + len(indices))):
-            raise AgentOutputFormatError(f"同一镜头只能合并相邻台词：{fields[0]}")
+            raise AgentOutputFormatError(f"同一分镜只能合并相邻台词：{line_ids}")
+        description, keywords = fields[1:]
+        if not description or not 1 <= len(keywords) <= 100:
+            raise AgentOutputFormatError("分镜画面描述不能为空，搜索关键词必须为 1～100 个字符")
         selected = [timeline_by_id[line_id] for line_id in line_ids]
-        start = selected[0]["start"]
-        end = selected[-1]["end"]
-        line_texts = [
-            subtitle_marks.get(item["id"], item["text"])
-            for item in selected
-        ]
+        start, end = selected[0]["start"], selected[-1]["end"]
         shots.append({
-            "id": f"shot-{len(shots) + 1:03d}",
-            "line_ids": line_ids,
-            "audio_start": start,
-            "audio_end": end,
-            "duration": round(end - start, 6),
-            "subtitle": "".join(line_texts),
-            "subtitle_lines": [
-                {
-                    "text": subtitle_marks.get(item["id"], item["text"]),
-                    "start": round(item["start"] - start, 6),
-                    "end": round(item["end"] - start, 6),
-                    "ends_sentence": ends_sentence(item["text"]),
-                }
-                for item in selected
-            ],
-            "prompt": fields[3],
-            "motion": _parse_motion(fields[4]),
+            "id": f"shot-{len(shots) + 1:03d}", "line_ids": line_ids,
+            "audio_start": start, "audio_end": end, "duration": round(end - start, 6),
+            "description": description, "keywords": keywords,
+            "subtitle": "".join(row["text"] for row in selected),
+            "subtitle_lines": [{"text": row["text"], "start": round(row["start"] - start, 6),
+                                "end": round(row["end"] - start, 6),
+                                "ends_sentence": ends_sentence(row["text"])} for row in selected],
         })
         used_ids.extend(line_ids)
-    expected_ids = [item["id"] for item in timeline]
     if not shots or used_ids != expected_ids:
-        raise AgentOutputFormatError(
-            "分镜必须按顺序且不重不漏地覆盖全部台词 ID",
-            {"expected_ids": expected_ids, "actual_ids": used_ids},
-        )
-    missing_subs = [line_id for line_id in expected_ids if line_id not in subtitle_marks]
-    if missing_subs:
-        raise AgentOutputFormatError(
-            "必须为每一句台词写 SUB|台词ID|屏上文本（没有重点也要原样抄写、不加【】）",
-            {"missing_ids": missing_subs},
-        )
+        raise AgentOutputFormatError("分镜必须按原顺序完整覆盖所有台词，不能重复或遗漏")
     return shots
 
 
@@ -317,7 +242,6 @@ def prepare_storyboard(draft_path: str | Path, *, tts_config: dict, material_str
         tts_result["timeline"],
         radio=VIDEO_RADIO,
         size=VIDEO_SIZE,
-        material_strategy=strategy,
     )
     context_path = cache_root / STORYBOARD_CONTEXT_FILE_NAME
     context = {
@@ -326,7 +250,7 @@ def prepare_storyboard(draft_path: str | Path, *, tts_config: dict, material_str
         "material_strategy": strategy,
         "draft_path": str(resolved_draft),
         "storyboard_prompt": prompt,
-        "storyboard_system_prompt": "只输出规定格式的素材行与 SUB 行。",
+        "storyboard_system_prompt": "每行一个分镜，格式为：台词ID列表|画面描述|搜索关键词。台词ID用英文逗号分隔，只输出分镜行。",
         "timeline": tts_result["timeline"],
         "tts_path": tts_result["output_path"],
         "tts_duration": tts_result["total_duration"],

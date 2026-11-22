@@ -60,7 +60,7 @@ def prepare_video_searches(
     stock_shots = shots
     def search_shot(shot):
         search = search_stock_videos(
-            str(shot["prompt"]),
+            str(shot["keywords"]),
             orientation=orientation,
             per_provider=per_provider,
             providers=providers,
@@ -72,7 +72,8 @@ def prepare_video_searches(
         return {
             "video_id": shot["id"],
             "subtitle": display_subtitle_text(str(shot.get("subtitle") or "")),
-            "query": shot["prompt"],
+            "description": shot["description"],
+            "query": shot["keywords"],
             "duration": shot["duration"],
             "provider": search["provider"],
             "attempts": search["attempts"],
