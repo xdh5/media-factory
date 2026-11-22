@@ -1,4 +1,4 @@
-"""通过 Pexels、Pixabay、Coverr 搜索、下载并规范化正版视频素材。"""
+"""通过 Pexels 搜索、下载并规范化正版视频素材。"""
 
 from __future__ import annotations
 
@@ -21,8 +21,6 @@ from tools.paths import PROJECT_CACHE_ROOT
 from ._constants import (
     ALLOWED_DOWNLOAD_HOST_SUFFIXES,
     ATTRIBUTION_URLS,
-    COVERR_API_KEY_ENV,
-    COVERR_API_URL,
     DEFAULT_RESULTS_PER_PROVIDER,
     DEFAULT_TIMEOUT_SECONDS,
     SELECTION_DURATION_MARGIN_SECONDS,
@@ -30,9 +28,6 @@ from ._constants import (
     MAX_RESULTS_PER_PROVIDER,
     PEXELS_API_KEY_ENV,
     PEXELS_API_URL,
-    PIXABAY_API_KEY_ENV,
-    PIXABAY_API_URL,
-    PROVIDER_PRIORITY,
     SEARCH_CACHE_SECONDS,
 )
 from ._errors import (
@@ -160,84 +155,6 @@ def _search_pexels(query: str, orientation: str, limit: int, api_key: str) -> li
     return results
 
 
-def _search_pixabay(query: str, orientation: str, limit: int, api_key: str) -> list[dict]:
-    payload = _request_json(PIXABAY_API_URL + "?" + urlencode({
-        "key": api_key,
-        "q": query,
-        "lang": "en",
-        "video_type": "film",
-        "safesearch": "true",
-        "order": "popular",
-        "per_page": max(3, limit),
-    }))
-    results = []
-    for row in payload.get("hits") or []:
-        variants = []
-        for item in (row.get("videos") or {}).values():
-            if isinstance(item, dict):
-                variants.append(item)
-        variant = _best_variant(variants, orientation)
-        if not variant:
-            continue
-        creator = str(row.get("user") or "Pixabay 创作者")
-        results.append({
-            "provider": "pixabay",
-            "id": str(row.get("id") or ""),
-            "title": str(row.get("tags") or "Pixabay video"),
-            "page_url": str(row.get("pageURL") or ATTRIBUTION_URLS["pixabay"]),
-            "download_url": str(variant.get("url") or ""),
-            "preview_url": str(variant.get("thumbnail") or ""),
-            "duration": float(row.get("duration") or 0),
-            "width": int(variant.get("width") or 0),
-            "height": int(variant.get("height") or 0),
-            "creator": creator,
-            "attribution": f"Video by {creator} on Pixabay",
-            "attribution_url": ATTRIBUTION_URLS["pixabay"],
-        })
-    return results[:limit]
-
-
-def _search_coverr(query: str, orientation: str, limit: int, api_key: str) -> list[dict]:
-    payload = _request_json(
-        COVERR_API_URL + "?" + urlencode({
-            "query": query,
-            "page": 0,
-            "page_size": limit,
-            "sort": "popular",
-            "urls": "true",
-        }),
-        headers={"Authorization": f"Bearer {api_key}"},
-    )
-    results = []
-    for row in payload.get("hits") or []:
-        is_vertical = bool(row.get("is_vertical"))
-        if orientation == "landscape" and is_vertical:
-            continue
-        if orientation == "portrait" and not is_vertical:
-            continue
-        urls = row.get("urls") if isinstance(row.get("urls"), dict) else {}
-        download_url = str(urls.get("mp4_download") or urls.get("mp4") or "")
-        if not download_url.startswith("https://"):
-            continue
-        creator_data = row.get("user") if isinstance(row.get("user"), dict) else {}
-        creator = str(creator_data.get("name") or row.get("creator") or "Coverr 创作者")
-        results.append({
-            "provider": "coverr",
-            "id": str(row.get("id") or row.get("slug") or ""),
-            "title": str(row.get("title") or row.get("description") or "Coverr video"),
-            "page_url": str(row.get("url") or ATTRIBUTION_URLS["coverr"]),
-            "download_url": download_url,
-            "preview_url": str(row.get("thumbnail") or row.get("poster") or ""),
-            "duration": float(row.get("duration") or 0),
-            "width": int(row.get("max_width") or (1080 if is_vertical else 1920)),
-            "height": int(row.get("max_height") or (1920 if is_vertical else 1080)),
-            "creator": creator,
-            "attribution": f"Video by {creator} on Coverr",
-            "attribution_url": ATTRIBUTION_URLS["coverr"],
-        })
-    return results
-
-
 def select_stock_candidates(candidates: list[dict], duration: float, width: int, height: int, *, max_clips: int = 2) -> list[dict]:
     """按候选顺序取素材。网站标注时长须比镜头实际需要多 1 秒，单段不够再拼第二段。"""
     required = float(duration) + SELECTION_DURATION_MARGIN_SECONDS
@@ -260,76 +177,50 @@ def search_stock_videos(
     *,
     orientation: str = "landscape",
     per_provider: int = DEFAULT_RESULTS_PER_PROVIDER,
-    providers: list[str] | tuple[str, ...] | None = None,
     min_duration: float = 0,
     min_width: int = 0,
     min_height: int = 0,
     max_clips: int = 1,
 ) -> dict:
-    """按 Pexels → Pixabay → Coverr 顺序搜索，上一站无结果或失败才使用下一站。"""
+    """搜索 Pexels，并筛选满足尺寸和时长要求的候选素材。"""
     normalized_query = str(query or "").strip()
-    if not normalized_query or len(normalized_query) > 100:
-        raise StockVideoConfigurationError("query 必须为1～100个字符")
     if orientation not in {"landscape", "portrait", "square"}:
         raise StockVideoConfigurationError("orientation 必须是 landscape、portrait 或 square")
     limit = int(per_provider)
     if not 1 <= limit <= MAX_RESULTS_PER_PROVIDER:
         raise StockVideoConfigurationError(f"per_provider 必须为1～{MAX_RESULTS_PER_PROVIDER}")
-    ordered = tuple(providers or PROVIDER_PRIORITY)
-    if not ordered or any(item not in PROVIDER_PRIORITY for item in ordered):
-        raise StockVideoConfigurationError(f"providers 只能从 {list(PROVIDER_PRIORITY)} 中选择")
-    keys = {
-        "pexels": os.getenv(PEXELS_API_KEY_ENV, "").strip(),
-        "pixabay": os.getenv(PIXABAY_API_KEY_ENV, "").strip(),
-        "coverr": os.getenv(COVERR_API_KEY_ENV, "").strip(),
-    }
-    attempts = []
-    for provider in ordered:
-        if not keys[provider]:
-            attempts.append({"provider": provider, "status": "skipped", "reason": "缺少 API Key"})
-            continue
-        try:
-            cache_path = _search_cache_path(provider, normalized_query, orientation, limit)
-            candidates = _read_search_cache(cache_path)
-            cache_hit = candidates is not None
-            if candidates is None:
-                if provider == "pexels":
-                    candidates = _search_pexels(normalized_query, orientation, limit, keys[provider])
-                elif provider == "pixabay":
-                    candidates = _search_pixabay(normalized_query, orientation, limit, keys[provider])
-                else:
-                    candidates = _search_coverr(normalized_query, orientation, limit, keys[provider])
-                _write_search_cache(cache_path, candidates)
-        except StockVideoRequestError as exc:
-            attempts.append({"provider": provider, "status": "failed", "reason": exc.message})
-            continue
-        attempts.append({
+    provider = "pexels"
+    api_key = os.getenv(PEXELS_API_KEY_ENV, "").strip()
+    if not api_key:
+        raise StockVideoConfigurationError("缺少 PEXELS_API_KEY")
+    cache_path = _search_cache_path(provider, normalized_query, orientation, limit)
+    candidates = _read_search_cache(cache_path)
+    cache_hit = candidates is not None
+    if candidates is None:
+        candidates = _search_pexels(normalized_query, orientation, limit, api_key)
+        _write_search_cache(cache_path, candidates)
+    attempts = [{"provider": provider, "status": "succeeded", "count": len(candidates), "cache_hit": cache_hit}]
+    candidates = [
+        row for row in candidates
+        if float(row.get("duration") or 0) > 0
+        and int(row.get("width") or 0) >= min_width
+        and int(row.get("height") or 0) >= min_height
+        and (
+            (orientation == "landscape" and int(row.get("width") or 0) >= int(row.get("height") or 0))
+            or (orientation == "portrait" and int(row.get("height") or 0) > int(row.get("width") or 0))
+            or (orientation == "square" and abs(int(row.get("width") or 0) - int(row.get("height") or 0)) <= max(int(row.get("width") or 0), int(row.get("height") or 0)) * 0.15)
+        )
+    ]
+    if select_stock_candidates(candidates, min_duration, min_width, min_height, max_clips=max_clips):
+        return {
+            "query": normalized_query,
+            "orientation": orientation,
             "provider": provider,
-            "status": "succeeded",
-            "count": len(candidates),
-            "cache_hit": cache_hit,
-        })
-        candidates = [
-            row for row in candidates
-            if float(row.get("duration") or 0) > 0
-            and int(row.get("width") or 0) >= min_width
-            and int(row.get("height") or 0) >= min_height
-            and (
-                (orientation == "landscape" and int(row.get("width") or 0) >= int(row.get("height") or 0))
-                or (orientation == "portrait" and int(row.get("height") or 0) > int(row.get("width") or 0))
-                or (orientation == "square" and abs(int(row.get("width") or 0) - int(row.get("height") or 0)) <= max(int(row.get("width") or 0), int(row.get("height") or 0)) * 0.15)
-            )
-        ]
-        if select_stock_candidates(candidates, min_duration, min_width, min_height, max_clips=max_clips):
-            return {
-                "query": normalized_query,
-                "orientation": orientation,
-                "provider": provider,
-                "candidates": candidates,
-                "attempts": attempts,
-            }
+            "candidates": candidates,
+            "attempts": attempts,
+        }
     raise StockVideoRequestError(
-        "三个正版视频站均未返回可用素材，请更换英文关键词或检查 API Key",
+        "Pexels 未返回尺寸和时长达标的素材，请更换英文关键词",
         {"query": normalized_query, "attempts": attempts},
     )
 
@@ -384,7 +275,7 @@ def download_stock_video(candidate: dict, output_path: str | Path) -> dict:
     """
     provider = str(candidate.get("provider") or "").strip()
     url = str(candidate.get("download_url") or "").strip()
-    if provider not in PROVIDER_PRIORITY or not _allowed_download_url(provider, url):
+    if provider != "pexels" or not _allowed_download_url(provider, url):
         raise StockVideoDownloadError("候选视频来源或下载域名不受支持", {"provider": provider, "url": url})
     destination = Path(output_path).resolve()
     if destination.suffix.lower() != ".mp4":

@@ -3,7 +3,7 @@
 STOCK_VIDEO_CANDIDATE_SCHEMA = {
     "type": "object",
     "properties": {
-        "provider": {"type": "string", "enum": ["pexels", "pixabay", "coverr"]},
+        "provider": {"type": "string", "enum": ["pexels"]},
         "id": {"type": "string"},
         "title": {"type": "string"},
         "page_url": {"type": "string"},
@@ -26,15 +26,9 @@ STOCK_VIDEO_CANDIDATE_SCHEMA = {
 SEARCH_STOCK_VIDEOS_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "query": {"type": "string", "minLength": 1, "maxLength": 100},
+        "query": {"type": "string"},
         "orientation": {"type": "string", "enum": ["landscape", "portrait", "square"]},
         "per_provider": {"type": "integer", "minimum": 1, "maximum": 40},
-        "providers": {
-            "type": "array",
-            "minItems": 1,
-            "uniqueItems": True,
-            "items": {"type": "string", "enum": ["pexels", "pixabay", "coverr"]},
-        },
     },
     "required": ["query"],
     "additionalProperties": False,

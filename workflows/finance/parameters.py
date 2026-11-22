@@ -52,7 +52,6 @@ DEFAULT_PRODUCTION_CONFIG = {
     "video_config": {
         "orientation": "landscape",
         "per_provider": 8,
-        "providers": ["pexels", "pixabay", "coverr"],
         "soft_blur_sigma": 0.55,
     },
     "production_config": {

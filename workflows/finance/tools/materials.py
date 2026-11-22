@@ -34,7 +34,7 @@ def prepare_video_searches(
     video_config: dict,
     progress=None,
 ) -> dict:
-    """逐镜头按三站兜底策略搜索候选视频，暂不下载。"""
+    """逐镜头搜索 Pexels 候选视频，暂不下载。"""
     normalized_storyboard = str(storyboard_text or "").strip()
     if not normalized_storyboard:
         raise WorkflowStepError("storyboard_text 不能为空")
@@ -45,7 +45,6 @@ def prepare_video_searches(
         per_provider = int(video_config.get("per_provider") or 8)
     except (TypeError, ValueError) as exc:
         raise WorkflowStepError("video_config.per_provider 必须是整数") from exc
-    providers = video_config.get("providers") or ["pexels", "pixabay", "coverr"]
     resolved_draft, draft = load_draft(draft_path, "财经稿件")
     cache_root = Path(str(draft.get("cache_dir") or "")).resolve()
     _, context = load_draft(cache_root / STORYBOARD_CONTEXT_FILE_NAME, "分镜上下文")
@@ -63,7 +62,6 @@ def prepare_video_searches(
             str(shot["keywords"]),
             orientation=orientation,
             per_provider=per_provider,
-            providers=providers,
             min_duration=float(shot["duration"]),
             min_width=int(VIDEO_SIZE.split("x")[0]),
             min_height=int(VIDEO_SIZE.split("x")[1]),
@@ -105,7 +103,6 @@ def prepare_video_searches(
             "video_config": {
                 "orientation": orientation,
                 "per_provider": per_provider,
-                "providers": list(providers),
                 "soft_blur_sigma": video_config.get("soft_blur_sigma"),
             },
             "tts_path": context.get("tts_path"),

@@ -200,8 +200,6 @@ def parse_storyboard(value: str, timeline: list[dict]) -> list[dict]:
         if indices != list(range(indices[0], indices[0] + len(indices))):
             raise AgentOutputFormatError(f"同一分镜只能合并相邻台词：{line_ids}")
         description, keywords = fields[1:]
-        if not description or not 1 <= len(keywords) <= 100:
-            raise AgentOutputFormatError("分镜画面描述不能为空，搜索关键词必须为 1～100 个字符")
         selected = [timeline_by_id[line_id] for line_id in line_ids]
         start, end = selected[0]["start"], selected[-1]["end"]
         shots.append({

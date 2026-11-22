@@ -79,8 +79,6 @@ jobs:
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-      PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-      COVERR_API_KEY: ${{ secrets.COVERR_API_KEY }}
       PUBLISHING_CREDENTIALS_JSON: ${{ secrets.PUBLISHING_CREDENTIALS_JSON }}
       FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
     steps:
