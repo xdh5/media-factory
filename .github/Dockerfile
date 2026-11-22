@@ -43,8 +43,8 @@ COPY mcp/anime/ mcp/anime/
 COPY tools/transcribe/ tools/transcribe/
 COPY ops/anime/ ops/anime/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-editable --no-dev --extra anime
+    uv sync --locked --no-editable --no-dev --reinstall-package media-factory --extra anime
 
 FROM runtime AS production
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-editable --no-dev
+    uv sync --locked --no-editable --no-dev --reinstall-package media-factory
