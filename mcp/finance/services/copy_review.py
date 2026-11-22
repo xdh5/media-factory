@@ -14,6 +14,11 @@ from media_factory_mcp.finance.services.editorial import validate_editorial, sav
 from workflows.finance.tools.drafts import bare_text
 
 _PROMPT = package_resource_path("media_factory_mcp", "finance", "prompts", "copy-host-review.md")
+_STAGE_PROMPTS = {
+    "review": "copy-review.md",
+    "copy": "editorial-copy.md",
+    "storyboard": "editorial-storyboard.md",
+}
 
 
 def save_review_context(path: Path, context: dict) -> None:
@@ -48,6 +53,10 @@ def review_result(path: Path, context: dict) -> dict:
         "authors": [{k: a[k] for k in ("sec_user_id", "display_name", "requested_count", "saved_count")} for a in context.get("authors", [])],
         "failures": context.get("failures", []),
         "prompt": _PROMPT.read_text(encoding="utf-8") if pending else "",
+        "prompts": {
+            stage: _PROMPT.with_name(filename).read_text(encoding="utf-8")
+            for stage, filename in _STAGE_PROMPTS.items()
+        } if pending else {},
     }
 
 
