@@ -35,12 +35,12 @@ def _submit_preparation(state_path: Path, state: dict) -> dict:
     def work():
         current = json.loads(state_path.read_text(encoding="utf-8"))
         result = prepare_storyboard(current["draft_path"], tts_config=config["tts_config"], material_strategy=MATERIAL_STOCK_VIDEO)
-        current["stage"] = "waiting_storyboard"
+        current["stage"] = "ready_to_search"
         current["storyboard_context"] = {key: value for key, value in result.items()
                                          if key not in {"draft_path", "context_path"}}
         _save_state(state_path, current)
         return {**current["storyboard_context"], "workflow_id": current["workflow_id"],
-                "stage": "waiting_storyboard", "next_tool": "finance_continue_production"}
+                "stage": "ready_to_search", "next_tool": "finance_continue_production"}
     task = runner_submit_task(cache_dir=state_path.parent, run_id=state["run_id"], step="prepare_production", fn=work)
     _save_state(state_path.with_name("production-task.json"), {"task_path": task["task_path"]})
     return {"workflow_id": state["workflow_id"], "status": task["status"]}
@@ -74,7 +74,7 @@ def finance_start_production(publish_date: str, content_part: int = 1) -> dict:
         source, reservation = state["source"], state["reservation"]
         editorial = source["editorial"]
         draft = a.finance_save_draft(
-            **{key: editorial[key] for key in ("topic", "article", "title", "short_title", "hashtags",
+            **{key: editorial[key] for key in ("topic", "article", "storyboard", "title", "short_title", "hashtags",
                "cover_lines", "cover_highlights", "source_hook", "db_source_hook")},
             source_aweme_id=str(source["aweme_id"]), source_reservation_token=str(reservation["reservation_token"]),
             publish_date=date, content_part=content_part)
@@ -110,9 +110,9 @@ def _save_state(path: Path, state: dict) -> None:
     temporary.replace(path)
 
 
-def continue_production(workflow_id: str, storyboard_text: str = "",
+def continue_production(workflow_id: str,
                         production_source: str = "local_mcp") -> dict:
-    """提交分镜后自动搜索实拍素材、合成并上传 R2。"""
+    """读取定稿分镜，搜索实拍素材、合成并上传 R2。"""
     state_path = _state_path(workflow_id)
     state = json.loads(state_path.read_text(encoding="utf-8"))
     if state["stage"] in {"reserving", "preparing"}:
@@ -124,9 +124,8 @@ def continue_production(workflow_id: str, storyboard_text: str = "",
     def work(progress=None):
         from workflows.finance.tools.materials import prepare_video_searches, download_selected_videos
         current = json.loads(state_path.read_text(encoding="utf-8"))
-        if current["stage"] == "waiting_storyboard":
-            if not storyboard_text:
-                raise WorkflowStepError("请提交宿主定稿的分镜")
+        if current["stage"] == "ready_to_search":
+            storyboard_text = current["storyboard_context"]["storyboard_text"]
             searched = prepare_video_searches(current["draft_path"], storyboard_text,
                 video_config=config["video_config"], progress=progress)
             materials = download_selected_videos(searched["context_path"], progress=progress)
@@ -147,9 +146,9 @@ def continue_production(workflow_id: str, storyboard_text: str = "",
     return {"workflow_id": workflow_id, "status": task["status"]}
 
 
-async def run(publish_date: str, content_part: int = 1, *, storyboard_provider,
+async def run(publish_date: str, content_part: int = 1, *,
               production_source: str = "local_mcp") -> dict:
-    """自动化宿主通过同一启动与继续协议完成生产，模型调用留在宿主。"""
+    """读取稿库定稿与分镜，通过统一生产协议完成交付。"""
     started = await asyncio.to_thread(finance_start_production, publish_date, content_part)
     workflow_id = started["workflow_id"]
     state = _read_state(workflow_id)
@@ -160,10 +159,9 @@ async def run(publish_date: str, content_part: int = 1, *, storyboard_provider,
         await asyncio.to_thread(continue_production, workflow_id, production_source=production_source)
         manifest = await _wait_phase(workflow_id)
         return {"manifest": manifest, "r2": manifest["r2"], "production_outputs": manifest["r2"]["production_outputs"]}
-    context = ({**state["storyboard_context"], "workflow_id": workflow_id}
-               if state["stage"] == "waiting_storyboard" else await _wait_phase(workflow_id))
-    storyboard = await storyboard_provider(context)
+    if state["stage"] != "ready_to_search":
+        await _wait_phase(workflow_id)
     started = await asyncio.to_thread(continue_production, workflow_id,
-        storyboard_text=storyboard, production_source=production_source)
+        production_source=production_source)
     manifest = await _wait_phase(workflow_id)
     return {"manifest": manifest, "r2": manifest["r2"], "production_outputs": manifest["r2"]["production_outputs"]}

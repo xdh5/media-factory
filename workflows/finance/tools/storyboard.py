@@ -8,22 +8,14 @@ from workflows.finance.parameters import (
     MATERIAL_STRATEGIES,
     MCP_ID,
     STORYBOARD_CONTEXT_FILE_NAME,
-    VIDEO_RADIO,
-    VIDEO_SIZE,
 )
 from workflows.finance.errors.exceptions import AgentOutputFormatError, WorkflowStepError
-from workflows.finance.prompts.storyboard import build_storyboard_prompt
 from workflows.finance.tools.drafts import bare_text, load_draft
 
 
 # 兼容旧分镜里的【】重点标记：去掉标记后与 karaoke 逐词动画一致，不再单独上色。
 SUBTITLE_EMPHASIS_STYLE = {"font_size": 104, "primary_color": "#FFD54A"}
-_ENUMERATION = re.compile(
-    r"[\u4e00-\u9fffA-Za-z0-9]{1,8}(?:、[\u4e00-\u9fffA-Za-z0-9]{1,8})+"
-)
-_STRONG_BREAK = set("。！？；!?")
 _COMMA_BREAK = set("，,")
-_SENTENCE_SUFFIX = set("。！？；!?，,、：:;.…\u201d\u2019」』）》】\"'")
 _TRAILING_PUNCTUATION = re.compile(r"[，。！？、；：,.!?;:…]+$")
 
 
@@ -103,58 +95,6 @@ def display_subtitle_cue(text: str) -> str | list[dict]:
     return spans
 
 
-def _enumeration_ranges(text: str) -> list[tuple[int, int]]:
-    return [match.span() for match in _ENUMERATION.finditer(text)]
-
-
-def _inside_enumeration(index: int, ranges: list[tuple[int, int]]) -> bool:
-    return any(start < index < end for start, end in ranges)
-
-
-def _split_by_breaks(text: str) -> list[str]:
-    pieces: list[str] = []
-    buf: list[str] = []
-    ranges = _enumeration_ranges(text)
-    for index, char in enumerate(text):
-        if not buf and pieces and char in _SENTENCE_SUFFIX:
-            pieces[-1] += char
-            continue
-        buf.append(char)
-        if _inside_enumeration(index, ranges):
-            continue
-        if char in _STRONG_BREAK or char in _COMMA_BREAK:
-            piece = "".join(buf).strip()
-            if bare_text(piece):
-                pieces.append(piece)
-                buf = []
-    tail = "".join(buf).strip()
-    if tail:
-        if not bare_text(tail) and pieces:
-            pieces[-1] += tail
-        else:
-            pieces.append(tail)
-    return pieces or ([text.strip()] if text.strip() else [])
-
-
-def split_narration_lines(article: str) -> list[str]:
-    """把正文切成 TTS 一句一条：先按行，再按句读标点。"""
-    lines: list[str] = []
-    prefix = ""
-    for raw in str(article or "").splitlines():
-        block = raw.strip()
-        if not block:
-            continue
-        for piece in _split_by_breaks(block):
-            if bare_text(piece):
-                lines.append(prefix + piece)
-                prefix = ""
-            elif lines:
-                lines[-1] += piece
-            else:
-                prefix += piece
-    return lines
-
-
 def _tts_config(config: dict) -> tuple[str, str, bool]:
     voice = str(config.get("voice") or "").strip()
     rate = str(config.get("rate") or "").strip()
@@ -170,9 +110,9 @@ def _tts_config(config: dict) -> tuple[str, str, bool]:
 
 def compose_tts(article: str, cache_root: Path, tts_config: dict) -> dict:
     voice, rate, trim = _tts_config(tts_config)
-    script = [{"text": line_text, "voice": voice} for line_text in split_narration_lines(article)]
+    script = [{"text": line_text, "voice": voice} for line_text in (line.strip() for line in article.splitlines()) if line_text]
     if not script:
-        raise WorkflowStepError("正文切句后没有可配音的句子")
+        raise WorkflowStepError("定稿正文没有可配音的台词")
     engine = generate_tts_fish if voice.lower().startswith("fish:") else generate_tts
     return engine(
         script,
@@ -183,24 +123,15 @@ def compose_tts(article: str, cache_root: Path, tts_config: dict) -> dict:
 
 
 def parse_storyboard(value: str, timeline: list[dict]) -> list[dict]:
-    """解析台词分组、画面和关键词；时长与字幕直接取配音时间轴。"""
-    timeline_by_id = {item["id"]: item for item in timeline}
-    expected_ids = list(timeline_by_id)
-    shots, used_ids = [], []
-    for row in value.splitlines():
-        if not row.strip():
-            continue
-        fields = [field.strip() for field in row.split("|")]
-        if len(fields) != 3:
-            raise AgentOutputFormatError("每行分镜格式必须为：台词ID列表|画面描述|搜索关键词")
-        line_ids = [line_id.strip() for line_id in fields[0].split(",")]
-        if any(line_id not in timeline_by_id for line_id in line_ids):
-            raise AgentOutputFormatError(f"分镜台词 ID 无效：{line_ids}")
-        indices = [expected_ids.index(line_id) for line_id in line_ids]
-        if indices != list(range(indices[0], indices[0] + len(indices))):
-            raise AgentOutputFormatError(f"同一分镜只能合并相邻台词：{line_ids}")
-        description, keywords = fields[1:]
-        selected = [timeline_by_id[line_id] for line_id in line_ids]
+    """按定稿行顺序关联画面、关键词和配音时间轴。"""
+    rows = [row.strip() for row in value.splitlines() if row.strip()]
+    if len(rows) != len(timeline):
+        raise AgentOutputFormatError("分镜行数必须与定稿正文行数一致")
+    shots = []
+    for row, line in zip(rows, timeline):
+        description, keywords = (field.strip() for field in row.split("|", 1))
+        selected = [line]
+        line_ids = [line["id"]]
         start, end = selected[0]["start"], selected[-1]["end"]
         shots.append({
             "id": f"shot-{len(shots) + 1:03d}", "line_ids": line_ids,
@@ -211,9 +142,6 @@ def parse_storyboard(value: str, timeline: list[dict]) -> list[dict]:
                                 "end": round(row["end"] - start, 6),
                                 "ends_sentence": ends_sentence(row["text"])} for row in selected],
         })
-        used_ids.extend(line_ids)
-    if not shots or used_ids != expected_ids:
-        raise AgentOutputFormatError("分镜必须按原顺序完整覆盖所有台词，不能重复或遗漏")
     return shots
 
 
@@ -236,19 +164,13 @@ def prepare_storyboard(draft_path: str | Path, *, tts_config: dict, material_str
             raise WorkflowStepError(f"财经稿件缺少字段：{key}")
     cache_root = Path(draft["cache_dir"]).resolve()
     tts_result = compose_tts(str(draft["article"]), cache_root, tts_config)
-    prompt = build_storyboard_prompt(
-        tts_result["timeline"],
-        radio=VIDEO_RADIO,
-        size=VIDEO_SIZE,
-    )
     context_path = cache_root / STORYBOARD_CONTEXT_FILE_NAME
     context = {
-        "status": "awaiting_storyboard",
+        "status": "ready_to_search",
         "line": MCP_ID,
         "material_strategy": strategy,
         "draft_path": str(resolved_draft),
-        "storyboard_prompt": prompt,
-        "storyboard_system_prompt": "每行一个分镜，格式为：台词ID列表|画面描述|搜索关键词。台词ID用英文逗号分隔，只输出分镜行。",
+        "storyboard_text": draft["storyboard"],
         "timeline": tts_result["timeline"],
         "tts_path": tts_result["output_path"],
         "tts_duration": tts_result["total_duration"],

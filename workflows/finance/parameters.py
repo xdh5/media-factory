@@ -34,8 +34,8 @@ AUTOMATION_DAILY_OUTPUT_COUNT = 2
 # 正文在两类必做改动（品牌替换、连载指涉改写）之外允许措辞级改写。
 # 原稿入库前已补标点并修正错别字，制作时视为文字和标点正确。
 # 但大结构与信息量必须与原稿一致；
-# 每行上限约两行字幕容量（显示层再按词边界均衡换行），只挡超长行。
-ARTICLE_MAX_LINE_LENGTH = 36
+# 正文每行对应一个分镜，字幕显示层按词边界换行。
+ARTICLE_MAX_LINE_LENGTH = 60
 
 # 财经生产使用正版实拍视频。
 MATERIAL_STOCK_VIDEO = "stock_video"
@@ -63,7 +63,6 @@ DEFAULT_PRODUCTION_CONFIG = {
     },
 }
 
-STORYBOARD_PROMPT_PATH = package_resource_path("workflows", "finance", "prompts", "storyboard.md")
 
 
 COLLECTION_CACHE_ROOT = PROJECT_CACHE_ROOT / "collect_finance_copy"

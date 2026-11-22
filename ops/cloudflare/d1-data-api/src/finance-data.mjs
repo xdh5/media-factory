@@ -172,6 +172,7 @@ async function getDouyinResearchScriptStats(request, env) {
        COUNT(DISTINCT CASE WHEN u.status = 'used' THEN c.aweme_id END) AS used_count,
        COUNT(DISTINCT CASE WHEN (u.aweme_id IS NULL OR (u.status = 'reserved' AND u.reserved_at < ?)) AND NOT EXISTS (
          SELECT 1 FROM finance_editorial_drafts e WHERE e.aweme_id = c.aweme_id AND e.source_transcript = c.transcript_corrected
+         AND json_extract(e.content_json, '$.storyboard') IS NOT NULL
        ) THEN c.aweme_id END) AS pending_editorial_count,
        COUNT(DISTINCT CASE
          WHEN u.status = 'reserved' AND u.reserved_at >= ? THEN c.aweme_id
@@ -213,6 +214,7 @@ async function reserveDouyinResearchScript(request, env) {
     `SELECT c.aweme_id, c.caption, c.transcript_corrected, c.aweme_url, c.created_at, e.content_json
      FROM douyin_research_contents c
      JOIN finance_editorial_drafts e ON e.aweme_id = c.aweme_id AND e.source_transcript = c.transcript_corrected
+     AND json_extract(e.content_json, '$.storyboard') IS NOT NULL
      WHERE EXISTS (
        SELECT 1 FROM douyin_research_discoveries d
        WHERE d.aweme_id = c.aweme_id AND d.collection_code = ?

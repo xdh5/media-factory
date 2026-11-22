@@ -73,10 +73,15 @@ def validate_editorial(source_text: str, editorial: dict) -> dict:
         editorial.get("title") or "", editorial.get("short_title") or "", editorial.get("hashtags") or [],
     )
     visual = validate_cover(metadata["title"], editorial)
+    storyboard = str(editorial.get("storyboard") or "").strip()
+    shots = [row for row in storyboard.splitlines() if row.strip()]
+    narration = [row for row in article["article"].splitlines() if row.strip()]
+    if len(shots) != len(narration) or any(len(row.split("|")) != 2 for row in shots):
+        raise WorkflowStepError("storyboard 须与正文逐行对应，格式为：画面描述|搜索关键词")
     topic = str(editorial.get("topic") or "").strip()
     if not topic:
         raise WorkflowStepError("定稿 topic 不能为空")
-    return {**editorial, **article, **metadata, **visual, "topic": topic, "db_source_hook": original_hook}
+    return {**editorial, **article, **metadata, **visual, "topic": topic, "storyboard": storyboard, "db_source_hook": original_hook}
 
 
 def save_editorial_drafts(records: list[dict]) -> dict:

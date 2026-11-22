@@ -7,7 +7,7 @@ function editorialRecord(record, source) {
   if (!source.startsWith(draft.db_source_hook) || !bare(draft.article).startsWith(bare(draft.source_hook))) {
     throw new Error('定稿黄金钩子必须与原稿和正文开头对应');
   }
-  if (draft.article.split(/\r?\n/).some(line => line.trim().length > 36)) throw new Error('定稿正文每行不能超过36字');
+  if (draft.article.split(/\r?\n/).some(line => line.trim().length > 60)) throw new Error('定稿正文每行不能超过60字');
   if (draft.title.length < 12 || draft.title.length > 26 || draft.short_title.length < 6 || draft.short_title.length > 16) throw new Error('定稿标题长度不符合要求');
   if (!Array.isArray(draft.hashtags) || new Set(draft.hashtags).size !== 4 || draft.hashtags.length !== 4) throw new Error('定稿必须有四个不同标签');
   if (!Array.isArray(draft.cover_lines) || draft.cover_lines.length < 1 || draft.cover_lines.length > 3 || bare(draft.cover_lines.join('')) !== bare(draft.title)) throw new Error('封面断行必须与标题一致');
@@ -24,7 +24,7 @@ export async function listFinanceEditorialDrafts(request, env) {
     LEFT JOIN douyin_research_script_usage u ON u.aweme_id = c.aweme_id AND u.workflow = 'finance'
     WHERE EXISTS (SELECT 1 FROM douyin_research_discoveries d WHERE d.aweme_id = c.aweme_id AND d.collection_code = 'finance')
     AND (u.status IS NULL OR u.status <> 'used')
-    AND (? = 0 OR e.aweme_id IS NULL)
+    AND (? = 0 OR e.aweme_id IS NULL OR json_extract(e.content_json, '$.storyboard') IS NULL)
     ORDER BY c.created_at, c.aweme_id`).bind(Number(missingOnly)).all();
   return Response.json({ records: rows.results.map(row => ({ ...row, editorial: row.content_json ? JSON.parse(row.content_json) : null, content_json: undefined })) });
 }

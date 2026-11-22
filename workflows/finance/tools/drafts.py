@@ -106,6 +106,7 @@ def _cover_highlights(title: str, cover_highlights: list[str] | None) -> list[st
 def save_draft(
     topic: str,
     article: str,
+    storyboard: str,
     title: str,
     short_title: str,
     hashtags: list[str],
@@ -145,7 +146,7 @@ def save_draft(
     ]
     if long_lines:
         raise WorkflowStepError(
-            f"正文每行不得超过{ARTICLE_MAX_LINE_LENGTH}字（约两行字幕），请按语义换行；"
+            f"每个镜头的台词不得超过{ARTICLE_MAX_LINE_LENGTH}字，请按语义换行；"
             "黄金钩子也允许仅插入换行，不得改字或标点",
             {"long_lines": long_lines},
         )
@@ -198,6 +199,7 @@ def save_draft(
         "db_source_hook": normalized_db_hook or normalized_source_hook,
         "source_database_status": "reserved",
         "article": normalized_article,
+        "storyboard": storyboard,
         **metadata,
         "cover_lines": normalized_cover_lines,
         "cover_highlights": normalized_cover_highlights,
@@ -237,6 +239,7 @@ def finance_get_source_script() -> dict:
 def finance_save_draft(
     topic: str,
     article: str,
+    storyboard: str,
     title: str,
     short_title: str,
     hashtags: list[str],
@@ -259,7 +262,7 @@ def finance_save_draft(
     try:
         stored = next((row["editorial"] for row in list_editorial_drafts(False)["records"]
                        if row["aweme_id"] == source_aweme_id), None)
-        incoming = {"topic": topic, "article": article, "title": title, "short_title": short_title,
+        incoming = {"topic": topic, "article": article, "storyboard": storyboard, "title": title, "short_title": short_title,
                     "hashtags": hashtags, "cover_lines": cover_lines, "cover_highlights": cover_highlights,
                     "source_hook": source_hook, "db_source_hook": db_source_hook}
         if stored is None or any(stored.get(key) != value for key, value in incoming.items()):
@@ -275,6 +278,7 @@ def finance_save_draft(
         draft = save_draft(
             topic,
             article,
+            storyboard,
             title,
             short_title,
             hashtags,

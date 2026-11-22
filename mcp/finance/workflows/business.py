@@ -114,9 +114,9 @@ def finance_get_inventory(publish_date: str = "") -> dict:
     return result
 
 
-def finance_continue_production(workflow_id: str, storyboard_text: str = "") -> dict:
-    """提交分镜，由 workflow 自动完成实拍素材、合成和 R2 交付。"""
-    return _task(_production.continue_production(workflow_id, storyboard_text))
+def finance_continue_production(workflow_id: str) -> dict:
+    """按定稿分镜继续生产，由 workflow 完成实拍素材、合成和 R2 交付。"""
+    return _task(_production.continue_production(workflow_id))
 
 
 BUSINESS_TOOLS = (

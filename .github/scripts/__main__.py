@@ -32,9 +32,7 @@ def main() -> None:
     parser.add_argument("--default-days-ahead", type=int, choices=(0, 1), default=0)
     parser.add_argument("--week-start", default="")
     arguments = parser.parse_args()
-    if arguments.workflow.startswith("finance"):
-        os.environ["DASHSCOPE_BUSINESS_LINE"] = "finance"
-    elif arguments.workflow.startswith("language_learning"):
+    if arguments.workflow.startswith("language_learning"):
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
     if arguments.workflow in {"finance_preflight", "language_learning_preflight"}:
         business_line = "finance" if arguments.workflow == "finance_preflight" else "language_learning"

@@ -24,7 +24,6 @@ COPY tools/generate_stock_video/ tools/generate_stock_video/
 COPY tools/generate_sticker/ tools/generate_sticker/
 COPY tools/generate_subtitles/ tools/generate_subtitles/
 COPY tools/generate_tts/ tools/generate_tts/
-COPY tools/qwen_text/ tools/qwen_text/
 COPY tools/publish_media/ tools/publish_media/
 COPY tools/static/ tools/static/
 COPY tools/paths.py tools/resources.py tools/production_dates.py tools/task_runner.py tools/

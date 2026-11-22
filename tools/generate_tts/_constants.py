@@ -15,7 +15,7 @@ TTS_CONNECT_TIMEOUT_SECONDS = 15
 TTS_RECEIVE_TIMEOUT_SECONDS = 60
 # 全局请求节流：相邻两次合成请求的起始最小间隔（秒），防止批量台词触发限流。
 # 注意：NoAudioReceived 更常见的原因是台词里出现纯标点行（如 lone "，"），
-# 排查时先用 split_narration_lines 复现切句结果，再怀疑网络。
+# 排查时先核对调用方传入的台词列表。
 TTS_MIN_REQUEST_INTERVAL_SECONDS = 1.5
 
 # 文生图时间轴参数：与 ai-video-maker 的中文旁白保持相同语义

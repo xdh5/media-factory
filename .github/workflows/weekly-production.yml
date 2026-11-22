@@ -68,9 +68,6 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     env:
       MEDIA_FACTORY_WORKSPACE: ${{ github.workspace }}
-      DASHSCOPE_API_KEY_FINANCE: ${{ secrets.DASHSCOPE_API_KEY_FINANCE }}
-      DASHSCOPE_FINANCE_MODEL: qwen3.8-omni-flash
-      DASHSCOPE_ENABLE_THINKING: ${{ vars.DASHSCOPE_ENABLE_THINKING || 'false' }}
       CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
       CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -87,7 +84,7 @@ jobs:
         shell: bash
         run: |
           for name in \
-            DASHSCOPE_API_KEY_FINANCE PUBLISHING_CREDENTIALS_JSON \
+            PUBLISHING_CREDENTIALS_JSON \
             CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN \
             R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL \
             PEXELS_API_KEY; do
