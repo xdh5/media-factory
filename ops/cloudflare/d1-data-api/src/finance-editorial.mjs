@@ -4,7 +4,8 @@ function editorialRecord(record, source) {
     if (typeof draft?.[key] !== 'string' || !draft[key].trim()) throw new Error(`定稿 ${key} 必须是非空字符串`);
   }
   const bare = value => value.replace(/\s+/g, '');
-  if (!source.startsWith(draft.db_source_hook) || !bare(draft.article).startsWith(bare(draft.source_hook))) {
+  const hookText = value => value.replace(/[\s\p{P}\p{S}]/gu, '');
+  if (!source.includes(draft.db_source_hook) || !hookText(draft.article).startsWith(hookText(draft.source_hook))) {
     throw new Error('定稿黄金钩子必须与原稿和正文开头对应');
   }
   if (draft.article.split(/\r?\n/).some(line => line.trim().length > 60)) throw new Error('定稿正文每行不能超过60字');

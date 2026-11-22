@@ -50,7 +50,7 @@ def validate_metadata(title: str, short_title: str, hashtags: list[str]) -> dict
     return {"title": fields[0], "short_title": fields[1], "hashtags": fields[2:]}
 
 
-# 连载/前文指涉：本文必须是「财富研习岛」独立成篇的文章，出现这些表述必须由 Agent 改写。
+# 连载/前文指涉：本文必须是「大鹅」独立成篇的文章，出现这些表述必须由 Agent 改写。
 _SERIAL_REFERENCE_PATTERN = re.compile(
     r"第[0-9０-９一二两三四五六七八九十百千]+[集期话]"
     r"|上[一那]?[集期]"
@@ -129,7 +129,7 @@ def save_draft(
     normalized_source_token = str(source_reservation_token or "").strip()
     normalized_source_hook = str(source_hook or "").strip()
     # 数据库逐字钩子：mark_used 用它校验 transcript_corrected 的逐字前缀。
-    # 处理后的钩子（source_hook）含品牌替换时两者不同；缺省回退为处理后钩子。
+    # 配音钩子包含品牌替换及标点校对，原文钩子用于来源核对。
     normalized_db_hook = str(db_source_hook or "").strip()
     if not normalized_source_aweme_id.isdigit():
         raise WorkflowStepError("source_aweme_id 必须是有效的抖音作品 ID")
@@ -138,7 +138,7 @@ def save_draft(
     if not normalized_source_hook:
         raise WorkflowStepError("source_hook 不能为空")
     if not re.sub(r"\s+", "", normalized_article).startswith(re.sub(r"\s+", "", normalized_source_hook)):
-        raise WorkflowStepError("正文必须以数据库原稿的黄金钩子原样开头，不能增删或改写")
+        raise WorkflowStepError("正文必须以定稿黄金钩子开头")
     long_lines = [
         (index, len(line.strip()))
         for index, line in enumerate(normalized_article.splitlines(), 1)
@@ -147,7 +147,7 @@ def save_draft(
     if long_lines:
         raise WorkflowStepError(
             f"每个镜头的台词不得超过{ARTICLE_MAX_LINE_LENGTH}字，请按语义换行；"
-            "黄金钩子也允许仅插入换行，不得改字或标点",
+            "黄金钩子与固定开场白须保持在同一个镜头",
             {"long_lines": long_lines},
         )
     serial_hits = [
@@ -157,7 +157,7 @@ def save_draft(
     ]
     if serial_hits:
         raise WorkflowStepError(
-            "正文不得出现连载/前文指涉：本文是「财富研习岛」作者独立的一篇文章，没有任何前文；"
+            "正文不得出现连载/前文指涉：本文是「大鹅」作者独立的一篇文章，没有任何前文；"
             "请把命中处改写成不依赖任何前文也能读懂的独立表述，其余内容按措辞级改写规则处理（保留大结构与信息）",
             {"serial_references": serial_hits},
         )
@@ -256,8 +256,8 @@ def finance_save_draft(
 
     同一天制作第二条时传 content_part=2：缓存与产物目录独立（run-YYYYMMDD-part2），
     D1 落库使用 content_part 区分，run_id 仍为 run-YYYYMMDD。
-    db_source_hook：数据库原稿开头未经改动的逐字钩子（mark_used 校验用）；
-    处理后的 source_hook 含品牌替换时与原稿不同，必须另外传原样钩子。不改错别字或标点。
+    db_source_hook：数据库原稿中未经改动的逐字钩子（mark_used 校验用）；
+    source_hook 为品牌替换及标点校对后的钩子，db_source_hook 保留对应原文。
     """
     try:
         stored = next((row["editorial"] for row in list_editorial_drafts(False)["records"]

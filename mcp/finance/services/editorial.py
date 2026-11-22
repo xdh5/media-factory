@@ -6,7 +6,7 @@ from workflows.finance.tools.drafts import bare_text, validate_metadata, _cover_
 from workflows.finance.infrastructure.scripts import list_editorial_drafts
 from media_factory_mcp.finance.infrastructure.collection import write_editorial_drafts
 
-BRAND_NAME = "财富研习岛"
+BRAND_NAME = "大鹅"
 
 
 def _brand_replacements(value) -> list[tuple[str, str]]:
@@ -30,8 +30,8 @@ def _replace(text: str, rows: list[tuple[str, str]]) -> str:
 
 def validate_source_hook(source_text: str, hook: str) -> None:
     source = str(source_text or "").strip()
-    if not hook or not source.startswith(hook):
-        raise WorkflowStepError("source_hook 必须从数据库原稿第一个字开始连续复制，且与原稿开头完全一致")
+    if not hook or hook not in source:
+        raise WorkflowStepError("db_source_hook 必须是数据库原稿中的连续原文片段")
 
 
 def validate_article(source_text: str, source_hook: str, editorial: dict) -> dict:
@@ -39,7 +39,9 @@ def validate_article(source_text: str, source_hook: str, editorial: dict) -> dic
     mismatched = [row for row in replacements if bare_text(row[1]) != bare_text(BRAND_NAME)]
     if mismatched:
         raise WorkflowStepError(f"所有品牌只能替换为「{BRAND_NAME}」")
-    processed_hook = _replace(source_hook, replacements)
+    processed_hook = str(editorial["source_hook"]).strip()
+    if bare_text(processed_hook) != bare_text(_replace(source_hook, replacements)):
+        raise WorkflowStepError("source_hook 须对应原文钩子的品牌替换及标点校对结果")
     article = str(editorial.get("article") or "").strip()
     if not bare_text(article).startswith(bare_text(processed_hook)):
         raise WorkflowStepError("正文必须以完成品牌替换后的黄金钩子原样开头")
@@ -65,8 +67,6 @@ def validate_editorial(source_text: str, editorial: dict) -> dict:
     original_hook = str(editorial.get("db_source_hook") or "").strip()
     validate_source_hook(source_text, original_hook)
     article = validate_article(source_text, original_hook, editorial)
-    if article["source_hook"] != editorial.get("source_hook"):
-        raise WorkflowStepError("source_hook 必须对应原稿钩子的品牌替换结果")
     if _SERIAL_REFERENCE_PATTERN.search(article["article"]):
         raise WorkflowStepError("定稿正文不能包含连载指涉")
     metadata = validate_metadata(

@@ -301,8 +301,8 @@ async function markDouyinResearchScriptUsed(request, env) {
   const source = await env.DB.prepare(
     "SELECT transcript_corrected FROM douyin_research_contents WHERE aweme_id = ?",
   ).bind(awemeId).first();
-  if (!source || !String(source.transcript_corrected || "").startsWith(sourceHook)) {
-    return errorResponse("DOUYIN_SCRIPT_HOOK_MISMATCH", "黄金钩子不是数据库原稿的原样开头", 409, {
+  if (!source || !String(source.transcript_corrected || "").includes(sourceHook)) {
+    return errorResponse("DOUYIN_SCRIPT_HOOK_MISMATCH", "黄金钩子不是数据库原稿的连续原文片段", 409, {
       aweme_id: awemeId,
     });
   }
