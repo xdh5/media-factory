@@ -79,7 +79,7 @@ def collect_copy(
         "aweme_url": f"https://www.douyin.com/video/{video_id}",
         "cover_url": str(downloaded.get("cover_url") or "").strip(),
     }
-    context = {"requested_count": 1, "saved_count": 0, "skipped_ad_count": 0,
+    context = {"requested_count": 1, "saved_count": 0,
                "pending": [record], "failures": []}
     path = root / "copy-review.json"
     save_review_context(path, context)

@@ -46,9 +46,7 @@ def review_result(path: Path, context: dict) -> dict:
     return {
         "context_path": str(path), "status": "awaiting_host_review" if pending else "completed" if completed else "incomplete",
         "requested_count": context["requested_count"], "saved_count": context["saved_count"],
-        "skipped_ad_count": context["skipped_ad_count"],
-        "skipped_off_topic_count": sum(item["kind"] == "off_topic" for item in context.get("reviewed", [])),
-        "skipped_length_count": sum(item["kind"] == "length" for item in context.get("reviewed", [])),
+        "skipped_count": sum(item["kind"] not in ("keep", "normal") for item in context.get("reviewed", [])),
         "pending": pending,
         "needs_more": needs_more and not pending, "completed": completed,
         "authors": [{k: a[k] for k in ("sec_user_id", "display_name", "requested_count", "saved_count")} for a in context.get("authors", [])],
@@ -62,13 +60,13 @@ def review_result(path: Path, context: dict) -> dict:
 
 def _validate_review(original: str, review: dict) -> dict:
     kind = review.get("kind")
-    if kind not in ("normal", "ad", "off_topic", "length"):
-        raise WorkflowStepError("审核 kind 必须为 normal、ad、off_topic 或 length")
+    if kind not in ("keep", "skip"):
+        raise WorkflowStepError("审核 kind 必须为 keep（要稿）或 skip（不要稿）")
     reason = str(review.get("reason") or "").strip()
     if not reason:
         raise WorkflowStepError("审核结果必须包含 reason")
     text = str(review.get("text") or "").strip()
-    if kind in ("ad", "off_topic", "length"):
+    if kind == "skip":
         if text:
             raise WorkflowStepError("跳过稿件的 text 必须为空")
         return {"kind": kind, "text": "", "reason": reason}
@@ -100,10 +98,10 @@ def submit_copy_reviews(context_path: str, reviews: list[dict]) -> dict:
         raise WorkflowStepError("审核结果必须与当前待审作品逐条对应，不得重复或遗漏")
     validated = {r["aweme_id"]: _validate_review(r["transcript_raw"], by_id[r["aweme_id"]]) for r in context["pending"]}
     editorials = {aweme_id: validate_editorial(review["text"], by_id[aweme_id].get("editorial"))
-                  for aweme_id, review in validated.items() if review["kind"] == "normal"}
+                  for aweme_id, review in validated.items() if review["kind"] == "keep"}
     for record in list(context["pending"]):
         reviewed = validated[record["aweme_id"]]
-        if reviewed["kind"] == "normal":
+        if reviewed["kind"] == "keep":
             saved = {k: v for k, v in record.items() if k != "sec_user_id"}
             saved["transcript_corrected"] = reviewed["text"]
             save_transcribed_scripts([saved])
@@ -111,15 +109,13 @@ def submit_copy_reviews(context_path: str, reviews: list[dict]) -> dict:
         source_author = next((author for author in context.get("authors", [])
                               if author["sec_user_id"] == record.get("sec_user_id")), {})
         record_collection_review({
-            "aweme_id": record["aweme_id"], "decision": reviewed["kind"], "reason": reviewed["reason"],
+            "aweme_id": record["aweme_id"], "decision": "normal" if reviewed["kind"] == "keep" else "off_topic", "reason": reviewed["reason"],
             "author_id": record.get("sec_user_id", ""), "author_name": record["author_name"],
             "author_profile_url": source_author.get("profile_url", ""),
             "source": record["search_keyword"], "aweme_url": record["aweme_url"],
             "source_character_count": len(bare_text(reviewed["text"] or record["transcript_raw"])),
         })
-        if reviewed["kind"] == "ad":
-            context["skipped_ad_count"] += 1
-        elif reviewed["kind"] == "normal":
+        if reviewed["kind"] == "keep":
             context["saved_count"] += 1
             for author in context.get("authors", []):
                 if author["sec_user_id"] == record.get("sec_user_id"):

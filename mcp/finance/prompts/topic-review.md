@@ -19,9 +19,9 @@
 ```json
 {
   "aweme_id": "原稿ID",
-  "kind": "normal",
+  "kind": "keep",
   "reason": "讲解人际边界，符合认知提升主题。"
 }
 ```
 
-`kind`：收录填 `normal`，广告弃稿填 `ad`，主题不符填 `off_topic`。`reason` 用一句话说明原因，不评价表达风格或观点好坏。
+`kind` 只分两种：要稿填 `keep`，不要稿填 `skip`。`reason` 用一句话说明原因，不评价表达风格或观点好坏。

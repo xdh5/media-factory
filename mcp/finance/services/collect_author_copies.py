@@ -20,7 +20,7 @@ def collect_author_copies(count: int, cache_dir: str | Path) -> dict:
         raise WorkflowStepError("财经作者名单为空")
     root = Path(cache_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    context = {"requested_count": count, "saved_count": 0, "skipped_ad_count": 0,
+    context = {"requested_count": count, "saved_count": 0,
                "authors": [], "pending": [], "failures": []}
     base, extra = divmod(count, len(authors))
     for index, author in enumerate(authors):
@@ -45,7 +45,7 @@ def continue_collect_author_copies(context_path: str) -> dict:
     if context["pending"]:
         return review_result(path, context)
     excluded = set(list_saved_script_ids()) | set(list_rejected_video_ids())
-    excluded.update(item["aweme_id"] for item in context.get("reviewed", []) if item["kind"] == "off_topic")
+    excluded.update(item["aweme_id"] for item in context.get("reviewed", []) if item["kind"] not in ("keep", "normal"))
     for author in context["authors"]:
         pending_count = 0
         while author["saved_count"] + pending_count < author["requested_count"]:

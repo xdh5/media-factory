@@ -26,7 +26,7 @@ from workflows.finance.tools.storyboard_images import save_storyboard_images, st
 class CopyReview(TypedDict):
     """宿主一次提交的校对、广告审核与完整定稿。"""
     aweme_id: str
-    kind: Literal["normal", "ad", "off_topic", "length"]
+    kind: Literal["keep", "skip"]
     text: str
     reason: str
     ad_segments: NotRequired[list[str]]
@@ -68,7 +68,7 @@ def finance_start_collection(share_text: str = "", count: int = 0, context_path:
 
 
 def finance_finalize_collection(context_path: str, reviews: list[CopyReview]) -> dict:
-    """一次校验并保存宿主审核的原稿和完整 editorial。整篇广告、主题和字数弃稿均单独记录；配额不足自动启动续采，须继续审核至 completed=true。"""
+    """一次校验并保存宿主审核的原稿和完整 editorial。要稿入库，弃稿记录原因；配额不足自动启动续采，须继续审核至 completed=true。"""
     result = finance_submit_copy_reviews(context_path, reviews)
     if result.get("needs_more"):
         result["continuation"] = _task(finance_start_continue_collect_author_copies(context_path))
