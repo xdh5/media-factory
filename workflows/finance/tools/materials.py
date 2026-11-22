@@ -24,9 +24,35 @@ from workflows.finance.errors.exceptions import WorkflowStepError
 from workflows.finance.tools.storyboard import display_subtitle_text, parse_storyboard
 from workflows.finance.tools.drafts import load_draft
 from tools.generate_final_video._ffmpeg import _probe
+from tools.generate_shot import generate_shot_from_image
 
 
 DEFAULT_SOFT_BLUR_SIGMA = 0.55
+
+
+def prepare_image_materials(draft_path: str | Path, image_paths: list[str]) -> dict:
+    """接收宿主按镜头顺序生成的图片，保存为工作流素材清单。"""
+    resolved_draft, draft = load_draft(draft_path, "财经稿件")
+    cache_root = Path(draft["cache_dir"])
+    _, context = load_draft(cache_root / STORYBOARD_CONTEXT_FILE_NAME, "配音上下文")
+    shots = parse_storyboard(draft["storyboard"], context["timeline"])
+    if len(image_paths) != len(shots):
+        raise WorkflowStepError(f"需要 {len(shots)} 张分镜图片，收到 {len(image_paths)} 张")
+    images = {}
+    for shot, supplied_path in zip(shots, image_paths):
+        path = Path(supplied_path).resolve()
+        if not path.is_file():
+            raise WorkflowStepError(f"镜头 {shot['id']} 的图片不存在：{path}")
+        images[shot["id"]] = str(path)
+    manifest_path = cache_root / "generated-images" / "image-material-manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest = {"images": images, "normalized_cfr": True,
+                "metadata": {"draft_path": str(resolved_draft), "material_strategy": "generated_images",
+                             "storyboard_text": draft["storyboard"],
+                             "storyboard_sha256": _storyboard_hash(draft["storyboard"])},
+                "manifest_path": str(manifest_path)}
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    return manifest
 
 
 def prepare_video_searches(
@@ -301,6 +327,19 @@ def _apply_material(
     material_metadata = manifest["metadata"]
     if Path(str(material_metadata.get("draft_path") or "")).resolve() != resolved_draft:
         raise WorkflowStepError("素材清单不属于当前稿件，请重新准备镜头素材")
+    if "images" in manifest:
+        for shot in shots:
+            shot["image_path"] = manifest["images"][shot["id"]]
+            shot["frame_path"] = shot["image_path"]
+        for shot in shots[1:]:
+            if progress:
+                progress(f"图片合成镜头：{shot['id']}")
+            rendered = generate_shot_from_image(
+                shot["image_path"], cache_root / "image-clips" / f"{shot['id']}.mp4",
+                size=VIDEO_SIZE, duration=shot["duration"],
+            )
+            shot["segment_path"] = rendered["output_path"]
+        return False, [shot["image_path"] for shot in shots]
     videos = manifest.get("videos")
     if isinstance(videos, dict) and videos:
         frames = manifest.get("frames")

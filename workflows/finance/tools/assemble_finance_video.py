@@ -196,7 +196,7 @@ def finish_finance_video(
     if stock_video:
         material_strategy = MATERIAL_STOCK_VIDEO
     try:
-        # 实拍视频策略从本期下载的视频帧随机取封面底图；保留原有标题排版、重点词和描边。
+        # 封面使用本期素材画面，统一添加标题排版、重点词和描边。
         cover_image_sources = cover_sources
         cover = generate_cover_image(
             cover_image_sources,
@@ -311,9 +311,7 @@ def finish_finance_video(
         "line": MCP_ID,
         "content_kind": content_kind,
         "material_strategy": material_strategy,
-        "intro_image_path": (
-            str(first_shot["image_path"]) if stock_video else None
-        ),
+        "intro_image_path": str(first_shot["image_path"]),
         "topic": record["topic"],
         "run_id": run_id,
         "content_part": content_part,

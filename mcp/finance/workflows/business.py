@@ -17,6 +17,7 @@ from workflows.finance.parameters import (
     normalize_publish_date,
 )
 from media_factory_mcp.finance.infrastructure.collection import get_collection_review_stats
+from media_factory_mcp.finance.resources.reference_image import image_generation_reference
 
 
 class CopyReview(TypedDict):
@@ -36,7 +37,7 @@ def _task(result: dict) -> dict:
 
 def finance_get_config() -> dict:
     """读取配音、素材、片头、字幕与合成的唯一生产配置。"""
-    return _production.finance_get_config()
+    return {**_production.finance_get_config(), "image_generation_reference": image_generation_reference()}
 
 
 def finance_manage_authors(action: str = "list", profile_url: str = "", display_name: str = "") -> dict:
@@ -81,9 +82,12 @@ def finance_manage_drafts(action: str = "list", missing_only: bool = True,
     raise WorkflowStepError("稿件操作必须为 list 或携带 records 的 save")
 
 
-def finance_start_production(publish_date: str, content_part: int=1) -> dict:
-    """明确计划日期后领取定稿、保存生产稿、后台生成配音及分镜输入。同一日期和分片重复启动时恢复原流程。宿主据此写分镜，不重写定稿。"""
-    return _task(_production.finance_start_production(publish_date, content_part))
+def finance_start_production(publish_date: str, content_part: int=1, generate_images: bool = False) -> dict:
+    """领取定稿并准备配音。默认搜索实拍；generate_images=true 时由宿主参考风格图生图，交回后合成。重复启动恢复原流程。"""
+    result = _task(_production.finance_start_production(publish_date, content_part, generate_images=generate_images))
+    if result["generate_images"]:
+        result["image_generation_reference"] = image_generation_reference()
+    return result
 
 
 
@@ -97,7 +101,10 @@ def finance_start_production(publish_date: str, content_part: int=1) -> dict:
 def finance_get_task(task_path: str = "", workflow_id: str = "") -> dict:
     """查询采集、配音、素材和合成任务；done=true 只代表当前步骤完成，采集须另核对 completed。"""
     if workflow_id:
-        return _production.get_production(workflow_id)
+        result = _production.get_production(workflow_id)
+        if result["stage"] == "awaiting_images":
+            result["image_generation_reference"] = image_generation_reference()
+        return result
     result = finance_poll_task(task_path)
     if isinstance(result.get("result"), dict):
         result["result"] = _task(result["result"])
@@ -114,9 +121,9 @@ def finance_get_inventory(publish_date: str = "") -> dict:
     return result
 
 
-def finance_continue_production(workflow_id: str) -> dict:
-    """按定稿分镜继续生产，由 workflow 完成实拍素材、合成和 R2 交付。"""
-    return _task(_production.continue_production(workflow_id))
+def finance_continue_production(workflow_id: str, image_paths: list[str] | None = None) -> dict:
+    """按所选模式继续合成和 R2 交付。生图模式读取约定输出位置，或接收按镜头顺序排列的 image_paths。"""
+    return _task(_production.continue_production(workflow_id, image_paths=image_paths))
 
 
 BUSINESS_TOOLS = (

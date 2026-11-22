@@ -7,11 +7,13 @@ warnings.filterwarnings("ignore", message=r"Field 'lifespan' has an incomplete d
 from mcp.server.fastmcp import FastMCP
 from media_factory_mcp.finance.config.server import SERVER_NAME, SERVER_INSTRUCTIONS
 from .tools import register_tools
+from .resources.reference_image import read_storyboard_reference
 
 def create_server() -> FastMCP:
     """创建并注册财经 MCP。"""
     server = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
     register_tools(server)
+    server.resource("finance://storyboard/style-reference", mime_type="image/png")(read_storyboard_reference)
     return server
 
 mcp = create_server()

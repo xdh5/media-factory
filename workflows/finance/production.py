@@ -10,7 +10,7 @@ from .tools import drafts as a, assemble_finance_video as d
 from workflows.finance.parameters import MATERIAL_STOCK_VIDEO, normalize_publish_date, production_dirs
 from workflows.finance.errors.exceptions import WorkflowStepError
 from tools.task_runner import submit_task as runner_submit_task
-from workflows.finance.tools.storyboard import prepare_storyboard
+from workflows.finance.tools.storyboard import prepare_storyboard, parse_storyboard
 from workflows.finance.tools.assemble_finance_video import upload_finance_assets_to_r2
 from tools.task_runner import poll_task
 
@@ -35,18 +35,26 @@ def _submit_preparation(state_path: Path, state: dict) -> dict:
     def work():
         current = json.loads(state_path.read_text(encoding="utf-8"))
         result = prepare_storyboard(current["draft_path"], tts_config=config["tts_config"], material_strategy=MATERIAL_STOCK_VIDEO)
-        current["stage"] = "ready_to_search"
+        current["stage"] = "awaiting_images" if current["generate_images"] else "ready_to_search"
+        if current["generate_images"]:
+            image_root = state_path.parent / "generated-images"
+            image_root.mkdir(parents=True, exist_ok=True)
+            result["image_requests"] = [
+                {"id": shot["id"], "narration": shot["subtitle"], "description": shot["description"],
+                 "output_path": str(image_root / f"{shot['id']}.png")}
+                for shot in parse_storyboard(result["storyboard_text"], result["timeline"])
+            ]
         current["storyboard_context"] = {key: value for key, value in result.items()
                                          if key not in {"draft_path", "context_path"}}
         _save_state(state_path, current)
         return {**current["storyboard_context"], "workflow_id": current["workflow_id"],
-                "stage": "ready_to_search", "next_tool": "finance_continue_production"}
+                "stage": current["stage"], "next_tool": "finance_continue_production"}
     task = runner_submit_task(cache_dir=state_path.parent, run_id=state["run_id"], step="prepare_production", fn=work)
     _save_state(state_path.with_name("production-task.json"), {"task_path": task["task_path"]})
-    return {"workflow_id": state["workflow_id"], "status": task["status"]}
+    return {"workflow_id": state["workflow_id"], "status": task["status"], "generate_images": state["generate_images"]}
 
 
-def finance_start_production(publish_date: str, content_part: int = 1) -> dict:
+def finance_start_production(publish_date: str, content_part: int = 1, *, generate_images: bool = False) -> dict:
     """按日期和分片启动或恢复同一生产流程，只返回 workflow_id。"""
     date = calendar_date.fromisoformat(publish_date).isoformat()
     if content_part < 1:
@@ -62,10 +70,11 @@ def finance_start_production(publish_date: str, content_part: int = 1) -> dict:
             if "draft_path" in state:
                 if state["stage"] == "preparing":
                     return _submit_preparation(state_path, state)
-                return {"workflow_id": workflow_id, "stage": state["stage"]}
+                return {"workflow_id": workflow_id, "stage": state["stage"], "generate_images": state["generate_images"]}
         else:
             state = {"workflow_id": workflow_id, "run_id": f"run-{date.replace('-', '')}",
-                     "publish_date": date, "content_part": content_part, "stage": "reserving"}
+                     "publish_date": date, "content_part": content_part, "stage": "reserving",
+                     "generate_images": generate_images}
             _save_state(state_path, state)
         if "source" not in state:
             selected = a.finance_get_source_script()
@@ -110,20 +119,26 @@ def _save_state(path: Path, state: dict) -> None:
     temporary.replace(path)
 
 
-def continue_production(workflow_id: str,
+def continue_production(workflow_id: str, *, image_paths: list[str] | None = None,
                         production_source: str = "local_mcp") -> dict:
     """读取定稿分镜，搜索实拍素材、合成并上传 R2。"""
     state_path = _state_path(workflow_id)
     state = json.loads(state_path.read_text(encoding="utf-8"))
     if state["stage"] in {"reserving", "preparing"}:
-        return finance_start_production(state["publish_date"], state["content_part"])
+        return finance_start_production(state["publish_date"], state["content_part"], generate_images=state["generate_images"])
     if state["stage"] == "completed":
         raise WorkflowStepError("该生产流程已经完成")
     config = finance_get_config()
 
     def work(progress=None):
-        from workflows.finance.tools.materials import prepare_video_searches, download_selected_videos
+        from workflows.finance.tools.materials import prepare_video_searches, download_selected_videos, prepare_image_materials
         current = json.loads(state_path.read_text(encoding="utf-8"))
+        if current["stage"] == "awaiting_images":
+            paths = image_paths if image_paths is not None else [
+                request["output_path"] for request in current["storyboard_context"]["image_requests"]]
+            materials = prepare_image_materials(current["draft_path"], paths)
+            current.update({"material_manifest_path": materials["manifest_path"], "stage": "ready_to_render"})
+            _save_state(state_path, current)
         if current["stage"] == "ready_to_search":
             storyboard_text = current["storyboard_context"]["storyboard_text"]
             searched = prepare_video_searches(current["draft_path"], storyboard_text,
