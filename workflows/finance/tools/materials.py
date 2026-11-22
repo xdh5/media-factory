@@ -20,6 +20,7 @@ from workflows.finance.parameters import (
     STORYBOARD_TEXT_FILE_NAME,
     VIDEO_SIZE,
     VIDEO_RADIO,
+    ENDING_VIDEO_PATH,
 )
 from workflows.finance.errors.exceptions import WorkflowStepError
 from workflows.finance.tools.storyboard import display_subtitle_text, parse_storyboard
@@ -37,7 +38,7 @@ def prepare_image_materials(draft_path: str | Path, image_paths: list[str]) -> d
     resolved_draft, draft = load_draft(draft_path, "财经稿件")
     cache_root = Path(draft["cache_dir"])
     _, context = load_draft(cache_root / STORYBOARD_CONTEXT_FILE_NAME, "配音上下文")
-    shots = parse_storyboard(draft["storyboard"], context["timeline"])
+    shots = parse_storyboard(draft["storyboard"], context["timeline"])[:-1]
     if len(image_paths) != len(shots):
         raise WorkflowStepError(f"需要 {len(shots)} 张分镜图片，收到 {len(image_paths)} 张")
     images = {}
@@ -84,7 +85,7 @@ def prepare_video_searches(
     timeline = context.get("timeline")
     if not isinstance(timeline, list) or not timeline:
         raise WorkflowStepError("分镜上下文缺少 timeline，请先完成 finance_start_production")
-    shots = parse_storyboard(normalized_storyboard, timeline)
+    shots = parse_storyboard(normalized_storyboard, timeline)[:-1]
     storyboard_path = cache_root / STORYBOARD_TEXT_FILE_NAME
     storyboard_path.write_text(normalized_storyboard, encoding="utf-8")
     searches = []
@@ -335,6 +336,27 @@ def _load_saved_storyboard(material_metadata: dict) -> str:
     return saved
 
 
+def _render_ending_video(shot: dict, cache_root: Path) -> None:
+    """固定片尾按末句配音时长裁切，源片不足时放慢，原音轨不参与合成。"""
+    duration = float(shot["duration"])
+    source_duration = float(_probe(ENDING_VIDEO_PATH)["duration"])
+    speed_scale = max(1.0, duration / source_duration)
+    width, height = VIDEO_SIZE.split("x")
+    target = cache_root / "ending-video" / f"{shot['id']}.mp4"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    rendered = subprocess.run(
+        ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+         "-i", str(ENDING_VIDEO_PATH), "-an",
+         "-vf", f"setpts={speed_scale}*(PTS-STARTPTS),scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,fps=30,tpad=stop_mode=clone:stop_duration=0.1",
+         "-t", str(duration), "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p", str(target)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180,
+    )
+    if rendered.returncode:
+        raise WorkflowStepError(f"固定片尾裁切失败：{rendered.stderr[-1500:]}")
+    shot["segment_path"] = str(target)
+    print(f"[固定片尾 {shot['id']}] TTS {duration:.3f} 秒，画面拉伸系数 {speed_scale:.3f}，已去除原声", flush=True)
+
+
 def _apply_material(
     manifest: dict,
     shots: list[dict],
@@ -347,6 +369,8 @@ def _apply_material(
     material_metadata = manifest["metadata"]
     if Path(str(material_metadata.get("draft_path") or "")).resolve() != resolved_draft:
         raise WorkflowStepError("素材清单不属于当前稿件，请重新准备镜头素材")
+    _render_ending_video(shots[-1], cache_root)
+    shots = shots[:-1]
     images = manifest.get("images", {})
     for shot in shots:
         if shot["id"] not in images:
@@ -365,8 +389,6 @@ def _apply_material(
     videos = manifest.get("videos")
     if isinstance(videos, dict) and videos:
         frames = manifest.get("frames")
-        if len(shots) < 2:
-            raise WorkflowStepError("分镜至少需要两个镜头：片头动画后必须有正文视频素材")
         expected_ids = {shot["id"] for shot in shots} - set(images)
         if set(videos) != expected_ids:
             raise WorkflowStepError(

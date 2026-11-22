@@ -42,14 +42,14 @@ def _submit_preparation(state_path: Path, state: dict) -> dict:
         restored = restore_storyboard_images(draft["source_aweme_id"], draft["storyboard"], image_root)
         if restored:
             bind_storyboard_images(draft)
-        shot_count = len([row for row in draft["storyboard"].splitlines() if row.strip()])
-        needs_images = current["generate_images"] and len(restored) != shot_count
+        shot_count = len([row for row in draft["storyboard"].splitlines() if row.strip()]) - 1
+        needs_images = current["generate_images"] and not {f"shot-{i:03d}" for i in range(1, shot_count + 1)}.issubset(restored)
         current["stage"] = "awaiting_images" if needs_images else "ready_to_search"
         if needs_images:
             result["image_requests"] = [
                 {"id": shot["id"], "narration": shot["subtitle"], "description": shot["description"],
                  "output_path": str(image_root / f"{shot['id']}.png")}
-                for shot in parse_storyboard(result["storyboard_text"], result["timeline"])
+                for shot in parse_storyboard(result["storyboard_text"], result["timeline"])[:-1]
             ]
         current["storyboard_context"] = {key: value for key, value in result.items()
                                          if key not in {"draft_path", "context_path"}}

@@ -97,7 +97,7 @@ def finance_manage_storyboard_images(aweme_id: str, image_paths: list[str] | Non
     """按未使用稿件准备生图清单；传入逐镜 image_paths 则上传 R2 并入库，供 GitHub Runner 下载使用。"""
     source = next(row for row in list_editorial_drafts(False)["records"] if row["aweme_id"] == aweme_id)
     editorial = source["editorial"]
-    rows = [row for row in editorial["storyboard"].splitlines() if row.strip()]
+    rows = [row for row in editorial["storyboard"].splitlines() if row.strip()][:-1]
     if image_paths is not None:
         if len(image_paths) != len(rows):
             raise WorkflowStepError(f"本稿需要 {len(rows)} 张分镜图片")

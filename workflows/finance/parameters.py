@@ -28,6 +28,7 @@ STORYBOARD_TEXT_FILE_NAME = "storyboard.txt"
 TOPIC_DEDUPLICATION_DAYS = 30
 VIDEO_SIZE = "1920x1080"
 VIDEO_RADIO = "16:9"
+ENDING_VIDEO_PATH = package_resource_path("workflows", "finance", "resources", "goose-outro.mp4")
 # 图片运镜最多放大 4%，平移仅使用裁切余量，避免明显晃动。
 IMAGE_MOTION_EFFECTS = (
     {"name": "缓慢放大", "zoom_from": 1.00, "zoom_to": 1.03},
