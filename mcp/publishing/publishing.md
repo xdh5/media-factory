@@ -59,3 +59,5 @@ python -m media_factory_mcp.publishing
 | `integrations/media-publisher/python/platform_api/` | YouTube、TikTok、Instagram、Facebook 的官方接口 |
 
 当前没有独立只读 Resource 和可复用 Prompt，因此不创建空的 `resources/`、`prompts/` 目录。业务服务已经由 `tools/publish_media/` 提供，不在 MCP 内复制一套 `services/`。
+
+取消官方平台预约使用 `publishing_start_cancel`，传业务线、计划日期、账号组和平台，随后用 `publishing_poll_task` 查询结果。平台撤销并确认成功后同步删除对应回执；失败项保留回执。YouTube 取消定时公开后保留私密视频，Zernio 删除预约帖子。没有数据库回执不能推断平台没有孤立预约，需另行查询平台。

@@ -12,8 +12,10 @@ from .accounts import list_account_groups
 from .browser_accounts import list_publisher_login_states
 from .browser_login import publisher_login_status, start_publisher_login
 from .publisher import normalize_publish_timings, preview_publication, publish_local_outputs
+from .cancellations import cancel_scheduled_publications
 
 __all__ = [
+    "cancel_scheduled_publications",
     "DuplicatePublicationError",
     "InvalidPublishRequestError",
     "MediaPublisherCommandError",

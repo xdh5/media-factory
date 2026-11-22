@@ -19,6 +19,26 @@ from .responses import preview_summary, task_summary
 from .common import _map_error
 
 
+def publishing_start_cancel(
+    business_line: str, publish_date: str, account_group: str, platforms: list[str],
+) -> dict:
+    """撤销官方平台预约并同步清理回执；失败项保留回执，无回执不代表平台没有预约。"""
+    from tools.publish_media import cancel_scheduled_publications
+    from tools.publish_media.content import normalize_publish_date
+
+    publish_date = normalize_publish_date(publish_date)
+
+    def work(progress=None):
+        return cancel_scheduled_publications(business_line, publish_date, account_group, platforms, progress)
+
+    started = runner_submit_task(
+        cache_dir=CACHE_ROOT / "cancellations" / publish_date,
+        run_id=f"cancel-{publish_date}-{business_line}-{account_group}",
+        step="cancel:" + ",".join(sorted(platforms)), fn=work,
+    )
+    return {**started, "poll_tool": "publishing_poll_task"}
+
+
 def publishing_preview(
     business_line: str,
     publish_date: str,

@@ -8,6 +8,7 @@ from .account_access import (
     publishing_review_session,
 )
 from .publication import (
+    publishing_start_cancel,
     publishing_preview,
     publishing_start_publish,
     publishing_poll_task,
@@ -15,6 +16,7 @@ from .publication import (
 from .batch_api import publishing_start_batch, publishing_batch_status
 
 ALL_TOOLS = (
+    publishing_start_cancel,
     publishing_start_batch,
     publishing_batch_status,
     publishing_review_session,
