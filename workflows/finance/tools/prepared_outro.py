@@ -11,11 +11,11 @@ def outro_resources() -> dict:
     return {**metadata, 'video': root / 'goose-outro-prepared.mp4', 'audio': root / 'goose-outro-narration.wav'}
 
 
-def append_outro(result: dict, text: str, voice: str) -> dict:
+def append_outro(result: dict, text: str, voice: str, rate: str) -> dict:
     """正文只合成一次，原样追加预制片尾配音并补齐时间轴。"""
     resources = outro_resources()
-    if text != resources['text'] or voice != resources['voice']:
-        raise ValueError('结束语或音色与预制片尾不一致，请重新制作预制片尾资源')
+    if (text, voice, rate) != (resources['text'], resources['voice'], resources['rate']):
+        raise ValueError('结束语、音色或语速与预制片尾不一致，请重新制作预制片尾资源')
     output = Path(result['output_path'])
     with wave.open(str(output), 'rb') as body:
         parameters = body.getparams()

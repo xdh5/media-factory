@@ -53,8 +53,8 @@ MATERIAL_STRATEGIES = (MATERIAL_STOCK_VIDEO,)
 DEFAULT_PRODUCTION_CONFIG = {
     "material_strategy": MATERIAL_STOCK_VIDEO,
     "tts_config": {
-        "voice": "azure:zh-CN-YunfanMultilingualNeural",
-        "rate": "+0%",
+        "voice": "azure:zh-CN-YunyiMultilingualNeural",
+        "rate": "+10%",
     },
     "video_config": {
         "orientation": "landscape",
@@ -63,7 +63,7 @@ DEFAULT_PRODUCTION_CONFIG = {
     },
     "production_config": {
         "bgm_path": "tools/static/bgm/easy-lemon-kevin-macleod.mp3",
-        "bgm_gain": 0.042,
+        "bgm_gain": 0.0504,
         "intro": "slide_in_shutter",
         "shot_stickers": ["rec"],
     },

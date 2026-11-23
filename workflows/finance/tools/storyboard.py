@@ -117,7 +117,7 @@ def compose_tts(article: str, cache_root: Path, tts_config: dict, ssml: list[str
     if voice.startswith('azure:'):
         from workflows.finance.tools.prepared_outro import append_outro
         result = generate_tts_azure(script[:-1], cache_root / 'narration.wav', rate=rate)
-        return append_outro(result, script[-1]['text'], voice)
+        return append_outro(result, script[-1]['text'], voice, rate)
     engine = generate_tts_fish if voice.lower().startswith("fish:") else generate_tts
     return engine(
         script,

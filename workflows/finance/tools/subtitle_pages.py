@@ -26,7 +26,7 @@ def _sentence_spans(text: str) -> list[tuple[int, int]]:
             stack.pop()
         elif char in pairs and pairs[char] in text[index + 1:]:
             stack.append(pairs[char])
-        elif not stack and index not in protected and unicodedata.category(char).startswith('P') and char not in '；;':
+        elif not stack and index not in protected and unicodedata.category(char).startswith('P') and char != '、':
             spans.append((start, index))
             start = index + 1
     spans.append((start, len(text)))
