@@ -191,6 +191,9 @@ def _target(item: dict, route: dict) -> dict:
         "client_ref": str(item["production_id"]),
         "creative_statement": "ai_generated",
     }
+    if platform == "douyin" and item.get("business_line") == "finance":
+        target.update(ai_chapters=True, thumbnail_path=item["cover_path"],
+                      portrait_thumbnail_path=item["portrait_cover_path"])
     if platform in PUBLIC_URL_PLATFORMS:
         target["video_url"] = _public_video_url(item)
     return target
