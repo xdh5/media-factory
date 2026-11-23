@@ -32,6 +32,18 @@ from workflows.finance.tools.storyboard_images import save_storyboard_images, bi
 DEFAULT_SOFT_BLUR_SIGMA = 0.55
 
 
+def select_image_motions(shot_ids) -> dict[str, dict]:
+    """按镜头顺序选择运镜，排除上一镜头使用的动画。"""
+    selected = {}
+    previous = None
+    for shot_id in sorted(shot_ids, key=lambda value: int(value.rsplit('-', 1)[-1])):
+        candidates = [effect for effect in IMAGE_MOTION_EFFECTS if effect['name'] != previous]
+        effect = dict(random.choice(candidates))
+        selected[shot_id] = effect
+        previous = effect['name']
+    return selected
+
+
 def prepare_image_materials(draft_path: str | Path, image_paths: list[str]) -> dict:
     """接收宿主按镜头顺序生成的图片，保存为工作流素材清单。"""
     resolved_draft, draft = load_draft(draft_path, "财经稿件")
@@ -50,7 +62,7 @@ def prepare_image_materials(draft_path: str | Path, image_paths: list[str]) -> d
     bind_storyboard_images(draft)
     manifest_path = cache_root / "generated-images" / "image-material-manifest.json"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest = {"images": images, "image_motion": {key: dict(random.choice(IMAGE_MOTION_EFFECTS)) for key in images},
+    manifest = {"images": images, "image_motion": select_image_motions(images),
                 "normalized_cfr": True,
                 "metadata": {"draft_path": str(resolved_draft), "material_strategy": "generated_images",
                              "storyboard_text": draft["storyboard"],
@@ -181,7 +193,7 @@ def prepare_video_searches(
         },
         "searches": searches,
         "images": images,
-        "image_motion": {key: dict(random.choice(IMAGE_MOTION_EFFECTS)) for key in images},
+        "image_motion": select_image_motions(images),
         "selection_instructions": (
             f"按搜索顺序取 {VIDEO_RADIO} 素材，不限制分辨率。网站标注时长须比镜头实际需要多 "
             f"{SELECTION_DURATION_MARGIN_SECONDS:g} 秒，单段不足时拼两段，合计也要多出这 {SELECTION_DURATION_MARGIN_SECONDS:g} 秒；"

@@ -11,7 +11,7 @@ description: 使用财经库定稿制作财经、理财或情感短视频。
 2. 用 `finance_start_production` 启动生产，日内两篇分别传 `content_part=1`、`2`。默认 `generate_images=false` 搜索实拍；需要生图时传 `true`。用 `finance_get_task` 通过 workflow_id 查询准备结果，同一流程恢复原素材模式。
 3. `stage=ready_to_search` 时调用 `finance_continue_production(workflow_id)`；正文和分镜均读取稿库定稿，不再现场生成。
 4. `stage=awaiting_images` 时，读取 MCP 返回的参考图、生图指令和 `image_requests`。宿主使用生图工具，将参考图作为图像输入，按返回指令逐镜生成并保存到各项 `output_path`。全部完成后调用 `finance_continue_production(workflow_id)`；另存位置时按镜头顺序传入 `image_paths`。MCP 和 workflow 不调用生图模型。
-5. workflow 优先使用 generated-images/shot-001.png 等已有图片，没有图片的镜头搜索视频。每张图片从五种缩放、平移效果中随机选一种，随素材清单保存。镜头交由统一合成器按指纹缓存、并行渲染，随后完成中文字幕、音乐、合成及 R2 上传。用 `finance_get_task(workflow_id=...)` 查询流程；只有 `stage=completed` 才代表整条流程完成。
+5. workflow 优先使用 generated-images/shot-001.png 等已有图片，没有图片的镜头搜索视频。每张图片从缓慢放大、缓慢缩小、从上向下、从下向上四种运镜中随机选一种，连续镜头不使用同一种动画，随素材清单保存。镜头交由统一合成器按指纹缓存、并行渲染，随后完成中文字幕、音乐、合成及 R2 上传。用 `finance_get_task(workflow_id=...)` 查询流程；只有 `stage=completed` 才代表整条流程完成。
 6. 交付本地成片、清单、标题、标签及 R2 地址。失败恢复使用原 workflow_id 和稿库分镜。
 
 末句使用生产包内预制的大鹅片尾（视频、云枫配音与字幕），不再调用末句 TTS、不重复生成片尾字幕。正文配音拼接预制原始片尾音频，正文画面拼接预制片尾画面后统一混入 BGM；生图任务仅包含正文镜头。资源位于 `workflows/finance/resources/goose-outro-prepared.mp4`、`goose-outro-narration.wav` 和 `goose-outro-prepared.json`，随安装包与 GitHub Actions 生产镜像分发。结束语、音色或字幕样式变更时重新制作这组预制资源。

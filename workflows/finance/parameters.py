@@ -35,7 +35,6 @@ IMAGE_MOTION_EFFECTS = (
     {"name": "缓慢缩小", "zoom_from": 1.10, "zoom_to": 1.00},
     {"name": "从上向下", "zoom_from": 1.12, "zoom_to": 1.12, "pan_from_y": 0.0, "pan_to_y": 1.0},
     {"name": "从下向上", "zoom_from": 1.12, "zoom_to": 1.12, "pan_from_y": 1.0, "pan_to_y": 0.0},
-    {"name": "从左向右", "zoom_from": 1.12, "zoom_to": 1.12, "pan_from_x": 0.0, "pan_to_x": 1.0},
 )
 CONTENT_KIND = "finance"
 AUTOMATION_DAILY_OUTPUT_COUNT = 2
