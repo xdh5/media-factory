@@ -1,6 +1,6 @@
 # 口播配音设计
 
-根据正文意思，为云枫男声（`zh-CN-YunfengNeural`）添加必要的口播停顿，返回 SSML。
+根据正文意思，为云帆男声（`zh-CN-YunfanMultilingualNeural`）添加必要的口播停顿，返回 SSML。
 
 保留音色默认表达，不改动原文，只在需要的位置添加停顿。
 
