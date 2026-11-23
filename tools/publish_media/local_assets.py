@@ -250,7 +250,7 @@ def enrich_local_publish_item(row: dict) -> dict | None:
         _materialize_finance_publish_metadata(row, output_dir)
     if str(row.get("business_line") or "") == "finance":
         prefix = f"runs/finance/{_r2_dir_for_record(row)}"
-        for filename in ("cover.png", "cover-portrait.png"):
+        for filename in ("cover.png", "cover-portrait.png", "cover-widescreen.png"):
             if not (output_dir / filename).is_file():
                 download_file(f"{prefix}/{filename}", output_dir / filename)
     title_path = output_dir / "title.txt"
@@ -269,6 +269,7 @@ def enrich_local_publish_item(row: dict) -> dict | None:
         "local_path": str(local_path),
         "cover_path": str(output_dir / "cover.png"),
         "portrait_cover_path": str(output_dir / "cover-portrait.png"),
+        "widescreen_cover_path": str(output_dir / "cover-widescreen.png"),
         "title": title,
         "short_title": short_title_path.read_text(encoding="utf-8").strip() if short_title_path.is_file() else "",
         "publish_copy": publish_copy,

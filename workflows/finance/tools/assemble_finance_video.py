@@ -191,6 +191,7 @@ def finish_finance_video(
     material_strategy = str(material_metadata.get("material_strategy") or "")
     cover = restore_cover_image(draft["cover_images"]["landscape"], output_root / "cover.png")
     portrait_cover = restore_cover_image(draft["cover_images"]["portrait"], output_root / "cover-portrait.png")
+    widescreen_cover = restore_cover_image(draft["cover_images"]["widescreen"], output_root / "cover-widescreen.png")
 
     forced = set(force_shot_ids or [])
     unknown_forced = forced.difference(shot["id"] for shot in shots)
@@ -296,6 +297,7 @@ def finish_finance_video(
         **metadata,
         "cover_path": cover["output_path"],
         "portrait_cover_path": portrait_cover["output_path"],
+        "widescreen_cover_path": widescreen_cover["output_path"],
         "video_path": str(final_path),
         "cache_dir": str(cache_root),
         "output_dir": str(output_root),
@@ -366,6 +368,7 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
         "video_path",
         "cover_path",
         "portrait_cover_path",
+        "widescreen_cover_path",
         "title_path",
         "short_title_path",
         "publish_copy_path",
@@ -395,6 +398,9 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
     portrait_cover = uploaded_assets["portrait_cover_path"]
     manifest["portrait_cover_url"] = portrait_cover["url"]
     manifest["portrait_cover_r2_key"] = portrait_cover["key"]
+    widescreen_cover = uploaded_assets["widescreen_cover_path"]
+    manifest["widescreen_cover_url"] = widescreen_cover["url"]
+    manifest["widescreen_cover_r2_key"] = widescreen_cover["key"]
     manifest["r2_uploaded"] = True
     # 成片记录固定写在 local_mcp 这一条上。GitHub 运行器销毁后本地路径会失效，发布端靠 r2_url 拉回。
     production_outputs = commit_production_outputs([{
@@ -423,6 +429,7 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
         "video_url": video["url"],
         "cover_url": cover["url"],
         "portrait_cover_url": portrait_cover["url"],
+        "widescreen_cover_url": widescreen_cover["url"],
         "uploaded": [*uploaded_assets.values(), remote],
         "production_outputs": production_outputs,
     }

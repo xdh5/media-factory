@@ -17,8 +17,8 @@ description: 管理采集作者，采集跨领域认知提升口播，审核并�
    将发布文案结果中的完整标题、短标题、标签、封面断行和重点字分别放入 `editorial.title`、`editorial.short_title`、`editorial.hashtags`、`editorial.cover_lines`、`editorial.cover_highlights`；后三项为数组，标签不带井号。
 4. 用 `finance_get_inventory` 查询话题，用 `finance_manage_drafts` 查看未使用定稿。用户要求重编旧稿时，以校对原稿为参考，按当前原创撰稿和分镜规范处理；通过 `finance_manage_drafts(action="save")` 保存。
 5. 用 `finance_finalize_collection(context_path, reviews)` 一次提交当前全部待审作品，每篇包含 `aweme_id`、`kind`、`reason`、`text`，`kind` 只用 `keep`（要稿）或 `skip`（不要稿）；合格稿另含 `ad_segments` 和完整 `editorial`，弃稿 `text` 为空且不填写 `editorial`。继续处理 `continuation`，直至配额补齐或候选用尽；单条不合格时报告原因。
-6. 每篇定稿入库后，用 `finance_manage_cover(aweme_id)` 领取文章、长短标题、封面提示词与参考图。宿主使用生图工具参考两张图片，分别整体生成含文字的16:9横版与9:16竖版封面，按 `image_requests` 保存两张独立图片。不调用代码排版，不从 Pexels 拼风景；背景由生图工具按文章内容生成。
-7. 宿主查看实际成图，分别逐字核对两版长短标题，确认无错字、漏字、乱码，构图、角色及背景符合封面提示词后，用 `finance_manage_cover(aweme_id, image_paths={"landscape": 横版路径, "portrait": 竖版路径})` 上传 R2 并登记。标题修改后重新生成封面，未登记封面须报告为未完成，不得宣称已可生产。
+6. 每篇定稿入库后，用 `finance_manage_cover(aweme_id)` 领取文章、长短标题、封面提示词与参考图。宿主使用生图工具参考两张图片，分别整体生成含文字的4:3横版、3:4竖版与16:9宽屏封面，按 `image_requests` 保存三张独立图片。不调用代码排版，不从 Pexels 拼风景；背景由生图工具按文章内容生成。
+7. 宿主查看实际成图，分别逐字核对三版长短标题，确认无错字、漏字、乱码，构图、角色及背景符合封面提示词后，用 `finance_manage_cover(aweme_id, image_paths={"landscape": 横版路径, "portrait": 竖版路径, "widescreen": 宽屏路径})` 上传 R2 并登记。标题修改后重新生成封面，未登记封面须报告为未完成，不得宣称已可生产。
 8. 报告入库、封面完成、各作者取稿、弃稿和失败数。累计弃稿率、原因及来源见 `finance_get_inventory.collection_review`。
 
 内容要求在 MCP 对应阶段提示词维护，业务字段组装和提交步骤在本技能维护。默认使用项目内 `mcp/finance/prompts/editorial-writing.md`，目标1500～2000字、约六分钟；成片时长以实际TTS为准，不增加代码硬性字数拦截。原有 `editorial-rewrite.md` 保留，仅在用户明确要求按原稿改写时使用；两套撰稿提示词不同时套用。标题与分镜分别遵循 `editorial-metadata.md` 和 `editorial-storyboard.md`。

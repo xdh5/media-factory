@@ -98,10 +98,10 @@ def finance_start_production(publish_date: str, content_part: int=1, generate_im
 
 
 def finance_manage_cover(aweme_id: str, image_paths: dict[str, str] | None = None) -> dict:
-    """领取横竖双封面任务；提交landscape、portrait两张成图后上传R2并登记。"""
+    """领取三种比例封面任务；提交landscape、portrait、widescreen成图后上传R2并登记。"""
     source = next(row for row in list_editorial_drafts(False)["records"] if row["aweme_id"] == aweme_id)
     editorial = source["editorial"]
-    ratios = {"landscape": (16, 9), "portrait": (9, 16)}
+    ratios = {"landscape": (4, 3), "portrait": (3, 4), "widescreen": (16, 9)}
     if image_paths is None:
         return {"aweme_id": aweme_id, "topic": editorial["topic"], "article": editorial["article"],
                 "title": editorial["title"], "short_title": editorial["short_title"],
@@ -113,7 +113,7 @@ def finance_manage_cover(aweme_id: str, image_paths: dict[str, str] | None = Non
                                     "output_path": str(PROJECT_CACHE_ROOT / "finance" / "covers" / aweme_id / f"cover-{orientation}.png")}
                                    for orientation, (width, height) in ratios.items()]}
     if set(image_paths) != set(ratios):
-        raise WorkflowStepError("请同时提交landscape横版与portrait竖版封面")
+        raise WorkflowStepError("请同时提交landscape（4:3）、portrait（3:4）、widescreen（16:9）三张封面")
     for orientation, (expected_width, expected_height) in ratios.items():
         with Image.open(image_paths[orientation]) as picture:
             width, height = picture.size

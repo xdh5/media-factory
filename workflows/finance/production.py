@@ -93,10 +93,10 @@ def finance_start_production(publish_date: str, content_part: int = 1, *, genera
         if editorial.get("storyboard_status") == "pending":
             raise WorkflowStepError("正文已更新，分镜待同步，暂不能生产")
         cover_images = editorial.get("cover_images", {})
-        if set(cover_images) != {"landscape", "portrait"} or any(
+        if set(cover_images) != {"landscape", "portrait", "widescreen"} or any(
                 (asset["title"], asset["short_title"]) != (editorial["title"], editorial["short_title"])
                 for asset in cover_images.values()):
-            raise WorkflowStepError("稿件缺少与当前标题一致的横竖双封面成图，请由宿主完成封面生图并登记")
+            raise WorkflowStepError("稿件缺少与当前标题一致的4:3、3:4、16:9三种比例封面成图，请由宿主完成封面生图并登记")
         draft = a.finance_save_draft(
             **{key: editorial[key] for key in ("topic", "article", "storyboard", "title", "short_title", "hashtags",
                "cover_lines", "cover_highlights", "source_hook", "db_source_hook")},
