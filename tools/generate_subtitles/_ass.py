@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from functools import lru_cache
+from PIL import ImageFont
+from fontTools.ttLib import TTFont
+from ._constants import SUBTITLE_FONT_DIRECTORY
 
 from ._errors import InvalidParameterError
 from ._style import resolve_subtitle_style
@@ -22,12 +26,44 @@ def _escape_ass_text(value: str) -> str:
     return value.replace("\\", r"\\").replace("{", "（").replace("}", "）")
 
 
+@lru_cache(maxsize=16)
+def _background_font(name: str, size: int):
+    """匹配字幕字体，并换算 libass 使用的字号尺度。"""
+    for path in SUBTITLE_FONT_DIRECTORY.iterdir():
+        if path.suffix.lower() not in {'.ttf', '.otf'}:
+            continue
+        with TTFont(path) as font:
+            names = {record.toUnicode().lower() for record in font['name'].names if record.nameID in (1, 4, 6, 16)}
+            if name.lower() not in names:
+                continue
+            scale = font['head'].unitsPerEm / (font['hhea'].ascent - font['hhea'].descent)
+        return ImageFont.truetype(str(path), size), scale
+    raise InvalidParameterError('font', f'找不到字幕字体：{name}')
+
+
+def _rounded_background(text: str, style: dict, width: int, height: int) -> str:
+    """整块灰底：左右留白 24px、上下 14px、圆角 7px。"""
+    font, scale = _background_font(style['font'], style['font_size'])
+    w = round(font.getlength(text) * scale + max(0, len(text) - 1) * (style['letter_spacing'] or 0) + 48)
+    h = style['font_size'] + 28
+    r = 7
+    k = round(r * 0.5523, 2)
+    shape = (f'm {r} 0 l {w-r} 0 b {w-r+k} 0 {w} {r-k} {w} {r} '
+             f'l {w} {h-r} b {w} {h-r+k} {w-r+k} {h} {w-r} {h} '
+             f'l {r} {h} b {r-k} {h} 0 {h-r+k} 0 {h-r} '
+             f'l 0 {r} b 0 {r-k} {r-k} 0 {r} 0')
+    x, y = style['pos'] or (width // 2, height - style['margin_vertical'])
+    color = style['outline_color']
+    return (rf'{{\an2\pos({x},{y+14})\p1\bord0\shad0\fscx100\fscy100'
+            rf'\1c&H{color[4:]}&\1a&H{color[2:4]}&}}{shape}')
+
+
 def _style_line(name: str, style: dict) -> str:
     return (
         f"Style: {name},{style['font']},{style['font_size']},"
         f"{style['primary_color']},{style['secondary_color']},"
         f"{style['outline_color']},{style['back_color']},"
-        f"{1 if style['bold'] else 0},{1 if style['italic'] else 0},0,0,100,100,0,0,1,"
+        f"{1 if style['bold'] else 0},{1 if style['italic'] else 0},0,0,100,100,0,0,{style['border_style']},"
         f"{style['outline']},{style['shadow']},{style['alignment']},"
         f"{style['margin_left']},{style['margin_right']},{style['margin_vertical']},1"
     )
@@ -68,6 +104,13 @@ def write_timeline_ass(
         )
         if canvas is None:
             canvas = resolved
+        if resolved["border_style"] == 3:
+            background = {**resolved, "style_name": resolved["style_name"] + "_background"}
+            resolved_styles[background["style_name"]] = background
+            plain = _rounded_background(''.join(span['text'] for span in spans), resolved, width, height)
+            events.append(f"Dialogue: 0,{_ass_time(float(cue['start']))},{_ass_time(float(cue['end']))},"
+                          f"{background['style_name']},,0,0,0,,{plain}")
+            resolved = {**resolved, "border_style": 1, "outline": 1, "outline_color": "&H00000000"}
         resolved_styles[resolved["style_name"]] = resolved
 
         use_word_events = bool(resolved.get("animation")) and isinstance(cue.get("text"), str)
@@ -81,7 +124,7 @@ def write_timeline_ass(
                     pos_x, pos_y = resolved["pos"]
                     text = rf"{{\pos({pos_x},{pos_y})}}{text}"
                 events.append(
-                    f"Dialogue: 0,{_ass_time(event_start)},{_ass_time(event_end)},"
+                    f"Dialogue: 1,{_ass_time(event_start)},{_ass_time(event_end)},"
                     f"{resolved['style_name']},,0,0,0,,{text}"
                 )
             if word_events:
@@ -114,7 +157,7 @@ def write_timeline_ass(
             pos_x, pos_y = resolved["pos"]
             safe_text = rf"{{\pos({pos_x},{pos_y})}}{safe_text}"
         events.append(
-            f"Dialogue: 0,{_ass_time(float(cue['start']))},{_ass_time(float(cue['end']))},"
+            f"Dialogue: 1,{_ass_time(float(cue['start']))},{_ass_time(float(cue['end']))},"
             f"{resolved['style_name']},,0,0,0,,{safe_text}"
         )
 

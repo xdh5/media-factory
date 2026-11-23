@@ -64,6 +64,7 @@ FISH_VOICE_RATES = {
 
 # 音色库
 TTS_VOICES = [
+    {"id": "zh-TW-YunJheNeural", "language": "zh-TW", "gender": "male", "name": "YunJhe"},
     {"id": "zh-CN-XiaoxiaoNeural", "language": "zh-CN", "gender": "female", "name": "Xiaoxiao"},
     {"id": "zh-CN-YunxiNeural", "language": "zh-CN", "gender": "male", "name": "Yunxi"},
     {"id": "zh-CN-YunjianNeural", "language": "zh-CN", "gender": "male", "name": "Yunjian"},

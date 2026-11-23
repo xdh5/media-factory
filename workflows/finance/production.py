@@ -105,6 +105,7 @@ def finance_start_production(publish_date: str, content_part: int = 1, *, genera
         draft_path = Path(draft["draft_path"])
         saved_draft = json.loads(draft_path.read_text(encoding="utf-8"))
         saved_draft["cover_images"] = cover_images
+        saved_draft["ssml"] = editorial.get("ssml")
         draft_path.write_text(json.dumps(saved_draft, ensure_ascii=False, indent=2), encoding="utf-8")
         state.update({"draft_path": draft["draft_path"], "stage": "preparing"})
         _save_state(state_path, state)

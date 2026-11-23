@@ -54,8 +54,8 @@ MATERIAL_STRATEGIES = (MATERIAL_STOCK_VIDEO,)
 DEFAULT_PRODUCTION_CONFIG = {
     "material_strategy": MATERIAL_STOCK_VIDEO,
     "tts_config": {
-        "voice": "fish:28df7fe4d3ec45f692af03d0a372805b",
-        "rate": "+10%",
+        "voice": "azure:zh-CN-YunyiMultilingualNeural",
+        "rate": "+0%",
         "trim_trailing_silence": True,
     },
     "video_config": {

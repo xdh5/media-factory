@@ -32,15 +32,13 @@ DEFAULT_SUBTITLE_POSITION = {"alignment": 2, "margin_vertical_ratio": 0.1}
 # 同一时间段用稿件标题居中做覆盖标题；读完钩子后正文回到 DEFAULT_SUBTITLE_POSITION。
 DEFAULT_HOOK_LINES = 3
 DEFAULT_HOOK_SUBTITLE_POSITION = {"alignment": 2, "margin_vertical_ratio": 0.1}
-# 钩子标题：字魂群英体（商用需授权）、字号 110×1.5=165。
-# 字体族名 zihunqunyingti（TTF 内英文族名），需保证 tools/static/font/ 字魂群英体.ttf 在包内。
-# 标题体自带粗壮笔画，不再叠加伪粗体；黑/白描边 7px 保证视频底上可读。
-DEFAULT_HOOK_TITLE_STYLE = {"font": "zihunqunyingti", "font_size": 165, "bold": False, "outline": 7}
+# 钩子标题：SourceHanSansSC-Heavy.otf，字号 165，黑色描边 7px。
+DEFAULT_HOOK_TITLE_STYLE = {"font": "Source Han Sans SC Heavy", "font_size": 165, "bold": False, "outline": 7}
 # 标题块位置：margin_vertical_ratio 是整块标题墨迹中心的画布高度占比。
 DEFAULT_HOOK_TITLE_POSITION = {"alignment": 5, "margin_vertical_ratio": 0.4}
-# 标题配色：单行 = 红字黑边；多行 = 按标点断行，第一行字幕黄黑边，其余行红字白边。
+# 标题统一红字黑边。
 DEFAULT_HOOK_TITLE_SINGLE_COLOR = "#E30F13"
-DEFAULT_HOOK_TITLE_FIRST_LINE_COLOR = "#FFD54A"
+DEFAULT_HOOK_TITLE_FIRST_LINE_COLOR = "#E30F13"
 DEFAULT_HOOK_TITLE_OTHER_LINE_COLOR = "#E30F13"
 DEFAULT_HOOK_TITLE_DARK_OUTLINE = "#000000"
 DEFAULT_HOOK_TITLE_LIGHT_OUTLINE = "#FFFFFF"
@@ -59,7 +57,7 @@ DEFAULT_CHAPTER_TIMELINE: dict = {
 }
 
 # 重点句大字：「第一，xxx，yyy」这类提示/总结句由 AI 识别（不用关键词匹配），
-# 提示词不上大字；内容段每段一行字魂群英体大字（白字黑边、重点词标红 #E30F13），
+# 提示词不上大字；内容段每段一行思源黑体 Heavy大字（白字黑边、重点词标红 #E30F13），
 # 读到哪段哪行带随机入场动画落在大字块中心=画面高度 40% 处、逐行堆叠驻留，本句读完整体消失；
 # 大字显示期间隐藏普通逐词字幕。
 DEFAULT_EMPHASIS_LINES: dict = {

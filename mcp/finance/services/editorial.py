@@ -1,5 +1,7 @@
 """财经原稿内容校验与宿主定稿保存。"""
 
+from xml.etree import ElementTree
+
 from workflows.finance.parameters import ARTICLE_MAX_LINE_LENGTH
 from workflows.finance.errors.exceptions import WorkflowStepError
 from workflows.finance.tools.drafts import bare_text, validate_metadata, _cover_lines, _cover_highlights, _SERIAL_REFERENCE_PATTERN
@@ -67,6 +69,16 @@ def validate_editorial(source_text: str, editorial: dict) -> dict:
     storyboard = str(editorial.get("storyboard") or "").strip()
     shots = [row for row in storyboard.splitlines() if row.strip()]
     narration = [row for row in article["article"].splitlines() if row.strip()]
+    if editorial.get('ssml') is not None:
+        markup = editorial['ssml']
+        if not isinstance(markup, list) or len(markup) != len(narration):
+            raise WorkflowStepError('SSML 须与正文逐行对应')
+        for text, value in zip(narration, markup, strict=True):
+            root = ElementTree.fromstring(value)
+            if ''.join(''.join(root.itertext()).split()) != ''.join(text.split()):
+                raise WorkflowStepError('SSML 文字须与对应正文一致')
+            if any(set(element.attrib) & {'pitch', 'contour', 'range'} for element in root.iter()):
+                raise WorkflowStepError('配音不能调整音高')
     if editorial.get("storyboard_status") != "pending" and (len(shots) != len(narration) or any(len(row.split("|")) != 2 for row in shots)):
         raise WorkflowStepError("storyboard 须与正文逐行对应，格式为：画面描述|搜索关键词")
     topic = str(editorial.get("topic") or "").strip()

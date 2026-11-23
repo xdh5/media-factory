@@ -19,6 +19,7 @@ _STAGE_PROMPTS = {
     "writing": "editorial-writing.md",
     "metadata": "editorial-metadata.md",
     "storyboard": "editorial-storyboard.md",
+    "ssml": "editorial-ssml.md",
 }
 
 

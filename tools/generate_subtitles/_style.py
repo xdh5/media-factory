@@ -56,8 +56,9 @@ _STYLE_KEYS = frozenset({
     "word_wrap_after",
     "word_wrap_line_length",
     "canvas_width_ratio",
+    "border_style",
 })
-INLINE_STYLE_KEYS = _STYLE_KEYS - {"max_lines", "canvas_width_ratio", "word_wrap_after", "word_wrap_line_length"}
+INLINE_STYLE_KEYS = _STYLE_KEYS - {"max_lines", "canvas_width_ratio", "word_wrap_after", "word_wrap_line_length", "border_style"}
 
 
 def _validate_options(options: dict | None, parameter: str, allowed: frozenset[str]) -> dict:
@@ -330,6 +331,7 @@ def resolve_subtitle_style(
         "outline_color": outline_color,
         "back_color": back_color,
         "outline": int(outline),
+        "border_style": int(_pick_number(style_layers, "border_style", parameter=style_parameter, minimum=1, maximum=3) or 1),
         "shadow": int(shadow),
         "bold": bool(bold),
         "italic": bool(italic),

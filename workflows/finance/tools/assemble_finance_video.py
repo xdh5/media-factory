@@ -67,6 +67,10 @@ def _production_config(config: dict) -> dict:
         raise WorkflowStepError("production_config.shot_stickers 必须是非空列表")
     subtitle_position = config.get("subtitle_position") or dict(DEFAULT_SUBTITLE_POSITION)
     subtitle_style = config.get("subtitle_style") or dict(DEFAULT_SUBTITLE_STYLE)
+    subtitle_style = {**subtitle_style, "max_lines": 1, "word_wrap_after": 20,
+                      "word_wrap_line_length": 20, "font_size": 76, "letter_spacing": 2,
+                      "border_style": 3, "outline": 14, "outline_color": "&H46282828",
+                      "shadow": 0}
     if not isinstance(subtitle_position, dict):
         raise WorkflowStepError("production_config.subtitle_position 必须是对象")
     if not isinstance(subtitle_style, dict):

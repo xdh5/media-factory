@@ -4,6 +4,7 @@ from __future__ import annotations
 import re, json
 from pathlib import Path
 from tools.generate_tts import generate_tts, generate_tts_fish
+from tools.generate_tts.generate_tts_azure import generate_tts_azure
 from workflows.finance.parameters import (
     MATERIAL_STRATEGIES,
     MCP_ID,
@@ -108,11 +109,17 @@ def _tts_config(config: dict) -> tuple[str, str, bool]:
     return voice, rate, trim
 
 
-def compose_tts(article: str, cache_root: Path, tts_config: dict) -> dict:
+def compose_tts(article: str, cache_root: Path, tts_config: dict, ssml: list[str] | None = None) -> dict:
     voice, rate, trim = _tts_config(tts_config)
     script = [{"text": line_text, "voice": voice} for line_text in (line.strip() for line in article.splitlines()) if line_text]
     if not script:
         raise WorkflowStepError("定稿正文没有可配音的台词")
+    if ssml is not None:
+        for line, markup in zip(script, ssml, strict=True):
+            line['ssml'] = markup
+    if voice.startswith('azure:'):
+        return generate_tts_azure(script, cache_root / 'narration.wav', rate=rate,
+            trim_trailing_silence=trim)
     engine = generate_tts_fish if voice.lower().startswith("fish:") else generate_tts
     return engine(
         script,
@@ -163,7 +170,7 @@ def prepare_storyboard(draft_path: str | Path, *, tts_config: dict, material_str
         if not draft.get(key):
             raise WorkflowStepError(f"财经稿件缺少字段：{key}")
     cache_root = Path(draft["cache_dir"]).resolve()
-    tts_result = compose_tts(str(draft["article"]), cache_root, tts_config)
+    tts_result = compose_tts(str(draft["article"]), cache_root, tts_config, draft.get('ssml'))
     context_path = cache_root / STORYBOARD_CONTEXT_FILE_NAME
     context = {
         "status": "ready_to_search",

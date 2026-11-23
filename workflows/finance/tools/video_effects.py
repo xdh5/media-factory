@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from pathlib import Path
+from PIL import ImageFont
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.ttLib import TTFont
 from tools.generate_final_video._size import parse_size
@@ -10,7 +11,8 @@ from tools.generate_subtitles._constants import SUBTITLE_FONT_DIRECTORY
 from workflows.finance.parameters import VIDEO_SIZE, MCP_ID
 from workflows.finance.errors.exceptions import WorkflowStepError
 from workflows.finance.tools.drafts import bare_text
-from workflows.finance.tools.storyboard import display_subtitle_cue, display_subtitle_text
+from workflows.finance.tools.storyboard import display_subtitle_text
+from workflows.finance.tools.subtitle_pages import paginate_subtitle
 import hashlib, json, random
 from tools.generate_shot import (
     INTRO_RENDERER_VERSION,
@@ -31,12 +33,8 @@ def _with_display_text(shots: list[dict]) -> list[dict]:
             cleaned = []
             for line in lines:
                 row = dict(line)
-                try:
-                    cue = display_subtitle_cue(str(row.get("text") or ""))
-                except ValueError as extra:
-                    raise WorkflowStepError(f"镜头 {item.get('id')} 字幕重点标记无效：{extra}") from extra
-                row["text"] = cue
-                cleaned.append(row)
+                cleaned.extend({**row, **page} for page in paginate_subtitle(
+                    str(row.get("text") or ""), float(row["start"]), float(row["end"])))
             item["subtitle_lines"] = cleaned
         prepared.append(item)
     return prepared
@@ -193,10 +191,7 @@ def _hook_title_layers(
     *,
     title_lines: list[str] | None = None,
 ) -> list[str]:
-    """钩子标题图层：一行一个 ASS，按行配色并用 \\pos 垂直堆叠居中。
-
-    单行：红字黑边；多行：第一行字幕黄黑边，其余行红字白边。
-    """
+    """全红标题，文字从中心向两侧涟漪展开并收起。"""
     title_style = dict(settings["hook_title_style"])
     font_size = max(1, int(title_style["font_size"]))
     override_lines = title_lines or settings.get("hook_title_lines")
@@ -206,7 +201,6 @@ def _hook_title_layers(
     # 完整保留语义行，不能为了字号把词语尾字拆到下一行。
     longest = max(len(line) for line in lines)
     font_size = min(font_size, max(1, int(canvas_width * 0.8 // longest)))
-    multi = len(lines) > 1
     line_height = round(font_size * float(settings["hook_title_line_height"]))
     base_position = dict(settings["hook_title_position"])
     target_ratio = float(base_position.pop("margin_vertical_ratio", 0.5) or 0.5)
@@ -227,12 +221,7 @@ def _hook_title_layers(
     )
     paths: list[str] = []
     for index, line in enumerate(lines):
-        if multi and index == 0:
-            color, outline = settings["hook_title_first_line_color"], settings["hook_title_dark_outline"]
-        elif multi:
-            color, outline = settings["hook_title_other_line_color"], settings["hook_title_light_outline"]
-        else:
-            color, outline = settings["hook_title_single_color"], settings["hook_title_dark_outline"]
+        color, outline = "#E30F13", settings["hook_title_dark_outline"]
         style = {**title_style, "primary_color": color, "outline_color": outline}
         position = {
             **base_position,
@@ -249,6 +238,32 @@ def _hook_title_layers(
             )
         except Exception as exc:
             raise WorkflowStepError(f"生成钩子标题图层失败：{exc}") from exc
+        path = Path(layer["output_path"])
+        source = path.read_text(encoding="utf-8")
+        header, event_text = source.split('[Events]', 1)
+        event = next(row for row in event_text.splitlines() if row.startswith('Dialogue:'))
+        fields = event.split(',', 9)
+        ascent, descent, font_path = _title_font_metrics(title_style['font'])
+        font = ImageFont.truetype(str(font_path), font_size)
+        scale = 1 / (ascent - descent)
+        total = font.getlength(line) * scale
+        cursor = canvas_width / 2 - total / 2
+        events = []
+        duration_ms = round(hook_end * 1000)
+        for character_index, character in enumerate(line):
+            advance = font.getlength(character) * scale
+            distance = abs(character_index - (len(line) - 1) / 2) / max(1, len(line) / 2)
+            delay = round(distance * min(180, duration_ms * 0.1))
+            enter_end = delay + min(360, duration_ms // 4)
+            exit_start = max(enter_end, duration_ms - 500 + delay)
+            exit_end = min(duration_ms, exit_start + 300)
+            tags = (rf'\an5\pos({cursor + advance / 2:.2f},{ys[index]})\alpha&HFF&\fscx85\fscy60'
+                    rf'\t({delay},{enter_end},\alpha&H00&\fscx105\fscy112)'
+                    rf'\t({enter_end},{enter_end + 120},\fscx100\fscy100)'
+                    rf'\t({exit_start},{exit_end},\alpha&HFF&\fscx85\fscy60)')
+            events.append(','.join(fields[:9]) + ',{' + tags + '}' + character)
+            cursor += advance
+        path.write_text(header + '[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n' + '\n'.join(events) + '\n', encoding='utf-8')
         paths.append(layer["output_path"])
     return paths
 

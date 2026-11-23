@@ -47,6 +47,7 @@ SUBTITLE_STYLE_SCHEMA = {
         "secondary_color": _COLOR_SCHEMA,
         "outline_color": _COLOR_SCHEMA,
         "back_color": _COLOR_SCHEMA,
+        "border_style": {"type": "integer", "enum": [1, 3], "description": "1 为文字描边，3 为带留白的字幕底框，底框颜色取 outline_color、留白取 outline"},
         "highlight_color": {
             "type": "string",
             "description": "逐词动画高亮色（当前词/扫过颜色）",
