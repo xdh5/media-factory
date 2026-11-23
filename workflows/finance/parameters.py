@@ -29,13 +29,13 @@ TOPIC_DEDUPLICATION_DAYS = 30
 VIDEO_SIZE = "1920x1080"
 VIDEO_RADIO = "16:9"
 ENDING_VIDEO_PATH = package_resource_path("workflows", "finance", "resources", "goose-outro.mp4")
-# 图片运镜最多放大 4%，平移仅使用裁切余量，避免明显晃动。
+# 缩放变化 10%，平移使用 12% 放大的完整裁切余量。
 IMAGE_MOTION_EFFECTS = (
-    {"name": "缓慢放大", "zoom_from": 1.00, "zoom_to": 1.03},
-    {"name": "缓慢缩小", "zoom_from": 1.03, "zoom_to": 1.00},
-    {"name": "从上向下", "zoom_from": 1.04, "zoom_to": 1.04, "pan_from_y": 0.25, "pan_to_y": 0.75},
-    {"name": "从下向上", "zoom_from": 1.04, "zoom_to": 1.04, "pan_from_y": 0.75, "pan_to_y": 0.25},
-    {"name": "从左向右", "zoom_from": 1.04, "zoom_to": 1.04, "pan_from_x": 0.25, "pan_to_x": 0.75},
+    {"name": "缓慢放大", "zoom_from": 1.00, "zoom_to": 1.10},
+    {"name": "缓慢缩小", "zoom_from": 1.10, "zoom_to": 1.00},
+    {"name": "从上向下", "zoom_from": 1.12, "zoom_to": 1.12, "pan_from_y": 0.0, "pan_to_y": 1.0},
+    {"name": "从下向上", "zoom_from": 1.12, "zoom_to": 1.12, "pan_from_y": 1.0, "pan_to_y": 0.0},
+    {"name": "从左向右", "zoom_from": 1.12, "zoom_to": 1.12, "pan_from_x": 0.0, "pan_to_x": 1.0},
 )
 CONTENT_KIND = "finance"
 AUTOMATION_DAILY_OUTPUT_COUNT = 2
@@ -64,7 +64,7 @@ DEFAULT_PRODUCTION_CONFIG = {
     },
     "production_config": {
         "bgm_path": "tools/static/bgm/easy-lemon-kevin-macleod.mp3",
-        "bgm_gain": 0.168,
+        "bgm_gain": 0.084,
         "intro": "slide_in_shutter",
         "shot_stickers": ["rec"],
     },

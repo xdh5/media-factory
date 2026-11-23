@@ -26,7 +26,6 @@ from workflows.finance.errors.exceptions import WorkflowStepError
 from workflows.finance.tools.storyboard import display_subtitle_text, parse_storyboard
 from workflows.finance.tools.drafts import load_draft
 from tools.generate_final_video._ffmpeg import _probe
-from tools.generate_shot import generate_shot_from_image
 from workflows.finance.tools.storyboard_images import save_storyboard_images, bind_storyboard_images
 
 
@@ -366,13 +365,6 @@ def _apply_material(
         shot["frame_path"] = shot["image_path"]
         shot["motion"] = manifest["image_motion"][shot["id"]]
         print(f"[图片动效 {shot['id']}] {shot['motion']['name']}，时长 {shot['duration']:.3f} 秒", flush=True)
-        if shot is shots[0]:
-            continue
-        rendered = generate_shot_from_image(
-            shot["image_path"], cache_root / "image-clips" / f"{shot['id']}.mp4",
-            size=VIDEO_SIZE, duration=shot["duration"], motion=shot["motion"],
-        )
-        shot["segment_path"] = rendered["output_path"]
     videos = manifest.get("videos")
     if isinstance(videos, dict) and videos:
         frames = manifest.get("frames")

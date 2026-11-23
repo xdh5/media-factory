@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from tools.paths import PROJECT_STATIC_ROOT
 
-SHOT_RENDERER_VERSION = 19
+SHOT_RENDERER_VERSION = 20
 SHOT_FPS = 30
 SHOT_CODEC = "libx264"
 SHOT_PRESET = "veryfast"
@@ -18,9 +18,9 @@ SHOT_AUDIO_CODEC = "aac"
 SHOT_AUDIO_RATE = 48_000
 SHOT_AUDIO_CHANNELS = 2
 # zoompan 在成品分辨率上会把缓慢平移取整到整像素。
-# 先放到 2 倍画布上算运镜，再缩回成品尺寸，减轻抖动。
+# 输入保留 2 倍采样精度，运镜直接输出成品尺寸，避免生成 4 倍像素的中间帧。
 SHOT_MOTION_INPUT_SCALE = 2
-SHOT_MOTION_WORK_SCALE = 2
+SHOT_MOTION_WORK_SCALE = 1
 SHOT_RENDER_MIN_TIMEOUT_SECONDS = 360
 SHOT_RENDER_TIMEOUT_PER_SECOND = 15
 # 循环静图必须有限时长，否则 -shortest 停不住，每个镜头会编满超时时间。
@@ -28,7 +28,7 @@ SHOT_IMAGE_LOOP_PAD_SECONDS = 0.25
 SHOT_PROBE_TIMEOUT_SECONDS = 30
 
 # 片头（generate_shot_from_intro）固定 1920x1080
-INTRO_RENDERER_VERSION = 27
+INTRO_RENDERER_VERSION = 28
 INTRO_STYLES = ("slide_in_shutter", "page_flip")
 OUTPUT_WIDTH = 1920
 OUTPUT_HEIGHT = 1080
