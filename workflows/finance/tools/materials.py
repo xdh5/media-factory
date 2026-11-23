@@ -337,24 +337,11 @@ def _load_saved_storyboard(material_metadata: dict) -> str:
 
 
 def _render_ending_video(shot: dict, cache_root: Path) -> None:
-    """固定片尾按末句配音时长裁切，源片不足时放慢，原音轨不参与合成。"""
-    duration = float(shot["duration"])
-    source_duration = float(_probe(ENDING_VIDEO_PATH)["duration"])
-    speed_scale = max(1.0, duration / source_duration)
-    width, height = VIDEO_SIZE.split("x")
-    target = cache_root / "ending-video" / f"{shot['id']}.mp4"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    rendered = subprocess.run(
-        ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-         "-i", str(ENDING_VIDEO_PATH), "-an",
-         "-vf", f"setpts={speed_scale}*(PTS-STARTPTS),scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,fps=30,tpad=stop_mode=clone:stop_duration=0.1",
-         "-t", str(duration), "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p", str(target)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180,
-    )
-    if rendered.returncode:
-        raise WorkflowStepError(f"固定片尾裁切失败：{rendered.stderr[-1500:]}")
-    shot["segment_path"] = str(target)
-    print(f"[固定片尾 {shot['id']}] TTS {duration:.3f} 秒，画面拉伸系数 {speed_scale:.3f}，已去除原声", flush=True)
+    """复用已含配音和字幕的预制片尾画面，音轨由完整旁白统一混合。"""
+    from workflows.finance.tools.prepared_outro import outro_resources
+    resources = outro_resources()
+    shot["segment_path"] = str(resources["video"])
+
 
 
 def _apply_material(

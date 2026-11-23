@@ -33,7 +33,6 @@ from tools.database.production_records import commit_production_outputs
 from tools.r2_files import upload_file, upload_manifest
 from tools.database.topic_history import record_topic_usage as commit_topic
 from tools.generate_final_video import generate_final_video, safe_filename
-from tools.generate_shot import intro_bgm_start_seconds
 from workflows.finance.parameters import (
     CONTENT_KIND,
     MCP_ID,
@@ -213,8 +212,8 @@ def finish_finance_video(
     video_shots = [
         {
             "id": shot["id"],
-            "subtitle": shot["subtitle"],
-            "subtitle_lines": shot.get("subtitle_lines") or [],
+            "subtitle": "" if shot is shots[-1] else shot["subtitle"],
+            "subtitle_lines": [] if shot is shots[-1] else shot.get("subtitle_lines") or [],
             "segment_path": shot["segment_path"],
         }
         for shot in shots
@@ -230,10 +229,7 @@ def finish_finance_video(
             size=VIDEO_SIZE,
             tts_path=tts_path,
             bgm_path=settings["bgm_path"],
-            bgm_start_seconds=intro_bgm_start_seconds(
-                settings["intro"],
-                first_shot_duration=float(first_shot["duration"]),
-            ),
+            bgm_start_seconds=0,
             bgm_gain=settings.get("bgm_gain"),
             stickers=list(settings["shot_stickers"]),
             force_shot_ids=[shot_id for shot_id in forced if shot_id != first_shot["id"]],

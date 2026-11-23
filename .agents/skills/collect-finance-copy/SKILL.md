@@ -21,4 +21,4 @@ description: 管理采集作者，采集跨领域认知提升口播，审核并�
 7. 宿主查看实际成图，分别逐字核对两版长短标题，确认无错字、漏字、乱码，构图、角色及背景符合封面提示词后，用 `finance_manage_cover(aweme_id, image_paths={"landscape": 横版路径, "portrait": 竖版路径})` 上传 R2 并登记。标题修改后重新生成封面，未登记封面须报告为未完成，不得宣称已可生产。
 8. 报告入库、封面完成、各作者取稿、弃稿和失败数。累计弃稿率、原因及来源见 `finance_get_inventory.collection_review`。
 
-内容要求在 MCP 对应阶段提示词维护，业务字段组装和提交步骤在本技能维护。默认使用项目内 `mcp/finance/prompts/editorial-writing.md`，目标1300～1500字、约六分钟；成片时长以实际TTS为准，不增加代码硬性字数拦截。原有 `editorial-rewrite.md` 保留，仅在用户明确要求按原稿改写时使用；两套撰稿提示词不同时套用。标题与分镜分别遵循 `editorial-metadata.md` 和 `editorial-storyboard.md`。
+内容要求在 MCP 对应阶段提示词维护，业务字段组装和提交步骤在本技能维护。默认使用项目内 `mcp/finance/prompts/editorial-writing.md`，目标1500～2000字、约六分钟；成片时长以实际TTS为准，不增加代码硬性字数拦截。原有 `editorial-rewrite.md` 保留，仅在用户明确要求按原稿改写时使用；两套撰稿提示词不同时套用。标题与分镜分别遵循 `editorial-metadata.md` 和 `editorial-storyboard.md`。

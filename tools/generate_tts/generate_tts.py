@@ -15,12 +15,10 @@ import edge_tts
 import edge_tts.communicate as _edge_communicate
 
 from ._constants import (
-    TTS_BETWEEN_SENTENCE_TRAILING_SECONDS,
     TTS_CONCURRENCY,
     TTS_CONNECT_TIMEOUT_SECONDS,
     TTS_DEFAULT_RATE,
     TTS_EDGE_WSS_URL,
-    TTS_ENDING_PADDING_SECONDS,
     TTS_MIN_REQUEST_INTERVAL_SECONDS,
     TTS_RECEIVE_TIMEOUT_SECONDS,
     TTS_VOICES,
@@ -31,7 +29,7 @@ from ._errors import (
     SynthesisError,
     UnsupportedVoiceError,
 )
-from ._pipeline import parse_bool, parse_pause, synthesize_pipeline
+from ._pipeline import synthesize_pipeline
 
 __all__ = ["generate_tts"]
 
@@ -141,11 +139,7 @@ def generate_tts(
     script: list[dict],
     output_path: str | Path,
     *,
-    pause_start: float = 0.0,
-    pause_between: float = TTS_BETWEEN_SENTENCE_TRAILING_SECONDS,
-    pause_end: float = TTS_ENDING_PADDING_SECONDS,
     rate: str = TTS_DEFAULT_RATE,
-    trim_trailing_silence: bool = False,
 ) -> dict:
     """按数组顺序合成配音（Edge TTS）。单句传长度为 1 的 [{text, voice}]；停顿单位为秒。不传 rate 为原速。"""
     default_rate = _parse_rate(rate, "rate")
@@ -154,10 +148,6 @@ def generate_tts(
         lines,
         _edge_speak,
         Path(output_path),
-        pause_start=parse_pause(pause_start, "pause_start", 0.0),
-        pause_between=parse_pause(pause_between, "pause_between", TTS_BETWEEN_SENTENCE_TRAILING_SECONDS),
-        pause_end=parse_pause(pause_end, "pause_end", TTS_ENDING_PADDING_SECONDS),
-        trim_trailing=parse_bool(trim_trailing_silence, "trim_trailing_silence", False),
         concurrency=TTS_CONCURRENCY,
         provider="edge",
     )

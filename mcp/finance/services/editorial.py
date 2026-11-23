@@ -77,8 +77,10 @@ def validate_editorial(source_text: str, editorial: dict) -> dict:
             root = ElementTree.fromstring(value)
             if ''.join(''.join(root.itertext()).split()) != ''.join(text.split()):
                 raise WorkflowStepError('SSML 文字须与对应正文一致')
-            if any(set(element.attrib) & {'pitch', 'contour', 'range'} for element in root.iter()):
-                raise WorkflowStepError('配音不能调整音高')
+            if (root.tag != 's' or root.attrib
+                    or any(element.tag != 'break' or set(element.attrib) != {'time'}
+                           or len(element) or element.text for element in root)):
+                raise WorkflowStepError('配音只能在无属性的 s 片段中添加 break time 停顿，不能添加其他控制')
     if editorial.get("storyboard_status") != "pending" and (len(shots) != len(narration) or any(len(row.split("|")) != 2 for row in shots)):
         raise WorkflowStepError("storyboard 须与正文逐行对应，格式为：画面描述|搜索关键词")
     topic = str(editorial.get("topic") or "").strip()

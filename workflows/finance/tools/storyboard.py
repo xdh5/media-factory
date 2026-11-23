@@ -96,21 +96,18 @@ def display_subtitle_cue(text: str) -> str | list[dict]:
     return spans
 
 
-def _tts_config(config: dict) -> tuple[str, str, bool]:
+def _tts_config(config: dict) -> tuple[str, str]:
     voice = str(config.get("voice") or "").strip()
     rate = str(config.get("rate") or "").strip()
     if not voice:
         raise WorkflowStepError("tts_config.voice 不能为空")
     if not rate:
         raise WorkflowStepError("tts_config.rate 不能为空")
-    trim = config.get("trim_trailing_silence")
-    if not isinstance(trim, bool):
-        raise WorkflowStepError("tts_config.trim_trailing_silence 必须是布尔值")
-    return voice, rate, trim
+    return voice, rate
 
 
 def compose_tts(article: str, cache_root: Path, tts_config: dict, ssml: list[str] | None = None) -> dict:
-    voice, rate, trim = _tts_config(tts_config)
+    voice, rate = _tts_config(tts_config)
     script = [{"text": line_text, "voice": voice} for line_text in (line.strip() for line in article.splitlines()) if line_text]
     if not script:
         raise WorkflowStepError("定稿正文没有可配音的台词")
@@ -118,14 +115,14 @@ def compose_tts(article: str, cache_root: Path, tts_config: dict, ssml: list[str
         for line, markup in zip(script, ssml, strict=True):
             line['ssml'] = markup
     if voice.startswith('azure:'):
-        return generate_tts_azure(script, cache_root / 'narration.wav', rate=rate,
-            trim_trailing_silence=trim)
+        from workflows.finance.tools.prepared_outro import append_outro
+        result = generate_tts_azure(script[:-1], cache_root / 'narration.wav', rate=rate)
+        return append_outro(result, script[-1]['text'], voice)
     engine = generate_tts_fish if voice.lower().startswith("fish:") else generate_tts
     return engine(
         script,
         cache_root / "narration.wav",
         rate=rate,
-        trim_trailing_silence=trim,
     )
 
 
@@ -181,7 +178,6 @@ def prepare_storyboard(draft_path: str | Path, *, tts_config: dict, material_str
         "timeline": tts_result["timeline"],
         "tts_path": tts_result["output_path"],
         "tts_duration": tts_result["total_duration"],
-        "tts_loudness": tts_result["loudness"],
     }
     context_path.write_text(json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8")
     context["context_path"] = str(context_path)
@@ -204,5 +200,4 @@ def load_prepared_tts(cache_root: str | Path) -> dict:
         "tts_path": tts_path,
         "timeline": timeline,
         "tts_duration": context.get("tts_duration"),
-        "tts_loudness": context.get("tts_loudness"),
     }

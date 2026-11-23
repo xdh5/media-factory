@@ -143,8 +143,6 @@ def _one_mode(
         tts = generate_tts(
             script,
             segment_dir / "narration.wav",
-            pause_between=language_pause,
-            pause_end=word_pause,
         )
     except Exception as extra:
         raise VocabularyVideoError(f"原版配音失败：{extra}") from extra
@@ -245,8 +243,6 @@ def _one_quiz_mode(
                 {"text": word[target_key], "voice": target_voice},
             ],
             segment_dir / "tts" / f"w{index:02d}" / "narration.wav",
-            pause_between=countdown_video_duration,
-            pause_end=word_pause,
         )
 
     word_tts: list[dict | None] = [None] * len(rows)

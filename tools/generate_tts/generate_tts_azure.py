@@ -10,8 +10,7 @@ from dotenv import load_dotenv
 from ._pipeline import synthesize_pipeline
 
 
-def generate_tts_azure(script: list[dict], output_path: str | Path, *, rate: str = '+0%',
-                       trim_trailing_silence: bool = False) -> dict:
+def generate_tts_azure(script: list[dict], output_path: str | Path, *, rate: str = '+0%') -> dict:
     """按原稿逐行合成，字幕分页不影响句内表达。"""
     load_dotenv()
     key = os.environ['AZURE_SPEECH_KEY']
@@ -33,6 +32,5 @@ def generate_tts_azure(script: list[dict], output_path: str | Path, *, rate: str
         response.raise_for_status()
         raw_path.write_bytes(response.content)
 
-    return synthesize_pipeline(script, speak, Path(output_path), pause_start=0, pause_between=0.24,
-                               pause_end=0.5, trim_trailing=trim_trailing_silence,
+    return synthesize_pipeline(script, speak, Path(output_path),
                                concurrency=2, provider='azure')

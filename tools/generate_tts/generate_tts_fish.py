@@ -14,13 +14,11 @@ from pathlib import Path
 from ._constants import (
     FISH_AUDIO_CONCURRENCY,
     FISH_VOICE_RATES,
-    TTS_BETWEEN_SENTENCE_TRAILING_SECONDS,
     TTS_DEFAULT_RATE,
-    TTS_ENDING_PADDING_SECONDS,
 )
 from ._errors import InvalidParameterError
 from ._fish import rate_to_speed, resolve_api_key, resolve_reference_id, synthesize_fish
-from ._pipeline import parse_bool, parse_pause, synthesize_pipeline
+from ._pipeline import synthesize_pipeline
 
 __all__ = ["generate_tts_fish"]
 
@@ -73,11 +71,7 @@ def generate_tts_fish(
     script: list[dict],
     output_path: str | Path,
     *,
-    pause_start: float = 0.0,
-    pause_between: float = TTS_BETWEEN_SENTENCE_TRAILING_SECONDS,
-    pause_end: float = TTS_ENDING_PADDING_SECONDS,
     rate: str = TTS_DEFAULT_RATE,
-    trim_trailing_silence: bool = False,
 ) -> dict:
     """按数组顺序合成配音（Fish Audio）。单句传长度为 1 的 [{text, voice}]；停顿单位为秒。
 
@@ -90,10 +84,6 @@ def generate_tts_fish(
         lines,
         _fish_speak,
         Path(output_path),
-        pause_start=parse_pause(pause_start, "pause_start", 0.0),
-        pause_between=parse_pause(pause_between, "pause_between", TTS_BETWEEN_SENTENCE_TRAILING_SECONDS),
-        pause_end=parse_pause(pause_end, "pause_end", TTS_ENDING_PADDING_SECONDS),
-        trim_trailing=parse_bool(trim_trailing_silence, "trim_trailing_silence", False),
         concurrency=FISH_AUDIO_CONCURRENCY,
         provider="fish_audio",
     )

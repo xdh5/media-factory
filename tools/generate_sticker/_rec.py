@@ -1,4 +1,4 @@
-"""REC 贴图素材：透明循环 MOV（红圆闪烁，REC 字常亮）。"""
+"""REC 贴图素材：透明循环 MOV（红圆闪烁，大鹅说文字常亮）。"""
 
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def _layout(canvas_height: int) -> dict:
     margin_y = round(REC_MARGIN_Y * scale)
     letter_spacing = round(REC_LETTER_SPACING * scale)
     font = _font(text_size)
-    text_width, text_top, text_bottom, glyphs = _text_metrics(font, "REC", letter_spacing)
+    text_width, text_top, text_bottom, glyphs = _text_metrics(font, "大鹅说", letter_spacing)
     text_height = max(1, text_bottom - text_top)
     content_height = max(diameter, text_height)
     center_y = pad_y + content_height / 2
