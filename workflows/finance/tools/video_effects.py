@@ -14,6 +14,7 @@ from workflows.finance.tools.drafts import bare_text
 from workflows.finance.tools.storyboard import display_subtitle_text
 from workflows.finance.tools.subtitle_pages import paginate_subtitle
 import hashlib, json, random
+from tools.generate_shot._constants import SFX_ALERT_GAIN, SFX_SHUTTER_GAIN, SFX_SHUTTER_PATH
 from tools.generate_shot import (
     INTRO_RENDERER_VERSION,
     SFX_ALERT_PATH,
@@ -368,7 +369,12 @@ def _render_first_shot_cached(
     if not force and segment_path.is_file() and metadata_path.is_file():
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         if metadata["signature"] == signature:
-            return True, metadata["opening_sfx"]
+            effects = metadata["opening_sfx"]
+            if intro == "slide_in_shutter":
+                gains = {SFX_ALERT_PATH.name: SFX_ALERT_GAIN, SFX_SHUTTER_PATH.name: SFX_SHUTTER_GAIN}
+                for effect in effects:
+                    effect["gain"] = gains[Path(effect["path"]).name]
+            return True, effects
     try:
         if intro == "page_flip" and (sfx_path is None or not Path(sfx_path).is_file()):
             raise WorkflowStepError("片头音效不存在，请在 production_config.intro_sfx_path 指向实际文件")
