@@ -194,6 +194,8 @@ def _target(item: dict, route: dict) -> dict:
     if platform == "douyin" and item.get("business_line") == "finance":
         target.update(ai_chapters=True, thumbnail_path=item["cover_path"],
                       portrait_thumbnail_path=item["portrait_cover_path"])
+    if platform == "kuaishou" and item.get("business_line") == "finance":
+        target["thumbnail_path"] = item["portrait_cover_path"]
     if platform == "youtube" and item.get("business_line") == "finance":
         target["thumbnail_path"] = item["widescreen_cover_path"]
     if platform in PUBLIC_URL_PLATFORMS:

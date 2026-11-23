@@ -17,4 +17,4 @@ description: 发布或预约指定计划日期的财经成片。
 
 财经抖音发布默认启用平台智能章节：打开视频章节，点击智能生成，等待推荐接口返回章节后保存。必须上传本期横竖自定义封面 `cover.png` 和 `cover-portrait.png`；本地缺失时从该期 R2 产物恢复。发布器自动适配抖音 4:3 横封面与 3:4 竖封面，保留图片完整内容。
 
-封面固定生成三种比例：`cover.png` 为 4:3，`cover-portrait.png` 为 3:4，`cover-widescreen.png` 为 16:9。抖音使用前两张，YouTube 长视频使用16:9宽屏封面。
+封面固定生成三种比例：`cover.png` 为 4:3，`cover-portrait.png` 为 3:4，`cover-widescreen.png` 为 16:9。抖音使用前两张，快手必须上传3:4竖版封面，YouTube 长视频使用16:9宽屏封面。
