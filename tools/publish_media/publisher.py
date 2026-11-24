@@ -286,7 +286,7 @@ def publish_local_outputs(
         )
         skipped.extend(schedule_skipped)
         if not pending:
-            raise InvalidPublishRequestError("财经没有可预约的未来时段；北京时间 14 点、18 点各最多一篇，请明确其他时间或立即发布")
+            raise InvalidPublishRequestError("财经没有可预约的未来时段；每天北京时间18点一篇，请明确其他时间或立即发布")
     language_timings = (normalize_publish_timings(preview["platforms"], publish_mode, publish_at, publish_at_by_platform)
                         if business_line != "finance" else {})
     # 先校验所有目标时间，避免发出第一篇后才发现下一篇的时间无效。

@@ -37,7 +37,7 @@ IMAGE_MOTION_EFFECTS = (
     {"name": "从下向上", "zoom_from": 1.12, "zoom_to": 1.12, "pan_from_y": 1.0, "pan_to_y": 0.0},
 )
 CONTENT_KIND = "finance"
-AUTOMATION_DAILY_OUTPUT_COUNT = 2
+AUTOMATION_DAILY_OUTPUT_COUNT = 1
 
 # 正文在两类必做改动（品牌替换、连载指涉改写）之外允许措辞级改写。
 # 原稿入库前已补标点并修正错别字，制作时视为文字和标点正确。

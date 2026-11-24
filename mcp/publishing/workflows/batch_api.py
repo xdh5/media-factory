@@ -11,7 +11,7 @@ def publishing_start_batch(
     """一次提交多日期发布，后台独立执行，不保持模型轮询。先核验全部账号并向用户报告通过后调用。
 
     publications 每项包含 publish_date，可选 content_kind、production_id、publish_mode、publish_at、publish_at_by_platform。
-    财经省略时间遵守14点和18点规则；韩语传明确的16点预约时间。prepare_only只准备成片，不上传或发布。
+    财经省略时间每天一篇，预约北京时间18点；韩语传明确的16点预约时间。prepare_only只准备成片，不上传或发布。
     """
     if not account_group or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for character in account_group):
         raise ValueError("账号组必须是有效的账号组标识")

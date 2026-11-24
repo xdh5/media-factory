@@ -1,4 +1,4 @@
-"""财经公共发布排期：北京时间 14 点、18 点，每个时段一篇。"""
+"""财经公共发布排期：每天北京时间18点一篇。"""
 
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -12,7 +12,7 @@ def plan_finance_publications(
     publish_at: str | None, publish_at_by_platform: dict[str, str] | None,
     *, now: datetime | None = None,
 ) -> tuple[list[dict], list[dict]]:
-    """保留产物与时段的对应关系；重试及午后发布都不把两篇挤到 18 点。"""
+    """默认每天安排第一篇，明确指定立即发布时保留用户选择。"""
     timezone = ZoneInfo("Asia/Shanghai")
     current = (now or datetime.now(timezone)).astimezone(timezone)
     mode = str(publish_mode or "").strip().lower()
@@ -47,13 +47,12 @@ def plan_finance_publications(
                     raise ValueError("缺少时区")
             except ValueError as extra:
                 raise InvalidPublishRequestError("预约时间必须是带时区的 ISO 8601 时间") from extra
-            # 明确只给一个时段时只安排一篇；晚间优先选择第二篇。
-            item = group[min(1, len(group) - 1)] if scheduled.astimezone(timezone).hour >= 18 else group[0]
+            item = group[0]
             chosen = {item["item"]["production_id"]: ("scheduled", explicit_at)}
         else:
             chosen = {}
-            for index, task in enumerate(group[:2]):
-                hour = 18 if len(group) == 1 or index == 1 else 14
+            for task in group[:1]:
+                hour = 18
                 if platform == "toutiao" and hour == 18 and publish_date == (current.date() + timedelta(days=7)).isoformat():
                     hour = 17
                 slot = datetime.fromisoformat(f"{publish_date}T{hour:02d}:00:00").replace(tzinfo=timezone)
@@ -69,6 +68,6 @@ def plan_finance_publications(
                 skipped.append({
                     "production_id": task["item"]["production_id"], "platform": platform,
                     "account_id": task["route"]["platform_account_id"],
-                    "reason": "该财经时段已过或本次仅安排一个时段，每个时段最多发布一篇",
+                    "reason": "默认每天一篇，或当天预约时段已过",
                 })
     return planned, skipped

@@ -28,7 +28,8 @@ async def check_accounts(publish_date: str) -> dict:
 def _publish_day(publish_date: str, variant: str) -> dict:
     route = check_youtube_account()[0]
     print('**全部账号已登录，开始发布**', flush=True)
-    items = local_publish_items('finance', publish_date, content_kind='finance')
+    items = [item for item in local_publish_items('finance', publish_date, content_kind='finance')
+             if int(item['content_part']) == 1]
     publish_batch, _, _ = _publishing()
     output = {'published': [], 'skipped': [], 'failed': []}
     for item in items:
@@ -51,7 +52,7 @@ def _publish_day(publish_date: str, variant: str) -> dict:
             if variant == 'short' and not video.is_file():
                 download_file(f'{prefix}/youtube-short.mp4', video)
             cover = str(folder / 'cover-widescreen.png') if variant == 'long' else ''
-            scheduled_at = f"{publish_date}T{'14' if part == 1 else '18'}:00:00+08:00"
+            scheduled_at = f"{publish_date}T18:00:00+08:00"
             future = datetime.fromisoformat(scheduled_at) > datetime.now(ZoneInfo('Asia/Shanghai'))
             result = publish_batch({'account_group': 'finance', 'publish_mode': 'scheduled' if future else 'immediate',
                                     'publish_at': scheduled_at if future else 'now',

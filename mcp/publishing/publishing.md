@@ -16,7 +16,7 @@ python -m media_factory_mcp.publishing
 - 平台支持 YouTube、Facebook、Instagram、TikTok、快手、抖音、头条号和视频号。
 - `publish_mode=immediate` 时必须明确传 `publish_at=now`；`publish_mode=scheduled` 时必须传带时区的未来 ISO 8601 时间。media-publisher 的抖音、快手、头条号和视频号预约必须由平台官方确认，应用内定时任务不得视为成功。
 
-财经省略发布时间时由公共发布层排北京时间 14:00、18:00 各一篇；只有一篇时排 18:00。当日 14:00 已过时，只安排第二篇在 18:00 发布；两个时段都过期时返回错误，不自动补发。明确只指定 18:00 时只安排一篇，优先第二篇；其他单个预约时间也只安排一篇。明确立即发布仍按用户选择执行。预检返回 `default_publication_plan` 和 `default_schedule_skipped`，实际结果的 `publication_plan` 逐篇列出时间。
+财经每天默认一篇，省略发布时间时选择第一篇，预约北京时间18:00；该时段已过时返回错误，不自动补发。指定其他预约时刻时也只安排第一篇。明确立即发布仍按用户选择执行。预检返回 `default_publication_plan` 和 `default_schedule_skipped`，实际结果的 `publication_plan` 逐篇列出时间。
 - 多平台时间不一致时传 `publish_at_by_platform`；每个值使用 `now` 或带时区的未来 ISO 8601。没有单独配置的平台回退到 `publish_mode` 与 `publish_at`。
 - 发布前查询 `publication_records`；相同产物、平台、账号和分段已有记录时跳过。
 - 指定单条成片时，预检和发布都传入同一个 `production_id`，避免立即发布同日其他内容。标题使用产物记录，发布文案和封面按分片目录读取，不挪动已有本地视频。

@@ -13,7 +13,7 @@ description: 使用财经库定稿制作大鹅认知口播长视频及 YouTube S
 
 ## 启动与续跑
 
-调用 `finance_start_production(publish_date, content_part, generate_images)`，日内两篇用分片1、2。保存返回的 `workflow_id`，用 `finance_get_task(workflow_id=...)` 跟进。
+每天默认制作一篇，调用 `finance_start_production(publish_date, content_part=1, generate_images)`。保存返回的 `workflow_id`，用 `finance_get_task(workflow_id=...)` 跟进。
 
 | 阶段 | 操作 |
 | --- | --- |

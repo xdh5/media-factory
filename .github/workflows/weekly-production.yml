@@ -96,7 +96,7 @@ jobs:
         id: finance-accounts
         run: python -m github_actions finance_youtube_account_check --publish-date "${{ matrix.publish_date }}"
 
-      - name: 生产财经视频
+      - name: 每天生产一篇财经视频
         id: finance-production
         if: ${{ !cancelled() && steps.finance-accounts.outcome == 'success' }}
         run: python -m github_actions finance_produce_day --publish-date "${{ matrix.publish_date }}"
