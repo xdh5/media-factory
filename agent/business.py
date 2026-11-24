@@ -12,6 +12,11 @@ BUSINESSES = {
         "publish-finance", "publish-korean", "publish-anime-youtube")),
 }
 
+from tools.runtime_profile import publishing_enabled
+
+if not publishing_enabled():
+    del BUSINESSES["publishing"]
+
 ANIME_PRODUCTION_TOOLS = {
     "anime_get_production_config", "anime_discover_series", "anime_inspect_sources",
     "anime_start_compile", "anime_get_task",

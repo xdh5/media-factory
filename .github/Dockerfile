@@ -13,8 +13,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /workspace
 COPY pyproject.toml uv.lock LICENSE ./
-# uv 读取工作区元数据；生产目标不安装采集包。
-COPY integrations/media-collector/pyproject.toml integrations/media-collector/pyproject.toml
+# uv 读取发布包元数据。
 COPY integrations/media-publisher/python/ integrations/media-publisher/python/
 COPY tools/database/ tools/database/
 COPY tools/r2_files/ tools/r2_files/
@@ -37,13 +36,14 @@ CMD ["python"]
 # 动漫执行单独包含下载和既有动漫业务代码，不进入周生产镜像。
 FROM runtime AS anime
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
-COPY integrations/media-collector/ integrations/media-collector/
+COPY tools/download_video/ tools/download_video/
+COPY tools/list_author_works/ tools/list_author_works/
 COPY mcp/anime/ mcp/anime/
 COPY tools/transcribe/ tools/transcribe/
 COPY ops/anime/ ops/anime/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-editable --no-dev --reinstall-package media-factory --extra anime
+    uv sync --locked --no-editable --no-dev --reinstall-package media-factory --extra anime --extra publishing
 
 FROM runtime AS production
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-editable --no-dev --reinstall-package media-factory
+    uv sync --locked --no-editable --no-dev --reinstall-package media-factory --extra publishing

@@ -9,8 +9,8 @@ import time
 from pathlib import Path
 
 import requests
-from download_video import download
-from list_author_works import list_author_works
+from tools.download_video import download
+from tools.list_author_works import list_author_works
 
 from .._constants import OUTPUT_ROOT
 from .._errors import AnimeError
@@ -32,7 +32,7 @@ def load_discovery(discovery_path: str) -> tuple[Path, dict]:
 
 def discover_series(profile_url: str, series_name: str, limit: int, directory: Path, progress) -> dict:
     """返回精简作品信息供宿主判断，不按关键词提前丢弃可能的别名作品。"""
-    progress("正在调用 media-collector 获取作者作品")
+    progress("正在获取作者作品")
     works = list_author_works(profile_url, limit)
     works = list({item["aweme_id"]: item for item in works if item.get("is_video")}.values())
     works.sort(key=lambda item: (item.get("published_at") or "", item["aweme_id"]))

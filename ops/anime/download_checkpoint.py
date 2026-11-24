@@ -78,7 +78,7 @@ class CheckpointUploader:
 
     def _repair_block(self, block):
         """已损坏音轨无法靠重封装修复；按冻结来源重新下载这一块，其他块继续复用。"""
-        from download_video import download
+        from tools.download_video import download
         first, last = block["first_source_order"], block["last_source_order"]
         folder = self.directory / f"checkpoint-repair-{first}-{last}"
         folder.mkdir(parents=True, exist_ok=True)

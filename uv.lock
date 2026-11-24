@@ -15,7 +15,6 @@ conflicts = [[
 
 [manifest]
 members = [
-    "media-collector",
     "media-factory",
     "media-publisher-python",
 ]
@@ -2103,23 +2102,6 @@ wheels = [
 ]
 
 [[package]]
-name = "media-collector"
-version = "0.1.0"
-source = { editable = "integrations/media-collector" }
-dependencies = [
-    { name = "python-dotenv" },
-    { name = "requests" },
-    { name = "yt-dlp" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "python-dotenv", specifier = ">=1.0" },
-    { name = "requests", specifier = ">=2.31" },
-    { name = "yt-dlp", specifier = ">=2024.0.0" },
-]
-
-[[package]]
 name = "media-factory"
 version = "0.1.0"
 source = { editable = "." }
@@ -2134,7 +2116,6 @@ dependencies = [
     { name = "google-auth-httplib2" },
     { name = "google-auth-oauthlib" },
     { name = "jieba" },
-    { name = "media-publisher-python" },
     { name = "msgpack" },
     { name = "pillow" },
     { name = "python-dotenv" },
@@ -2158,7 +2139,7 @@ agent = [
     { name = "langsmith" },
     { name = "lxml" },
     { name = "mcp" },
-    { name = "media-collector" },
+    { name = "media-publisher-python" },
     { name = "openai", version = "3.57.0", source = { registry = "https://pypi.org/simple" } },
     { name = "py-mini-racer" },
     { name = "pysocks" },
@@ -2167,21 +2148,24 @@ agent = [
     { name = "yt-dlp" },
 ]
 anime = [
-    { name = "media-collector" },
+    { name = "yt-dlp" },
 ]
 desktop = [
     { name = "greenlet" },
+    { name = "media-publisher-python" },
     { name = "open-webui" },
 ]
 mcp = [
     { name = "beautifulsoup4" },
     { name = "lxml" },
     { name = "mcp" },
-    { name = "media-collector" },
     { name = "py-mini-racer" },
     { name = "pysocks" },
     { name = "typing-extensions" },
     { name = "yt-dlp" },
+]
+publishing = [
+    { name = "media-publisher-python" },
 ]
 
 [package.metadata]
@@ -2211,10 +2195,9 @@ requires-dist = [
     { name = "langsmith", marker = "extra == 'agent'", specifier = ">=0.14.16,<1" },
     { name = "lxml", marker = "extra == 'mcp'", specifier = ">=5.3" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.26,<2" },
-    { name = "media-collector", marker = "extra == 'anime'", editable = "integrations/media-collector" },
-    { name = "media-collector", marker = "extra == 'mcp'", editable = "integrations/media-collector" },
-    { name = "media-factory", extras = ["mcp"], marker = "extra == 'agent'" },
-    { name = "media-publisher-python", editable = "integrations/media-publisher/python" },
+    { name = "media-factory", extras = ["mcp", "publishing"], marker = "extra == 'agent'" },
+    { name = "media-factory", extras = ["publishing"], marker = "extra == 'desktop'" },
+    { name = "media-publisher-python", marker = "extra == 'publishing'", editable = "integrations/media-publisher/python" },
     { name = "msgpack", specifier = ">=1.0" },
     { name = "open-webui", marker = "extra == 'desktop'", specifier = "==0.12.3" },
     { name = "openai", marker = "extra == 'agent'", specifier = ">=2,<4" },
@@ -2226,9 +2209,10 @@ requires-dist = [
     { name = "typing-extensions", marker = "extra == 'mcp'", specifier = ">=4.12" },
     { name = "tzdata", marker = "sys_platform == 'win32'", specifier = ">=2025.2" },
     { name = "uvicorn", marker = "extra == 'agent'", specifier = ">=0.30" },
+    { name = "yt-dlp", marker = "extra == 'anime'", specifier = ">=2024.0.0" },
     { name = "yt-dlp", marker = "extra == 'mcp'", specifier = ">=2024.0.0" },
 ]
-provides-extras = ["mcp", "anime", "agent", "desktop"]
+provides-extras = ["publishing", "mcp", "anime", "agent", "desktop"]
 
 [[package]]
 name = "media-publisher-python"

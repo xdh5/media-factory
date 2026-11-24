@@ -25,7 +25,7 @@ from media_factory_mcp.anime.services.youtube_metadata import part_title, valida
 from tools.r2_files import download_file, upload_file
 from tools.r2_files.storage import _client, _settings
 from tools.publish_media.accounts import resolve_account_group
-from download_video import download
+from tools.download_video import download
 from ops.anime.download_checkpoint import CheckpointUploader
 
 

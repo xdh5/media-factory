@@ -4,15 +4,14 @@ Media Factory 用于制作和发布财经、语言学习和动漫视频。宿主
 
 ## 快速开始
 
-从仓库根目录初始化子模块并安装 Python 依赖。运行环境统一使用 Python 3.12、uv 0.13.9 和 FFmpeg。Python 依赖统一声明在 `pyproject.toml`，完整解析结果由 `uv.lock` 固定。
+从仓库根目录安装 Python 依赖。运行环境统一使用 Python 3.12、uv 0.13.9 和 FFmpeg。Python 依赖统一声明在 `pyproject.toml`，完整解析结果由 `uv.lock` 固定。
 
 ```powershell
-git submodule update --init --recursive
-uv sync --locked --no-editable --no-dev --extra mcp
+uv sync --locked --no-editable --no-dev --extra mcp --extra publishing
 Copy-Item -LiteralPath .env.example -Destination .env
 ```
 
-项目 MCP 源码位于 `mcp/`，由 `pyproject.toml` 映射为 Python 包 `media_factory_mcp`。安装后通过该包名导入和启动，第三方 SDK 使用 `mcp`。修改业务代码、提示词、技能或资源后需重新执行 `uv sync --locked --no-editable --no-dev --extra mcp --reinstall-package media-factory`。
+项目 MCP 源码位于 `mcp/`，由 `pyproject.toml` 映射为 Python 包 `media_factory_mcp`。安装后通过该包名导入和启动，第三方 SDK 使用 `mcp`。修改业务代码、提示词、技能或资源后需重新执行 `uv sync --locked --no-editable --no-dev --extra mcp --extra publishing --reinstall-package media-factory`。
 
 安装 uv 可使用官方安装器；依赖变更后执行 `uv lock`，升级单个包执行 `uv lock --upgrade-package 包名`，并提交 `pyproject.toml` 和 `uv.lock`。Agent 使用 `--extra agent`，桌面界面使用 `--extra desktop`，两者使用独立环境。
 
@@ -25,7 +24,7 @@ Copy-Item -LiteralPath .env.example -Destination .env
 | 动漫 | `uv run --locked --no-editable --no-dev python -m media_factory_mcp.anime` |
 | 统一发布 | `uv run --locked --no-editable --no-dev python -m media_factory_mcp.publishing` |
 
-工作区包含三个发行包：`media-factory` 提供 `tools`、`agent`、`media_factory_mcp`、`desktop` 和生产命令；`media-collector` 提供采集接口；`media-publisher-python` 提供发布适配。采集和发布包由 uv 正式安装，包内静态资源与可写工作目录分离。
+工作区包含两个发行包：`media-factory` 提供业务工具、采集接口、Agent、MCP、桌面界面和生产命令；`media-publisher-python` 提供发布适配。包内静态资源与可写工作目录分离。
 
 运行工作目录通过启动进程的 `MEDIA_FACTORY_WORKSPACE` 指定，默认使用当前目录；相对路径按启动目录解析。`data/`、`cache/`、成片和临时文件写入该目录。字体、音乐、模板、提示词、技能和桌面页面通过已安装发行包定位，不从工作目录读取。
 
@@ -50,7 +49,7 @@ docker run --rm -it --env-file .env -v "${PWD}/data:/app/data" -v "${PWD}/cache:
 | `tools/paths.py` | 工作区、数据、缓存和媒体资源路径 |
 | `agent/`、`.agents/skills/` | Agent 运行时与业务技能 |
 | `apps/` | 桌面客户端和网页看板 |
-| `integrations/` | 采集与发布子模块 |
+| `integrations/` | 随主仓库维护的发布器源码 |
 | `ops/` | GitHub Runner、Cloudflare Worker、桌面构建及运维入口 |
 | `tools/static/` | 字体、封面底图、音乐和音效 |
 
@@ -61,10 +60,11 @@ docker run --rm -it --env-file .env -v "${PWD}/data:/app/data" -v "${PWD}/cache:
 - [Agent 使用说明](agent/README.md)
 - [桌面端构建与运行](apps/desktop/README.md)
 - [生产与部署运维](ops/README.md)
+- [Codex Cloud 开发环境](ops/codex_cloud/README.md)
 
 ## 许可证
 
-主仓库使用 [MIT 许可证](LICENSE)。采集子模块使用 MIT，发布子模块使用 GPL-2.0-only。
+主仓库使用 [MIT 许可证](LICENSE)。采集工具使用 MIT，发布器源码保留 GPL-2.0-only 许可证。
 
 财经与语言学习的生产参数分别维护在 `workflows/finance/parameters.py` 和 `workflows/language_learning/parameters.py`。MCP 和 GitHub 仅调用公共 workflow；业务步骤封装放在各自 workflow 的 tools/，外部存储接入和包内资源放在 infrastructure/，提示词放在独立 prompts/。公共任务执行、日期处理和媒体能力放在根目录 tools/；workflow 不导入 MCP 业务包。
 

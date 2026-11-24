@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 
 
-from download_video._extractor import parse_share_text
+from tools.download_video._extractor import parse_share_text
 
 from .._constants import OUTPUT_ROOT, SEGMENTATION_DURATION
 from .._errors import AnimeError

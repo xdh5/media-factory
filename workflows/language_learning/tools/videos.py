@@ -7,7 +7,7 @@ from tools.database.production_records import commit_production_outputs
 from tools.generate_final_video import generate_final_video, safe_filename
 from tools.generate_sticker import generate_sticker
 from tools.generate_tts import generate_tts
-from tools.generate_tts._pipeline import _concat_wavs
+from tools.generate_tts._pipeline import run_ffmpeg
 from tools.generate_final_video._ffmpeg import _probe, _executable
 from workflows.language_learning.parameters import (
     CARD_CANVAS_SIZE,
@@ -31,6 +31,17 @@ QUIZ_VIDEO_FPS = 30
 
 
 
+
+
+def concatenate_narration(ffmpeg: str, paths: list[Path], output: Path, context: str, *, sample_rate: int) -> Path:
+    """按词序拼接问答配音，并统一采样率。"""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(dir=output.parent) as temporary_dir:
+        manifest = Path(temporary_dir) / "segments.txt"
+        manifest.write_text("\n".join("file '" + str(path.resolve()).replace("\\", "/").replace("'", "'\\''") + "'" for path in paths), encoding="utf-8")
+        run_ffmpeg(ffmpeg, ["-f", "concat", "-safe", "0", "-i", str(manifest), "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s16le", str(output)], context)
+    return output
 
 
 def _build_hidden_quiz_card(card: Path, output_dir: Path, identifier: str) -> Path:
@@ -254,7 +265,7 @@ def _one_quiz_mode(
         raise VocabularyVideoError(f"问答版配音失败：{exc}") from exc
     if any(item is None for item in word_tts):
         raise VocabularyVideoError("问答版存在未完成的单词配音")
-    narration_path = _concat_wavs(_executable('ffmpeg'), [Path(item['output_path']) for item in word_tts if item is not None], segment_dir / 'narration.wav', '问答配音拼接', sample_rate=48000)
+    narration_path = concatenate_narration(_executable('ffmpeg'), [Path(item['output_path']) for item in word_tts if item is not None], segment_dir / 'narration.wav', '问答配音拼接', sample_rate=48000)
 
     shots: list[dict] = []
     countdown_audio_cues: list[dict] = []

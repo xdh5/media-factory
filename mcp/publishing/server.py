@@ -13,7 +13,10 @@ warnings.filterwarnings("ignore", message=r"Field 'lifespan' has an incomplete d
 def create_server() -> FastMCP:
     """创建并注册统一发布 MCP。"""
     server = FastMCP(SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
-    register_tools(server)
+    from tools.runtime_profile import publishing_enabled
+
+    if publishing_enabled():
+        register_tools(server)
     return server
 
 

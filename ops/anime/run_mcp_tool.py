@@ -9,7 +9,7 @@ from pathlib import Path
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from dotenv import dotenv_values, load_dotenv
+from dotenv import load_dotenv
 
 
 def payload(result):
@@ -29,11 +29,6 @@ async def main():
     parameters = json.loads(args.arguments_file.read_text(encoding="utf-8-sig"))
     from tools.paths import PROJECT_ROOT
     root = PROJECT_ROOT
-    # 与采集库直接调用保持一致：采集库自己的登录配置先加载，工厂配置仅补充缺项。
-    for key, value in dotenv_values(root / "integrations/media-collector/.env").items():
-        if key.startswith("DY_") and value is not None:
-            environment_value = str(value)
-            os.environ.setdefault(key, environment_value)
     load_dotenv(root / ".env")
     environment = dict(os.environ)
     # 宿主机绝对路径不能直接在容器内读取；优先使用同一工作区挂载的凭据文件。

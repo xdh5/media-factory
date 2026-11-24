@@ -131,7 +131,7 @@ def main():
         print("只完成资源准备，尚未安装依赖，不是可用绿色版。", flush=True)
         return
     environment = dict(os.environ, PYTHONUTF8="1")
-    packages = [str(ROOT), str(ROOT / "integrations/media-collector"),
+    packages = [str(ROOT),
                 str(ROOT / "integrations/media-publisher/python")]
     dependency_identity = hashlib.sha256((ROOT / "uv.lock").read_bytes()).hexdigest()
     for extra, environment_root in (("desktop", runtime), ("agent", agent_runtime)):

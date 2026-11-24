@@ -3,8 +3,8 @@
 from pathlib import Path
 
 from tools.transcribe import transcribe
-from download_video import download
-from list_author_works import list_author_works
+from tools.download_video import download
+from tools.list_author_works import list_author_works
 
 from workflows.finance.errors.exceptions import WorkflowStepError
 from media_factory_mcp.finance.infrastructure.collection import list_source_authors, list_saved_script_ids, list_rejected_video_ids

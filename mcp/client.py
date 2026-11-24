@@ -37,8 +37,6 @@ class ProjectMCP:
         environment["PYTHONPYCACHEPREFIX"] = str(self.project_root / "cache/pycache")
         environment["MEDIA_FACTORY_WORKSPACE"] = str(self.project_root)
         environment.setdefault("MEDIA_PUBLISHER_DIR", str(self.project_root / "integrations/media-publisher"))
-        environment.setdefault("MEDIA_COLLECTOR_WORKSPACE", str(self.project_root))
-        environment.setdefault("MEDIA_COLLECTOR_ENV_FILE", str(self.project_root / "integrations/media-collector/.env"))
         environment.update(self._environment_overrides)
         parameters = StdioServerParameters(
             command=sys.executable,

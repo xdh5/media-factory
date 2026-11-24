@@ -6,7 +6,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from download_video._extractor import parse_share_text
+from tools.download_video._extractor import parse_share_text
 
 from .._errors import AnimeError
 from .ffmpeg import media_executable, probe_video, subprocess_options

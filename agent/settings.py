@@ -12,6 +12,12 @@ SERVERS = {name: f"media_factory_mcp.{name}" for name in (
 )}
 
 
+from tools.runtime_profile import publishing_enabled
+
+if not publishing_enabled():
+    del SERVERS["publishing"]
+
+
 @dataclass
 class AgentSettings:
     database: Path = PROJECT_DATA_ROOT / "agent" / "checkpoints.sqlite"

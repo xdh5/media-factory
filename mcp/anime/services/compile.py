@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from download_video import DownloadError, download, extract_urls
+from tools.download_video import DownloadError, download, extract_urls
 
 from .._constants import MAX_PART_SECONDS, SEGMENTATION_DURATION, SEGMENTATION_EPISODES
 from .._errors import AnimeError

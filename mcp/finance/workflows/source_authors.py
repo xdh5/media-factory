@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from list_author_works import AuthorWorksError, resolve_author_nickname, resolve_author_profile
+from tools.list_author_works import AuthorWorksError, resolve_author_nickname, resolve_author_profile
 from media_factory_mcp.finance.infrastructure.collection import add_source_author, list_source_authors, remove_source_author
 
 from workflows.finance.errors.exceptions import WorkflowStepError

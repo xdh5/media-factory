@@ -15,9 +15,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY pyproject.toml uv.lock LICENSE ./
-COPY integrations/media-collector/pyproject.toml integrations/media-collector/pyproject.toml
 COPY integrations/media-publisher/python/pyproject.toml integrations/media-publisher/python/pyproject.toml
-COPY integrations/media-collector/ integrations/media-collector/
 COPY integrations/media-publisher/python/ integrations/media-publisher/python/
 COPY tools/ tools/
 COPY agent/ agent/
@@ -32,7 +30,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     if [ "$INSTALL_AGENT" = "true" ]; then \
         uv sync --locked --no-editable --no-dev --extra agent; \
     else \
-        uv sync --locked --no-editable --no-dev --extra mcp; \
+        uv sync --locked --no-editable --no-dev --extra mcp --extra publishing; \
     fi
 ENV MEDIA_FACTORY_WORKSPACE=/app \
     MEDIA_PUBLISHER_DIR=/app/integrations/media-publisher \

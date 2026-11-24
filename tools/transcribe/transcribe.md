@@ -4,7 +4,7 @@
 
 ## 用法
 
-`transcribe(media_path, language="zh")`：把**本地**音视频转成文字。分享链接请先调用 media-collector 子仓库的 `download_video.download`，再用返回的 `video_path`。返回 `text` 和 `raw_text`，两者都是识别原文。
+`transcribe(media_path, language="zh")`：把**本地**音视频转成文字。分享链接请先调用 `tools.download_video.download`，再用返回的 `video_path`。返回 `text` 和 `raw_text`，两者都是识别原文。
 
 ## 配置
 

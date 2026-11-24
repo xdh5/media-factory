@@ -16,7 +16,7 @@ from tools.task_runner import TaskNotFoundError as RunnerTaskNotFoundError
 from tools.task_runner import poll_task as runner_poll_task
 from tools.task_runner import submit_task as runner_submit_task
 from ._constants import OUTPUT_ROOT, SERVER_INSTRUCTIONS
-from download_video import DownloadError
+from tools.download_video import DownloadError
 from ._errors import AnimeError, TaskNotFoundError, WorkflowStepError
 from .services.compile import compile_videos, normalize_share_texts
 from .services.discover import discover_series, inspect_works, compile_selection, load_discovery
@@ -118,6 +118,9 @@ def anime_start_prepare_split_execution(share_texts: list[str], series_name: str
 @mcp.tool()
 def anime_get_production_config(account_group: str = "") -> dict:
     """只读取得动漫 Action 流程和默认账号组。未指定时自动读取部署配置或唯一启用的数据库动漫 YouTube 组，不要求用户重复提供。"""
+    from tools.runtime_profile import publishing_enabled
+    if not publishing_enabled():
+        return {"execution_mode": "local", "publishing_enabled": False}
     from .services.accounts import production_config
     try:
         return production_config(account_group)
@@ -250,6 +253,13 @@ def anime_get_task(task_path: str = "", execution_id: str = "") -> dict:
     if execution_id:
         return anime_get_github_execution_result(execution_id)
     return anime_poll_task(task_path)
+
+
+from tools.runtime_profile import publishing_enabled
+
+if not publishing_enabled():
+    for tool_name in ("anime_prepare_publication", "anime_save_publication_assets", "anime_start_publication"):
+        mcp.remove_tool(tool_name)
 
 
 if __name__ == "__main__":

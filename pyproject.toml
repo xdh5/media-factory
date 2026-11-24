@@ -9,7 +9,6 @@ description = "媒体内容自动生产与发布"
 license = { text = "MIT" }
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "media-publisher-python==0.1.0",
     "edge-tts>=7.2",
     "msgpack>=1.0",
     "google-api-python-client>=2.140.0",
@@ -38,11 +37,11 @@ only-include = ["workflows", "mcp", "tools", "agent", "apps/desktop", "ops/anime
 ".agents/skills" = "agent/skills"
 
 [tool.hatch.build.targets.sdist]
-only-include = ["workflows", "mcp", "tools", "agent", "apps/desktop", "ops", ".github/scripts", ".agents/skills", "integrations/media-collector", "integrations/media-publisher/python", "pyproject.toml", "uv.lock", "LICENSE"]
+only-include = ["workflows", "mcp", "tools", "agent", "apps/desktop", "ops", ".github/scripts", ".agents/skills", "integrations/media-publisher/python", "pyproject.toml", "uv.lock", "LICENSE"]
 
 [project.optional-dependencies]
+publishing = ["media-publisher-python==0.1.0"]
 mcp = [
-    "media-collector==0.1.0",
     "mcp>=1.26,<2",
     "PySocks>=1.7.1",
     "yt-dlp>=2024.0.0",
@@ -51,9 +50,9 @@ mcp = [
     "py-mini-racer>=0.6.0",
     "typing-extensions>=4.12",
 ]
-anime = ["media-collector==0.1.0"]
+anime = ["yt-dlp>=2024.0.0"]
 agent = [
-    "media-factory[mcp]",
+    "media-factory[mcp,publishing]",
     "deepagents>=0.7.32,<0.8",
     "langchain>=1,<2",
     "langchain-core>=1,<2",
@@ -69,6 +68,7 @@ agent = [
     "uvicorn>=0.30",
 ]
 desktop = [
+    "media-factory[publishing]",
     "open-webui==0.12.3",
     "greenlet==3.5.6",
 ]
@@ -81,8 +81,7 @@ required-version = "==0.13.9"
 conflicts = [[{ extra = "agent" }, { extra = "desktop" }]]
 
 [tool.uv.workspace]
-members = ["integrations/media-collector", "integrations/media-publisher/python"]
+members = ["integrations/media-publisher/python"]
 
 [tool.uv.sources]
-media-collector = { workspace = true }
 media-publisher-python = { workspace = true }

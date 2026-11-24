@@ -57,7 +57,6 @@ jobs:
       - name: 检出执行代码
         uses: actions/checkout@v5
         with:
-          submodules: recursive
 
       - name: 检查执行环境
         shell: bash
