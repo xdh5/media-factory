@@ -1,24 +1,41 @@
 ---
 name: produce-finance-video
-description: 使用财经库定稿制作财经、理财或情感短视频。
+description: 使用财经库定稿制作大鹅认知口播长视频及 YouTube Shorts，支持生图和实拍素材。
 ---
 
 # 制作财经视频
 
-1. 确认北京时间计划发布日期，缺失或有歧义时询问。用 `finance_get_config` 查配置，查库存或缺片用 `finance_get_inventory`。
-   封面使用采集定稿阶段由宿主整体生图、上传 R2 并登记的成图，包含长短标题和适应内容的风景；生产只下载使用，不重新生成或代码叠字。缺少封面时先完成采集技能的封面步骤。
-   为 GitHub 预制分镜图时，先调用 `finance_manage_storyboard_images(aweme_id)` 获取参考图、生图指令和 `image_requests`。宿主使用生图工具，将参考图作为图像输入，按返回指令逐镜生成并保存到各项 `output_path`；完成全部图片后，按镜头顺序向同一工具提交 `image_paths`。图片上传 R2 并登记，运行器按稿件和分镜版本下载。
-2. 用 `finance_start_production` 启动生产，日内两篇分别传 `content_part=1`、`2`。默认 `generate_images=false` 搜索实拍；需要生图时传 `true`。用 `finance_get_task` 通过 workflow_id 查询准备结果，同一流程恢复原素材模式。
-3. `stage=ready_to_search` 时调用 `finance_continue_production(workflow_id)`；正文和分镜均读取稿库定稿，不再现场生成。
-4. `stage=awaiting_images` 时，读取 MCP 返回的参考图、生图指令和 `image_requests`。宿主使用生图工具，将参考图作为图像输入，按返回指令逐镜生成并保存到各项 `output_path`。全部完成后调用 `finance_continue_production(workflow_id)`；另存位置时按镜头顺序传入 `image_paths`。MCP 和 workflow 不调用生图模型。
-5. workflow 优先使用 generated-images/shot-001.png 等已有图片，没有图片的镜头搜索视频。每张图片从缓慢放大、缓慢缩小、从上向下、从下向上四种运镜中随机选一种，连续镜头不使用同一种动画，随素材清单保存。镜头交由统一合成器按指纹缓存、并行渲染，随后完成中文字幕、音乐、合成及 R2 上传。用 `finance_get_task(workflow_id=...)` 查询流程；只有 `stage=completed` 才代表整条流程完成。
-6. 交付本地成片、清单、标题、标签及 R2 地址。失败恢复使用原 workflow_id 和稿库分镜。
+## 准备
 
-末句使用生产包内预制的大鹅片尾（视频、云逸配音与字幕），不再调用末句 TTS、不重复生成片尾字幕。正文配音拼接预制原始片尾音频，正文画面拼接预制片尾画面后统一混入 BGM；生图任务仅包含正文镜头。资源位于 `workflows/finance/resources/goose-outro-prepared.mp4`、`goose-outro-narration.wav` 和 `goose-outro-prepared.json`，随安装包与 GitHub Actions 生产镜像分发。结束语、音色、语速或字幕样式变更时重新制作这组预制资源。
+- 确认北京时间计划日期，缺失或有歧义时询问。`finance_get_config` 读取生产配置，`finance_get_inventory` 查询库存与缺片。
+- 正文、分镜、SSML、发布文案和三版封面均使用稿库定稿；缺项先按 `collect-finance-copy` 补齐。生产不现场改稿、重做封面或代码叠字。
+- 按用户要求选择素材模式：生图传 `generate_images=true`，实拍传 `false`；接口默认实拍，不能覆盖用户选择。同一工作流恢复原模式。
 
-分镜图在北京时间过了计划发布日期、全部目标已有发布或到时预约回执后，由 Cloudflare 每小时清理；未预约或未到期保留。参考图、封面和成片不在清理范围。
+## 启动与续跑
 
-4:3横版、3:4竖版和16:9宽屏封面作为三张独立发布图片交付，分别保存为 cover.png、cover-portrait.png、cover-widescreen.png。视频不插入首帧封面，直接从第一幕开始；三版均不参与视频画面的拼接。
+调用 `finance_start_production(publish_date, content_part, generate_images)`，日内两篇用分片1、2。保存返回的 `workflow_id`，用 `finance_get_task(workflow_id=...)` 跟进。
 
+| 阶段 | 操作 |
+| --- | --- |
+| `preparing` | 等待配音准备完成 |
+| `ready_to_search` | 调用 `finance_continue_production(workflow_id)` |
+| `awaiting_images` | 按下节完成全部图片，再调用续跑工具；另存位置时按镜头顺序传 `image_paths` |
+| `ready_to_render` | 调用续跑工具合成 |
+| `completed` | 核对产物并交付 |
 
-财经生产同时生成YouTube Shorts：按定稿 `youtube_short_selection.start_line/end_line` 选中的精彩约300字镜头，直接截取长视频成品画面和原声，保留大鹅说贴图、字幕原位置和运镜，不调用TTS，不增加时长拦截。输出 `youtube-short.mp4`，1080×1920；完整横画面居中，上下使用同镜头模糊压暗背景，横画面内部保持与长片一致。完整长标题全程固定在上方，按定稿 `title_lines` 显示一至两行，首行白字、第二行黄字，显示时去掉顿号以外的所有标点，不生成Shorts封面，不插入静音首帧。按成片、切片范围和标题内容生成缓存指纹，竖版布局只编码一次。长视频说明及10个YouTube专用hashtag随Meta定稿，输出 `youtube-description.txt`，不生成章节。
+失败沿用原 `workflow_id` 和稿库分镜恢复；只有 `stage=completed` 才代表整条流程完成。
+
+## 分镜生图
+
+- 读取任务返回的参考图、生图指令与 `image_requests`；宿主把参考图作为图像输入，逐镜生成并保存到对应 `output_path`。MCP 和工作流不调用生图模型。
+- 为 GitHub 预制图片时，用 `finance_manage_storyboard_images(aweme_id)` 领取任务，完成后向同一工具按顺序提交 `image_paths`。图片上传 R2，运行器按稿件及分镜版本恢复。
+- 生图仅包含正文，末句复用预制片尾。工作流负责图片运镜、字幕、音乐和合成；无需宿主重复实现渲染。
+
+## 交付与核对
+
+- 长视频从第一幕开始，不插入封面。三版封面独立交付：`cover.png`（4:3）、`cover-portrait.png`（3:4）、`cover-widescreen.png`（16:9）。
+- `youtube-short.mp4` 按定稿选段截取长片画面和原声，约500字，1080×1920；保留字幕、贴图与运镜，横画面居中，上下为同镜头模糊压暗背景。顶部全程显示完整标题，按 `title_lines` 分一至两行，首行白、次行黄，显示时仅保留顿号；不另做封面、配音或静音首帧，不增加时长拦截。
+- `youtube-description.txt` 使用定稿说明和10个专用标签，不生成章节。
+- 核对长短片尺寸、实际时长、字幕和片尾完整性，交付本地成片、清单、标题标签及 R2 地址。
+
+仅在修改片尾、排查渲染或资源清理时，阅读 [资源维护](references/resource-maintenance.md)。

@@ -1,7 +1,7 @@
 const PUBLICATION_BUSINESS_LINES = ["finance", "language_learning", "psychology_quiz", "anime"];
 const ACCOUNT_GROUP_BUSINESS_LINES = PUBLICATION_BUSINESS_LINES;
 const PUBLICATION_PLATFORMS = [
-  "youtube", "facebook", "instagram", "tiktok", "kuaishou",
+  "bilibili", "youtube", "facebook", "instagram", "tiktok", "kuaishou",
   "douyin", "baijiahao", "xiaohongshu", "toutiao", "wechat_channels",
 ];
 const PUBLICATION_MODES = ["immediate", "scheduled"];

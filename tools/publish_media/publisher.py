@@ -192,6 +192,8 @@ def _target(item: dict, route: dict) -> dict:
         "client_ref": str(item["production_id"]),
         "creative_statement": "ai_generated",
     }
+    if platform == 'bilibili' and item.get('business_line') == 'finance':
+        target.update(category='知识', ai_chapters=True, thumbnail_path=item['cover_path'], widescreen_thumbnail_path=item['widescreen_cover_path'])
     if platform == "douyin" and item.get("business_line") == "finance":
         target.update(ai_chapters=True, thumbnail_path=item["cover_path"],
                       portrait_thumbnail_path=item["portrait_cover_path"])
@@ -199,8 +201,9 @@ def _target(item: dict, route: dict) -> dict:
         target.update(thumbnail_path=item["cover_path"], portrait_thumbnail_path=item["portrait_cover_path"])
     if platform == "kuaishou" and item.get("business_line") == "finance":
         target["thumbnail_path"] = item["portrait_cover_path"]
-    if platform == 'youtube' and item.get('business_line') == 'finance':
-        target['title'] = youtube_publish_title(item['title'], item['hashtags'])
+    if platform in {'youtube', 'bilibili'} and item.get('business_line') == 'finance':
+        if platform == 'youtube':
+            target['title'] = youtube_publish_title(item['title'], item['hashtags'])
         from tools.r2_files import download_file
         description_path = Path(item['local_path']).parent / 'youtube-description.txt'
         if not description_path.is_file():

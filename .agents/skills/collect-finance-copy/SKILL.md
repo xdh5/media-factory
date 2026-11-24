@@ -1,26 +1,46 @@
 ---
 name: collect-finance-copy
-description: 管理采集作者，采集跨领域认知提升口播，审核并完成大鹅文案与分镜定稿。
+description: 采集认知提升口播，审核并完成大鹅正文、分镜、发布文案和封面定稿。
 ---
 
-# 采集认知提升文案
+# 采集与定稿
 
-频道面向普通人，涵盖情绪、关系、职场、家庭、人生及通俗财富与商业认知。按全文是否帮助观众理解问题、改善判断和行动选稿，不按领域或关键词一刀切；专业财经与项目变现教学不作为主体。
+频道面向普通人，涵盖情绪、关系、职场、家庭、人生及通俗财富与商业认知。按全文是否帮助理解、判断和行动选稿；专业财经与项目变现教学不作为主体。
 
-1. 用 `finance_manage_authors` 管理作者，可传主页或分享口令，显示名可选。
-2. 用 `finance_start_collection` 按 `share_text` 采单条或按 `count` 分配作者配额，再用 `finance_get_task` 读取待审原文和提示词。
-3. 依次执行返回的 `prompts.review`、`prompts.writing`、`prompts.metadata`、`prompts.storyboard`、`prompts.ssml`，分别负责选题审核、原创撰稿、标题标签及封面文字、分镜、配音设计。弃稿不继续定稿；全部内容判断和生成由宿主 Agent 完成。
-   选题通过后，先校对原始转写：逐字记录插入广告到 `ad_segments` 并删除，没有则填空数组；补标点，纠正错字、同音误识和人名误识，清理开头冗余称呼，保留事实、数字、论证、例子和顺序，将校对稿保存为 `text`，再交给原创撰稿提示词。
-   将原创稿的主题、正文分别放入 `editorial.topic`、`editorial.article`。根据原创撰稿提示词创作黄金钩子，放入 `editorial.source_hook`，须与正文开头一致且不包含开场白；从 `text` 连续摘录与该主题相关的原文片段到 `editorial.db_source_hook`，只用于来源核对，不要求与新钩子逐字对应。将实际品牌替换按 `from`、`to` 记录到 `editorial.replacements`，没有则填空数组。
-   将原创稿与发布文案字段合并为 `editorial`，分镜文本放入 `editorial.storyboard`，随正文一起提交入库。生产 workflow 直接读取关键词搜索；选择生图时，由制作技能领取图片任务并应用独立的生图提示词。
-   按 SSML 提示词为正文每行生成一个 `<s>` 片段，按顺序保存到 `editorial.ssml` 字符串数组，正文修改时同步更新。音色由 TTS 配置传入，生产直接执行，字幕读取纯文本。
-   将发布文案结果中的完整标题、短标题、标签、封面断行和重点字分别放入 `editorial.title`、`editorial.short_title`、`editorial.hashtags`、`editorial.cover_lines`、`editorial.cover_highlights`；后三项为数组，标签不带井号。
-   将同批生成的YouTube切片行号和标题断行保存为 `editorial.youtube_short_selection`，长视频说明保存为 `editorial.youtube_description`，10个专用标签保存为 `editorial.youtube_hashtags`。
-   将同批生成的约150字微头条摘要保存为 `editorial.micro_summary`，随标题和标签一起定稿。
-4. 用 `finance_get_inventory` 查询话题，用 `finance_manage_drafts` 查看未使用定稿。用户要求重编旧稿时，以校对原稿为参考，按当前原创撰稿和分镜规范处理；通过 `finance_manage_drafts(action="save")` 保存。
-5. 用 `finance_finalize_collection(context_path, reviews)` 一次提交当前全部待审作品，每篇包含 `aweme_id`、`kind`、`reason`、`text`，`kind` 只用 `keep`（要稿）或 `skip`（不要稿）；合格稿另含 `ad_segments` 和完整 `editorial`，弃稿 `text` 为空且不填写 `editorial`。继续处理 `continuation`，直至配额补齐或候选用尽；单条不合格时报告原因。
-6. 每篇定稿入库后，用 `finance_manage_cover(aweme_id)` 领取文章、长短标题、封面提示词与参考图。宿主使用生图工具参考两张图片，分别整体生成含文字的4:3横版、3:4竖版与16:9宽屏封面，按 `image_requests` 保存三张独立图片。不调用代码排版，不从 Pexels 拼风景；背景由生图工具按文章内容生成。
-7. 宿主查看实际成图，分别逐字核对三版长短标题，确认无错字、漏字、乱码，构图、角色及背景符合封面提示词后，用 `finance_manage_cover(aweme_id, image_paths={"landscape": 横版路径, "portrait": 竖版路径, "widescreen": 宽屏路径})` 上传 R2 并登记。标题修改后重新生成封面，未登记封面须报告为未完成，不得宣称已可生产。
-8. 报告入库、封面完成、各作者取稿、弃稿和失败数。累计弃稿率、原因及来源见 `finance_get_inventory.collection_review`。
+## 采集和审核
 
-内容要求在 MCP 对应阶段提示词维护，业务字段组装和提交步骤在本技能维护。默认使用项目内 `mcp/finance/prompts/editorial-writing.md`，目标1500～2000字、约六分钟；成片时长以实际TTS为准，不增加代码硬性字数拦截。原有 `editorial-rewrite.md` 保留，仅在用户明确要求按原稿改写时使用；两套撰稿提示词不同时套用。标题与分镜分别遵循 `editorial-metadata.md` 和 `editorial-storyboard.md`。
+1. `finance_manage_authors` 管理作者；`finance_start_collection` 用 `share_text` 采单条，或用 `count` 分配作者配额。
+2. 用 `finance_get_task` 读取原文和提示词，依次完成审核、校对、撰稿、发布文案、分镜和 SSML。内容判断与生成由宿主 Agent 完成。
+3. 校对稿保存为 `text`：删除广告并将原文逐字记录到 `ad_segments`，补标点、纠正误识、清理冗余称呼，保留事实、数字、例子和论证顺序。无广告填空数组。
+
+默认按项目 `mcp/finance/prompts/editorial-writing.md` 原创撰稿，目标2000～2500字；仅在用户明确要求按原稿改写时使用 `editorial-rewrite.md`，两者不混用。发布文案、分镜、配音分别遵循同目录的 `editorial-metadata.md`、`editorial-storyboard.md`、`editorial-ssml.md`。时长以实际配音为准，不加硬性字数拦截。
+
+## 定稿字段与入库
+
+将以下内容合并为 `editorial`，正文变更时同步更新分镜、SSML 和切片行号。
+
+| 字段 | 内容 |
+| --- | --- |
+| `topic`、`article` | 主题、原创正文 |
+| `source_hook` | 正文开头的黄金钩子，不含固定开场白 |
+| `db_source_hook` | 从校对稿连续摘录的相关原文，仅用于来源核对 |
+| `replacements` | 实际品牌替换的 `from`、`to` 数组，无则空数组 |
+| `title`、`short_title`、`hashtags` | 完整标题、短标题、四个不带井号的标签 |
+| `cover_lines`、`cover_highlights` | 封面断行、重点字，均为数组 |
+| `storyboard` | 与正文逐行对应的「画面描述\|搜索关键词」 |
+| `ssml` | 与正文逐行对应的 `<s>` 字符串数组 |
+| `youtube_short_selection` | 连续约500字的 `start_line`、`end_line` 及完整标题断行 `title_lines` |
+| `youtube_description`、`youtube_hashtags` | 长视频说明、10个专用标签 |
+| `micro_summary` | 约150字微头条摘要 |
+
+新采集稿通过 `finance_finalize_collection(context_path, reviews)` 一次提交全部待审作品：每篇包含 `aweme_id`、`kind`、`reason`、`text`。`keep` 另含 `ad_segments` 和完整 `editorial`；`skip` 的 `text` 为空，不填 `editorial`。继续处理返回的 `continuation`，直至配额补齐或候选用尽。
+
+旧稿用 `finance_manage_drafts` 读取未使用记录，以校对原稿为参考重新定稿，再用 `action="save"` 保存。库存、话题及累计弃稿统计用 `finance_get_inventory` 查询。
+
+## 封面与完成条件
+
+1. 定稿入库后，用 `finance_manage_cover(aweme_id)` 领取参考图、指令和输出路径。
+2. 宿主将两张参考图作为生图输入，独立生成4:3、3:4、16:9三版含完整长短标题的封面；文字与背景整体成图，不用代码叠字或素材拼景。
+3. 查看三版实际图片，逐字核对标题及构图，再用 `image_paths={"landscape": 横版路径, "portrait": 竖版路径, "widescreen": 宽屏路径}` 提交同一工具上传 R2 并登记。标题变化须重做封面。
+
+报告入库、封面、各作者取稿、弃稿及失败数。封面未登记的稿件不能报告为可生产。

@@ -11,6 +11,7 @@ MEDIA_PUBLISHER_TIMEOUT_SECONDS = 2400
 BUSINESS_LINES = ("finance", "language_learning")
 SUPPORTED_PLATFORMS = (
     "youtube",
+    "bilibili",
     "facebook",
     "instagram",
     "tiktok",
@@ -21,6 +22,9 @@ SUPPORTED_PLATFORMS = (
     "wechat_channels",
 )
 PLATFORM_ALIASES = {
+    "bilibili": "bilibili",
+    "blbl": "bilibili",
+    "哔哩哔哩": "bilibili",
     "youtube": "youtube",
     "yt": "youtube",
     "ytb": "youtube",
@@ -48,6 +52,7 @@ PLATFORM_ALIASES = {
     "视频号": "wechat_channels",
 }
 MEDIA_PUBLISHER_PLATFORM_CODES = {
+    "bilibili": "blbl",
     "douyin": "dy",
     "baijiahao": "bjh",
     "kuaishou": "ks",
@@ -56,6 +61,7 @@ MEDIA_PUBLISHER_PLATFORM_CODES = {
 }
 MEDIA_PUBLISHER_CODE_PLATFORMS = {
     **{value: key for key, value in MEDIA_PUBLISHER_PLATFORM_CODES.items()},
+    "哔哩哔哩": "bilibili",
     "抖音": "douyin",
     "百家号": "baijiahao",
     "快手": "kuaishou",
