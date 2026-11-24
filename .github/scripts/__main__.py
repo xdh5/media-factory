@@ -20,11 +20,14 @@ def main() -> None:
             "language_learning_publish",
             "weekly_plan",
             "finance_produce_day",
+            "finance_youtube_account_check",
+            "finance_youtube_publish_day",
             "language_learning_account_check",
             "language_learning_produce_day",
             "language_learning_publish_day",
         ],
     )
+    parser.add_argument("--variant", choices=("long", "short"), default="long")
     parser.add_argument("--run-id", default="")
     parser.add_argument("--targets", default="")
     parser.add_argument("--publish-date", default="")
@@ -53,6 +56,12 @@ def main() -> None:
                     stream.write(f"existing_run_id={payload['existing_run_id']}\n")
                     stream.write(f"pending_targets={','.join(payload['pending_targets'])}\n")
                 stream.write(f"skip_reason={payload['skip_reason']}\n")
+    elif arguments.workflow in {"finance_youtube_account_check", "finance_youtube_publish_day"}:
+        from .finance_youtube import check_accounts, publish_day
+        if arguments.workflow == 'finance_youtube_account_check':
+            payload = asyncio.run(check_accounts(arguments.publish_date))
+        else:
+            payload = asyncio.run(publish_day(arguments.publish_date, arguments.variant))
     elif arguments.workflow == "finance":
         from .finance import run as run_finance
 

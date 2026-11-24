@@ -97,6 +97,8 @@ def finance_start_production(publish_date: str, content_part: int = 1, *, genera
                 (asset["title"], asset["short_title"]) != (editorial["title"], editorial["short_title"])
                 for asset in cover_images.values()):
             raise WorkflowStepError("稿件缺少与当前标题一致的4:3、3:4、16:9三种比例封面成图，请由宿主完成封面生图并登记")
+        if any(not editorial.get(key) for key in ('youtube_short_selection', 'youtube_description', 'youtube_hashtags')):
+            raise WorkflowStepError('稿件缺少YouTube切片选择、长视频说明或10个标签，请宿主按Meta提示词补全定稿')
         draft = a.finance_save_draft(
             **{key: editorial[key] for key in ("topic", "article", "storyboard", "title", "short_title", "hashtags",
                "cover_lines", "cover_highlights", "source_hook", "db_source_hook")},
@@ -107,6 +109,8 @@ def finance_start_production(publish_date: str, content_part: int = 1, *, genera
         saved_draft["cover_images"] = cover_images
         saved_draft["ssml"] = editorial.get("ssml")
         saved_draft["micro_summary"] = editorial.get("micro_summary", "")
+        for key in ("youtube_short_selection", "youtube_description", "youtube_hashtags"):
+            saved_draft[key] = editorial[key]
         draft_path.write_text(json.dumps(saved_draft, ensure_ascii=False, indent=2), encoding="utf-8")
         state.update({"draft_path": draft["draft_path"], "stage": "preparing"})
         _save_state(state_path, state)

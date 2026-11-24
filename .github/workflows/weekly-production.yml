@@ -92,8 +92,22 @@ jobs:
             test -n "${!name}" || { echo "缺少 GitHub 配置：$name" >&2; exit 1; }
           done
 
+      - name: 检查财经YouTube账号
+        id: finance-accounts
+        run: python -m github_actions finance_youtube_account_check --publish-date "${{ matrix.publish_date }}"
+
       - name: 生产财经视频
+        id: finance-production
+        if: ${{ !cancelled() && steps.finance-accounts.outcome == 'success' }}
         run: python -m github_actions finance_produce_day --publish-date "${{ matrix.publish_date }}"
+
+      - name: 发布财经YouTube长视频
+        if: ${{ !cancelled() && steps.finance-production.outcome == 'success' }}
+        run: python -m github_actions finance_youtube_publish_day --publish-date "${{ matrix.publish_date }}" --variant long
+
+      - name: 发布财经YouTube Shorts
+        if: ${{ !cancelled() && steps.finance-production.outcome == 'success' }}
+        run: python -m github_actions finance_youtube_publish_day --publish-date "${{ matrix.publish_date }}" --variant short
 
       - name: 检查语言发布账号
         id: language-accounts

@@ -69,6 +69,18 @@ def validate_editorial(source_text: str, editorial: dict) -> dict:
     storyboard = str(editorial.get("storyboard") or "").strip()
     shots = [row for row in storyboard.splitlines() if row.strip()]
     narration = [row for row in article["article"].splitlines() if row.strip()]
+    selection = editorial.get('youtube_short_selection')
+    if selection is not None:
+        if not 1 <= selection['start_line'] <= selection['end_line'] < len(narration):
+            raise WorkflowStepError('YouTube切片行号须位于正文中且不包含固定片尾')
+        title_lines = selection['title_lines']
+        if len(title_lines) not in (1, 2) or ''.join(title_lines) != metadata['title']:
+            raise WorkflowStepError('YouTube切片标题须将完整标题拆成一至两行')
+        tags = editorial['youtube_hashtags']
+        if len(tags) != 10 or len(set(tags)) != 10 or any(not tag or '#' in tag or any(c.isspace() for c in tag) for tag in tags):
+            raise WorkflowStepError('YouTube标签须为10个不带井号和空格的不重复词')
+        if not editorial['youtube_description'].strip():
+            raise WorkflowStepError('YouTube长视频说明不能为空')
     if editorial.get('ssml') is not None:
         markup = editorial['ssml']
         if not isinstance(markup, list) or len(markup) != len(narration):

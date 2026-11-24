@@ -36,3 +36,16 @@ description: 发布或预约指定计划日期的财经成片。
 - 微头条使用与标题和标签同批定稿的 `micro_summary`，约150字，配图仅上传4:3的 `cover.png`。
 - 生产清单、正文、摘要、三张插图和三种封面均随生产上传R2，GitHub Action同样生成这些资产。跨机器使用前，将所需资产恢复到本地并更新清单的本地路径；文章和微头条不需要恢复视频。
 - 每个命令只保存自己的 `toutiao-video-publication.json`、`toutiao-article-publication.json` 或 `toutiao-micro-publication.json` 回执，提交结果不明时先核查对应作品管理页，避免重复发布。
+
+
+## 财经YouTube
+
+财经YouTube使用原频道“大鹅说”，账号标识 `finance_youtube`，凭据引用 `youtube_finance`。GitHub Actions生产完成后分别执行长视频和Shorts发布，不触发其他平台；长片上传16:9封面，Shorts不上传独立封面，两者沿用完整长标题和YouTube专用说明。各自使用 `:youtube-long`、`:youtube-short` 内容标识和回执，互不依赖；某类失败只重试该类。未来日期沿用第一篇14:00、第二篇18:00预约。正式发布前必须核验原频道实际授权。
+
+```bash
+python -m github_actions finance_youtube_account_check --publish-date YYYY-MM-DD
+python -m github_actions finance_youtube_publish_day --publish-date YYYY-MM-DD --variant long
+python -m github_actions finance_youtube_publish_day --publish-date YYYY-MM-DD --variant short
+```
+
+用户仅要求预览或明确不发布时，只运行生产，不运行发布命令、不触发发布Action。

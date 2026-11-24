@@ -87,7 +87,7 @@ def _existing_keys(business_line: str, publish_date: str) -> set[tuple]:
             int(item.get("content_part") or 1),
         )
         for item in list_publication_records(business_line=business_line, run_id=f"run-{publish_date.replace('-', '')}")
-        if not str(item.get("publication_id") or "").endswith((":toutiao-article", ":toutiao-micro"))
+        if not str(item.get("publication_id") or "").endswith((":toutiao-article", ":toutiao-micro", ":youtube-short"))
     }
 
 
@@ -199,6 +199,14 @@ def _target(item: dict, route: dict) -> dict:
         target.update(thumbnail_path=item["cover_path"], portrait_thumbnail_path=item["portrait_cover_path"])
     if platform == "kuaishou" and item.get("business_line") == "finance":
         target["thumbnail_path"] = item["portrait_cover_path"]
+    if platform == 'youtube' and item.get('business_line') == 'finance':
+        from tools.r2_files import download_file
+        description_path = Path(item['local_path']).parent / 'youtube-description.txt'
+        if not description_path.is_file():
+            part = int(item['content_part'])
+            directory = item['run_id'] if part == 1 else f"{item['run_id']}-part{part}"
+            download_file(f'runs/finance/{directory}/youtube-description.txt', description_path)
+        target['description'] = description_path.read_text(encoding='utf-8').strip()
     if platform in {"youtube", "toutiao"} and item.get("business_line") == "finance":
         target["thumbnail_path"] = item["widescreen_cover_path"]
     if platform in PUBLIC_URL_PLATFORMS:
