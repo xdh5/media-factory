@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 from dotenv import dotenv_values, set_key
 
@@ -24,6 +25,7 @@ def main():
         value = os.getenv(key, default or "")
         if value:
             set_key(environment_file, key, value)
+    subprocess.run([sys.executable, str(ROOT / "ops/codex_cloud/sync_configuration.py")], check=True)
     # 只调整这份云端检出目录，本机发布技能和凭据不受影响。
     for name in ("publish-finance", "publish-korean", "publish-anime-youtube"):
         target = ROOT / ".agents/skills" / name
