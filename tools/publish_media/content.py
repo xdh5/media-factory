@@ -77,3 +77,9 @@ def local_publish_items(
             {"business_line": business_line, "publish_date": normalized_date, "content_kind": content_kind},
         )
     return sorted(items, key=lambda item: (str(item.get("content_kind")), int(item.get("content_part") or 1)))
+
+
+def youtube_publish_title(title: str, hashtags: list[str] | str) -> str:
+    """YouTube长短视频均使用完整标题及原有四个话题。"""
+    tags = hashtags.split() if isinstance(hashtags, str) else hashtags
+    return title + ' ' + ' '.join('#' + tag.lstrip('#') for tag in tags)

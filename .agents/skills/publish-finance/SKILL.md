@@ -40,7 +40,7 @@ description: 发布或预约指定计划日期的财经成片。
 
 ## 财经YouTube
 
-财经YouTube使用原频道“大鹅说”，账号标识 `finance_youtube`，凭据引用 `youtube_finance`。GitHub Actions生产完成后分别执行长视频和Shorts发布，不触发其他平台；长片上传16:9封面，Shorts不上传独立封面，两者沿用完整长标题和YouTube专用说明。各自使用 `:youtube-long`、`:youtube-short` 内容标识和回执，互不依赖；某类失败只重试该类。未来日期沿用第一篇14:00、第二篇18:00预约。正式发布前必须核验原频道实际授权。
+财经YouTube使用原频道“大鹅说”，账号标识 `finance_youtube`，凭据引用 `youtube_finance`。GitHub Actions生产完成后分别执行长视频和Shorts发布，不触发其他平台；长片上传16:9封面，Shorts不上传独立封面，两者上传标题均为完整长标题加原有4个hashtag，描述使用新写的YouTube专用说明及10个专用hashtag；画面固定标题仍只显示标题正文。各自使用 `:youtube-long`、`:youtube-short` 内容标识和回执，互不依赖；某类失败只重试该类。未来日期沿用第一篇14:00、第二篇18:00预约。正式发布前必须核验原频道实际授权。
 
 ```bash
 python -m github_actions finance_youtube_account_check --publish-date YYYY-MM-DD

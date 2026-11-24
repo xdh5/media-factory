@@ -17,7 +17,7 @@ from ._constants import PUBLIC_URL_PLATFORMS, media_publisher_root
 from ._errors import DuplicatePublicationError, InvalidPublishRequestError, MediaPublisherCommandError
 from .accounts import resolve_account_group
 from .concurrency import MAX_CONCURRENT_PUBLICATIONS, publication_lock_keys, publication_slot
-from .content import local_publish_items, normalize_platforms, normalize_publish_date, resolve_publication_content_kind
+from .content import local_publish_items, normalize_platforms, normalize_publish_date, resolve_publication_content_kind, youtube_publish_title
 from .finance_schedule import plan_finance_publications
 
 _PREPARED_PREVIEWS: dict[tuple, tuple[float, list]] = {}
@@ -200,6 +200,7 @@ def _target(item: dict, route: dict) -> dict:
     if platform == "kuaishou" and item.get("business_line") == "finance":
         target["thumbnail_path"] = item["portrait_cover_path"]
     if platform == 'youtube' and item.get('business_line') == 'finance':
+        target['title'] = youtube_publish_title(item['title'], item['hashtags'])
         from tools.r2_files import download_file
         description_path = Path(item['local_path']).parent / 'youtube-description.txt'
         if not description_path.is_file():

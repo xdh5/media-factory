@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from tools.database.publication_records import list_publication_records
 from tools.publish_media.accounts import resolve_account_group
 from tools.publish_media.concurrency import publication_lock_keys, publication_slot
-from tools.publish_media.content import local_publish_items
+from tools.publish_media.content import local_publish_items, youtube_publish_title
 from tools.publish_media.publisher import _publishing, _save_publication
 from tools.r2_files import download_file
 
@@ -56,7 +56,7 @@ def _publish_day(publish_date: str, variant: str) -> dict:
             result = publish_batch({'account_group': 'finance', 'publish_mode': 'scheduled' if future else 'immediate',
                                     'publish_at': scheduled_at if future else 'now',
                                     'targets': [{'platform': 'youtube', 'account_key': route['account_key'],
-                                                 'title': manifest['title'], 'description': description,
+                                                 'title': youtube_publish_title(manifest['title'], manifest['hashtags']), 'description': description,
                                                  'file': str(video), 'thumbnail_path': cover,
                                                  'publication_id': publication_id, 'client_ref': publication_id}]},
                                    account_routes={route['account_key']: route})
