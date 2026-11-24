@@ -1,6 +1,23 @@
 import fs from "fs";
 import path from "path";
 
+export async function waitToutiaoArticleImagesReady(page, includeCover = false) {
+  await page.waitForFunction(withCover => {
+    const bodyImages = [...document.querySelectorAll('.ProseMirror img')];
+    const coverImages = [...document.querySelectorAll('.article-cover-img-wrap img')];
+    const ready = image => /^https:\/\//.test(image.currentSrc || image.src) &&
+      image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+    const uploading = [...document.querySelectorAll('.ProseMirror .byte-spin-spinning, .article-cover .byte-spin-spinning')]
+      .some(node => node.getBoundingClientRect().width > 0);
+    return bodyImages.length === 3 && bodyImages.every(ready) && !uploading &&
+      (!withCover || (coverImages.length === 1 && coverImages.every(ready)));
+  }, { timeout: 120000, polling: 250 }, includeCover).catch(() => {
+    throw new Error(`头条文章${includeCover ? '正文图片或封面' : '正文图片'}尚未加载完成，停止发布`);
+  });
+  await page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 });
+  console.log(`[tt-article] 三张正文图片${includeCover ? '及封面' : ''}已加载，上传网络请求已完成`);
+}
+
 export async function clickToutiaoText(page, text) {
   await page.waitForFunction(value => [...document.querySelectorAll("button,a,div,span,li")].some(element =>
     element.textContent.trim() === value && element.getBoundingClientRect().width > 0 && !element.disabled),
@@ -37,6 +54,7 @@ export async function uploadToutiaoArticleCover(page, filename) {
   await clickToutiaoText(page, "上传图片");
   const input = await page.waitForSelector('.btn-upload-handle input[type=file]', { timeout: 15000 });
   await input.uploadFile(path.resolve(filename));
+  await page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 });
   await page.waitForFunction(() => [...document.querySelectorAll('button')].some(element =>
     element.textContent.trim() === "确定" && !element.disabled && element.getBoundingClientRect().width > 0), { timeout: 60000, polling: 100 });
   await clickToutiaoText(page, "确定");
@@ -44,7 +62,7 @@ export async function uploadToutiaoArticleCover(page, filename) {
     element.textContent.trim() === "本地上传" && element.getBoundingClientRect().width > 0), { timeout: 15000, polling: 100 });
   await page.waitForFunction(() => {
     const image = document.querySelector('.article-cover-img-wrap img');
-    return image?.complete && image.naturalWidth > 0;
+    return image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0 && /^https:\/\//.test(image.currentSrc || image.src);
   }, { timeout: 15000, polling: 100 });
 }
 
@@ -78,7 +96,7 @@ export async function fillToutiaoArticle(page, manifestPath) {
     clipboard.setData("text/html", content);
     editor.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }));
   }, html);
-  await page.waitForFunction(() => new Set([...document.querySelectorAll('.ProseMirror img')].map(image => image.src).filter(source => source.startsWith('https://'))).size === 3, { timeout: 60000, polling: 250 });
+  await waitToutiaoArticleImagesReady(page);
   await setToutiaoCheckbox(page, "头条首发", true);
   await setToutiaoCheckbox(page, "同时发布微头条", false);
   return article;
