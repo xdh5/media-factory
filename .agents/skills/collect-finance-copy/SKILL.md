@@ -15,6 +15,7 @@ description: 管理采集作者，采集跨领域认知提升口播，审核并�
    将原创稿与发布文案字段合并为 `editorial`，分镜文本放入 `editorial.storyboard`，随正文一起提交入库。生产 workflow 直接读取关键词搜索；选择生图时，由制作技能领取图片任务并应用独立的生图提示词。
    按 SSML 提示词为正文每行生成一个 `<s>` 片段，按顺序保存到 `editorial.ssml` 字符串数组，正文修改时同步更新。音色由 TTS 配置传入，生产直接执行，字幕读取纯文本。
    将发布文案结果中的完整标题、短标题、标签、封面断行和重点字分别放入 `editorial.title`、`editorial.short_title`、`editorial.hashtags`、`editorial.cover_lines`、`editorial.cover_highlights`；后三项为数组，标签不带井号。
+   将同批生成的约150字微头条摘要保存为 `editorial.micro_summary`，随标题和标签一起定稿。
 4. 用 `finance_get_inventory` 查询话题，用 `finance_manage_drafts` 查看未使用定稿。用户要求重编旧稿时，以校对原稿为参考，按当前原创撰稿和分镜规范处理；通过 `finance_manage_drafts(action="save")` 保存。
 5. 用 `finance_finalize_collection(context_path, reviews)` 一次提交当前全部待审作品，每篇包含 `aweme_id`、`kind`、`reason`、`text`，`kind` 只用 `keep`（要稿）或 `skip`（不要稿）；合格稿另含 `ad_segments` 和完整 `editorial`，弃稿 `text` 为空且不填写 `editorial`。继续处理 `continuation`，直至配额补齐或候选用尽；单条不合格时报告原因。
 6. 每篇定稿入库后，用 `finance_manage_cover(aweme_id)` 领取文章、长短标题、封面提示词与参考图。宿主使用生图工具参考两张图片，分别整体生成含文字的4:3横版、3:4竖版与16:9宽屏封面，按 `image_requests` 保存三张独立图片。不调用代码排版，不从 Pexels 拼风景；背景由生图工具按文章内容生成。

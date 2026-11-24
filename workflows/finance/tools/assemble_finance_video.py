@@ -1,6 +1,8 @@
 """财经视频合成、稿件使用登记与 R2 交付。"""
 
 from __future__ import annotations
+
+from .toutiao_assets import prepare_toutiao_assets
 from pathlib import Path
 from tools.paths import PROJECT_ROOT, PROJECT_STATIC_ROOT
 from tools.generate_final_video._defaults import (
@@ -160,6 +162,7 @@ def finish_finance_video(
     metadata = {
         "title": str(draft["title"]),
         "short_title": str(draft["short_title"]),
+        "micro_summary": str(draft.get("micro_summary") or ""),
         "hashtags": list(draft["hashtags"]),
         "cover_lines": draft["cover_lines"],
         "cover_highlights": draft["cover_highlights"],
@@ -321,6 +324,7 @@ def finish_finance_video(
         "topic_commit": topic_commit,
         "shots": shots,
     }
+    manifest.update(prepare_toutiao_assets(manifest))
     manifest_path = cache_root / "manifest.json"
     manifest["manifest_path"] = str(manifest_path)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -369,6 +373,12 @@ def upload_finance_assets_to_r2(manifest_path: str | Path) -> dict:
         "cover_path",
         "portrait_cover_path",
         "widescreen_cover_path",
+        "toutiao_article_path",
+        "article_path",
+        "micro_summary_path",
+        "article_image_1_path",
+        "article_image_2_path",
+        "article_image_3_path",
         "title_path",
         "short_title_path",
         "publish_copy_path",
