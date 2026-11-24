@@ -33,7 +33,7 @@ def main():
             shutil.rmtree(target)
     instructions = ROOT / "AGENTS.md"
     with instructions.open("a", encoding="utf-8") as stream:
-        stream.write("\n## Codex Cloud 环境\n仅执行开发、采集和制作。不得上传、预约或发布，不得触发发布工作流，不得读取或补充发布账号凭据。\n")
+        stream.write("\n## Codex Cloud 环境\n仅执行开发、采集和制作。不得向内容平台上传、预约或发布；允许制作流程向 R2 上传素材、封面和成片，不得触发发布工作流，不得读取或补充发布账号凭据。\n")
     subprocess.run(["uv", "sync", "--locked", "--no-editable", "--no-dev", "--extra", "mcp"], cwd=ROOT, check=True)
     servers = {name: {"command": "uv", "args": ["run", "--locked", "--no-editable", "--no-dev", "--extra", "mcp", "python", "-m", f"media_factory_mcp.{name}"], "cwd": str(ROOT), "env": {"MEDIA_FACTORY_PROFILE": "codex-cloud", "MEDIA_FACTORY_WORKSPACE": str(ROOT)}} for name in ("finance", "language_learning", "anime")}
     (ROOT / ".mcp.json").write_text(json.dumps({"mcpServers": servers}, ensure_ascii=False, indent=2), encoding="utf-8")
