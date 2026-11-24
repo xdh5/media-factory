@@ -49,3 +49,12 @@ media_factory_mcp/
 2. 内容判断、翻译、分镜、标题、图片识别与生图由宿主 Agent 完成；MCP 只提供输入、校验结果并执行确定的业务操作。
 3. GitHub 财经 Runner 可在 MCP 外使用 `tools.qwen_text.generate_text`，MCP 不得导入该模块。
 4. 专用语音合成和语音转写服务按现有业务接口保留，不承担通用内容生成或判断。
+
+## 业务技能入口
+
+1. 开始内容任务前先读取对应的 `.agents/skills/<技能名>/SKILL.md`，说明本次使用的技能，再按其中的提示词、MCP 流程和完成条件执行。不能只读 README 后直接写通用稿件。
+2. 本项目 finance 是大鹅认知内容业务，包含心理、情绪、关系、职场、家庭、人生和通俗财富认知。刷手机逃避、焦虑、自我面对等主题属于本项目，不得仅因目录名为 finance 判断为不支持。
+3. 选题、文章、口播、原创撰稿、采集及定稿使用 `collect-finance-copy`；制作日期对应的长短视频再使用 `produce-finance-video`。正文按技能引用的 `mcp/finance/prompts/editorial-writing.md` 等提示词执行；用户给定主题时沿用主题，不虚构来源记录或采集回执。
+4. 语言词包使用 `produce-language-learning-pack`，语言视频使用 `produce-language-learning-video`；动漫选片和制作使用 `produce-anime-video`。
+5. 用户提到计划发布日期，只用于确定制作计划，不能据此跳过撰稿技能或先追问发布平台。实际发布仅在本机按对应发布技能执行，Codex Cloud 不执行发布。
+6. MCP 工具未出现在宿主工具目录时，先核实项目服务配置及实际连接，按项目 stdio 客户端调用业务入口；依赖或凭据缺失时明确报告缺项。不得把安装成功、生成 `.mcp.json` 或独立客户端连接成功表述为当前聊天已自动接入 MCP。

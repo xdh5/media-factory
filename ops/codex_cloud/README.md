@@ -27,3 +27,7 @@ uv sync --locked --no-editable --no-dev --extra mcp --extra publishing
 ```
 
 agent 和 desktop 安装项已包含发布依赖，既有桌面和独立 Agent 发布入口保留。Docker 默认镜像及 GitHub 生产镜像仍包含发布依赖。
+
+## 启动技能
+
+云端环境的“启动技能”必须配置为 `ops/codex_cloud/startup.md` 的内容。每次发布后在新聊天验证：能定位根目录指令、读取对应业务技能，并正确把心理与情绪类主题归入大鹅认知业务。安装依赖、独立 stdio 验证与当前聊天自动加载技能是三个不同的检查项。
