@@ -280,6 +280,9 @@ export default {
   },
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (["GET", "HEAD"].includes(request.method) && !url.pathname.startsWith("/v1/") && url.pathname !== "/health") {
+      return env.DASHBOARD_ASSETS.fetch(request);
+    }
     if (request.method === "GET" && url.pathname === "/health") {
       return new Response("ok", {
         status: 200,

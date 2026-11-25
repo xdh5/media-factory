@@ -46,3 +46,7 @@
    - `CLOUDFLARE_DATA_API_TOKEN`
 
 当前目录只提供结构与接口实现，不会自动迁移或覆盖本地 SQLite 数据。
+
+## 看板发布
+
+当前可用入口为 https://media-data.cyberlab.lol/ ，财经稿件位于 `/finance-articles.html`。静态文件从 `apps/dashboard/` 随本 Worker 一起部署，接口沿用 `/v1/dashboard/`。修改静态文件后，同样在本目录执行 `npx wrangler deploy`。GitHub Pages 地址保留为历史入口，当前 Pages 创建部署和站点设置接口返回 500，不能作为本次上线成功的判断依据。
