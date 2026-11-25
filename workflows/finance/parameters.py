@@ -1,5 +1,7 @@
 """财经生产参数、运行目录和资源位置。"""
 
+import json
+
 from tools.resources import package_resource_path
 from tools.paths import PROJECT_STATIC_ROOT
 from tools.production_dates import (
@@ -49,12 +51,18 @@ ARTICLE_MAX_LINE_LENGTH = 60
 MATERIAL_STOCK_VIDEO = "stock_video"
 MATERIAL_STRATEGIES = (MATERIAL_STOCK_VIDEO,)
 
+# 正文配音和预制片尾使用同一份资源配置。
+_PREPARED_OUTRO_CONFIG = json.loads(
+    package_resource_path("workflows", "finance", "resources", "goose-outro-prepared.json")
+    .read_text(encoding="utf-8")
+)
+
 # 财经生产参数由 workflow 统一维护。
 DEFAULT_PRODUCTION_CONFIG = {
     "material_strategy": MATERIAL_STOCK_VIDEO,
     "tts_config": {
-        "voice": "azure:zh-CN-YunyiMultilingualNeural",
-        "rate": "+15%",
+        "voice": _PREPARED_OUTRO_CONFIG["voice"],
+        "rate": _PREPARED_OUTRO_CONFIG["rate"],
     },
     "video_config": {
         "orientation": "landscape",
