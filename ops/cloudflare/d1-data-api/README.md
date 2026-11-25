@@ -25,7 +25,9 @@
 
 财经 MCP 通过 `POST /v1/douyin-research/scripts/reserve` 从“财经”分类随机选择未使用原稿并临时占用，保存改编稿后调用 `POST /v1/douyin-research/scripts/used` 标记为已使用。占用默认两小时后自动过期；全部稿件已使用时接口返回 `DOUYIN_SCRIPTS_EXHAUSTED`，禁止回退到重复稿件。
 
-可通过 `GET /v1/douyin-research/scripts/stats?collection_code=finance&workflow=finance&reservation_minutes=120` 只读查询稿件总数、可用数、有效占用数和已使用数；过期占用计入可用数，查询不会创建或更新占用记录。
+可通过 `GET /v1/douyin-research/scripts/stats?collection_code=finance&workflow=finance&reservation_minutes=120` 查询稿件总数、未使用数、有效占用数和已使用数。库存查询和看板读取会清理已到期的临时占用；后台每五分钟执行同样的清理。使用状态只有未使用、已占用和已使用；正文与分镜是否完成仍由生产前校验决定。
+
+领取稿件时保存 `reservation_expires_at`。生产失败通过 `POST /v1/douyin-research/scripts/release` 按稿件、业务线及领取令牌归还；只删除临时占用，保留已使用记录。正在生产的任务每五分钟通过 `/v1/douyin-research/scripts/renew` 续期，任务退出后停止续期。进程被强制终止或宿主离线时，到期清理由 Worker 执行。恢复生产时会校验领取令牌，已归还或过期的稿件重新领取。
 
 财经 MCP 的参考图千问生图完成后，从 `data/image_library_finance/` 当前最大图片编号继续递增，
 并通过 `POST /v1/finance-generated-images/commit` 把相同编号、图片描述和项目相对路径写入独立生成图库；

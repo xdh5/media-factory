@@ -17,7 +17,6 @@ from ._constants import (
     VIDEO_FPS,
 )
 from ._errors import FFmpegNotFoundError, InvalidParameterError, RenderError
-from ._defaults import DEFAULT_BGM_GAIN
 from ._ffmpeg import _encode_video_args, _filter_path, _probe, _run, _validate_file
 from ._output_name import _output_path
 from ._overlay import normalize_overlays, overlay_filtergraph, overlay_input_args
@@ -69,6 +68,8 @@ def mix_body(
     video = _validate_file(video_path, "video_path")
     tts = _validate_file(tts_path, "tts_path")
     bgm = _validate_file(bgm_path, "bgm_path") if bgm_path else None
+    if bgm is not None and bgm_gain is None:
+        raise InvalidParameterError("bgm_gain", "使用背景音乐时必须由业务传入音量增益")
     cover = _validate_file(cover_path, "cover_path") if cover_path else None
     ass = None
     if ass_path is not None:
@@ -194,7 +195,7 @@ def mix_body(
         audio_chains.append(
             f"[{bgm_index}:a]atrim=0:{duration:.9f},asetpts=PTS-STARTPTS,"
             f"aresample={VIDEO_AUDIO_RATE},aformat=channel_layouts=stereo,"
-            f"volume={float(bgm_gain) if bgm_gain is not None else DEFAULT_BGM_GAIN:.6f},"
+            f"volume={float(bgm_gain):.6f},"
             f"afade=t=in:st={bgm_start:.3f}:d={BGM_FADE_IN_SECONDS:.3f},"
             f"afade=t=out:st={fade_out_start:.3f}:d={BGM_FADE_OUT_SECONDS:.3f}[bgm]"
         )

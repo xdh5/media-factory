@@ -60,17 +60,45 @@ export async function generateBilibiliChapters(page) {
   await clickBilibiliText(page, '编辑章节');
   const iframe = await waitBilibiliElement(page, '.chapter-setting iframe.iframe-wrp');
   const editor = await iframe.contentFrame();
-  const framePoll = { isClosed: () => page.isClosed(), evaluate: fn => editor.evaluate(fn), waitForTimeout: ms => page.waitForTimeout(ms) };
+  let lastChapterState = '';
+  const framePoll = { isClosed: () => page.isClosed(), evaluate: async fn => {
+    const state = await editor.evaluate(() => ({ text: document.body.innerText.split('\n').filter(line => !/^\d{2}:\d{2}$/.test(line)).join('\n'),
+      buttons: [...document.querySelectorAll('button,[role=button]')].filter(e => e.getBoundingClientRect().width > 0)
+        .map(e => ({ text: e.innerText, disabled: e.disabled })) }));
+    const serialized = JSON.stringify(state);
+    if (serialized !== lastChapterState) {
+      console.log('[B站章节状态]', serialized);
+      lastChapterState = serialized;
+    }
+    const percentage = state.text.match(/(?:^|\n)(\d+)%/);
+    if (percentage) setPublishStage(page, `生成B站智能章节（${percentage[1]}%）`);
+    return editor.evaluate(fn);
+  }, waitForTimeout: ms => page.waitForTimeout(ms) };
   await pollPageUntil(framePoll, () => /智能/.test(document.body.innerText), 60000, 500, 'B站章节播放器尚未加载智能章节控件');
   console.log('[blbl] 章节编辑器：' + await editor.evaluate(() => document.body.innerText));
+  const chapterResponse = async response => {
+    try {
+      if (response.request().frame() !== editor || !response.headers()['content-type']?.includes('json')) return;
+      const body = await response.json();
+      console.log('[B站章节接口]', JSON.stringify({ path: new URL(response.url()).pathname,
+        httpStatus: response.status(), code: body.code, message: body.message,
+        dataFields: Object.keys(body.data || {}), status: body.data?.status, state: body.data?.state }));
+    } catch (error) {
+      console.log('[B站章节接口采样失败]', error.message);
+    }
+  };
+  page.on('response', chapterResponse);
   setPublishStage(page, '生成B站智能章节');
   await clickBilibiliText(editor, '智能生成');
+  console.log('[B站章节主页面提示]', await page.evaluate(() => [...document.querySelectorAll('[role=dialog],.bili-dialog,.bili-modal')]
+    .filter(e => e.getBoundingClientRect().width > 0).map(e => e.innerText)));
   await pollPageUntil(framePoll, () => /章节数[：:]?\s*[1-9]\d*/.test(document.body.innerText) && !/智能分析中/.test(document.body.innerText), WAIT_UPLOAD_PROCESSING_MS, 1000, 'B站智能章节未生成有效章节');
   const chapters = await editor.evaluate(() => ({ count: Number(document.body.innerText.match(/章节数[：:]?\s*(\d+)/)[1]),
     titles: [...document.querySelectorAll('input,textarea')].map(e => e.value.trim()).filter(text => text && !/^[\d:.]+$/.test(text)) }));
   setPublishStage(page, '保存B站智能章节');
   await clickBilibiliText(editor, '保存');
   await page.waitForFunction(() => ![...document.querySelectorAll('.chapter-setting iframe')].some(e => e.getBoundingClientRect().width > 0), { polling: 200, timeout: 30000 });
+  page.off('response', chapterResponse);
   return chapters;
 }
 

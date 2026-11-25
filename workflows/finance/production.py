@@ -6,14 +6,17 @@ import re
 from datetime import date as calendar_date
 from filelock import FileLock
 from pathlib import Path
+from functools import wraps
+from threading import Event, Thread
 from .tools import drafts as a, assemble_finance_video as d
-from workflows.finance.parameters import MATERIAL_STOCK_VIDEO, normalize_publish_date, production_dirs
+from workflows.finance.parameters import MATERIAL_STOCK_VIDEO, SOURCE_RESERVATION_MINUTES, normalize_publish_date, production_dirs
 from workflows.finance.errors.exceptions import WorkflowStepError
 from tools.task_runner import submit_task as runner_submit_task
 from workflows.finance.tools.storyboard import prepare_storyboard, parse_storyboard
 from workflows.finance.tools.assemble_finance_video import upload_finance_assets_to_r2
 from tools.task_runner import poll_task
 from workflows.finance.tools.storyboard_images import restore_storyboard_images, bind_storyboard_images
+from workflows.finance.infrastructure.scripts import release_source_script, renew_source_script
 
 def finance_get_config():
     return a.finance_get_production_config()
@@ -29,6 +32,52 @@ def _state_path(workflow_id: str) -> Path:
 
 def _read_state(workflow_id: str) -> dict:
     return json.loads(_state_path(workflow_id).read_text(encoding="utf-8"))
+
+
+def _return_failed_source(state_path: Path) -> None:
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    if not state.get("reservation"):
+        return
+    released = release_source_script(aweme_id=str(state["source"]["aweme_id"]), workflow="finance",
+                                    reservation_token=str(state["reservation"]["reservation_token"]))
+    if not released["used"]:
+        for key in ("source", "reservation", "draft_path", "storyboard_context", "material_manifest_path"):
+            state.pop(key, None)
+        state["stage"] = "reserving"
+        _save_state(state_path, state)
+
+
+def _release_on_failure(state_path: Path, work):
+    @wraps(work)
+    def wrapped(*args, **kwargs):
+        stopped = Event()
+        def renew():
+            while not stopped.wait(300):
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                try:
+                    result = _renew_source(state)
+                except Exception as error:
+                    print(f"稿件占用续期失败：{error}", flush=True)
+                    return
+                if not result["renewed"]:
+                    return
+        heartbeat = Thread(target=renew, daemon=True)
+        heartbeat.start()
+        try:
+            return work(*args, **kwargs)
+        except BaseException:
+            _return_failed_source(state_path)
+            raise
+        finally:
+            stopped.set()
+            heartbeat.join()
+    return wrapped
+
+
+def _renew_source(state: dict) -> dict:
+    return renew_source_script(aweme_id=str(state["source"]["aweme_id"]), workflow="finance",
+                               reservation_token=str(state["reservation"]["reservation_token"]),
+                               reservation_minutes=SOURCE_RESERVATION_MINUTES)
 
 
 def _submit_preparation(state_path: Path, state: dict) -> dict:
@@ -56,7 +105,7 @@ def _submit_preparation(state_path: Path, state: dict) -> dict:
         _save_state(state_path, current)
         return {**current["storyboard_context"], "workflow_id": current["workflow_id"],
                 "stage": current["stage"], "next_tool": "finance_continue_production"}
-    task = runner_submit_task(cache_dir=state_path.parent, run_id=state["run_id"], step="prepare_production", fn=work)
+    task = runner_submit_task(cache_dir=state_path.parent, run_id=state["run_id"], step="prepare_production", fn=_release_on_failure(state_path, work))
     _save_state(state_path.with_name("production-task.json"), {"task_path": task["task_path"]})
     return {"workflow_id": state["workflow_id"], "status": task["status"], "generate_images": state["generate_images"]}
 
@@ -74,6 +123,9 @@ def finance_start_production(publish_date: str, content_part: int = 1, *, genera
     with FileLock(state_path.with_suffix(".lock")):
         if state_path.exists():
             state = _read_state(workflow_id)
+            if state.get("reservation") and state["stage"] != "completed" and not _renew_source(state)["renewed"]:
+                _return_failed_source(state_path)
+                state = _read_state(workflow_id)
             if aweme_id and state.get("source") and str(state["source"]["aweme_id"]) != aweme_id:
                 raise WorkflowStepError("该日期生产任务已绑定其他稿件")
             if "draft_path" in state:
@@ -89,36 +141,40 @@ def finance_start_production(publish_date: str, content_part: int = 1, *, genera
             selected = a.finance_get_source_script(aweme_id)
             state.update({"source": selected["source"], "reservation": selected["reservation"]})
             _save_state(state_path, state)
-        source, reservation = state["source"], state["reservation"]
-        if aweme_id and str(source["aweme_id"]) != aweme_id:
-            raise WorkflowStepError("稿件领取接口未返回指定稿件，请检查数据 API 部署版本")
-        editorial = next(row["editorial"] for row in a.list_editorial_drafts(False)["records"]
-                         if row["aweme_id"] == source["aweme_id"])
-        if editorial.get("storyboard_status") == "pending":
-            raise WorkflowStepError("正文已更新，分镜待同步，暂不能生产")
-        cover_images = editorial.get("cover_images", {})
-        if set(cover_images) != {"landscape", "portrait", "widescreen"} or any(
-                (asset["title"], asset["short_title"]) != (editorial["title"], editorial["short_title"])
-                for asset in cover_images.values()):
-            raise WorkflowStepError("稿件缺少与当前标题一致的4:3、3:4、16:9三种比例封面成图，请由宿主完成封面生图并登记")
-        if any(not editorial.get(key) for key in ('youtube_short_selection', 'youtube_description', 'youtube_hashtags')):
-            raise WorkflowStepError('稿件缺少YouTube切片选择、长视频说明或10个标签，请宿主按Meta提示词补全定稿')
-        draft = a.finance_save_draft(
-            **{key: editorial[key] for key in ("topic", "article", "storyboard", "title", "short_title", "hashtags",
-               "cover_lines", "cover_highlights", "source_hook", "db_source_hook")},
-            source_aweme_id=str(source["aweme_id"]), source_reservation_token=str(reservation["reservation_token"]),
-            publish_date=date, content_part=content_part)
-        draft_path = Path(draft["draft_path"])
-        saved_draft = json.loads(draft_path.read_text(encoding="utf-8"))
-        saved_draft["cover_images"] = cover_images
-        saved_draft["ssml"] = editorial.get("ssml")
-        saved_draft["micro_summary"] = editorial.get("micro_summary", "")
-        for key in ("youtube_short_selection", "youtube_description", "youtube_hashtags"):
-            saved_draft[key] = editorial[key]
-        draft_path.write_text(json.dumps(saved_draft, ensure_ascii=False, indent=2), encoding="utf-8")
-        state.update({"draft_path": draft["draft_path"], "stage": "preparing"})
-        _save_state(state_path, state)
-        return _submit_preparation(state_path, state)
+        try:
+            source, reservation = state["source"], state["reservation"]
+            if aweme_id and str(source["aweme_id"]) != aweme_id:
+                raise WorkflowStepError("稿件领取接口未返回指定稿件，请检查数据 API 部署版本")
+            editorial = next(row["editorial"] for row in a.list_editorial_drafts(False)["records"]
+                             if row["aweme_id"] == source["aweme_id"])
+            if editorial.get("storyboard_status") == "pending":
+                raise WorkflowStepError("正文已更新，分镜待同步，暂不能生产")
+            cover_images = editorial.get("cover_images", {})
+            if set(cover_images) != {"landscape", "portrait", "widescreen"} or any(
+                    (asset["title"], asset["short_title"]) != (editorial["title"], editorial["short_title"])
+                    for asset in cover_images.values()):
+                raise WorkflowStepError("稿件缺少与当前标题一致的4:3、3:4、16:9三种比例封面成图，请由宿主完成封面生图并登记")
+            if any(not editorial.get(key) for key in ('youtube_short_selection', 'youtube_description', 'youtube_hashtags')):
+                raise WorkflowStepError('稿件缺少YouTube切片选择、长视频说明或10个标签，请宿主按Meta提示词补全定稿')
+            draft = a.finance_save_draft(
+                **{key: editorial[key] for key in ("topic", "article", "storyboard", "title", "short_title", "hashtags",
+                   "cover_lines", "cover_highlights", "source_hook", "db_source_hook")},
+                source_aweme_id=str(source["aweme_id"]), source_reservation_token=str(reservation["reservation_token"]),
+                publish_date=date, content_part=content_part)
+            draft_path = Path(draft["draft_path"])
+            saved_draft = json.loads(draft_path.read_text(encoding="utf-8"))
+            saved_draft["cover_images"] = cover_images
+            saved_draft["ssml"] = editorial.get("ssml")
+            saved_draft["micro_summary"] = editorial.get("micro_summary", "")
+            for key in ("youtube_short_selection", "youtube_description", "youtube_hashtags"):
+                saved_draft[key] = editorial[key]
+            draft_path.write_text(json.dumps(saved_draft, ensure_ascii=False, indent=2), encoding="utf-8")
+            state.update({"draft_path": draft["draft_path"], "stage": "preparing"})
+            _save_state(state_path, state)
+            return _submit_preparation(state_path, state)
+        except BaseException:
+            _return_failed_source(state_path)
+            raise
 
 
 def get_production(workflow_id: str) -> dict:
@@ -153,6 +209,9 @@ def continue_production(workflow_id: str, *, image_paths: list[str] | None = Non
     """读取定稿分镜，搜索实拍素材、合成并上传 R2。"""
     state_path = _state_path(workflow_id)
     state = json.loads(state_path.read_text(encoding="utf-8"))
+    if state.get("reservation") and state["stage"] != "completed" and not _renew_source(state)["renewed"]:
+        _return_failed_source(state_path)
+        state = _read_state(workflow_id)
     if state["stage"] in {"reserving", "preparing"}:
         return finance_start_production(state["publish_date"], state["content_part"], generate_images=state["generate_images"])
     if state["stage"] == "completed":
@@ -185,7 +244,7 @@ def continue_production(workflow_id: str, *, image_paths: list[str] | None = Non
         current["stage"] = "completed"
         _save_state(state_path, current)
         return {**result, "r2": remote, "stage": "completed", "workflow_id": workflow_id}
-    task = runner_submit_task(cache_dir=state_path.parent, run_id=state["run_id"], step="continue_production", fn=work)
+    task = runner_submit_task(cache_dir=state_path.parent, run_id=state["run_id"], step="continue_production", fn=_release_on_failure(state_path, work))
     _save_state(state_path.with_name("production-task.json"), {"task_path": task["task_path"]})
     return {"workflow_id": workflow_id, "status": task["status"]}
 

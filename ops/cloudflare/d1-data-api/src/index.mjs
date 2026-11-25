@@ -1,5 +1,6 @@
 import { jsonResponse, errorResponse, requiredText, positiveInteger, productionDate, cutoffTimestamp } from "./api-common.mjs";
 import { handleDashboard } from "./dashboard.mjs";
+import { cleanupExpiredScriptReservations, releaseScriptReservation, renewScriptReservation } from './finance-script-reservations.mjs';
 import { listPublicationRecords, deletePublicationRecords, listPublishingAccountGroups, commitPublicationRecords, listProductionOutputs, deleteProductionOutputs, commitProductionOutputs } from "./publication-records.mjs";
 import { listFinanceGeneratedImages, commitFinanceGeneratedImages, listFinanceSourceAuthors, addFinanceSourceAuthor, removeFinanceSourceAuthor, listFinanceRejectedAwemes, rejectFinanceAweme, listDouyinResearchIds, getDouyinResearchScriptStats, reserveDouyinResearchScript, markDouyinResearchScriptUsed, commitDouyinResearch } from "./finance-data.mjs";
 import { validateWordEntries, commitLanguageLearningPack, claimLanguageLearningPack, releaseLanguageLearningPack, listRecentWords, validateAndRecordWords, listLanguageLearningPackTopics } from "./language-learning-data.mjs";
@@ -272,7 +273,10 @@ async function commitScenarioQuizQuestion(request, env) {
 
 export default {
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(cleanupStoryboardImages(null, env).then(async response => console.log(await response.text())));
+    ctx.waitUntil(cleanupExpiredScriptReservations(env).then(result => console.log('稿件占用到期清理', result)));
+    if (new Date(controller.scheduledTime).getUTCMinutes() === 0) {
+      ctx.waitUntil(cleanupStoryboardImages(null, env).then(async response => console.log(await response.text())));
+    }
   },
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -339,6 +343,8 @@ export default {
         return await getDouyinResearchScriptStats(request, env);
       }
       if (request.method === "POST" && url.pathname === "/v1/douyin-research/scripts/reserve") return await reserveDouyinResearchScript(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/douyin-research/scripts/release") return await releaseScriptReservation(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/douyin-research/scripts/renew") return await renewScriptReservation(request, env);
       if (request.method === "POST" && url.pathname === "/v1/douyin-research/scripts/used") return await markDouyinResearchScriptUsed(request, env);
       return errorResponse("NOT_FOUND", "接口不存在", 404);
     } catch (error) {

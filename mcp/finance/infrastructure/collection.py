@@ -126,7 +126,7 @@ def get_source_script_stats(
     classified_count = sum(
         payload[name] for name in ("available_count", "reserved_count", "used_count")
     )
-    if classified_count + int(payload.get("pending_editorial_count") or 0) != payload["total_count"]:
+    if classified_count != payload["total_count"]:
         raise DatabaseRequestError("口播稿统计接口返回的分类数量与总数不一致")
     return payload
 

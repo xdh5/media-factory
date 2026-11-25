@@ -1,3 +1,4 @@
+import { cleanupExpiredScriptReservations } from './finance-script-reservations.mjs';
 import { jsonResponse, errorResponse, requiredText, positiveInteger, optionalText } from "./api-common.mjs";
 
 async function listFinanceGeneratedImages(request, env) {
@@ -163,36 +164,25 @@ async function getDouyinResearchScriptStats(request, env) {
     1440,
   );
   const checkedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-  const expiredBefore = new Date(Date.now() - reservationMinutes * 60000)
-    .toISOString()
-    .replace(/\.\d{3}Z$/, "Z");
+  await cleanupExpiredScriptReservations(env);
   const stats = await env.DB.prepare(
     `SELECT
        COUNT(DISTINCT c.aweme_id) AS total_count,
        COUNT(DISTINCT CASE WHEN u.status = 'used' THEN c.aweme_id END) AS used_count,
-       COUNT(DISTINCT CASE WHEN (u.aweme_id IS NULL OR (u.status = 'reserved' AND u.reserved_at < ?)) AND NOT EXISTS (
-         SELECT 1 FROM finance_editorial_drafts e WHERE e.aweme_id = c.aweme_id AND e.source_transcript = c.transcript_corrected
-         AND json_extract(e.content_json, '$.storyboard') IS NOT NULL
-         AND COALESCE(json_extract(e.content_json, '$.storyboard_status'), 'ready') != 'pending'
-       ) THEN c.aweme_id END) AS pending_editorial_count,
-       COUNT(DISTINCT CASE
-         WHEN u.status = 'reserved' AND u.reserved_at >= ? THEN c.aweme_id
-       END) AS reserved_count
+       COUNT(DISTINCT CASE WHEN u.status = 'reserved' THEN c.aweme_id END) AS reserved_count
      FROM douyin_research_contents c
      JOIN douyin_research_discoveries d ON d.aweme_id = c.aweme_id AND d.collection_code = ?
      LEFT JOIN douyin_research_script_usage u ON u.aweme_id = c.aweme_id AND u.workflow = ?`,
-  ).bind(expiredBefore, expiredBefore, collectionCode, workflow).first();
+  ).bind(collectionCode, workflow).first();
   const totalCount = Number(stats?.total_count || 0);
   const usedCount = Number(stats?.used_count || 0);
   const reservedCount = Number(stats?.reserved_count || 0);
-  const pendingEditorialCount = Number(stats?.pending_editorial_count || 0);
   return jsonResponse({
     collection_code: collectionCode,
     workflow,
     reservation_minutes: reservationMinutes,
     total_count: totalCount,
-    available_count: Math.max(0, totalCount - usedCount - reservedCount - pendingEditorialCount),
-    pending_editorial_count: pendingEditorialCount,
+    available_count: Math.max(0, totalCount - usedCount - reservedCount),
     reserved_count: reservedCount,
     used_count: usedCount,
     checked_at: checkedAt,
@@ -206,11 +196,8 @@ async function reserveDouyinResearchScript(request, env) {
   const awemeId = optionalText(body.aweme_id, "aweme_id", 64) || "";
   const reservationMinutes = positiveInteger(body.reservation_minutes || 120, "reservation_minutes", 1440);
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-  const expiredBefore = new Date(Date.now() - reservationMinutes * 60000).toISOString().replace(/\.\d{3}Z$/, "Z");
-  await env.DB.prepare(
-    `DELETE FROM douyin_research_script_usage
-     WHERE workflow = ? AND status = 'reserved' AND reserved_at < ?`,
-  ).bind(workflow, expiredBefore).run();
+  const expiresAt = new Date(Date.now() + reservationMinutes * 60000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  await cleanupExpiredScriptReservations(env);
 
   const candidates = await env.DB.prepare(
     `SELECT c.aweme_id, c.caption, c.transcript_corrected, c.aweme_url, c.created_at, e.content_json
@@ -241,11 +228,11 @@ async function reserveDouyinResearchScript(request, env) {
     const reservationToken = crypto.randomUUID();
     const reserved = await env.DB.prepare(
       `INSERT INTO douyin_research_script_usage(
-         aweme_id, workflow, status, reservation_token, reserved_at
-       ) VALUES (?, ?, 'reserved', ?, ?)
+         aweme_id, workflow, status, reservation_token, reserved_at, reservation_expires_at
+       ) VALUES (?, ?, 'reserved', ?, ?, ?)
        ON CONFLICT(aweme_id, workflow) DO NOTHING
-       RETURNING aweme_id, workflow, status, reservation_token, reserved_at`,
-    ).bind(candidate.aweme_id, workflow, reservationToken, now).first();
+       RETURNING aweme_id, workflow, status, reservation_token, reserved_at, reservation_expires_at`,
+    ).bind(candidate.aweme_id, workflow, reservationToken, now, expiresAt).first();
     if (reserved) {
       return jsonResponse({
         source: {

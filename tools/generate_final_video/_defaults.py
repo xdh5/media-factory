@@ -14,9 +14,6 @@ DEFAULT_SUBTITLE_STYLE = {
     "word_wrap_after": 18, "word_wrap_line_length": 15,
 }
 
-# 背景音乐默认增益只在这里定义，所有生产入口由最终混音统一读取。
-DEFAULT_BGM_GAIN = 0.336
-
 # 双语字幕：默认关闭。
 # 英文字号 = 中文字号 × font_size_ratio；白字黑边静态显示，不参与 karaoke 动画。
 # position.follow_chinese：英文不贴底，跟在中文块正下方 gap 像素处，

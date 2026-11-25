@@ -200,7 +200,7 @@ async function loadFinanceArticles() {
     const response = await fetch(`${API_BASE_URL}/v1/dashboard/finance-articles`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message || "读取失败");
-    document.querySelector("#inventoryNote").textContent = `还剩 ${payload.summary.ready} 篇可生产文章，${payload.summary.pending_editorial} 篇待编辑`;
+    document.querySelector("#inventoryNote").textContent = `未使用 ${payload.summary.ready} 篇，已占用 ${payload.summary.reserved} 篇，已使用 ${payload.summary.used} 篇`;
     status.textContent = "";
     const rerender = () => renderFinanceArticles(payload.articles);
     document.querySelector("#searchInput").addEventListener("input", rerender);

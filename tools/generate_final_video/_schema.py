@@ -25,6 +25,7 @@ GENERATE_FINAL_VIDEO_INPUT_SCHEMA = {
         "cover_path": {"type": "string", "description": "有封面才传；不传则片身直接当成品"},
         "cover_duration": {"type": "number", "exclusiveMinimum": 0},
         "bgm_path": {"type": "string", "description": "不传则不叠 BGM"},
+        "bgm_gain": {"type": "number", "description": "传入背景音乐时必填，由业务 workflow 指定增益"},
         "bgm_start_seconds": {
             "type": "number",
             "minimum": 0,

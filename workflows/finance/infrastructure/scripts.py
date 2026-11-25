@@ -6,6 +6,19 @@ from tools.database._errors import DatabaseRequestError
 from tools.database.client import _request
 
 
+def release_source_script(*, aweme_id: str, workflow: str, reservation_token: str) -> dict:
+    """归还本次临时领取的稿件，已使用记录不受影响。"""
+    return _request("POST", "/v1/douyin-research/scripts/release", body={
+        "aweme_id": aweme_id, "workflow": workflow, "reservation_token": reservation_token})
+
+
+def renew_source_script(*, aweme_id: str, workflow: str, reservation_token: str, reservation_minutes: int) -> dict:
+    """生产仍在运行时续期本次占用，不续期过期或已归还的令牌。"""
+    return _request("POST", "/v1/douyin-research/scripts/renew", body={
+        "aweme_id": aweme_id, "workflow": workflow, "reservation_token": reservation_token,
+        "reservation_minutes": reservation_minutes})
+
+
 def reserve_source_script(
     *,
     collection_code: str,

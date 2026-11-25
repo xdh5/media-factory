@@ -102,9 +102,9 @@ def _production_config(config: dict) -> dict:
         )
     except (TypeError, ValueError) as exc:
         raise WorkflowStepError("production_config.hook_title_line_height 必须是数字") from exc
-    bgm_gain = config.get("bgm_gain")
+    bgm_gain = config["bgm_gain"]
     try:
-        bgm_gain = float(bgm_gain) if bgm_gain is not None else None
+        bgm_gain = float(bgm_gain)
     except (TypeError, ValueError) as exc:
         raise WorkflowStepError("production_config.bgm_gain 必须是数字") from exc
     bgm = Path(bgm_path)
