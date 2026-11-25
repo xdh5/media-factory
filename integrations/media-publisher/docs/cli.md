@@ -83,7 +83,7 @@ electron . cli publish -p dy --phone 13800138000 -f /path/to/video.mp4 -t "标�
 | `--tags` / `--bq`         | **视频标签** → `data.bq`                                                   |
 | `--address`               | **地址** → `data.address`（仅百家号）                                      |
 | `--publish-at`            | 一次性定时发布，格式 `YYYY-MM-DD HH:mm:ss`；抖音、快手、视频号、百家号、头条和小红书使用平台官方定时 |
-| `--show`                  | 当前 CLI 会忽略，仍后台运行                                                |
+| `--show`                  | 显示视频号、抖音、快手、B站或头条发布窗口                                                |
 | `--no-close-window`       | 发布后不自动关窗                                                           |
 | `--draft`                 | 保存到平台草稿箱，不直接发布                                               |
 | `--sph-product-id`        | 视频号商品上架快捷参数（商品编号）；其他平台忽略                           |
@@ -157,3 +157,9 @@ electron . cli publish -p sph --phone 13800138000 -f /path/to/video.mp4 \
 视频号封面显示上传缩略图不代表平台已保存。4:3原图必须完成初始化；确认后等待对应远端封面地址更新，并下载远端图片核对内容。未就绪、保存失败或内容不匹配时停止发表。
 
 视频号内容区同时支持独立iframe和Shadow DOM。独立iframe的元素等待在页面主执行环境进行；文件选择只触发一次原生change事件。封面编辑入口出现推荐提示时，等待提示挂载后点击直接编辑。
+
+## 快手封面和发布回执
+
+自定义封面使用 3:4 图片。等待裁剪画布载入后选择比例并点击确认，监听 `/rest/cp/works/v4/video/pc/cover/edit/cover/upload`，必须返回 `result=1` 和 `coverKey`。随后读取平台保存的封面，核对比例及图片内容，保存 `kuaishou-cover-confirmed.jpg`。本地预览出现不能作为上传成功。
+
+正式提交监听快手视频提交接口，要求 `result=1`，并核对请求里的 `coverKey`；再从作品管理接口 `/rest/cp/works/v2/video/pc/photo/list` 核对标题、作品 ID 和封面。`kuaishou-publication.json` 保存作品 ID、平台状态、封面及接口回执。各步骤记录阶段、接口路径、HTTP 状态和业务结果；提交后结果不明时禁止自动重发。

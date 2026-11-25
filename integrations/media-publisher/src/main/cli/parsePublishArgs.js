@@ -196,10 +196,10 @@ export function parsePublishArgs(subArgv) {
   }
   // in dir mode title comes from xlsx per row, no global --title needed
 
-  const visibleDebugPlatforms = new Set(["视频号", "抖音", "哔哩哔哩", "头条"]);
+  const visibleDebugPlatforms = new Set(["视频号", "抖音", "快手", "哔哩哔哩", "头条"]);
   if (out.show && !visibleDebugPlatforms.has(out.platform)) {
     console.warn(
-      "media-publisher: 当前仅视频号、抖音、B站和头条 CLI publish 支持显示浏览器窗口，已忽略 --show。"
+      "media-publisher: 当前仅视频号、抖音、快手、B站和头条 CLI publish 支持显示浏览器窗口，已忽略 --show。"
     );
     out.show = false;
   }
@@ -288,8 +288,8 @@ export function publishHelpText() {
                             百家号、头条和小红书会立即上传并设置平台官方定时；其他平台直接报错。
                             应用内定时队列已移除。
                             不支持每日/每周/每月循环。
-      --show            显示视频号自动化窗口；其它平台暂时忽略
-      --no-close-window 发布后不自动关窗（与视频号 --show 一起使用）
+      --show            显示视频号、抖音、快手、B站或头条自动化窗口
+      --no-close-window 发布后不自动关窗（与 --show 一起使用）
       --draft           显式发布到草稿箱（小红书点「暂存离开」）。若账号配置了「默认发布到草稿」，
                             即使不加该参数也会自动走草稿。
       --sph-product-id <id>   视频号商品上架（快捷参数，等价于 product + 商品编号）
