@@ -16,7 +16,6 @@ from tools.generate_final_video._defaults import (
     DEFAULT_HOOK_TITLE_POSITION,
     DEFAULT_HOOK_TITLE_SINGLE_COLOR,
     DEFAULT_HOOK_TITLE_STYLE,
-    DEFAULT_BGM_GAIN,
     DEFAULT_SUBTITLE_POSITION,
     DEFAULT_SUBTITLE_STYLE,
 )
@@ -104,11 +103,8 @@ def _production_config(config: dict) -> dict:
     except (TypeError, ValueError) as exc:
         raise WorkflowStepError("production_config.hook_title_line_height 必须是数字") from exc
     bgm_gain = config.get("bgm_gain")
-    if bgm_gain is None:
-        # 生产入口复用统一音乐增益。
-        bgm_gain = DEFAULT_BGM_GAIN
     try:
-        bgm_gain = float(bgm_gain)
+        bgm_gain = float(bgm_gain) if bgm_gain is not None else None
     except (TypeError, ValueError) as exc:
         raise WorkflowStepError("production_config.bgm_gain 必须是数字") from exc
     bgm = Path(bgm_path)

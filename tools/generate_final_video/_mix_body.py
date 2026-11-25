@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from ._constants import (
-    BGM_FADE_IN_SECONDS, BGM_FADE_OUT_SECONDS, BGM_GAIN,
+    BGM_FADE_IN_SECONDS, BGM_FADE_OUT_SECONDS,
     VIDEO_AUDIO_CHANNELS,
     VIDEO_AUDIO_CODEC,
     VIDEO_AUDIO_RATE,
@@ -17,6 +17,7 @@ from ._constants import (
     VIDEO_FPS,
 )
 from ._errors import FFmpegNotFoundError, InvalidParameterError, RenderError
+from ._defaults import DEFAULT_BGM_GAIN
 from ._ffmpeg import _encode_video_args, _filter_path, _probe, _run, _validate_file
 from ._output_name import _output_path
 from ._overlay import normalize_overlays, overlay_filtergraph, overlay_input_args
@@ -193,7 +194,7 @@ def mix_body(
         audio_chains.append(
             f"[{bgm_index}:a]atrim=0:{duration:.9f},asetpts=PTS-STARTPTS,"
             f"aresample={VIDEO_AUDIO_RATE},aformat=channel_layouts=stereo,"
-            f"volume={float(bgm_gain) if bgm_gain is not None else BGM_GAIN:.6f},"
+            f"volume={float(bgm_gain) if bgm_gain is not None else DEFAULT_BGM_GAIN:.6f},"
             f"afade=t=in:st={bgm_start:.3f}:d={BGM_FADE_IN_SECONDS:.3f},"
             f"afade=t=out:st={fade_out_start:.3f}:d={BGM_FADE_OUT_SECONDS:.3f}[bgm]"
         )

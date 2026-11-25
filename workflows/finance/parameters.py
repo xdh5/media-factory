@@ -71,7 +71,6 @@ DEFAULT_PRODUCTION_CONFIG = {
     },
     "production_config": {
         "bgm_path": "tools/static/bgm/easy-lemon-kevin-macleod.mp3",
-        "bgm_gain": 0.0504,
         "intro": "slide_in_shutter",
         "shot_stickers": ["rec"],
     },
