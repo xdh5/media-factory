@@ -8,10 +8,12 @@ export function parseToutiaoPublishArgs(args, kind) {
   if (index < 0 || !args[index + 1]) return { ok: false, error: "必须提供财经生产清单 --file <manifest.json>" };
   const filename = path.resolve(args[index + 1]);
   const manifest = JSON.parse(fs.readFileSync(filename, "utf8"));
+  if (kind === 'micro' && !manifest.micro_image_path) return { ok: false, error: '发布业务必须指定微头条配图 micro_image_path' };
+  const imagePath = kind === 'video' ? manifest.widescreen_cover_path : kind === 'micro' ? manifest.micro_image_path : manifest.cover_path;
   const normalized = [...args];
   normalized[index + 1] = kind === "video" ? manifest.video_path : filename;
   const parsed = parsePublishArgs([...normalized, "-p", "tt", "--creative-statement", "ai_generated", "--title", manifest.title,
-    "--description", manifest.publish_copy, "--tags", manifest.hashtags.map(tag => `#${tag}`).join(" "), "--cover", kind === "video" ? manifest.widescreen_cover_path : manifest.cover_path]);
+    "--description", manifest.publish_copy, "--tags", manifest.hashtags.map(tag => `#${tag}`).join(" "), "--cover", imagePath]);
   if (parsed.ok && (parsed.value.publishAt || parsed.value.draft)) return { ok: false, error: "头条专用命令仅支持立即发布；预约视频使用 cli publish" };
   if (parsed.ok) parsed.value.publishOptions = { ...parsed.value.publishOptions, toutiaoContentType: kind, toutiaoManifestPath: filename };
   return parsed;

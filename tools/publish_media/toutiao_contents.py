@@ -7,6 +7,7 @@ from pathlib import Path
 from tools.database.publication_records import list_publication_records
 from tools.r2_files import download_file
 from .publisher import preview_publication, publish_local_outputs, _save_publication
+from .toutiao_micro_image import select_toutiao_micro_image
 
 
 def publish_finance_toutiao_contents(publish_date: str, account_group: str, production_id: str,
@@ -50,6 +51,10 @@ def publish_finance_toutiao_contents(publish_date: str, account_group: str, prod
                                              production_id=production_id, progress=progress)
                 result['published'].extend(sent['published'])
             else:
+                if kind == 'micro':
+                    manifest['micro_image_path'] = select_toutiao_micro_image(manifest)
+                    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+                    progress(f"微头条配图已指定：{manifest['micro_image_path']}")
                 receipt = run_browser_publish([f'publish-toutiao-{kind}', '--phone',
                                                task['route']['account_ref'], '--file', str(manifest_path)])
                 saved = _save_publication({'item': {**item, 'production_id': publication_id}, 'route': task['route']},
