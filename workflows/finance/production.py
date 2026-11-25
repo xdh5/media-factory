@@ -61,7 +61,7 @@ def _submit_preparation(state_path: Path, state: dict) -> dict:
     return {"workflow_id": state["workflow_id"], "status": task["status"], "generate_images": state["generate_images"]}
 
 
-def finance_start_production(publish_date: str, content_part: int = 1, *, generate_images: bool = False) -> dict:
+def finance_start_production(publish_date: str, content_part: int = 1, *, generate_images: bool = False, aweme_id: str = "") -> dict:
     """按日期和分片启动或恢复同一生产流程，只返回 workflow_id。"""
     date = calendar_date.fromisoformat(publish_date).isoformat()
     if content_part < 1:
@@ -74,6 +74,8 @@ def finance_start_production(publish_date: str, content_part: int = 1, *, genera
     with FileLock(state_path.with_suffix(".lock")):
         if state_path.exists():
             state = _read_state(workflow_id)
+            if aweme_id and state.get("source") and str(state["source"]["aweme_id"]) != aweme_id:
+                raise WorkflowStepError("该日期生产任务已绑定其他稿件")
             if "draft_path" in state:
                 if state["stage"] == "preparing":
                     return _submit_preparation(state_path, state)
@@ -84,10 +86,12 @@ def finance_start_production(publish_date: str, content_part: int = 1, *, genera
                      "generate_images": generate_images}
             _save_state(state_path, state)
         if "source" not in state:
-            selected = a.finance_get_source_script()
+            selected = a.finance_get_source_script(aweme_id)
             state.update({"source": selected["source"], "reservation": selected["reservation"]})
             _save_state(state_path, state)
         source, reservation = state["source"], state["reservation"]
+        if aweme_id and str(source["aweme_id"]) != aweme_id:
+            raise WorkflowStepError("稿件领取接口未返回指定稿件，请检查数据 API 部署版本")
         editorial = next(row["editorial"] for row in a.list_editorial_drafts(False)["records"]
                          if row["aweme_id"] == source["aweme_id"])
         if editorial.get("storyboard_status") == "pending":
@@ -187,9 +191,11 @@ def continue_production(workflow_id: str, *, image_paths: list[str] | None = Non
 
 
 async def run(publish_date: str, content_part: int = 1, *,
-              production_source: str = "local_mcp") -> dict:
+              production_source: str = "local_mcp", aweme_id: str = "",
+              generate_images: bool = False) -> dict:
     """读取稿库定稿与分镜，通过统一生产协议完成交付。"""
-    started = await asyncio.to_thread(finance_start_production, publish_date, content_part)
+    started = await asyncio.to_thread(finance_start_production, publish_date, content_part,
+                                      aweme_id=aweme_id, generate_images=generate_images)
     workflow_id = started["workflow_id"]
     state = _read_state(workflow_id)
     if state["stage"] == "completed":

@@ -202,6 +202,7 @@ async function reserveDouyinResearchScript(request, env) {
   const body = await request.json();
   const collectionCode = requiredText(body.collection_code, "collection_code", 64);
   const workflow = requiredText(body.workflow, "workflow", 64);
+  const awemeId = optionalText(body.aweme_id, "aweme_id", 64) || "";
   const reservationMinutes = positiveInteger(body.reservation_minutes || 120, "reservation_minutes", 1440);
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   const expiredBefore = new Date(Date.now() - reservationMinutes * 60000).toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -215,7 +216,8 @@ async function reserveDouyinResearchScript(request, env) {
      FROM douyin_research_contents c
      JOIN finance_editorial_drafts e ON e.aweme_id = c.aweme_id AND e.source_transcript = c.transcript_corrected
      AND json_extract(e.content_json, '$.storyboard') IS NOT NULL
-     WHERE EXISTS (
+     WHERE (? = '' OR c.aweme_id = ?)
+     AND EXISTS (
        SELECT 1 FROM douyin_research_discoveries d
        WHERE d.aweme_id = c.aweme_id AND d.collection_code = ?
      )
@@ -231,7 +233,7 @@ async function reserveDouyinResearchScript(request, env) {
      )
      ORDER BY RANDOM()
      LIMIT 20`,
-  ).bind(collectionCode, workflow).all();
+  ).bind(awemeId, awemeId, collectionCode, workflow).all();
 
   for (const candidate of candidates.results || []) {
     const reservationToken = crypto.randomUUID();
@@ -256,6 +258,12 @@ async function reserveDouyinResearchScript(request, env) {
         reservation_minutes: reservationMinutes,
       }, 201);
     }
+  }
+
+  if (awemeId) {
+    return errorResponse("DOUYIN_SCRIPT_UNAVAILABLE", "指定稿件当前不可领取，请检查占用状态、定稿及话题去重", 409, {
+      aweme_id: awemeId,
+    });
   }
 
   const stats = await env.DB.prepare(

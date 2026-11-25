@@ -14,6 +14,7 @@ def main() -> None:
     parser.add_argument(
         "workflow",
         choices=[
+            "finance_render",
             "finance_preflight",
             "finance",
             "language_learning_preflight",
@@ -27,6 +28,7 @@ def main() -> None:
             "language_learning_publish_day",
         ],
     )
+    parser.add_argument("--aweme-id", default="")
     parser.add_argument("--variant", choices=("long", "short"), default="long")
     parser.add_argument("--run-id", default="")
     parser.add_argument("--targets", default="")
@@ -37,7 +39,14 @@ def main() -> None:
     arguments = parser.parse_args()
     if arguments.workflow.startswith("language_learning"):
         os.environ["DASHSCOPE_BUSINESS_LINE"] = "language_learning"
-    if arguments.workflow in {"finance_preflight", "language_learning_preflight"}:
+    if arguments.workflow == "finance_render":
+        if not arguments.aweme_id.strip() or not arguments.publish_date:
+            parser.error("finance_render 必须指定 aweme-id 和 publish-date")
+        from workflows.finance.production import run
+        result = asyncio.run(run(arguments.publish_date, aweme_id=arguments.aweme_id,
+                                 generate_images=True, production_source="github_workflow"))
+        payload = {"status": "succeeded", "run_id": result["manifest"]["run_id"], "r2": result["r2"]}
+    elif arguments.workflow in {"finance_preflight", "language_learning_preflight"}:
         business_line = "finance" if arguments.workflow == "finance_preflight" else "language_learning"
         from ._dates import resolve_publish_date
         from workflows.finance.tools.drafts import finance_get_automation_plan

@@ -1,0 +1,70 @@
+name: 指定财经稿件制作视频
+on:
+  workflow_dispatch:
+    inputs:
+      publish_date:
+        description: 制作计划日期（YYYY-MM-DD）
+        required: true
+        type: string
+      aweme_id:
+        description: 已定稿并备齐分镜图片的稿件 ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-production
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      MEDIA_FACTORY_PROFILE: codex-cloud
+      MEDIA_FACTORY_WORKSPACE: ${{ github.workspace }}
+      CLOUDFLARE_DATA_API_URL: ${{ secrets.CLOUDFLARE_DATA_API_URL }}
+      CLOUDFLARE_DATA_API_TOKEN: ${{ secrets.CLOUDFLARE_DATA_API_TOKEN }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
+      AZURE_SPEECH_REGION: ${{ vars.AZURE_SPEECH_REGION }}
+      INPUT_DATE: ${{ inputs.publish_date }}
+      INPUT_AWEME_ID: ${{ inputs.aweme_id }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.9"
+      - name: 安装音视频运行环境
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fontconfig fonts-noto-cjk fonts-dejavu-core
+          uv sync --locked --no-editable --no-dev --extra mcp
+      - name: 检查制作配置
+        shell: bash
+        run: |
+          for name in CLOUDFLARE_DATA_API_URL CLOUDFLARE_DATA_API_TOKEN R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE_URL AZURE_SPEECH_KEY AZURE_SPEECH_REGION; do
+            test -n "${!name}" || { echo "缺少制作配置：$name" >&2; exit 1; }
+          done
+      - name: 合成长视频和短视频并交付 R2
+        run: uv run --locked --no-editable --no-dev --extra mcp python -m github_actions finance_render --publish-date "$INPUT_DATE" --aweme-id "$INPUT_AWEME_ID"
+      - name: 保存制作诊断
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finance-render-diagnostics
+          path: |
+            cache/**/tts-diagnostics/**
+            cache/**/production-workflow.json
+          if-no-files-found: ignore
+          retention-days: 7

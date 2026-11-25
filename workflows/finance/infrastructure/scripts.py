@@ -11,6 +11,7 @@ def reserve_source_script(
     collection_code: str,
     workflow: str,
     reservation_minutes: int = 120,
+    aweme_id: str = "",
 ) -> dict:
     """占用一条尚未使用的口播稿，供这次成片使用。"""
     payload = _request(
@@ -20,6 +21,7 @@ def reserve_source_script(
             "collection_code": collection_code,
             "workflow": workflow,
             "reservation_minutes": reservation_minutes,
+            **({"aweme_id": aweme_id} if aweme_id else {}),
         },
     )
     if not isinstance(payload, dict):

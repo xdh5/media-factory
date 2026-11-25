@@ -223,13 +223,14 @@ def finance_get_production_config() -> dict:
     return deepcopy(DEFAULT_PRODUCTION_CONFIG)
 
 
-def finance_get_source_script() -> dict:
+def finance_get_source_script(aweme_id: str = "") -> dict:
     """从已收集的财经文案中选择并临时占用一条未使用的稿件。"""
     try:
         return reserve_source_script(
             collection_code=SOURCE_COLLECTION_CODE,
             workflow=MCP_ID,
             reservation_minutes=SOURCE_RESERVATION_MINUTES,
+            aweme_id=aweme_id,
         )
     except Exception as exc:
         raise _map_error(exc) from exc
