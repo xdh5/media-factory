@@ -21,11 +21,8 @@ env:
   PYTHONPYCACHEPREFIX: ${{ github.workspace }}/cache/pycache
 
 jobs:
-  deploy:
-    name: 部署到 GitHub Pages
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
+    name: 上传看板页面
     runs-on: ubuntu-24.04
     steps:
       - name: 检出代码
@@ -39,6 +36,14 @@ jobs:
         with:
           path: apps/dashboard
 
+  deploy:
+    name: 部署到 GitHub Pages
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    steps:
       - name: 发布 GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
