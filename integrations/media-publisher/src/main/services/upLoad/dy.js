@@ -1,5 +1,7 @@
 import { configureDyPublication } from "./dyPublicationOptions.js";
+import { runWithDyResponse, requireDySuccess } from "./dyApiResponses.js";
 import path from "path";
+import fs from "fs";
 import { setPublishStage, getPublishProgress } from "../publishStage.js";
 import maybeClosePublishWindow from "./closeWindow.js";
 import { resolveDyCreativeStatementLabel } from "../../../shared/creativeStatement.js";
@@ -319,6 +321,8 @@ async function fillDyTitle(page, title) {
 export default async function (page, data, window, event) {
   const isDraftMode =
     data.publishMode === "draft" || data.publishToDraft === true;
+  let publication;
+  let submitting = false;
 
   try {
     // 等待 name=upload-btn 的 input 出现
@@ -440,7 +444,20 @@ export default async function (page, data, window, event) {
 
     const previousUrl = page.url();
     setPublishStage(page, isDraftMode ? "提交抖音草稿" : "提交抖音发布");
-    await clickDyPublish(page, isDraftMode);
+    if (isDraftMode) {
+      await clickDyPublish(page, true);
+    } else {
+      submitting = true;
+      const receipt = await runWithDyResponse(page, "发布作品", response =>
+        new URL(response.url()).pathname === "/web/api/media/aweme/create_v2/" &&
+        response.request().method() === "POST", () => clickDyPublish(page, false), 600000);
+      const body = requireDySuccess(receipt, "发布作品");
+      if (!body.item_id) throw new Error("抖音发布接口未返回作品ID，发布结果待核对，禁止自动重发");
+      publication = { id: String(body.item_id), url: `https://www.douyin.com/video/${body.item_id}`,
+        apiReceipt: { requestPath: receipt.requestPath, httpStatus: receipt.httpStatus, statusCode: body.status_code,
+          requestId: body.extra?.logid }, chapters: data.dyChapters, covers: data.dyCovers };
+      fs.writeFileSync(path.join(path.dirname(path.resolve(data.filePath)), "douyin-publication.json"), JSON.stringify(publication, null, 2));
+    }
     if (isOfficialSchedule) {
       setPublishStage(page, "等待抖音官方预约确认");
       await waitForOfficialScheduleAccepted(page, "抖音", previousUrl, data.title, window);
@@ -462,6 +479,7 @@ export default async function (page, data, window, event) {
       status: true,
       scheduled: isOfficialSchedule,
       officialScheduled: isOfficialSchedule,
+      outcome: publication,
       message: isDraftMode
         ? "保存草稿成功"
         : isOfficialSchedule
@@ -475,6 +493,8 @@ export default async function (page, data, window, event) {
     event.reply("puppeteerFile-done", {
       ...data,
       status: false,
+      needsAttention: submitting,
+      outcome: publication || (submitting ? "unknown" : undefined),
       message: detail.length > 200 ? `${detail.slice(0, 200)}…` : detail,
     });
     console.error("❌ 上传失败", e);

@@ -138,7 +138,7 @@ electron . cli publish -p sph --phone 13800138000 -f /path/to/video.mp4 \
 
 ## 抖音智能章节和自定义封面
 
-单文件发布支持 `--ai-chapters`、`--cover <横封面路径>`、`--portrait-cover <竖封面路径>`。智能章节等待平台 `/aweme/v1/chapter/recommend/get` 返回非空章节后点击保存；自定义封面按 4:3 和 3:4 完整适配后上传并保存。
+单文件发布支持 `--ai-chapters`、`--cover <横封面路径>`、`--portrait-cover <竖封面路径>`。智能章节先监听 `/aweme/v1/chapter/recommend/post` 的启动结果，再等待 `/aweme/v1/chapter/recommend/get` 返回成功状态及非空章节，最后核对保存按钮和编辑器关闭。自定义封面按 4:3 和 3:4 完整适配，选文件前监听 ImageX `CommitImageUpload`，校验图片 URI、上传结果和接口错误，再保存编辑器。正式发布在点击前监听 `/web/api/media/aweme/create_v2/`，必须返回 `status_code=0` 和 `item_id`，随后额外核对作品管理页；`douyin-publication.json` 保存作品 ID、接口回执、章节及双封面上传结果。提交后结果不明时禁止自动重试。
 
 财经账号 `finance` 默认生成智能章节，并要求提供横竖封面。财经发布工作流自动传入本期 `cover.png` 与 `cover-portrait.png`，本地缺失时从 R2 恢复。
 
