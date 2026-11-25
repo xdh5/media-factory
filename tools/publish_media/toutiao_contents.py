@@ -7,7 +7,7 @@ from pathlib import Path
 from tools.database.publication_records import list_publication_records
 from tools.r2_files import download_file
 from .publisher import preview_publication, publish_local_outputs, _save_publication
-from .toutiao_micro_image import select_toutiao_micro_image
+from .toutiao_payload import build_toutiao_publication_payload
 
 
 def publish_finance_toutiao_contents(publish_date: str, account_group: str, production_id: str,
@@ -51,12 +51,15 @@ def publish_finance_toutiao_contents(publish_date: str, account_group: str, prod
                                              production_id=production_id, progress=progress)
                 result['published'].extend(sent['published'])
             else:
+                payload = build_toutiao_publication_payload(manifest, kind)
+                payload_path = output / f'toutiao-{kind}-request.json'
+                payload_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
                 if kind == 'micro':
-                    manifest['micro_image_path'] = select_toutiao_micro_image(manifest)
-                    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
-                    progress(f"微头条配图已指定：{manifest['micro_image_path']}")
-                receipt = run_browser_publish([f'publish-toutiao-{kind}', '--phone',
-                                               task['route']['account_ref'], '--file', str(manifest_path)])
+                    progress(f"微头条配图已指定：{payload['micro_image_path']}")
+                arguments = [f'publish-toutiao-{kind}', '--phone', task['route']['account_ref'], '--file', str(payload_path)]
+                receipt = run_browser_publish(arguments)
+                if receipt.get('status') is not True or not receipt.get('id'):
+                    raise RuntimeError(receipt.get('message') or f'头条{kind}未返回成功状态和作品ID，禁止登记成功')
                 saved = _save_publication({'item': {**item, 'production_id': publication_id}, 'route': task['route']},
                                          {'result': receipt, 'publish_mode': 'immediate',
                                           'publish_at': datetime.now().astimezone().isoformat()}, 'finance')

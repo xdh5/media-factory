@@ -79,13 +79,16 @@ electron . cli publish -p dy --phone 13800138000 -f /path/to/video.mp4 -t "标�
 | `--phone` / `--partition` | 会话分区，与账号树一致                                                     |
 | `-t` / `--title`          | **视频标题**（必填）→ `data.bt1`                                           |
 | `--name` / `--book-name`  | **名称**（任务记录名）→ `bookName`；省略时默认与视频文件名（无扩展名）一致 |
-| `--bt2`                   | **概括短标题** → `data.bt2`；省略时默认与视频标题一致（视频号等场景）      |
+| `--bt2`                   | **概括短标题** → `data.bt2`；由发布业务明确提供                           |
 | `--tags` / `--bq`         | **视频标签** → `data.bq`                                                   |
 | `--address`               | **地址** → `data.address`（仅百家号）                                      |
 | `--publish-at`            | 一次性定时发布，格式 `YYYY-MM-DD HH:mm:ss`；抖音、快手、视频号、百家号、头条和小红书使用平台官方定时 |
 | `--show`                  | 显示视频号、抖音、快手、B站或头条发布窗口                                                |
 | `--no-close-window`       | 发布后不自动关窗                                                           |
 | `--draft`                 | 保存到平台草稿箱，不直接发布                                               |
+| `--declare-original`      | 按业务请求声明视频号原创                                                   |
+| `--generate-image-text`   | 头条生成图文选项，显式传 `true` 或 `false`                                  |
+| `--system-cover-index`    | 头条系统候选封面索引，从零开始；使用自定义封面时无需提供                     |
 | `--sph-product-id`        | 视频号商品上架快捷参数（商品编号）；其他平台忽略                           |
 | `--sph-link-type`         | 视频号链接类型，当前支持 `none` / `product`；其他平台忽略                  |
 | `--sph-link-value`        | 视频号商品编号；可单独传（默认按商品上架）                                 |
@@ -140,12 +143,12 @@ electron . cli publish -p sph --phone 13800138000 -f /path/to/video.mp4 \
 
 单文件发布支持 `--ai-chapters`、`--cover <横封面路径>`、`--portrait-cover <竖封面路径>`。智能章节先监听 `/aweme/v1/chapter/recommend/post` 的启动结果，再等待 `/aweme/v1/chapter/recommend/get` 返回成功状态及非空章节，最后核对保存按钮和编辑器关闭。自定义封面按 4:3 和 3:4 完整适配，选文件前监听 ImageX `CommitImageUpload`，校验图片 URI、上传结果和接口错误，再保存编辑器。正式发布在点击前监听 `/web/api/media/aweme/create_v2/`，必须返回 `status_code=0` 和 `item_id`，随后额外核对作品管理页；`douyin-publication.json` 保存作品 ID、接口回执、章节及双封面上传结果。提交后结果不明时禁止自动重试。
 
-财经账号 `finance` 默认生成智能章节，并要求提供横竖封面。财经发布工作流自动传入本期 `cover.png` 与 `cover-portrait.png`，本地缺失时从 R2 恢复。
+财经发布业务 MCP 指定智能章节，并校验横竖封面，传入本期 `cover.png` 与 `cover-portrait.png`；本地缺失时从 R2 恢复。publisher 根据 `--ai-chapters` 和封面路径执行，不判断账号组。
 
 
 ## 快手自定义封面
 
-快手发布使用 `--cover <3:4封面路径>`。视频上传完成后，发布器进入封面设置的上传封面页，上传图片，选择3:4并确认。财经账号必须提供封面；财经工作流自动使用本期 `cover-portrait.png`。
+快手发布使用 `--cover <3:4封面路径>`。视频上传完成后，发布器进入封面设置的上传封面页，上传图片，选择3:4并确认。财经业务 MCP 校验并指定本期 `cover-portrait.png`。
 
 
 ## 视频号双封面
@@ -166,6 +169,18 @@ electron . cli publish -p sph --phone 13800138000 -f /path/to/video.mp4 \
 
 ## 头条上传和发布接口回执
 
+发布业务MCP从本期三张预制插图中随机指定微头条配图，保存 `toutiao-micro-image.json` 并写入执行请求的 `micro_image_path`。请求中的 `micro_text` 已包含完整话题文案。publisher只上传指定文件和填写指定文字，缺少路径时报错。
+
 视频监听 `/xigua/api/upload/PublishVideo`，要求 status=0、data.Code=0；文章监听 `/mp/agw/article/publish`，微头条监听 `/mp/agw/article/wtt`。正式提交必须取得成功响应及作品ID，并保存各自的 toutiao-类型-publication.json；作品长整数ID从原始JSON读取，避免精度丢失。提交后结果不明时停止自动重试。
 
-自定义封面、文章三张插图和微头条配图在操作前监听 ImageX CommitImageUpload 或头条素材上传接口，核对图片URI和成功状态，逐张记录回执，再核对页面图片加载状态。发布成功确认不使用固定sleep。
+自定义封面、文章三张插图和微头条配图在操作前监听实际上传接口，核对图片URI和成功状态，逐张记录回执，再核对页面图片加载状态。视频封面监听 `/video/openapi/v1/?action=GetImageUploadInfos`，要求 code=2000 并返回 data[0].result_uri。发布成功确认不使用固定sleep。
+
+头条当前图片上传接口为 `/spice/image`，成功响应 code=0、data.image_uri。微头条允许配图预览保留本地blob地址，上传成功以接口回执为准。上传日志逐项记录实际接口路径、HTTP状态、业务状态和图片URI；未匹配的上传及提交接口另记录响应字段，便于定位平台变更。
+
+无界面CLI关闭上传窗口后，先输出命令结果再退出。Python调用方通过本次独立临时回执文件读取JSON，保留真实失败阶段和错误信息；头条文章、微头条必须返回成功状态和作品ID才写入发布记录。
+
+微头条重填前清理草稿残留配图。文章图片按来源去重核对，主动加载懒加载图片；图片成功以接口回执为准，不等待整个页面网络空闲。头条提交响应另存为 toutiao-类型-submit-response.json。提交结果不明时禁止盲目重发。
+
+文章封面使用单图模式，通过上传面板专用确认按钮保存，并核对指定图片URI。正式提交后查询文章状态接口，必须为非草稿、标题及作品ID相符、封面URI一致。
+
+封面模式和封面图片由页面现有组件的回调同步到编辑器状态，原生单选框的 checked 值不能作为保存依据。上传成功后使用接口返回的图片信息设置单张封面，并在正式提交后回读平台记录核对URI。

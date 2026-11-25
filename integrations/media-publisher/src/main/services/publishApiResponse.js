@@ -19,7 +19,8 @@ export async function runWithPublishResponse(page, label, matches, action, timeo
   try {
     const [response] = await Promise.all([pending, Promise.resolve().then(action)]);
     const url = new URL(response.url());
-    const requestPath = url.pathname + (url.searchParams.has("Action") ? `?Action=${url.searchParams.get("Action")}` : "");
+    const actionName = url.searchParams.get('Action') || url.searchParams.get('action');
+    const requestPath = url.pathname + (actionName ? `?Action=${actionName}` : "");
     const context = getPublishProgress(page);
     console.log("[发布接口响应]", JSON.stringify({ ...context, operation: label, requestPath, httpStatus: response.status() }));
     if (!response.ok()) throw new Error(`${label}接口返回HTTP ${response.status()}`);

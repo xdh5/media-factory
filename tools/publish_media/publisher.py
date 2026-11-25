@@ -7,6 +7,7 @@ import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from copy import deepcopy
 from pathlib import Path
+import re
 
 from tools.database.production_records import commit_production_outputs
 from tools.database.publication_records import commit_publication_records, list_publication_records
@@ -199,6 +200,13 @@ def _target(item: dict, route: dict) -> dict:
                       portrait_thumbnail_path=item["portrait_cover_path"])
     if platform == "wechat_channels" and item.get("business_line") == "finance":
         target.update(thumbnail_path=item["cover_path"], portrait_thumbnail_path=item["portrait_cover_path"])
+    if platform == "wechat_channels":
+        target["declare_original"] = True
+        target["bt2"] = re.sub(r'''[，。、/,;:!?'"()\[\]{}<>]''', " ", target["bt2"])
+    if platform == "toutiao":
+        target["generate_image_text"] = False
+        if item.get("business_line") != "finance":
+            target["system_cover_index"] = 0
     if platform == "kuaishou" and item.get("business_line") == "finance":
         target["thumbnail_path"] = item["portrait_cover_path"]
     if platform in {'youtube', 'bilibili'} and item.get('business_line') == 'finance':
@@ -213,6 +221,25 @@ def _target(item: dict, route: dict) -> dict:
         target['description'] = description_path.read_text(encoding='utf-8').strip()
     if platform in {"youtube", "toutiao"} and item.get("business_line") == "finance":
         target["thumbnail_path"] = item["widescreen_cover_path"]
+    if item.get("business_line") == "finance":
+        required_covers = {
+            "douyin": ("thumbnail_path", "portrait_thumbnail_path"),
+            "wechat_channels": ("thumbnail_path", "portrait_thumbnail_path"),
+            "kuaishou": ("thumbnail_path",),
+            "bilibili": ("thumbnail_path", "widescreen_thumbnail_path"),
+            "youtube": ("thumbnail_path",),
+            "toutiao": ("thumbnail_path",),
+        }.get(platform, ())
+        for field in required_covers:
+            if not target.get(field) or not Path(target[field]).is_file():
+                raise ValueError(f"财经 {platform} 发布缺少封面文件：{field}")
+    if platform == "xiaohongshu":
+        target["title"] = target["title"][:20]
+        target["tags"] = " ".join(target["tags"].split()[:10])
+    if platform == "youtube":
+        target["title"] = target["title"][:100]
+        target["youtube_options"] = {"privacy_status": "public", "category_id": "24",
+                                     "language": "zh", "made_for_kids": False}
     if platform in PUBLIC_URL_PLATFORMS:
         target["video_url"] = _public_video_url(item)
     return target

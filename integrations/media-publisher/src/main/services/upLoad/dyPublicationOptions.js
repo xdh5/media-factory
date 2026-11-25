@@ -126,10 +126,6 @@ export async function uploadDyCovers(page, landscape, portrait) {
 
 export async function configureDyPublication(page, data) {
   const options = data.publishOptions || {};
-  const finance = data.phone === "finance";
-  if (options.dyAiChapters || finance) data.dyChapters = await generateDyChapters(page);
-  if (finance && (!options.coverPath || !options.portraitCoverPath)) {
-    throw new Error("财经抖音发布必须提供横竖自定义封面");
-  }
+  if (options.dyAiChapters) data.dyChapters = await generateDyChapters(page);
   if (options.coverPath) data.dyCovers = await uploadDyCovers(page, options.coverPath, options.portraitCoverPath);
 }

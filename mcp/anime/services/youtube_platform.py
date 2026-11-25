@@ -143,10 +143,10 @@ def ensure_playlist_video(route: dict, playlist_title: str, video_id: str,
                     "playlist_url": f"https://www.youtube.com/playlist?list={playlist_id}"}
 
 
-def recover_youtube_upload(route: dict, attempt: dict, thumbnail: Path) -> dict:
+def recover_youtube_upload(route: dict, attempt: dict) -> dict:
     from googleapiclient.discovery import build
     from platform_api.youtube._transport import authorized_http
-    from platform_api.youtube.publish_to_youtube import _apply_thumbnail, _find_existing_video, _load_credentials
+    from platform_api.youtube.publish_to_youtube import _find_existing_video, _load_credentials
     from platform_api.account_registry import account_context
 
     channel_id = route["platform_account_id"]
@@ -158,7 +158,7 @@ def recover_youtube_upload(route: dict, attempt: dict, thumbnail: Path) -> dict:
                 raise AnimeError("YouTube 上传结果待核对，频道暂未查到匹配的视频。请核查频道上传记录后再处理。",
                                  {"channel_id": channel_id, "upload_tag": attempt["upload_tag"]})
             video_id = existing["video_id"]
-            _apply_thumbnail(youtube, video_id, thumbnail)
+            actual = existing['status']
     return {"video_id": video_id, "video_url": f"https://www.youtube.com/watch?v={video_id}",
-            "channel_id": channel_id, "privacy_status": "public", "publish_at": None,
-            "scheduled": False, "reused": True}
+            "channel_id": channel_id, "privacy_status": actual.get('privacyStatus'), "publish_at": actual.get('publishAt'),
+            "scheduled": actual.get('publishAt') is not None, "reused": True}

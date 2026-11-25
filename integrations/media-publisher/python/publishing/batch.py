@@ -28,6 +28,10 @@ def _target_from_item(item: dict, platform: str) -> dict:
         "portrait_thumbnail_path": _text(item.get("portrait_thumbnail_path")),
         "widescreen_thumbnail_path": _text(item.get("widescreen_thumbnail_path")),
         "ai_chapters": item.get("ai_chapters") is True,
+        "declare_original": item.get("declare_original") is True,
+        "generate_image_text": item.get("generate_image_text"),
+        "system_cover_index": item.get("system_cover_index"),
+        "youtube_options": item.get("youtube_options") or {},
         "category": _text(item.get("category")),
         "video_url": _text(item.get("video_url")),
         "tags": _text(item.get("tags")),
@@ -73,6 +77,10 @@ def expand_request(request: dict) -> list[dict]:
 
 
 def _check_target(target: dict, spec: PlatformSpec) -> None:
+    if spec.code == "youtube":
+        for field in ("privacy_status", "category_id", "language", "made_for_kids"):
+            if field not in target["youtube_options"]:
+                raise PublishError(f"发布业务必须指定 youtube_options.{field}")
     if (spec.connector == "browser" or spec.code == "youtube") and not target["file"]:
         raise PublishError(f"发布到 {spec.code} 需要本地 file")
     if spec.connector == "official" and spec.code != "youtube" and not target["video_url"]:
@@ -98,15 +106,19 @@ def _publish_official_with_context(target: dict, account: dict, spec: PlatformSp
     from platform_api.youtube.publish_to_youtube import publish_to_youtube
 
     publish_at = timing["cli_publish_at"]
-    description = target["description"] or target["title"]
+    description = target["description"]
     if spec.code == "youtube":
+        options = target["youtube_options"]
         return publish_to_youtube(
             account["account_id"],
             target["file"],
             target["title"],
             description=description,
             account=account["account_group"],
-            privacy_status="public",
+            privacy_status=options["privacy_status"],
+            category_id=options["category_id"],
+            language=options["language"],
+            made_for_kids=options["made_for_kids"],
             publish_at=publish_at,
             publication_id=target["publication_id"],
             thumbnail_path=target["thumbnail_path"] or None,
@@ -139,11 +151,17 @@ def _publish_browser(target: dict, account: dict, spec: PlatformSpec, timing: di
         "publish", "-p", spec.cli,
         "-f", target["file"],
         "--title", target["title"],
-        "--description", target["description"] or target["title"],
+        "--description", target["description"],
         "--name", target["title"],
         "--phone", account["account_group"],
-        "--creative-statement", target["creative_statement"] or "ai_generated",
+        "--creative-statement", target["creative_statement"] or "none",
     ]
+    if target["declare_original"]:
+        arguments.append("--declare-original")
+    if target["generate_image_text"] is not None:
+        arguments.extend(["--generate-image-text", str(target["generate_image_text"]).lower()])
+    if target["system_cover_index"] is not None:
+        arguments.extend(["--system-cover-index", str(target["system_cover_index"])])
     if spec.code == 'bilibili':
         if target['widescreen_thumbnail_path']:
             arguments.extend(['--widescreen-cover', target['widescreen_thumbnail_path']])

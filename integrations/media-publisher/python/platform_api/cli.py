@@ -94,12 +94,12 @@ def _publish(args: argparse.Namespace) -> dict:
         return publish_to_tiktok(
             account_id,
             args.video_url,
-            args.description or args.title or "",
+            args.description or "",
             account=group,
             publish_at=publish_at,
         )
     if platform == "instagram":
-        return publish_to_instagram(account_id, args.video_url, args.description or args.title or "", publish_at=publish_at)
+        return publish_to_instagram(account_id, args.video_url, args.description or "", publish_at=publish_at)
     if platform == "facebook":
         return publish_to_facebook(
             account_id,

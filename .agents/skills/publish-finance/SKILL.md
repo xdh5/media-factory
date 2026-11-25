@@ -48,14 +48,14 @@ description: 发布或预约指定计划日期的财经内容，默认覆盖视�
 
 ## 头条：视频、文章、微头条
 
-三类内容独立发布、独立预检和记录，互不触发。默认发布财经时三类都执行；用户限定类型时只执行对应项。在 `integrations/media-publisher` 构建后执行，`--file` 指向财经生产清单：
+三类内容独立发布、独立预检和记录，互不触发。默认发布财经时三类都执行；用户限定类型时只执行对应项。业务 MCP 生成独立执行请求，包含完整文案、素材路径、AI 声明、首发和同步选项。在 `integrations/media-publisher` 构建后执行，`--file` 指向对应的执行请求：
 
 优先用 `publishing_start_batch` 后台执行：platforms 选 toutiao，publications 条目传本期 publish_date、production_id、publish_mode=immediate、publish_at=now、toutiao_content_types=["video","article","micro"]。后台恢复本期定稿、依次发布、按类型去重并立即入库，无需宿主持续轮询。只发部分类型时缩小列表。预约视频沿用普通统一发布；需要单独诊断某类时使用下列独立 CLI。
 
 ```powershell
-.\node_modules\.bin\electron.cmd . cli publish-toutiao-video --phone finance --file <manifest.json>
-.\node_modules\.bin\electron.cmd . cli publish-toutiao-article --phone finance --file <manifest.json>
-.\node_modules\.bin\electron.cmd . cli publish-toutiao-micro --phone finance --file <manifest.json>
+.\node_modules\.bin\electron.cmd . cli publish-toutiao-video --phone finance --file <toutiao-video-request.json>
+.\node_modules\.bin\electron.cmd . cli publish-toutiao-article --phone finance --file <toutiao-article-request.json>
+.\node_modules\.bin\electron.cmd . cli publish-toutiao-micro --phone finance --file <toutiao-micro-request.json>
 ```
 
 | 类型 | 内容与设置 | 独立回执 |
@@ -66,7 +66,7 @@ description: 发布或预约指定计划日期的财经内容，默认覆盖视�
 
 插图由生产代码将正文对应镜头分三等份，每份随机选一张并保存选择结果。清单、正文、摘要、插图及封面随生产上传 R2，GitHub 同样生成；跨机器先恢复所需资产并更新清单路径，文章和微头条无需恢复视频。
 
-微头条选图及选择记录由发布业务MCP负责，传给publisher的清单必须包含明确的 `micro_image_path`。publisher仅校验并上传指定文件，不随机选图、不使用标题封面补位。
+微头条选图及选择记录由发布业务MCP负责，传给publisher的请求必须包含明确的 `micro_image_path` 和完整的 `micro_text`。publisher仅校验并上传指定文件、填写指定文字，不随机选图、不使用标题封面补位。`tools/publish_media/toutiao_payload.py` 负责生成头条执行请求。
 
 ## YouTube：长视频与 Shorts
 

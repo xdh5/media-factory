@@ -30,11 +30,14 @@ async function fillMetadata(page, metadata) {
   const title = await page.waitForSelector(TITLE_INPUT, { visible: true, timeout: FORM_TIMEOUT_MS });
   await title.click({ clickCount: 3 });
   await page.keyboard.press("Backspace");
-  await page.keyboard.type(Array.from((metadata.bt1 || metadata.bt2 || "").trim()).slice(0, 20).join(""));
+  const suppliedTitle = (metadata.bt1 || "").trim();
+  if (Array.from(suppliedTitle).length > 20) throw new Error("小红书标题超过20字，请由发布业务指定标题");
+  await page.keyboard.type(suppliedTitle);
 
-  const description = (metadata.bdText || metadata.bt2 || "").trim();
+  const description = (metadata.bdText || "").trim();
   const tags = (metadata.bq || "").trim().split(/\s+/)
-    .map((tag) => tag.replace(/^#+/, "")).filter(Boolean).slice(0, 10);
+    .map((tag) => tag.replace(/^#+/, "")).filter(Boolean);
+  if (tags.length > 10) throw new Error("小红书话题超过10个，请由发布业务指定话题");
   if (!description && !tags.length) return;
 
   const editor = await page.waitForSelector(DESCRIPTION_INPUT, { visible: true, timeout: FORM_TIMEOUT_MS });

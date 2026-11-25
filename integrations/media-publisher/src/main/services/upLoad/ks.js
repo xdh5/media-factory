@@ -437,7 +437,6 @@ export default async function (page, data, window,event) {
 
     setPublishStage(page, "设置快手竖版封面");
     const coverPath = data.publishOptions?.coverPath;
-    if (data.phone === "finance" && !coverPath) throw new Error("财经快手发布必须提供3:4封面");
     const cover = coverPath ? await uploadKsCover(page, coverPath) : null;
 
     const isOfficialSchedule = Boolean(data.officialScheduledPublish);

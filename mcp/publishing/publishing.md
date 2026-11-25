@@ -58,10 +58,16 @@ python -m media_factory_mcp.publishing
 | `errors/` | MCP 领域错误与错误映射 |
 | `config/` | 服务说明、缓存路径和 MCP 标识 |
 | `infrastructure/` | 后台任务、D1 与通用发布服务适配入口 |
-| `tools/publish_media/` | 选片、去重、R2 公网地址和发布记录。平台发送调用矩媒 `publishing` |
-| `integrations/media-publisher/python/publishing/` | 账号组、预约时间和各平台发布参数的唯一实现。两个发布 MCP 都调用它 |
+| `tools/publish_media/` | 发布业务服务：选片、去重、素材选择、平台文案、封面规格、章节、原创和 AI 声明策略、R2 公网地址和发布记录 |
+| `integrations/media-publisher/python/publishing/` | 执行适配：解析账号路由、校验平台能力、转换明确的发布参数并调用 CLI 或官方接口 |
 | `integrations/media-publisher/python/platform_api/` | YouTube、TikTok、Instagram、Facebook 的官方接口 |
 
 当前没有独立只读 Resource 和可复用 Prompt，因此不创建空的 `resources/`、`prompts/` 目录。业务服务已经由 `tools/publish_media/` 提供，不在 MCP 内复制一套 `services/`。
+
+业务 MCP 必须给出平台执行参数。publisher 不根据账号组决定封面、章节或声明，不补写文案、不截断标题或话题，也不读取账号默认设置改变本次草稿选项。小红书标题与话题数量由业务服务适配，执行器只校验长度并填写。平台控件操作、话题输入格式、上传协议、接口回执和失败阶段属于执行职责。
+
+头条文章和微头条使用独立的 `toutiao-类型-request.json`，包含明确的 `title`、`description`、`tags`、`creative_statement`、素材路径和 `publish_options`。微头条 `micro_text` 已含完整话题文本，执行器不拼文案。文章首发、同步微头条和引用 AI 分别由 `first_publish`、`sync_micro`、`quote_ai` 指定。视频 `generate_image_text` 通过 CLI 布尔参数传递；不传参数时执行器不改变平台选项。
+
+视频号原创使用 `declare_original`；抖音、B站章节使用 `ai_chapters`；头条系统封面使用业务指定的 `system_cover_index`。YouTube 的 `youtube_options` 指定可见性、分类、语言和儿童受众声明。YouTube 去重与动漫上传恢复只返回已有作品和真实状态，不更新其公开状态或封面。
 
 取消官方平台预约使用 `publishing_start_cancel`，传业务线、计划日期、账号组和平台，随后用 `publishing_poll_task` 查询结果。平台撤销并确认成功后同步删除对应回执；失败项保留回执。YouTube 取消定时公开后保留私密视频，Zernio 删除预约帖子。没有数据库回执不能推断平台没有孤立预约，需另行查询平台。

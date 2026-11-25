@@ -43,7 +43,8 @@ export async function runCliMain(argv = process.argv) {
       return 0;
     }
     const result = await runSingleFilePublish(parsed.value);
-    writeCliJson(result);
+    writeCliJson({ ...result, status: result.exitCode === 0, resultStatus: result.status,
+      ...(typeof result.outcome === 'object' ? result.outcome : {}) });
     return result.exitCode;
   }
 
@@ -151,53 +152,45 @@ export async function runCliMain(argv = process.argv) {
 
     const result = await runSingleFilePublish(v);
     if (result.scheduled) {
-      console.log(
-        JSON.stringify({
-          status: true,
-          scheduled: true,
-          officialScheduled: result.officialScheduled === true,
-          id: result.id,
-          publishAt: result.publishAt,
-          message: result.message,
-          ...result.outcome,
-        })
-      );
+      writeCliJson({
+        status: true,
+        scheduled: true,
+        officialScheduled: result.officialScheduled === true,
+        id: result.id,
+        publishAt: result.publishAt,
+        message: result.message,
+        ...result.outcome,
+      });
     } else if (result.exitCode === 0) {
-      console.log(
-        JSON.stringify({
-          channel: "puppeteerFile-done",
-          status: true,
-          resultStatus: result.status,
-          publishMode: result.publishMode,
-          message: result.message,
-          ...result.outcome,
-        })
-      );
+      writeCliJson({
+        channel: "puppeteerFile-done",
+        status: true,
+        resultStatus: result.status,
+        publishMode: result.publishMode,
+        message: result.message,
+        ...result.outcome,
+      });
     } else if (result.exitCode === 4) {
-      console.log(
-        JSON.stringify({
-          channel: "puppeteerFile-done",
-          status: false,
-          resultStatus: result.status,
-          publishMode: result.publishMode,
-          outcome: result.outcome,
-          needsAttention: true,
-          message: result.message,
-          ...result.outcome,
-        })
-      );
+      writeCliJson({
+        channel: "puppeteerFile-done",
+        status: false,
+        resultStatus: result.status,
+        publishMode: result.publishMode,
+        outcome: result.outcome,
+        needsAttention: true,
+        message: result.message,
+        ...result.outcome,
+      });
     } else if (result.exitCode === 3) {
-      console.log(
-        JSON.stringify({
-          channel: "puppeteerFile-done",
-          status: false,
-          resultStatus: "failed",
-          loginRequired: result.loginRequired === true,
-          realSessionProbe: result.realSessionProbe === true,
-          supportsQrLogin: result.supportsQrLogin === true,
-          message: result.message || "登录态异常或未登录",
-        })
-      );
+      writeCliJson({
+        channel: "puppeteerFile-done",
+        status: false,
+        resultStatus: "failed",
+        loginRequired: result.loginRequired === true,
+        realSessionProbe: result.realSessionProbe === true,
+        supportsQrLogin: result.supportsQrLogin === true,
+        message: result.message || "登录态异常或未登录",
+      });
       console.error(result.message || "登录态异常或未登录");
       if (v.platform === "抖音" || v.platform === "快手" || v.platform === "视频号" || v.platform === "头条") {
         const loginPlatform = { 抖音: "dy", 快手: "ks", 视频号: "sph", 头条: "tt" }[v.platform];
@@ -206,6 +199,7 @@ export async function runCliMain(argv = process.argv) {
         );
       }
     } else if (result.message) {
+      writeCliJson({ ...result, status: false, resultStatus: result.status });
       console.error(result.message);
     }
     return result.exitCode;

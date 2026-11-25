@@ -537,15 +537,9 @@ export default async function (page, data, window, event, onFinish) {
   }
 
   const suppliedDescription = String(data.data.bdText || "").trim();
-  const description = suppliedDescription || [data.data.bt2, data.data.bq]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean)
-    .join(" ");
-  const shortTitle = (data.data.bt2Filled || data.data.bt2 || "").trim();
-  const normalizedShortTitle = shortTitle.replace(
-    /[，。、\/,;:!?'"()\[\]{}<>]/g,
-    " "
-  );
+  const description = suppliedDescription;
+  const shortTitle = (data.data.bt2 || "").trim();
+  const normalizedShortTitle = shortTitle;
   try {
     if (!description) throw new Error("视频号描述不能为空");
     setPublishStage(page, "填写视频号描述和短标题");
@@ -626,13 +620,12 @@ export default async function (page, data, window, event, onFinish) {
 
     setPublishStage(page, "设置视频号主页和分享封面");
     const { coverPath, portraitCoverPath } = data.publishOptions || {};
-    if (data.phone === "finance" && (!coverPath || !portraitCoverPath)) {
-      throw new Error("财经视频号发布必须提供3:4和4:3两张封面");
-    }
     if (coverPath && portraitCoverPath) await uploadSphCovers(page, portraitCoverPath, coverPath);
 
-    setPublishStage(page, "声明并核验视频号原创");
-    await declareSphOriginal(page);
+    if (data.publishOptions?.declareOriginal === true) {
+      setPublishStage(page, "声明并核验视频号原创");
+      await declareSphOriginal(page);
+    }
 
     const isOfficialSchedule = Boolean(data.officialScheduledPublish);
     if (isOfficialSchedule) {

@@ -262,11 +262,11 @@ async function clickToutiaoFooterAction(page, { draft }) {
   if (!clicked || !clicked.ok) throw new Error(`未找到${label}`)
 }
 
-async function setToutiaoCover(page, hasTagSelector, setPublishStage) {
+async function setToutiaoCover(page, hasTagSelector, setPublishStage, systemCoverIndex) {
   const coverMode = getToutiaoCoverMode({ hasTagSelector })
   const coverItemSelector = getToutiaoCoverItemSelector()
   // 新版头条不再让用户从系统封面里挑一张，弹窗一打开就能直接「下一步」。
-  // 给候选图一个短超时，找到就挑第一张兼容老版；找不到直接跳过进入下一步。
+  // 候选图使用业务指定的索引；新版无候选图时继续封面确认流程。
   let coverItems = []
   try {
     await page.waitForSelector(coverItemSelector, {
@@ -278,7 +278,8 @@ async function setToutiaoCover(page, hasTagSelector, setPublishStage) {
     /* 新版无候选图，跳过 */
   }
   if (coverItems.length) {
-    await coverItems[0].evaluate(element => {
+    if (!coverItems[systemCoverIndex]) throw new Error(`头条系统封面索引不存在：${systemCoverIndex}`)
+    await coverItems[systemCoverIndex].evaluate(element => {
       element.scrollIntoView({ block: 'center', inline: 'center' })
       element.click()
     })
@@ -681,10 +682,13 @@ export default async function (page, data, window, event) {
     if (data.publishOptions?.coverPath) {
       await uploadToutiaoVideoCover(page, data.publishOptions.coverPath)
     } else {
-      await setToutiaoCover(page, hasTagSelector, stage => { publishStage = stage; setPublishStage(page, `头条封面：${stage}`) })
+      if (!Number.isInteger(data.publishOptions?.systemCoverIndex)) throw new Error('发布业务必须指定自定义封面或系统封面索引')
+      await setToutiaoCover(page, hasTagSelector, stage => { publishStage = stage; setPublishStage(page, `头条封面：${stage}`) }, data.publishOptions.systemCoverIndex)
     }
-    setPublishStage(page, '关闭头条生成图文并填写视频简介')
-    await setToutiaoCheckbox(page, '生成图文', false)
+    setPublishStage(page, '设置头条生成图文选项并填写视频简介')
+    if (typeof data.publishOptions?.generateImageText === 'boolean') {
+      await setToutiaoCheckbox(page, '生成图文', data.publishOptions.generateImageText)
+    }
     const description = await page.$('textarea[placeholder="请输入视频简介"]')
     await description.evaluate((element, value) => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(element, value)
@@ -731,7 +735,7 @@ export default async function (page, data, window, event) {
     }
     if (!shouldSaveDraft && !isOfficialSchedule) {
       setPublishStage(page, '等待头条视频进入作品管理')
-      await page.waitForFunction(() => location.pathname === '/profile_v4/xigua/content-manage-v2', { timeout: 60000 })
+      await page.waitForFunction(() => /\/profile_v4\/(xigua\/content-manage|manage\/content)/.test(location.pathname), { timeout: 60000 })
     }
     console.log(
       shouldSaveDraft ? '✅ 头条号视频已保存草稿' : '✅ 头条号视频上传成功'

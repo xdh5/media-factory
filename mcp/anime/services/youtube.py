@@ -134,7 +134,7 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
             attempt = json.loads(attempt_path.read_text(encoding="utf-8")) if attempt_path.is_file() else {}
             if (not confirmed_invalid and attempt.get("video_sha256") == digest
                     and attempt.get("channel_id") == route["platform_account_id"]):
-                result = recover_youtube_upload(route, attempt, thumbnail)
+                result = recover_youtube_upload(route, attempt)
                 publish_title = attempt["title"]
             else:
                 write_json(attempt_path, {"channel_id": route["platform_account_id"], "video_sha256": digest,
@@ -144,6 +144,7 @@ def publish_youtube(manifest_path: str, titles: list[str], descriptions: list[st
                 with account_context(route) as account:
                     result = publish_to_youtube(route["platform_account_id"], path, title,
                         description=description, tags=tags, account=account, privacy_status="public",
+                        category_id="24", language="zh", made_for_kids=False,
                         publication_id=run_id, thumbnail_path=thumbnail,
                         on_progress=lambda percent, message: progress(f"YouTube：{message}（{percent:.1%}）") if progress else None)
                 publish_title = title

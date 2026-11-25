@@ -6,12 +6,19 @@ import { submitToutiaoContent, uploadToutiaoImages } from "./ttApiResponses.js";
 
 export async function fillToutiaoMicro(page, manifest) {
   setPublishStage(page, "填写微头条摘要、话题和配图");
-  if (!manifest.micro_summary?.trim()) throw new Error("缺少与标题标签一起定稿的微头条摘要");
+  if (!manifest.micro_text?.trim()) throw new Error("发布业务未指定微头条完整正文 micro_text");
   await page.waitForSelector('.ProseMirror[contenteditable="true"]', { timeout: 30000 });
   await clearToutiaoEditor(page);
+  setPublishStage(page, '清理微头条草稿残留配图');
+  for (let count = await page.$$eval('.img-box-item', nodes => nodes.length); count > 0; count--) {
+    await page.$eval('.img-box-item .image-remove-btn', element => element.click());
+    await page.waitForFunction(expected => document.querySelectorAll('.img-box-item').length === expected,
+      { timeout: 10000, polling: 100 }, count - 1);
+  }
+  setPublishStage(page, '上传本期微头条配图');
   console.log('[微头条配图上传]', JSON.stringify({ imagePath: manifest.micro_image_path }));
   const picture = fs.readFileSync(manifest.micro_image_path).toString("base64");
-  const content = manifest.micro_summary + "\n\n" + manifest.hashtags.map(tag => `#${tag}#`).join(" ");
+  const content = manifest.micro_text;
   await uploadToutiaoImages(page, '微头条配图上传', 1, () => page.evaluate((text, image) => {
     const editor = document.querySelector('.ProseMirror[contenteditable="true"]');
     editor.focus();
@@ -21,12 +28,14 @@ export async function fillToutiaoMicro(page, manifest) {
     editor.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }));
   }, content, picture));
   setPublishStage(page, "等待微头条配图上传完成");
-  await page.waitForFunction(() => {
-    const images = [...document.querySelectorAll('.img-box-item .item')];
-    return images.length === 1 && images[0].style.backgroundImage.includes("https://");
-  }, { timeout: 60000, polling: 250 });
+  console.log('[微头条配图状态]', JSON.stringify(await page.evaluate(() => ({
+    counter: document.body.innerText.match(/共.{0,20}张/g),
+    previewCount: document.querySelectorAll('.img-box-item').length,
+  }))));
+  // 配图预览使用本地blob；上传结果以接口为准，页面只核对已添加的图片数量。
+  await page.waitForFunction(() => /共\s*1\s*张/.test(document.body.innerText), { timeout: 60000, polling: 250 });
   setPublishStage(page, "设置微头条引用AI声明");
-  await setToutiaoCheckbox(page, "引用AI", true);
+  await setToutiaoCheckbox(page, "引用AI", manifest.publish_options.quote_ai);
 }
 
 export async function publishToutiaoMicro(page, data, window, event) {
