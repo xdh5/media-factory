@@ -1,9 +1,11 @@
+import { setPublishStage } from "../publishStage.js";
 import path from "path";
 import fs from "fs";
 
 export async function uploadSphCover(page, filename, share = false) {
   const selector = share ? ".horizon-cover-wrap" : ".vertical-cover-wrap";
   const heading = share ? "编辑分享卡片" : "编辑个人主页卡片";
+  setPublishStage(page, `打开视频号${heading}封面编辑器`);
   console.log(`[sph] 正在打开${heading}`);
   const edit = await page.waitForSelector(`wujie-app.wujie_iframe >>> ${selector} .edit-btn`, { visible: true, timeout: 30000 });
   await edit.click();
@@ -35,8 +37,10 @@ export async function uploadSphCover(page, filename, share = false) {
   const expectedImage = `data:image/png;base64,${fs.readFileSync(path.resolve(filename)).toString("base64")}`;
   const input = await page.$('wujie-app.wujie_iframe >>> .single-cover-uploader-wrap > input[type="file"]');
   const chooserReady = page.waitForFileChooser({ timeout: 15000 });
+  setPublishStage(page, `上传视频号${heading}封面图片`);
   await input.evaluate(element => element.click());
   await (await chooserReady).accept([path.resolve(filename)]);
+  setPublishStage(page, `核验视频号${heading}封面载入内容`);
   const expectedHash = await page.evaluate(async source => {
     const image = new Image();
     image.src = source;
@@ -70,6 +74,7 @@ export async function uploadSphCover(page, filename, share = false) {
       throw new Error("4:3封面原图尚未就绪，停止发表，未提交作品");
     });
   }
+  setPublishStage(page, `保存视频号${heading}封面`);
   await page.evaluate(title => {
     const root = (document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document);
     const dialog = [...root.querySelectorAll(".weui-desktop-dialog")].find(element =>
@@ -102,6 +107,7 @@ export async function verifySphRemoteCover(page, filename, share = false) {
     const video = (document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document).querySelector(".cover-preview-wrap").__vue__.video;
     return isShare ? video.shareCoverUrl : video.coverUrl;
   }, share);
+  setPublishStage(page, `核对视频号${heading}远端封面`);
   const response = await fetch(remoteUrl, { signal: AbortSignal.timeout(30000) });
   if (!response.ok) throw new Error(`${heading}远端图片读取失败：HTTP ${response.status}`);
   const savedImage = Buffer.from(await response.arrayBuffer());

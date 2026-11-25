@@ -1,3 +1,4 @@
+import { setPublishStage } from "../publishStage.js";
 import fs from "fs";
 import path from "path";
 
@@ -46,6 +47,7 @@ export async function setToutiaoCheckbox(page, label, checked) {
 }
 
 export async function uploadToutiaoArticleCover(page, filename) {
+  setPublishStage(page, "打开头条文章封面编辑器");
   await page.$eval('.article-cover', element => [...element.querySelectorAll('label')].find(label => label.textContent.trim() === '单图').click());
   await page.waitForFunction(() => [...document.querySelectorAll('.article-cover label')].some(label => label.textContent.trim() === '单图' && label.querySelector('input').checked), { polling: 100 });
   const replace = await page.$('.article-cover-img-replace');
@@ -53,10 +55,12 @@ export async function uploadToutiaoArticleCover(page, filename) {
   else await page.$eval('.article-cover-add', element => element.click());
   await clickToutiaoText(page, "上传图片");
   const input = await page.waitForSelector('.btn-upload-handle input[type=file]', { timeout: 15000 });
+  setPublishStage(page, "上传头条文章封面图片");
   await input.uploadFile(path.resolve(filename));
   await page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 });
   await page.waitForFunction(() => [...document.querySelectorAll('button')].some(element =>
     element.textContent.trim() === "确定" && !element.disabled && element.getBoundingClientRect().width > 0), { timeout: 60000, polling: 100 });
+  setPublishStage(page, "保存头条文章封面");
   await clickToutiaoText(page, "确定");
   await page.waitForFunction(() => ![...document.querySelectorAll('button')].some(element =>
     element.textContent.trim() === "本地上传" && element.getBoundingClientRect().width > 0), { timeout: 15000, polling: 100 });
@@ -82,12 +86,14 @@ export async function fillToutiaoArticle(page, manifestPath) {
     }
     return result;
   }).join("");
+  setPublishStage(page, "填写头条文章标题");
   await page.waitForSelector('textarea[placeholder*="文章标题"]', { timeout: 30000 });
   await page.evaluate(title => {
     const input = document.querySelector('textarea[placeholder*="文章标题"]');
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(input, title);
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }, article.title);
+  setPublishStage(page, "填写头条文章正文和三张插图");
   await clearToutiaoEditor(page);
   await page.evaluate(content => {
     const editor = document.querySelector('.ProseMirror[contenteditable="true"]');
@@ -96,7 +102,9 @@ export async function fillToutiaoArticle(page, manifestPath) {
     clipboard.setData("text/html", content);
     editor.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }));
   }, html);
+  setPublishStage(page, "等待头条文章插图上传完成");
   await waitToutiaoArticleImagesReady(page);
+  setPublishStage(page, "设置头条首发并关闭同步微头条");
   await setToutiaoCheckbox(page, "头条首发", true);
   await setToutiaoCheckbox(page, "同时发布微头条", false);
   return article;

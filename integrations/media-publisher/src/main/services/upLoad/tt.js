@@ -1,3 +1,4 @@
+import { setPublishStage } from "../publishStage.js";
 import fs from 'fs'
 import { uploadToutiaoVideoCover } from './ttVideoCover.js'
 import { saveToutiaoPublicationResult } from './ttPublishResult.js'
@@ -593,6 +594,7 @@ export default async function (page, data, window, event) {
 
   console.log(data)
   console.log('[tt] 开始：等待上传 input')
+  setPublishStage(page, '等待头条视频上传控件')
   try {
     // 新老兼容：.byte-upload 是老版；新版可能挂在别的容器，加 OR 兜底
     const UPLOAD_SELECTORS = [
@@ -607,6 +609,7 @@ export default async function (page, data, window, event) {
     const uploadInputs = await page.$$(uploadSelector)
     if (!uploadInputs.length) throw new Error('未找到头条上传 input')
     const uploadFileHandle = uploadInputs[0]
+    setPublishStage(page, '上传头条视频文件')
     await uploadFileHandle.uploadFile(path.resolve(data.filePath))
     console.log('[tt] 文件已 uploadFile')
   } catch (err) {
@@ -614,6 +617,7 @@ export default async function (page, data, window, event) {
   }
 
   console.log('[tt] 开始：等待标题输入框')
+  setPublishStage(page, '填写头条视频标题')
   try {
     // 新版标题输入框 placeholder 可能变化，多个候选 OR
     const TITLE_SELECTORS = [
@@ -647,6 +651,7 @@ export default async function (page, data, window, event) {
   }
   // 勾选「视频来源」声明（无标注则不勾选）—— 与横/竖屏无关，提前到上传等待之前执行
   try {
+    setPublishStage(page, '设置头条视频创作声明')
     await selectTtCreativeStatement(page, data)
   } catch (e) {
     console.warn('头条创作声明勾选未完成:', e?.message || e)
@@ -655,6 +660,7 @@ export default async function (page, data, window, event) {
   // 设置封面
   try {
     publishStage = '等待上传进度完成'
+    setPublishStage(page, '等待头条视频上传完成')
     console.log('等待上传进度到 100%')
     await waitForToutiaoUploadProgressComplete(page)
 
@@ -662,17 +668,20 @@ export default async function (page, data, window, event) {
     // 不再依赖旧版那个误中作品声明的 nth-child(5) selector。
     hasTagSelector = await detectToutiaoHorizontal(page)
     publishStage = '打开封面设置'
+    setPublishStage(page, '打开头条封面设置')
     // 开始设置封面
     console.log('开始设置封面')
     await page.waitForTimeout(2000)
     await openToutiaoCoverDialog(page)
     console.log('封面弹窗已打开')
     publishStage = '调整封面'
+    setPublishStage(page, '上传和调整头条视频封面')
     if (data.publishOptions?.coverPath) {
       await uploadToutiaoVideoCover(page, data.publishOptions.coverPath)
     } else {
-      await setToutiaoCover(page, hasTagSelector, stage => { publishStage = stage })
+      await setToutiaoCover(page, hasTagSelector, stage => { publishStage = stage; setPublishStage(page, `头条封面：${stage}`) })
     }
+    setPublishStage(page, '关闭头条生成图文并填写视频简介')
     await setToutiaoCheckbox(page, '生成图文', false)
     const description = await page.$('textarea[placeholder="请输入视频简介"]')
     await description.evaluate((element, value) => {
@@ -682,6 +691,7 @@ export default async function (page, data, window, event) {
     await page.waitForTimeout(1000)
 
     publishStage = '等待发布按钮'
+    setPublishStage(page, '等待头条发布按钮可用')
     console.log('[tt] 封面流程后开始等待发布页脚按钮')
     await dumpToutiaoPublishFooterState(page, 'before-footer-ready')
     await waitForToutiaoPublishFooterReady(page)
@@ -696,6 +706,7 @@ export default async function (page, data, window, event) {
     const isOfficialSchedule = Boolean(data.officialScheduledPublish)
     if (isOfficialSchedule) {
       publishStage = '设置平台官方定时发布'
+      setPublishStage(page, '设置头条官方预约时间')
       await setOfficialSchedule(page, '头条', data.publishAt)
     }
     // 草稿：竖屏无标签时不支持保存草稿，直接走发布。
@@ -704,10 +715,12 @@ export default async function (page, data, window, event) {
       publishStage = '平台已预约'
     } else if (shouldSaveDraft) {
       publishStage = '点击保存草稿'
+      setPublishStage(page, '提交头条视频草稿')
       await clickToutiaoFooterAction(page, { draft: true })
     } else {
       // 发布
       publishStage = '点击发布'
+      setPublishStage(page, '提交头条视频发布')
       await clickToutiaoFooterAction(page, { draft: false })
     }
     if (!shouldSaveDraft && !isOfficialSchedule && data.publishOptions?.toutiaoManifestPath) {
@@ -715,6 +728,7 @@ export default async function (page, data, window, event) {
       return await saveToutiaoPublicationResult(page, data, manifest, 'video', event, window)
     }
     if (!shouldSaveDraft && !isOfficialSchedule) {
+      setPublishStage(page, '等待头条视频进入作品管理')
       await page.waitForFunction(() => location.pathname === '/profile_v4/xigua/content-manage-v2', { timeout: 60000 })
     }
     console.log(

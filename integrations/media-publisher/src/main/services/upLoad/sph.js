@@ -1,3 +1,4 @@
+import { setPublishStage } from "../publishStage.js";
 import { resolveSphSurface } from "./sphSurface.js";
 import { uploadSphCovers } from "./sphCover.js";
 import path from "path";
@@ -337,6 +338,7 @@ async function ensureSphFileSelected(page, filePath, attempts = 3) {
 }
 
 async function waitSphUploadProcessing(page) {
+  setPublishStage(page, "等待视频号视频上传和平台处理完成");
   const deadline = Date.now() + WAIT_UPLOAD_PROCESSING_MS;
   let lastProgress = "";
   let lastProgressAt = Date.now();
@@ -372,7 +374,7 @@ async function waitSphUploadProcessing(page) {
         done: !processing && (percentage === null || percentage >= 100) &&
           Boolean(publishGroup && publishGroup.querySelector("button,[role='button']")),
         progress: percentage === null ? "平台处理中" : `${percentage}%`,
-        stallMs: percentage === 0 ? 90000 : percentage !== null && percentage < 100 ? 180000 : 300000,
+        stallMs: 10 * 60 * 1000,
       };
     });
     if (state.done) {
@@ -519,6 +521,7 @@ export default async function (page, data, window, event, onFinish) {
   console.log(data);
   await page.waitForTimeout(1000 * 5);
   page = resolveSphSurface(page);
+  setPublishStage(page, "等待视频号上传控件并选择视频文件");
   try {
     await ensureSphFileSelected(page, path.resolve(data.filePath));
   } catch (err) {
@@ -545,6 +548,7 @@ export default async function (page, data, window, event, onFinish) {
   );
   try {
     if (!description) throw new Error("视频号描述不能为空");
+    setPublishStage(page, "填写视频号描述和短标题");
     await fillSphTextAsBefore(page, description, normalizedShortTitle, {
       shortTitle: Boolean(shortTitle),
     });
@@ -558,6 +562,7 @@ export default async function (page, data, window, event, onFinish) {
     const link = resolveVideoLinkOption("视频号", data.publishOptions);
     if (link && link.enabled === true) {
       try {
+        setPublishStage(page, "添加视频号关联链接");
         const selectedLink = await attachSphVideoLink(page, link);
         console.log(
           `[sph][link] 已添加 ${selectedLink.type} ${selectedLink.value}: ${
@@ -578,6 +583,7 @@ export default async function (page, data, window, event, onFinish) {
     }
 
     try {
+      setPublishStage(page, "设置视频号创作声明");
       await applySphCreativeStatement(
         page,
         data.data && data.data.creativeStatement
@@ -591,6 +597,7 @@ export default async function (page, data, window, event, onFinish) {
 
     await waitSphUploadProcessing(page);
 
+    setPublishStage(page, "核验视频号上传后的描述和短标题");
     let textState = await readSphTextState(
       page,
       description,
@@ -617,20 +624,24 @@ export default async function (page, data, window, event, onFinish) {
     }
     console.log(`[sph] 文案发布前校验成功：${JSON.stringify(textState)}`);
 
+    setPublishStage(page, "设置视频号主页和分享封面");
     const { coverPath, portraitCoverPath } = data.publishOptions || {};
     if (data.phone === "finance" && (!coverPath || !portraitCoverPath)) {
       throw new Error("财经视频号发布必须提供3:4和4:3两张封面");
     }
     if (coverPath && portraitCoverPath) await uploadSphCovers(page, portraitCoverPath, coverPath);
 
+    setPublishStage(page, "声明并核验视频号原创");
     await declareSphOriginal(page);
 
     const isOfficialSchedule = Boolean(data.officialScheduledPublish);
     if (isOfficialSchedule) {
+      setPublishStage(page, "设置视频号官方预约时间");
       await setOfficialSchedule(page, "视频号", data.publishAt);
     }
 
     // 所有表单项（包括商品）完成后，草稿和发布只能二选一执行。
+    setPublishStage(page, "提交视频号发布或草稿并等待确认");
     if (isDraftMode) await clickSphDraftButton(page);
     else await clickSphPublishButton(page);
     console.log(

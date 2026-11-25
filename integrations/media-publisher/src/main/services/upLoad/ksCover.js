@@ -1,6 +1,8 @@
+import { setPublishStage } from "../publishStage.js";
 import path from "path";
 
 export async function uploadKsCover(page, filename) {
+  setPublishStage(page, "打开快手封面编辑器");
   await page.evaluate(() => document.querySelector('[class*="_cover-full-editor_"]').click());
   await page.waitForFunction(() => [...document.querySelectorAll("div")].some(element =>
     element.childElementCount === 0 && element.textContent.trim() === "上传封面"), { timeout: 15000, polling: 100 });
@@ -9,8 +11,10 @@ export async function uploadKsCover(page, filename) {
   const clear = await page.$('[class*="_cropper-upload-clear_"]');
   if (clear) await clear.click();
   const input = await page.waitForSelector('[class*="_cropper-upload-upload_"] input[type="file"]', { timeout: 15000 });
+  setPublishStage(page, "上传快手竖版封面图片");
   await input.uploadFile(path.resolve(filename));
   await page.waitForSelector('[class*="_cropper-upload-clear_"]', { timeout: 30000 });
+  setPublishStage(page, "设置快手封面比例并保存");
   await page.evaluate(() => {
     [...document.querySelectorAll('[class*="_ratio-item_"]')].find(element =>
       element.querySelector("span")?.textContent === "3:4").click();

@@ -1,3 +1,4 @@
+import { setPublishStage } from "../publishStage.js";
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -42,6 +43,7 @@ async function clickText(page, text, selector = "button") {
 }
 
 export async function generateDyChapters(page) {
+  setPublishStage(page, "打开抖音智能章节编辑器");
   await clickText(page, "为进度条增加章节信息，让视频结构更清晰", "p");
   await page.waitForFunction(() => [...document.querySelectorAll("button")]
     .some(node => node.textContent.replace(/\s+/g, "") === "智能生成"), { timeout: 15000, polling: 100 });
@@ -51,14 +53,17 @@ export async function generateDyChapters(page) {
     return Array.isArray(body.chapter_list) && body.chapter_list.length > 0;
   }, { timeout: 600000 });
   await clickText(page, "智能生成");
+  setPublishStage(page, "等待抖音智能章节推荐接口返回");
   console.log("[dy] 已启动平台智能章节生成，等待章节推荐接口返回结果");
   const response = await completed;
   const body = await response.json();
   console.log(`[dy] 推荐接口已返回${body.chapter_list.length}章，等待页面允许保存`);
+  setPublishStage(page, "等待抖音智能章节保存按钮可用");
   await pollPageUntil(page, () => [...document.querySelectorAll("button")].some(node =>
     node.textContent.replace(/\s+/g, "") === "保存" && !node.disabled &&
     node.getBoundingClientRect().width > 0), 120000, 500, "抖音智能章节已返回，但页面保存按钮仍不可用");
   await clickText(page, "保存");
+  setPublishStage(page, "保存抖音智能章节并等待编辑器关闭");
   console.log("[dy] 已点击章节保存，等待编辑器关闭");
   await page.waitForFunction(() => ![...document.querySelectorAll("button")].some(node =>
     node.textContent.replace(/\s+/g, "") === "智能生成" && node.getBoundingClientRect().width > 0), { timeout: 15000, polling: 100 });
@@ -76,15 +81,19 @@ async function uploadCoverImage(page, filename) {
 }
 
 export async function uploadDyCovers(page, landscape, portrait) {
+  setPublishStage(page, "准备抖音横竖封面文件");
   const landscapeFile = await prepareCover(page, landscape, false);
   const portraitFile = portrait ? await prepareCover(page, portrait, true) : null;
   const files = [landscapeFile, portraitFile].filter(Boolean);
   for (let index = 0; index < files.length; index++) {
+    setPublishStage(page, index === 0 ? "上传并保存抖音横版封面" : "上传并保存抖音竖版封面");
     await page.evaluate(position => {
       document.querySelectorAll('[class^="coverControl-"] [class^="cover-"]:not([class^="cover-tip-"])')[position].click();
     }, index);
     await page.waitForSelector("input.semi-upload-hidden-input", { timeout: 15000 });
+    setPublishStage(page, index === 0 ? "上传抖音横版封面图片" : "上传抖音竖版封面图片");
     await uploadCoverImage(page, files[index]);
+    setPublishStage(page, index === 0 ? "保存抖音横版封面并等待编辑器关闭" : "保存抖音竖版封面并等待编辑器关闭");
     await clickText(page, "完成");
     await pollPageUntil(page, () => {
       const buttons = [...document.querySelectorAll("button")];

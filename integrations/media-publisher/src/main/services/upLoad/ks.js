@@ -1,3 +1,4 @@
+import { setPublishStage } from "../publishStage.js";
 import { uploadKsCover } from "./ksCover.js";
 import path from "path";
 import maybeClosePublishWindow from "./closeWindow.js";
@@ -364,8 +365,10 @@ export default async function (page, data, window,event) {
   console.log(data);
   try {
     const sel = KUAISHOU_VIDEO_UPLOAD_SELECTOR;
+    setPublishStage(page, "等待快手视频上传控件");
     await page.waitForSelector(sel, { timeout: WAIT_SELECTOR_APPEAR_MS });
     const uploadInputs = await page.$(sel);
+    setPublishStage(page, "上传快手视频文件");
     await uploadInputs.uploadFile(path.resolve(data.filePath));
   } catch (err) {
     console.error("文件上传失败:", err);
@@ -384,6 +387,7 @@ export default async function (page, data, window,event) {
       ),
       { timeout: WAIT_SELECTOR_APPEAR_MS }
     );
+    setPublishStage(page, "填写快手标题和作品描述");
     await fillKsCopy(page, data);
   } catch (e) {
     throw new Error(`快手标题或作品描述填写失败：${e?.message || e}`);
@@ -396,6 +400,7 @@ export default async function (page, data, window,event) {
 
   // 选择创作声明（快手只支持 AI 生成 / 演绎情节，其它值跳过）
   try {
+    setPublishStage(page, "设置快手创作声明");
     await selectKsCreativeStatement(page, data);
   } catch (e) {
     console.warn("快手创作声明选择未完成:", e?.message || e);
@@ -403,6 +408,7 @@ export default async function (page, data, window,event) {
 
   try {
     // 用 pollPageUntil 替代 waitForSelector，避免 puppeteer 默认 protocolTimeout
+    setPublishStage(page, "等待快手上传完成和预览播放器就绪");
     // (约 180s) 在大文件/弱网下把单次 Runtime.callFunctionOn 砍掉。
     await pollPageUntil(
       page,
@@ -425,12 +431,14 @@ export default async function (page, data, window,event) {
       submitText
     );
 
+    setPublishStage(page, "设置快手竖版封面");
     const coverPath = data.publishOptions?.coverPath;
     if (data.phone === "finance" && !coverPath) throw new Error("财经快手发布必须提供3:4封面");
     if (coverPath) await uploadKsCover(page, coverPath);
 
     const isOfficialSchedule = Boolean(data.officialScheduledPublish);
     if (isOfficialSchedule) {
+      setPublishStage(page, "设置快手官方预约时间");
       await setOfficialSchedule(page, "快手", data.publishAt);
     }
 
@@ -439,6 +447,7 @@ export default async function (page, data, window,event) {
     // 改为在 evaluate 内部遍历真实 button / 行 div，直接调 DOM .click()，避开鼠标几何问题。
     // 快手草稿功能和发布一个逻辑一个是 发布 一个是取消两个字
     const previousUrl = page.url();
+    setPublishStage(page, "提交快手发布或草稿");
     const clicked = await page.evaluate(text => {
       const norm = t => String(t || "").replace(/\s+/g, "").trim();
       const bar = document.querySelector("#setting-tours + div");
@@ -466,11 +475,13 @@ export default async function (page, data, window,event) {
       throw new Error(`未找到${submitText}按钮(${clicked && clicked.reason})`);
     }
     if (isOfficialSchedule) {
+      setPublishStage(page, "确认快手官方预约并等待回执");
       await clickKuaishouScheduleConfirmation(page);
       await waitForOfficialScheduleAccepted(page, "快手", previousUrl);
     }
     console.log(isDraftMode ? `✅ 快手视频已保存草稿，click via=${clicked.via}` : `✅ 快手视频已触发发布，click via=${clicked.via}`);
     if (!isDraftMode && !isOfficialSchedule) {
+      setPublishStage(page, "等待快手发布成功确认");
       await waitForKsImmediatePublish(page);
     }
     event.reply("puppeteerFile-done", {
