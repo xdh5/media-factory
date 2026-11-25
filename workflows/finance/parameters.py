@@ -54,7 +54,7 @@ DEFAULT_PRODUCTION_CONFIG = {
     "material_strategy": MATERIAL_STOCK_VIDEO,
     "tts_config": {
         "voice": "azure:zh-CN-YunyiMultilingualNeural",
-        "rate": "+20%",
+        "rate": "+15%",
     },
     "video_config": {
         "orientation": "landscape",
