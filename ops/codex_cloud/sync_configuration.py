@@ -19,6 +19,7 @@ def synchronize_configuration():
         raise SystemExit("当前 .env 不属于云端制作环境")
     set_key(target, "MEDIA_FACTORY_PROFILE", "codex-cloud")
     aliases = {
+        "CLOUDFLARE_API_TOKEN": "MEDIA_FACTORY_CLOUDFLARE_API_TOKEN",
         "AZURE_SPEECH_KEY": "MEDIA_FACTORY_AZURE_SPEECH_KEY",
         "AZURE_SPEECH_REGION": "MEDIA_FACTORY_AZURE_SPEECH_REGION",
     }

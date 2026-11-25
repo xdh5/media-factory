@@ -43,3 +43,7 @@ uv run --locked --no-editable --no-dev --extra mcp python ops/codex_cloud/sync_c
 ```
 
 同步后重新启动 MCP 子进程。旧聊天持有独立实例，不能假定新发布的变量已进入旧进程。除了变量存在性，还需验证 D1 真实查询、R2 对象读写、Pexels 授权、语音合成和转写接口。不要输出密钥，不要用完整生产任务代替连接检查。
+
+## Cloudflare 开发部署
+
+部署凭据在云端设置中使用 `MEDIA_FACTORY_CLOUDFLARE_API_TOKEN`，同步脚本映射为 `.env` 中的 `CLOUDFLARE_API_TOKEN`。部署命令必须显式加载工作区 `.env`；网络需允许 `api.cloudflare.com`，GitHub 开发接口需允许 `api.github.com`。它们与稿库访问令牌及内容平台发布凭据相互独立。

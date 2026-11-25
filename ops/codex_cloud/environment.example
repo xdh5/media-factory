@@ -19,3 +19,6 @@ CLOUDFLARE_DATA_API_TOKEN=
 # 语言学习配音。
 FISH_AUDIO_API_KEY=
 FISH_AUDIO_MODEL=s1
+
+# 云端开发：修改 Worker 时部署所需，不用于内容平台发布。
+CLOUDFLARE_API_TOKEN=
