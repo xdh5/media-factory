@@ -2,6 +2,7 @@ import { setPublishStage } from "../publishStage.js";
 import fs from "fs";
 import { setToutiaoCheckbox, clickToutiaoText, clearToutiaoEditor } from "./ttText.js";
 import { saveToutiaoPublicationResult } from "./ttPublishResult.js";
+import { submitToutiaoContent, uploadToutiaoImages } from "./ttApiResponses.js";
 
 export async function fillToutiaoMicro(page, manifest) {
   setPublishStage(page, "填写微头条摘要、话题和配图");
@@ -10,14 +11,14 @@ export async function fillToutiaoMicro(page, manifest) {
   await clearToutiaoEditor(page);
   const picture = fs.readFileSync(manifest.cover_path).toString("base64");
   const content = manifest.micro_summary + "\n\n" + manifest.hashtags.map(tag => `#${tag}#`).join(" ");
-  await page.evaluate((text, image) => {
+  await uploadToutiaoImages(page, '微头条配图上传', 1, () => page.evaluate((text, image) => {
     const editor = document.querySelector('.ProseMirror[contenteditable="true"]');
     editor.focus();
     const clipboard = new DataTransfer();
     const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     clipboard.setData("text/html", `<p>${escaped.replace(/\n/g, "<br>")}</p><p><img src="data:image/png;base64,${image}"></p>`);
     editor.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }));
-  }, content, picture);
+  }, content, picture));
   setPublishStage(page, "等待微头条配图上传完成");
   await page.waitForFunction(() => {
     const images = [...document.querySelectorAll('.img-box-item .item')];
@@ -33,6 +34,6 @@ export async function publishToutiaoMicro(page, data, window, event) {
   await page.goto("https://mp.toutiao.com/profile_v4/weitoutiao/publish", { waitUntil: "domcontentloaded" });
   await fillToutiaoMicro(page, manifest);
   setPublishStage(page, "提交微头条发布");
-  await clickToutiaoText(page, "发布");
+  await submitToutiaoContent(page, data, "micro", () => clickToutiaoText(page, "发布"));
   return saveToutiaoPublicationResult(page, data, manifest, "micro", event, window);
 }

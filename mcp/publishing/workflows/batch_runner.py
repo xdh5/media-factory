@@ -31,22 +31,30 @@ def run_batch(path: Path) -> None:
                 arguments = {"business_line": request["business_line"],
                              "account_group": request["account_group"], "platforms": request["platforms"],
                              **publication}
-                prepared = preview_publication(**{key: value for key, value in arguments.items()
-                    if key not in {"publish_mode", "publish_at", "publish_at_by_platform"}})
-                data["duplicate_count"] += prepared["duplicate_count"]
-                if request["prepare_only"] or not prepared["publishable_count"]:
-                    result = {"prepared_count": len(prepared["items"]), "timings_seconds": prepared["timings_seconds"]}
+                if publication.get('toutiao_content_types'):
+                    from tools.publish_media.toutiao_contents import publish_finance_toutiao_contents
+                    result = publish_finance_toutiao_contents(publication['publish_date'], request['account_group'],
+                        publication['production_id'], publication['toutiao_content_types'], progress)
+                    data['duplicate_count'] += len(result['skipped'])
+                    if result['failed']:
+                        data['error'] = {'message': '部分头条内容发布失败', 'details': result['failed']}
                 else:
-                    result = publish_local_outputs(
-                        **{**arguments, "publish_mode": publication.get("publish_mode"),
-                           "publish_at": publication.get("publish_at")}, progress=progress)
-                    data["scheduled_count"] += sum(row["record"]["status"] == "scheduled" for row in result["published"])
+                    prepared = preview_publication(**{key: value for key, value in arguments.items()
+                        if key not in {"publish_mode", "publish_at", "publish_at_by_platform"}})
+                    data["duplicate_count"] += prepared["duplicate_count"]
+                    if request["prepare_only"] or not prepared["publishable_count"]:
+                        result = {"prepared_count": len(prepared["items"]), "timings_seconds": prepared["timings_seconds"]}
+                    else:
+                        result = publish_local_outputs(
+                            **{**arguments, "publish_mode": publication.get("publish_mode"),
+                               "publish_at": publication.get("publish_at")}, progress=progress)
+                        data["scheduled_count"] += sum(row["record"]["status"] == "scheduled" for row in result["published"])
                 with reports.open("a", encoding="utf-8") as report:
                     report.write(json.dumps({"publish_date": publication["publish_date"], "result": result}, ensure_ascii=False) + "\n")
                 if publication["publish_date"] not in data["completed_dates"]:
                     data["completed_dates"].append(publication["publish_date"])
                 write_batch(path, data)
-            data.update(status="prepared" if request["prepare_only"] else "succeeded", progress=None)
+            data.update(status='failed' if data.get('error') else ('prepared' if request['prepare_only'] else 'succeeded'), progress=None)
     except Exception as error:
         details = getattr(error, "details", {})
         data.update(status="needs_login" if details.get("login_required") else "failed",

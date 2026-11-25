@@ -17,7 +17,7 @@ description: 发布或预约指定计划日期的财经内容，默认覆盖视�
 | YouTube | 长视频、Shorts各一条 | 长视频用统一发布 MCP 或 `--variant long`，Shorts单独用 `--variant short` |
 | 头条 | 视频、文章、微头条各一条 | 视频用统一发布 MCP 或视频 CLI，文章和微头条分别用对应 CLI |
 
-统一发布 MCP 只处理视频，不会自动发布 Shorts、文章或微头条。同一内容的两种入口只选一个，已发布的长视频不再次调用长视频入口。
+普通统一发布 MCP 只处理视频，不会自动发布 Shorts、文章或微头条。头条三类立即发布可使用后台批次的 toutiao_content_types；同一内容的两种入口只选一个，已发布的长视频不再次调用长视频入口。
 
 ## 发布流程
 
@@ -49,6 +49,8 @@ description: 发布或预约指定计划日期的财经内容，默认覆盖视�
 ## 头条：视频、文章、微头条
 
 三类内容独立发布、独立预检和记录，互不触发。默认发布财经时三类都执行；用户限定类型时只执行对应项。在 `integrations/media-publisher` 构建后执行，`--file` 指向财经生产清单：
+
+优先用 `publishing_start_batch` 后台执行：platforms 选 toutiao，publications 条目传本期 publish_date、production_id、publish_mode=immediate、publish_at=now、toutiao_content_types=["video","article","micro"]。后台恢复本期定稿、依次发布、按类型去重并立即入库，无需宿主持续轮询。只发部分类型时缩小列表。预约视频沿用普通统一发布；需要单独诊断某类时使用下列独立 CLI。
 
 ```powershell
 .\node_modules\.bin\electron.cmd . cli publish-toutiao-video --phone finance --file <manifest.json>

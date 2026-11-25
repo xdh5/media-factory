@@ -1,6 +1,7 @@
 import { setPublishStage } from "../publishStage.js";
 import fs from "fs";
 import path from "path";
+import { uploadToutiaoImages } from "./ttApiResponses.js";
 
 export async function waitToutiaoArticleImagesReady(page, includeCover = false) {
   await page.waitForFunction(withCover => {
@@ -56,7 +57,7 @@ export async function uploadToutiaoArticleCover(page, filename) {
   await clickToutiaoText(page, "上传图片");
   const input = await page.waitForSelector('.btn-upload-handle input[type=file]', { timeout: 15000 });
   setPublishStage(page, "上传头条文章封面图片");
-  await input.uploadFile(path.resolve(filename));
+  await uploadToutiaoImages(page, '头条文章封面上传', 1, () => input.uploadFile(path.resolve(filename)));
   await page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 });
   await page.waitForFunction(() => [...document.querySelectorAll('button')].some(element =>
     element.textContent.trim() === "确定" && !element.disabled && element.getBoundingClientRect().width > 0), { timeout: 60000, polling: 100 });
@@ -95,13 +96,13 @@ export async function fillToutiaoArticle(page, manifestPath) {
   }, article.title);
   setPublishStage(page, "填写头条文章正文和三张插图");
   await clearToutiaoEditor(page);
-  await page.evaluate(content => {
+  await uploadToutiaoImages(page, '头条文章正文插图上传', 3, () => page.evaluate(content => {
     const editor = document.querySelector('.ProseMirror[contenteditable="true"]');
     editor.focus();
     const clipboard = new DataTransfer();
     clipboard.setData("text/html", content);
     editor.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }));
-  }, html);
+  }, html));
   setPublishStage(page, "等待头条文章插图上传完成");
   await waitToutiaoArticleImagesReady(page);
   setPublishStage(page, "设置头条首发并关闭同步微头条");

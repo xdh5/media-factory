@@ -23,11 +23,12 @@ export async function runWithPublishResponse(page, label, matches, action, timeo
     const context = getPublishProgress(page);
     console.log("[发布接口响应]", JSON.stringify({ ...context, operation: label, requestPath, httpStatus: response.status() }));
     if (!response.ok()) throw new Error(`${label}接口返回HTTP ${response.status()}`);
-    const body = await response.json();
-    console.log("[发布接口结果]", JSON.stringify({ ...context, operation: label, requestPath, statusCode: body.status_code ?? body.result,
+    const responseText = await response.text();
+    const body = JSON.parse(responseText);
+    console.log("[发布接口结果]", JSON.stringify({ ...context, operation: label, requestPath, statusCode: body.status_code ?? body.result ?? body.status ?? body.code ?? body.err_no ?? body.errno,
       message: body.status_msg ?? body.message, itemId: body.item_id, chapterCount: body.chapter_list?.length,
       requestId: body.extra?.logid || body.ResponseMetadata?.RequestId, error: body.ResponseMetadata?.Error }));
-    return { body, requestPath, httpStatus: response.status(), request: response.request() };
+    return { body, responseText, requestPath, httpStatus: response.status(), request: response.request() };
   } finally {
     clearTimeout(timer);
     page.off("response", listener);

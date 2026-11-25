@@ -2,6 +2,7 @@ import { setPublishStage } from "../publishStage.js";
 import fs from "fs";
 import { fillToutiaoArticle, uploadToutiaoArticleCover, setToutiaoCheckbox, clickToutiaoText, waitToutiaoArticleImagesReady } from "./ttText.js";
 import { saveToutiaoPublicationResult } from "./ttPublishResult.js";
+import { submitToutiaoContent } from "./ttApiResponses.js";
 
 export async function publishToutiaoArticle(page, data, window, event) {
   const filename = data.publishOptions.toutiaoManifestPath;
@@ -22,6 +23,6 @@ export async function publishToutiaoArticle(page, data, window, event) {
     element.textContent.trim() === "确认发布" && !element.disabled), { timeout: 60000, polling: 100 });
   await waitToutiaoArticleImagesReady(page, true);
   setPublishStage(page, "确认发布头条文章");
-  await clickToutiaoText(page, "确认发布");
+  await submitToutiaoContent(page, data, "article", () => clickToutiaoText(page, "确认发布"));
   return saveToutiaoPublicationResult(page, data, manifest, "article", event, window);
 }

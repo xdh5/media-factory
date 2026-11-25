@@ -5,6 +5,7 @@ import { saveToutiaoPublicationResult } from './ttPublishResult.js'
 import { publishToutiaoArticle } from "./ttArticle.js";
 import { publishToutiaoMicro } from "./ttMicro.js";
 import { setToutiaoCheckbox } from "./ttText.js";
+import { submitToutiaoContent } from "./ttApiResponses.js";
 import path from 'path'
 import maybeClosePublishWindow from './closeWindow.js'
 import { setOfficialSchedule } from './officialSchedule.js'
@@ -582,7 +583,8 @@ export default async function (page, data, window, event) {
     try {
       return await (kind === "article" ? publishToutiaoArticle : publishToutiaoMicro)(page, data, window, event);
     } catch (error) {
-      event.reply("puppeteerFile-done", { ...data, status: false, message: error.message });
+      event.reply("puppeteerFile-done", { ...data, status: false, needsAttention: data.toutiaoSubmitting,
+        outcome: data.toutiaoPublication || (data.toutiaoSubmitting ? "unknown" : undefined), message: error.message });
       return;
     }
   }
@@ -707,7 +709,7 @@ export default async function (page, data, window, event) {
     if (isOfficialSchedule) {
       publishStage = '设置平台官方定时发布'
       setPublishStage(page, '设置头条官方预约时间')
-      await setOfficialSchedule(page, '头条', data.publishAt)
+      await submitToutiaoContent(page, data, 'video', () => setOfficialSchedule(page, '头条', data.publishAt))
     }
     // 草稿：竖屏无标签时不支持保存草稿，直接走发布。
     await page.waitForTimeout(1000)
@@ -721,7 +723,7 @@ export default async function (page, data, window, event) {
       // 发布
       publishStage = '点击发布'
       setPublishStage(page, '提交头条视频发布')
-      await clickToutiaoFooterAction(page, { draft: false })
+      await submitToutiaoContent(page, data, 'video', () => clickToutiaoFooterAction(page, { draft: false }))
     }
     if (!shouldSaveDraft && !isOfficialSchedule && data.publishOptions?.toutiaoManifestPath) {
       const manifest = JSON.parse(fs.readFileSync(data.publishOptions.toutiaoManifestPath, 'utf8'))
@@ -734,7 +736,6 @@ export default async function (page, data, window, event) {
     console.log(
       shouldSaveDraft ? '✅ 头条号视频已保存草稿' : '✅ 头条号视频上传成功'
     )
-    setTimeout(() => {
       event.reply('puppeteerFile-done', {
         ...data,
         status: true,
@@ -742,6 +743,7 @@ export default async function (page, data, window, event) {
         publishToDraft: shouldSaveDraft,
         scheduled: isOfficialSchedule,
         officialScheduled: isOfficialSchedule,
+        outcome: data.toutiaoPublication,
         message: shouldSaveDraft
           ? '保存草稿成功'
           : isOfficialSchedule
@@ -749,13 +751,14 @@ export default async function (page, data, window, event) {
             : '上传成功'
       })
       maybeClosePublishWindow(data, window)
-    }, 5000)
   } catch (e) {
     const detail = getErrorMessage(e)
     console.error(`❌ 头条发布失败，阶段：${publishStage}`, e)
     event.reply('puppeteerFile-done', {
       ...data,
       status: false,
+      needsAttention: data.toutiaoSubmitting,
+      outcome: data.toutiaoPublication || (data.toutiaoSubmitting ? 'unknown' : undefined),
       message: `上传失败：${publishStage} - ${detail}`
     })
   }

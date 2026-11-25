@@ -163,3 +163,9 @@ electron . cli publish -p sph --phone 13800138000 -f /path/to/video.mp4 \
 自定义封面使用 3:4 图片。等待裁剪画布载入后选择比例并点击确认，监听 `/rest/cp/works/v4/video/pc/cover/edit/cover/upload`，必须返回 `result=1` 和 `coverKey`。随后读取平台保存的封面，核对比例及图片内容，保存 `kuaishou-cover-confirmed.jpg`。本地预览出现不能作为上传成功。
 
 正式提交监听快手视频提交接口，要求 `result=1`，并核对请求里的 `coverKey`；再从作品管理接口 `/rest/cp/works/v2/video/pc/photo/list` 核对标题、作品 ID 和封面。`kuaishou-publication.json` 保存作品 ID、平台状态、封面及接口回执。各步骤记录阶段、接口路径、HTTP 状态和业务结果；提交后结果不明时禁止自动重发。
+
+## 头条上传和发布接口回执
+
+视频监听 `/xigua/api/upload/PublishVideo`，要求 status=0、data.Code=0；文章监听 `/mp/agw/article/publish`，微头条监听 `/mp/agw/article/wtt`。正式提交必须取得成功响应及作品ID，并保存各自的 toutiao-类型-publication.json；作品长整数ID从原始JSON读取，避免精度丢失。提交后结果不明时停止自动重试。
+
+自定义封面、文章三张插图和微头条配图在操作前监听 ImageX CommitImageUpload 或头条素材上传接口，核对图片URI和成功状态，逐张记录回执，再核对页面图片加载状态。发布成功确认不使用固定sleep。
