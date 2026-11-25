@@ -3,13 +3,14 @@ import fs from "fs";
 import { setToutiaoCheckbox, clickToutiaoText, clearToutiaoEditor } from "./ttText.js";
 import { saveToutiaoPublicationResult } from "./ttPublishResult.js";
 import { submitToutiaoContent, uploadToutiaoImages } from "./ttApiResponses.js";
+import { selectToutiaoMicroImage } from "./ttMicroImage.js";
 
 export async function fillToutiaoMicro(page, manifest) {
   setPublishStage(page, "填写微头条摘要、话题和配图");
   if (!manifest.micro_summary?.trim()) throw new Error("缺少与标题标签一起定稿的微头条摘要");
   await page.waitForSelector('.ProseMirror[contenteditable="true"]', { timeout: 30000 });
   await clearToutiaoEditor(page);
-  const picture = fs.readFileSync(manifest.cover_path).toString("base64");
+  const picture = fs.readFileSync(selectToutiaoMicroImage(manifest)).toString("base64");
   const content = manifest.micro_summary + "\n\n" + manifest.hashtags.map(tag => `#${tag}#`).join(" ");
   await uploadToutiaoImages(page, '微头条配图上传', 1, () => page.evaluate((text, image) => {
     const editor = document.querySelector('.ProseMirror[contenteditable="true"]');

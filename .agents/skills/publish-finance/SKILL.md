@@ -62,7 +62,7 @@ description: 发布或预约指定计划日期的财经内容，默认覆盖视�
 | --- | --- | --- |
 | 视频 | 16:9封面，关闭“生成图文” | `toutiao-video-publication.json` |
 | 文章 | 完整正文、三张预制插图、4:3封面；勾选“头条首发”，关闭“同时发布微头条” | `toutiao-article-publication.json` |
-| 微头条 | 定稿 `micro_summary`（约150字），仅配4:3封面 | `toutiao-micro-publication.json` |
+| 微头条 | 定稿 `micro_summary`（约150字），从本期三张预制插图中随机配一张，重试复用选图 | `toutiao-micro-publication.json` |
 
 插图由生产代码将正文对应镜头分三等份，每份随机选一张并保存选择结果。清单、正文、摘要、插图及封面随生产上传 R2，GitHub 同样生成；跨机器先恢复所需资产并更新清单路径，文章和微头条无需恢复视频。
 
