@@ -1,9 +1,5 @@
 # Media Factory
 
-## 网页看板
-
-看板地址为 https://xdh5.github.io/media-factory/ 。静态文件维护在 `main` 分支的 `docs/`，由 GitHub Pages 原生分支构建自动发布。Pages 发布来源为 `main`、目录 `/docs`。数据接口继续由 Cloudflare Worker 提供。
-
 Media Factory 用于制作和发布财经、语言学习和动漫视频。宿主 Agent 负责内容判断、文案、分镜与生图，MCP 负责校验、媒体处理、任务状态和产物交付。财经使用实拍素材，语言学习支持词包复用，动漫支持本地制作和 GitHub Runner 发布。
 
 ## 快速开始
