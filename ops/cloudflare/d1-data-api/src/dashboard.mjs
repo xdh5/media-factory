@@ -276,7 +276,7 @@ async function dashboardFinanceArticles(env) {
             json_extract(e.content_json, '$.short_title') AS short_title,
             c.aweme_url, c.cover_url, c.created_at,
             GROUP_CONCAT(DISTINCT d.search_keyword) AS search_keywords,
-            COALESCE(u.status, 'ready') AS status,
+            COALESCE(u.status, CASE WHEN e.aweme_id IS NULL THEN 'pending_editorial' ELSE 'ready' END) AS status,
             u.reserved_at, u.used_at, u.run_id
      FROM douyin_research_contents c
      JOIN douyin_research_discoveries d
@@ -302,6 +302,7 @@ async function dashboardFinanceArticles(env) {
     summary: {
       total: articles.length,
       ready: articles.filter((item) => item.status === "ready").length,
+      pending_editorial: articles.filter((item) => item.status === "pending_editorial").length,
       reserved: articles.filter((item) => item.status === "reserved").length,
       used: articles.filter((item) => item.status === "used").length,
     },

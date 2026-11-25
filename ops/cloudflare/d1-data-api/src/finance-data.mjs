@@ -169,6 +169,11 @@ async function getDouyinResearchScriptStats(request, env) {
     `SELECT
        COUNT(DISTINCT c.aweme_id) AS total_count,
        COUNT(DISTINCT CASE WHEN u.status = 'used' THEN c.aweme_id END) AS used_count,
+       COUNT(DISTINCT CASE WHEN u.aweme_id IS NULL AND NOT EXISTS (
+         SELECT 1 FROM finance_editorial_drafts e WHERE e.aweme_id = c.aweme_id AND e.source_transcript = c.transcript_corrected
+         AND json_extract(e.content_json, '$.storyboard') IS NOT NULL
+         AND COALESCE(json_extract(e.content_json, '$.storyboard_status'), 'ready') != 'pending'
+       ) THEN c.aweme_id END) AS pending_editorial_count,
        COUNT(DISTINCT CASE WHEN u.status = 'reserved' THEN c.aweme_id END) AS reserved_count
      FROM douyin_research_contents c
      JOIN douyin_research_discoveries d ON d.aweme_id = c.aweme_id AND d.collection_code = ?
@@ -177,12 +182,14 @@ async function getDouyinResearchScriptStats(request, env) {
   const totalCount = Number(stats?.total_count || 0);
   const usedCount = Number(stats?.used_count || 0);
   const reservedCount = Number(stats?.reserved_count || 0);
+  const pendingEditorialCount = Number(stats?.pending_editorial_count || 0);
   return jsonResponse({
     collection_code: collectionCode,
     workflow,
     reservation_minutes: reservationMinutes,
     total_count: totalCount,
-    available_count: Math.max(0, totalCount - usedCount - reservedCount),
+    available_count: Math.max(0, totalCount - usedCount - reservedCount - pendingEditorialCount),
+    pending_editorial_count: pendingEditorialCount,
     reserved_count: reservedCount,
     used_count: usedCount,
     checked_at: checkedAt,

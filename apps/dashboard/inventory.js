@@ -185,7 +185,7 @@ function renderFinanceArticles(articles) {
   const query = String(document.querySelector("#searchInput")?.value || "").trim().toLocaleLowerCase("zh-CN");
   const selectedStatus = document.querySelector("#statusFilter")?.value || "";
   const filtered = articles.filter((article) =>
-    (!selectedStatus || article.status === selectedStatus)
+    (!selectedStatus || article.status === selectedStatus || (selectedStatus === "ready" && article.status === "pending_editorial"))
     && (!query || articleSearchText(article).includes(query)));
   mountLazyList(
     filtered,
@@ -200,7 +200,8 @@ async function loadFinanceArticles() {
     const response = await fetch(`${API_BASE_URL}/v1/dashboard/finance-articles`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message || "读取失败");
-    document.querySelector("#inventoryNote").textContent = `未使用 ${payload.summary.ready} 篇，已占用 ${payload.summary.reserved} 篇，已使用 ${payload.summary.used} 篇`;
+    const unusedCount = payload.summary.total - payload.summary.reserved - payload.summary.used;
+    document.querySelector("#inventoryNote").textContent = `未使用 ${unusedCount} 篇，已占用 ${payload.summary.reserved} 篇，已使用 ${payload.summary.used} 篇`;
     status.textContent = "";
     const rerender = () => renderFinanceArticles(payload.articles);
     document.querySelector("#searchInput").addEventListener("input", rerender);
