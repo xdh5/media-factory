@@ -5,6 +5,8 @@
     baijiahao: "百家号", xiaohongshu: "小红书",
   };
   const order = Object.keys(names);
+  // 财经同一平台需发布的内容条数：头条视频、文章、微头条，YouTube 长视频、Shorts。
+  const financePublishRequirements = { toutiao: 3, youtube: 2 };
 
   function element(tag, className, text) {
     const node = document.createElement(tag);
@@ -22,7 +24,7 @@
     }
   }
 
-  function renderPlatforms(publications = [], configured = null) {
+  function renderPlatforms(publications = [], configured = null, businessLine = "") {
     const list = element("div", "platforms");
     const platforms = [...new Set(Array.isArray(configured)
       ? configured
@@ -36,7 +38,11 @@
       const state = published ? "已发送" : scheduled ? "已预约，尚未发送" : "未发送";
       const name = names[platform] || platform;
       const url = safeUrl(record?.external_url);
-      const icon = element(url ? "a" : "span", `platform-icon${published || scheduled ? " is-published" : ""}`);
+      const requiredCount = businessLine === "finance" ? financePublishRequirements[platform] : 0;
+      const shouldLight = requiredCount
+        ? records.filter((item) => item.status === "published").length >= requiredCount
+        : Boolean(published || scheduled);
+      const icon = element(url ? "a" : "span", `platform-icon${shouldLight ? " is-published" : ""}`);
       icon.title = `${name} · ${state}`;
       icon.setAttribute("aria-label", icon.title);
       if (url) {

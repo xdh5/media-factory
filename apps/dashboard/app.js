@@ -85,7 +85,7 @@ function render(data) {
       const card = element("article", "content-card");
       card.append(element("h3", "", content.title));
       const footer = element("div", "card-footer");
-      footer.append(renderPlatforms(content.publications || [], targetPlatforms(content)));
+      footer.append(renderPlatforms(content.publications || [], targetPlatforms(content), content.business_line));
       const download = downloadState(content.outputs);
       const button = element("button", "card-button download-button", download.label);
       button.type = "button";
