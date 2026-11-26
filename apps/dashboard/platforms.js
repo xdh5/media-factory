@@ -1,7 +1,7 @@
 (() => {
   const names = {
     youtube: "YouTube", facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok",
-    kuaishou: "快手", douyin: "抖音", toutiao: "头条号", wechat_channels: "视频号",
+    bilibili: "哔哩哔哩", kuaishou: "快手", douyin: "抖音", toutiao: "头条号", wechat_channels: "视频号",
     baijiahao: "百家号", xiaohongshu: "小红书",
   };
   const order = Object.keys(names);
@@ -51,7 +51,7 @@
         svg.setAttribute("viewBox", "0 0 24 24");
         svg.setAttribute("aria-hidden", "true");
         const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-        use.setAttribute("href", `./assets/platform-icons.svg#${platform}`);
+        use.setAttribute("href", `./assets/platform-icons.svg?v=20261126-1#${platform}`);
         svg.append(use);
         icon.append(svg);
       } else {
