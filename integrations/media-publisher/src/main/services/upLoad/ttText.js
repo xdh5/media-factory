@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { uploadToutiaoImages } from "./ttApiResponses.js";
 
-export async function waitToutiaoArticleImagesReady(page, imageCount, includeCover = false) {
+export async function waitToutiaoArticleImagesReady(page, imageCount) {
   await page.evaluate(() => {
     for (const image of document.querySelectorAll('.ProseMirror img')) image.loading = 'eager';
   });
@@ -11,17 +11,13 @@ export async function waitToutiaoArticleImagesReady(page, imageCount, includeCov
     bodyImages: [...document.querySelectorAll('.ProseMirror img')].map(image => ({ complete: image.complete, width: image.naturalWidth, sourceType: image.src.split(':')[0] })),
     coverCount: document.querySelectorAll('.article-cover-img-wrap img').length,
   }))));
-  await page.waitForFunction((expected, withCover) => {
+  await page.waitForFunction(expected => {
     const bodyImages = [...document.querySelectorAll('.ProseMirror img')];
-    const coverImages = [...document.querySelectorAll('.article-cover-img-wrap img')].filter(image => {
-      const box = image.getBoundingClientRect();
-      return box.width > 0 && box.height > 0 && getComputedStyle(image).visibility !== 'hidden';
-    });
     const ready = image => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
     const source = image => new URL(image.currentSrc || image.src).pathname.split('~')[0];
     const bodySources = new Set(bodyImages.filter(ready).map(source));
-    return bodySources.size === expected && (!withCover || coverImages.some(ready));
-  }, { timeout: 120000, polling: 250 }, imageCount, includeCover).catch(async () => {
+    return bodySources.size === expected;
+  }, { timeout: 120000, polling: 250 }, imageCount).catch(async () => {
     const state = await page.evaluate(() => ({
       bodyImages: [...document.querySelectorAll('.ProseMirror img')].map(image => ({ complete: image.complete, width: image.naturalWidth, sourceType: image.src.split(':')[0] })),
       coverImages: document.querySelectorAll('.article-cover-img-wrap img').length,
@@ -29,7 +25,7 @@ export async function waitToutiaoArticleImagesReady(page, imageCount, includeCov
     }));
     throw new Error(`头条文章图片未就绪：${JSON.stringify(state)}`);
   });
-  console.log(`[tt-article] 三张正文图片${includeCover ? '及封面' : ''}已加载，上传网络请求已完成`);
+  console.log('[tt-article] 三张正文图片已加载，上传网络请求已完成');
 }
 
 export async function clickToutiaoText(page, text) {
@@ -123,11 +119,6 @@ export async function uploadToutiaoArticleCover(page, filename) {
   }), root)));
   await page.waitForFunction(() => ![...document.querySelectorAll('button')].some(element =>
     element.textContent.trim() === "本地上传" && element.getBoundingClientRect().width > 0), { timeout: 15000, polling: 100 });
-  await page.waitForFunction((selector, keys) => {
-    const images = [...document.querySelectorAll(`${selector} .article-cover-images .article-cover-img-wrap img`)];
-    return images.length === 1 && images[0].complete && images[0].naturalWidth > 0 &&
-      keys.some(key => images[0].src.includes(key));
-  }, { timeout: 60000, polling: 100 }, root, [uploaded[0].uri, uploaded[0].originUri].filter(Boolean).map(uri => uri.split('/').pop()));
   return uploaded[0];
 }
 

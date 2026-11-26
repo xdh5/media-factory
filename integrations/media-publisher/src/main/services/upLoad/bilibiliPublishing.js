@@ -62,6 +62,13 @@ export async function generateBilibiliChapters(page) {
   const editor = await iframe.contentFrame();
   let lastChapterState = '';
   const framePoll = { isClosed: () => page.isClosed(), evaluate: async fn => {
+    // 平台默认只轮询60秒；与发布器等待期限保持一致，继续接收服务端生成结果。
+    await editor.evaluate(timeout => {
+      for (const element of document.querySelectorAll('*')) {
+        const component = element.__vue__;
+        if (component && 'aiTimeoutTime' in component) component.aiTimeoutTime = timeout;
+      }
+    }, WAIT_UPLOAD_PROCESSING_MS);
     const state = await editor.evaluate(() => ({ text: document.body.innerText.split('\n').filter(line => !/^\d{2}:\d{2}$/.test(line)).join('\n'),
       buttons: [...document.querySelectorAll('button,[role=button]')].filter(e => e.getBoundingClientRect().width > 0)
         .map(e => ({ text: e.innerText, disabled: e.disabled })) }));
@@ -130,6 +137,7 @@ export async function submitBilibiliVideo(page, data) {
   const response = page.waitForResponse(r => r.request().method() === 'POST' && /\/x\/vu\/web\/(add|edit)(\/|\?|$)/.test(r.url()), { timeout: 60000 });
   await page.$eval('.submit-container .submit-add', e => e.click());
   const submitted = await response;
+  if (!submitted.ok()) throw new Error(`B站投稿接口返回HTTP ${submitted.status()}`);
   const result = await submitted.json();
   if (result.code !== 0) throw new Error(`B站拒绝投稿：${result.message || JSON.stringify(result)}`);
   const aid = result.data?.aid || result.data?.archive?.aid;
@@ -144,9 +152,5 @@ export async function submitBilibiliVideo(page, data) {
     if (Number(payload.dtime) !== expected) throw new Error('B站提交的预约时间与指定时间不一致');
   }
   fs.writeFileSync(path.join(path.dirname(path.resolve(data.filePath)), 'bilibili-submit-response.json'), JSON.stringify({ aid, bvid, title: payload.title, dtime: payload.dtime || 0, cover: payload.cover, cover16_9: payload.cover16_9, chapter: payload.chapter }, null, 2));
-  setPublishStage(page, '核对B站稿件管理中的投稿结果');
-  await page.goto('https://member.bilibili.com/platform/upload-manager/article', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(title => document.body.innerText.includes(title), { polling: 500, timeout: 60000 }, data.data.bt1);
-  if (scheduled) await page.waitForFunction(() => /定时|预约/.test(document.body.innerText), { polling: 500, timeout: 30000 });
   return { aid, bvid, video_id: bvid || String(aid), video_url: bvid ? `https://www.bilibili.com/video/${bvid}` : '', scheduled, publish_at: scheduled ? data.publishAt : null };
 }

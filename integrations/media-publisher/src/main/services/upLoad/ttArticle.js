@@ -17,7 +17,7 @@ export async function publishToutiaoArticle(page, data, window, event) {
   setPublishStage(page, "上传和保存头条文章封面");
   data.toutiaoCover = await uploadToutiaoArticleCover(page, manifest.cover_path);
   setPublishStage(page, "等待头条文章正文图片和封面上传完成");
-  await waitToutiaoArticleImagesReady(page, imageCount, true);
+  await waitToutiaoArticleImagesReady(page, imageCount);
   setPublishStage(page, "预览头条文章并等待确认发布按钮");
   const preview = await page.evaluate(() => [...document.querySelectorAll('button')].some(element =>
     element.textContent.trim() === '预览并发布' && element.getBoundingClientRect().width > 0));
@@ -26,7 +26,7 @@ export async function publishToutiaoArticle(page, data, window, event) {
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(element =>
       element.textContent.trim() === "确认发布" && !element.disabled), { timeout: 60000, polling: 100 });
   }
-  await waitToutiaoArticleImagesReady(page, imageCount, true);
+  await waitToutiaoArticleImagesReady(page, imageCount);
   setPublishStage(page, "确认发布头条文章");
   await submitToutiaoContent(page, data, "article", () => clickToutiaoText(page, preview ? '确认发布' : '发布'));
   return saveToutiaoPublicationResult(page, data, manifest, "article", event, window);

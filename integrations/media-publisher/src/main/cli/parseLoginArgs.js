@@ -148,7 +148,7 @@ export function parseLoginArgs(subArgv) {
     return { ok: true, value: out }
   }
 
-  if (out.show && out.platform !== '视频号' && out.platform !== '抖音') {
+  if (out.show && !['视频号', '抖音', '哔哩哔哩'].includes(out.platform)) {
     console.warn('media-publisher: CLI 模式不打开登录窗口，已忽略 --show。')
     out.show = false
   }

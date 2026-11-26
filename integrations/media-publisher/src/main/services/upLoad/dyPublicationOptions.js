@@ -62,10 +62,26 @@ export async function generateDyChapters(page) {
   }, 600000);
   const body = requireDySuccess(completed, "智能章节推荐结果");
   console.log(`[dy] 推荐接口已返回${body.chapter_list.length}章，等待页面允许保存`);
-  setPublishStage(page, "等待抖音智能章节保存按钮可用");
-  await pollPageUntil(page, () => [...document.querySelectorAll("button")].some(node =>
-    node.textContent.replace(/\s+/g, "") === "保存" && !node.disabled &&
-    node.getBoundingClientRect().width > 0), 120000, 500, "抖音智能章节已返回，但页面保存按钮仍不可用");
+  setPublishStage(page, "将抖音智能章节推荐结果填入编辑器");
+  // 接口结果写入推荐缓存后，编辑器可能仍保留空列表；再次触发智能生成应用已有结果。
+  await page.waitForTimeout(4000);
+  const ready = await page.evaluate(() => [...document.querySelectorAll("button")].some(node =>
+    node.textContent.trim() === "保存" && !node.disabled && node.getBoundingClientRect().width > 0));
+  if (!ready) {
+    await clickText(page, "智能生成");
+    console.log("[dy] 已再次触发智能生成，等待推荐章节填入编辑器");
+  }
+  await pollPageUntil(page, () => {
+    const dialog = [...document.querySelectorAll('[role="dialog"]')].find(node =>
+      node.getBoundingClientRect().width > 0 && node.textContent.includes("章节要点"));
+    return !!dialog && /章节数[：:]?\s*[1-9]\d*/.test(dialog.innerText) &&
+      [...dialog.querySelectorAll("button")].some(node => node.textContent.trim() === "保存" && !node.disabled);
+  }, 120000, 250, "抖音推荐章节尚未填入编辑器或保存按钮不可用，未提交作品");
+  console.log("[抖音章节编辑器就绪]", JSON.stringify(await page.evaluate(() => ({
+    chapterCount: Number(document.body.innerText.match(/章节数[：:]?\s*(\d+)/)?.[1] || 0),
+    saveEnabled: [...document.querySelectorAll("button")].some(node => node.textContent.trim() === "保存" &&
+      !node.disabled && node.getBoundingClientRect().width > 0),
+  }))));
   await clickText(page, "保存");
   setPublishStage(page, "保存抖音智能章节并等待编辑器关闭");
   console.log("[dy] 已点击章节保存，等待编辑器关闭");
