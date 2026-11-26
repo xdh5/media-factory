@@ -59,6 +59,8 @@ def _publish_day(publish_date: str, variant: str) -> dict:
                                     'targets': [{'platform': 'youtube', 'account_key': route['account_key'],
                                                  'title': youtube_publish_title(manifest['title'], manifest['hashtags']), 'description': description,
                                                  'file': str(video), 'thumbnail_path': cover,
+                                                 'youtube_options': {'privacy_status': 'public', 'category_id': '24',
+                                                                     'language': 'zh', 'made_for_kids': False},
                                                  'publication_id': publication_id, 'client_ref': publication_id}]},
                                    account_routes={route['account_key']: route})
             if result['failed']:
