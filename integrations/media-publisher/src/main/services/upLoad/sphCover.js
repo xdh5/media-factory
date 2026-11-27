@@ -7,6 +7,11 @@ export async function uploadSphCover(page, filename, share = false) {
   const heading = share ? "编辑分享卡片" : "编辑个人主页卡片";
   setPublishStage(page, `打开视频号${heading}封面编辑器`);
   console.log(`[sph] 正在打开${heading}`);
+  await page.waitForFunction(() => {
+    const root = document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document;
+    const component = root.querySelector(".cover-preview-wrap")?.__vue__;
+    return component && !component.disabled && !component.disableTip && component.width > 0 && component.height > 0;
+  }, { timeout: 60000, polling: 250 });
   const edit = await page.waitForSelector(`wujie-app.wujie_iframe >>> ${selector}`, { visible: true, timeout: 30000 });
   await edit.evaluate(element => {
     // 卡片点击后阻止事件冒泡，避免平台的外部点击监听立即关闭推荐菜单。
@@ -17,7 +22,7 @@ export async function uploadSphCover(page, filename, share = false) {
   let directClicked = false;
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    const titles = await page.$$("pierce/.edit-cover-dialog h3");
+    const titles = (await Promise.all(page.frames().map(frame => frame.$$("pierce/.edit-cover-dialog h3")))).flat();
     for (const title of titles) {
       if (await title.evaluate((node, expected) => node.textContent.trim() === expected &&
         node.getBoundingClientRect().width > 0, heading)) editorReady = true;
@@ -25,7 +30,7 @@ export async function uploadSphCover(page, filename, share = false) {
     }
     if (editorReady) break;
     if (!directClicked) {
-      const buttons = await page.$$("pierce/.btn-directly-edit");
+      const buttons = (await Promise.all(page.frames().map(frame => frame.$$("pierce/.btn-directly-edit")))).flat();
       for (const button of buttons) {
         const visible = await button.evaluate(node => node.textContent.trim() === "直接编辑" &&
           node.getBoundingClientRect().width > 0 && getComputedStyle(node).visibility !== "hidden");
