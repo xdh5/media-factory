@@ -1,0 +1,4 @@
+[submodule "integrations/media-publisher"]
+	path = integrations/media-publisher
+	url = https://github.com/xdh5/media-publisher.git
+	branch = main

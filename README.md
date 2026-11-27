@@ -7,9 +7,12 @@ Media Factory 用于制作和发布财经、语言学习和动漫视频。宿主
 从仓库根目录安装 Python 依赖。运行环境统一使用 Python 3.12、uv 0.13.9 和 FFmpeg。Python 依赖统一声明在 `pyproject.toml`，完整解析结果由 `uv.lock` 固定。
 
 ```powershell
+git submodule update --init --recursive
 uv sync --locked --no-editable --no-dev --extra mcp --extra publishing
 Copy-Item -LiteralPath .env.example -Destination .env
 ```
+
+`integrations/media-publisher` 是 [Publisher 独立仓库](https://github.com/xdh5/media-publisher) 的 Git 子模块。Publisher 代码在其仓库提交，Factory 记录所使用的提交版本。克隆时可使用 `git clone --recurse-submodules`；拉取 Factory 更新后运行上述子模块初始化命令。
 
 项目 MCP 源码位于 `mcp/`，由 `pyproject.toml` 映射为 Python 包 `media_factory_mcp`。安装后通过该包名导入和启动，第三方 SDK 使用 `mcp`。修改业务代码、提示词、技能或资源后需重新执行 `uv sync --locked --no-editable --no-dev --extra mcp --extra publishing --reinstall-package media-factory`。
 

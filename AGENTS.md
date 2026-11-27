@@ -22,6 +22,10 @@
 4. 修改和删除功能时，只需要单纯地修改和删除，不要写“把xxx修改成yyy”之类的没必要的话
 5. 优先使用 Docker 构建。
 
+## Publisher 子模块
+1. `integrations/media-publisher` 保持 Git submodule，来源为 `xdh5/media-publisher`，Factory 只记录其提交版本。
+2. Publisher 代码和文档先在独立仓库提交并推送，再更新 Factory 的子模块引用；构建和克隆时初始化子模块。
+
 ## 发布前账号预检
 1. 所有发布先核实本次账号组和目标平台的真实登录状态，只检查本次要用的账号。
 2. 浏览器账号打开真实发布页验证，官方接口账号验证实际授权；Cookie 存在和声明的过期时间不能作为登录有效的依据。
