@@ -8,6 +8,9 @@ export function parseToutiaoPublishArgs(args, kind) {
   if (index < 0 || !args[index + 1]) return { ok: false, error: "必须提供发布执行请求 --file <request.json>" };
   const filename = path.resolve(args[index + 1]);
   const manifest = JSON.parse(fs.readFileSync(filename, "utf8"));
+  if (kind === "article" && (manifest.cover_path || args.some(value => ["--cover", "--portrait-cover", "--widescreen-cover"].includes(value)))) {
+    return { ok: false, error: "头条文章仅支持无封面，请移除封面参数" };
+  }
   for (const field of ['title', 'description', 'tags', 'creative_statement', 'output_dir', 'publish_options']) {
     if (manifest[field] == null) return { ok: false, error: `发布业务未指定 ${field}` };
   }
@@ -15,7 +18,7 @@ export function parseToutiaoPublishArgs(args, kind) {
   for (const field of switches) {
     if (typeof manifest.publish_options[field] !== 'boolean') return { ok: false, error: `发布业务必须指定布尔选项 publish_options.${field}` };
   }
-  if (kind === 'micro' && !manifest.micro_image_path) return { ok: false, error: '发布业务必须指定微头条配图 micro_image_path' };
+  if (kind === 'micro' && (typeof manifest.micro_image_path !== "string" || !manifest.micro_image_path.trim())) return { ok: false, error: '发布业务必须指定微头条配图 micro_image_path' };
   const normalized = [...args];
   normalized[index + 1] = kind === "video" ? manifest.video_path : filename;
   const coverArgs = kind === "article" ? [] : ["--cover", kind === "micro" ? manifest.micro_image_path : manifest.cover_path];

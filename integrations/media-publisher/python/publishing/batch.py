@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .accounts import resolve_group_accounts
-from .platforms import PublishError, PlatformSpec, resolve_platform
+from .platforms import PlatformSpec, PublishError, resolve_platform
 from .runner import run_browser_publish
 from .schedule import resolve_timings
 
@@ -20,6 +20,8 @@ def _target_from_item(item: dict, platform: str) -> dict:
         raise PublishError("视频缺少 title")
     return {
         "platform": platform,
+        "content_type": _text(item.get("content_type") or "video"),
+        "request_path": _text(item.get("request_path")),
         "account_key": _text(item.get("account_key")),
         "title": title,
         "description": _text(item.get("description")),
@@ -77,6 +79,12 @@ def expand_request(request: dict) -> list[dict]:
 
 
 def _check_target(target: dict, spec: PlatformSpec) -> None:
+    if target["content_type"] not in {"video", "article", "micro"}:
+        raise PublishError("content_type 必须为 video、article 或 micro")
+    if target["content_type"] != "video":
+        if spec.code != "toutiao" or not target["request_path"]:
+            raise PublishError("文章和微头条须指定 toutiao 平台及 request_path")
+        return
     if spec.code == "youtube":
         for field in ("privacy_status", "category_id", "language", "made_for_kids"):
             if field not in target["youtube_options"]:
@@ -147,6 +155,16 @@ def _publish_official_with_context(target: dict, account: dict, spec: PlatformSp
 def _publish_browser(target: dict, account: dict, spec: PlatformSpec, timing: dict) -> dict:
     if target["draft"] and timing["publish_mode"] == "scheduled":
         raise PublishError(f"{spec.label}预约发布不能同时保存草稿")
+    if target["content_type"] != "video":
+        arguments = [f"publish-toutiao-{target['content_type']}", "--phone", account["account_group"], "--file", target["request_path"]]
+        if timing["cli_publish_at"]:
+            arguments.extend(["--publish-at", timing["cli_publish_at"]])
+        result = run_browser_publish(arguments)
+        if result.get("status") is not True:
+            raise PublishError(result.get("message") or "头条发布未成功")
+        if timing["publish_mode"] == "scheduled" and result.get("officialScheduled") is not True:
+            raise PublishError("头条未确认官方预约成功")
+        return result
     arguments = [
         "publish", "-p", spec.cli,
         "-f", target["file"],

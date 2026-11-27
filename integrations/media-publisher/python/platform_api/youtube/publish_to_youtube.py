@@ -231,7 +231,7 @@ def _upload_tag(video: Path, publication_id: str) -> str:
     with video.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
-    return f"media-factory:{digest.hexdigest()}"
+    return f"media-publisher:{digest.hexdigest()}"
 
 
 def _find_existing_video(youtube, channel_id: str, title: str, upload_tag: str) -> dict | None:
@@ -283,7 +283,8 @@ def _find_existing_video(youtube, channel_id: str, title: str, upload_tag: str) 
         ids = ",".join(item["video_id"] for item in matches[offset:offset + 50])
         details = youtube.videos().list(part="snippet,status,processingDetails", id=ids).execute()
         for item in details.get("items") or []:
-            if upload_tag not in ((item.get("snippet") or {}).get("tags") or []):
+            if not any(str(tag).rsplit(":", 1)[-1] == upload_tag.rsplit(":", 1)[-1]
+                       for tag in ((item.get("snippet") or {}).get("tags") or [])):
                 continue
             status = item.get("status") or {}
             processing = (item.get("processingDetails") or {}).get("processingStatus")

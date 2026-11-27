@@ -6,13 +6,13 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
-import signal
 import tempfile
 from pathlib import Path
 
-TIMEOUT_SECONDS = 4 * 60 * 60 + 120
+TIMEOUT_SECONDS = int(os.getenv("MEDIA_PUBLISHER_TIMEOUT_SECONDS", "14520"))
 
 
 def matrix_root() -> Path:

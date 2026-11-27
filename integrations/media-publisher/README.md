@@ -101,3 +101,24 @@ electron . cli publish -p blbl --phone finance --file video.mp4 --title "视频�
 ```
 
 `--category` 可选，不传则保留平台默认分区。财经业务明确传知识。`--cover` 上传4:3首页推荐封面，`--widescreen-cover` 上传16:9个人空间封面，`--ai-chapters` 使用平台智能章节；`--publish-at "YYYY-MM-DD HH:mm:ss"` 使用平台真实定时发布。投稿成功须同时取得平台成功响应、稿件ID并在稿件管理页定位本次标题；预约还核对提交的发布时间。失败返回具体错误并保存发布页诊断信息。
+# 独立 CLI 与 MCP 配置
+
+Publisher 不读取 Factory 的数据库或接口。账号目录为 `data/accounts.json`，凭据为 `data/credentials.json`；凭据文件也可由 `PUBLISHING_CREDENTIALS_FILE` 或 `PUBLISHING_CREDENTIALS_JSON` 明确指定。Docker 使用容器内路径，不推断调用方仓库结构。启动工作目录为 Publisher 根目录，或设置 `MEDIA_PUBLISHER_DIR`。
+
+账号组使用小写字母开头、至多64位的字母数字下划线标识，登录和发布均显式传 `--phone <账号组>`。使用 `--partition` 仍须指定账号组，会话位于 `data/<账号组>/Partitions`，既有三个账号组目录保持不变。
+
+配置文件格式示例：
+
+```json
+{"groups":[{"code":"demo","name":"demo","enabled":true}],"members":[]}
+```
+
+官方账号 members 提供 `group_code`、`platform`、`account_key`、`connector_account_id`、`platform_account_id`、`credential_ref`，可选 `display_name`、`account_ref`、`enabled`。凭据正文只存 credentials 文件，以 credential_ref 为键。通过 `python -m publishing configure-accounts` 的标准输入完整保存目录；MCP 对应 `configure_accounts`。替换配置前应自行保留备份。浏览器账号可通过该组独立登录建立会话，官方账号环境变量使用账号自己的大写前缀，不使用业务专属前缀映射。
+
+Factory 首次迁移使用 Factory 自己的 `ops/publishing/export_publisher_accounts.py`，脚本保留现有 Publisher 账号及原文件备份。Publisher 本身不调用此迁移脚本；Factory 日常查询不会覆盖 Publisher 目录。
+
+独立发布入口：普通视频用 `cli publish -p <平台> --phone <组> --file <视频> --title <标题>`；头条另有 `publish-toutiao-video`、`publish-toutiao-article`、`publish-toutiao-micro`，均可接收自行构造的发布请求 JSON，无需生产系统产物。文章不支持封面；微头条只接受一个 `micro_image_path` 字符串，不接受图片数组。文章和微头条专用入口不支持草稿；微头条当前仅支持立即发布。
+
+MCP `start_publish` 的 items 支持 `content_type=video|article|micro`，后两者选择 toutiao 并传 `request_path` 指向同样的独立请求 JSON。视频可传封面、分区、智能章节、原创、生成图文等选项；YouTube 显式传 `youtube_options`，包含 privacy_status、category_id、language、made_for_kids。官方 CLI 同样提供 `--privacy`、`--category-id`、`--language`、`--made-for-kids`、`--thumbnail-path`。
+
+`MEDIA_PUBLISHER_EXECUTABLE` 指定已安装 CLI，`MEDIA_PUBLISHER_PYTHON` 指定 Python；各层默认执行时限统一为14520秒，通过 `MEDIA_PUBLISHER_TIMEOUT_SECONDS` 配置。预约接受带时区 ISO 时间，浏览器平台按北京时间转换，这是当前平台执行适配约定。

@@ -39,7 +39,7 @@ export async function runCliMain(argv = process.argv) {
     const parsed = parseToutiaoPublishArgs(sub.slice(1), toutiaoCommands[cmd]);
     if (!parsed.ok) { console.error(parsed.error); return 2; }
     if (parsed.value.help) {
-      console.log(`用法：cli ${cmd} --phone <账号组> --file <财经生产清单.json>`);
+      console.log(`用法：cli ${cmd} --phone <账号组> --file <发布请求.json>`);
       return 0;
     }
     const result = await runSingleFilePublish(parsed.value);
@@ -121,7 +121,7 @@ export async function runCliMain(argv = process.argv) {
   if (cmd === "publish") {
     if (isOfficialPlatform(officialPlatformFromArgv(sub.slice(1)))) {
       try {
-        writeCliJson(runOfficialPython(sub.slice(1)));
+        writeCliJson(runOfficialPython(sub));
         return 0;
       } catch (error) {
         console.error(error && error.message ? error.message : error);
