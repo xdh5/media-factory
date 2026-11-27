@@ -26,11 +26,14 @@ COPY ops/anime/ ops/anime/
 COPY .github/scripts/ .github/scripts/
 COPY .agents/skills/ .agents/skills/
 ARG INSTALL_AGENT=false
+ARG INSTALL_KNOWLEDGE=false
 RUN --mount=type=cache,target=/root/.cache/uv \
+    knowledge_extra=""; \
+    if [ "$INSTALL_KNOWLEDGE" = "true" ]; then knowledge_extra="--extra rag"; fi; \
     if [ "$INSTALL_AGENT" = "true" ]; then \
-        uv sync --locked --no-editable --no-dev --extra agent; \
+        uv sync --locked --no-editable --no-dev --extra agent $knowledge_extra; \
     else \
-        uv sync --locked --no-editable --no-dev --extra mcp --extra publishing; \
+        uv sync --locked --no-editable --no-dev --extra mcp --extra publishing $knowledge_extra; \
     fi
 ENV MEDIA_FACTORY_WORKSPACE=/app \
     MEDIA_PUBLISHER_DIR=/app/integrations/media-publisher \

@@ -19,6 +19,11 @@
     }
   },
   "r2_buckets": [{"binding": "STORYBOARD_IMAGES", "bucket_name": "media-factory"}],
+  "vars": {"KNOWLEDGE_INDEXES": "{\"media-knowledge-v1\":{\"binding\":\"KNOWLEDGE_PRIMARY\",\"dimensions\":1024,\"metric\":\"cosine\"},\"media-knowledge-v2\":{\"binding\":\"KNOWLEDGE_SECONDARY\",\"dimensions\":1024,\"metric\":\"cosine\"}}"},
+  "vectorize": [
+    {"binding":"KNOWLEDGE_PRIMARY","index_name":"media-knowledge-v1"},
+    {"binding":"KNOWLEDGE_SECONDARY","index_name":"media-knowledge-v2"}
+  ],
   "d1_databases": [
     {
       "binding": "DB",

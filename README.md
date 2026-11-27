@@ -23,6 +23,9 @@ Copy-Item -LiteralPath .env.example -Destination .env
 | 语言学习 | `uv run --locked --no-editable --no-dev python -m media_factory_mcp.language_learning` |
 | 动漫 | `uv run --locked --no-editable --no-dev python -m media_factory_mcp.anime` |
 | 统一发布 | `uv run --locked --no-editable --no-dev python -m media_factory_mcp.publishing` |
+| 独立知识库 | `uv run --locked --no-editable --no-dev --extra rag python -m media_factory_mcp.knowledge` |
+
+独立知识库使用 LangChain、D1 和 Vectorize，提供原文增删改、分类检索和可恢复索引同步。Embedding 服务独立配置，接入与部署见 [知识库说明](ops/knowledge/README.md)。启用时保留已使用的依赖 extra，或使用独立环境。
 
 工作区包含两个发行包：`media-factory` 提供业务工具、采集接口、Agent、MCP、桌面界面和生产命令；`media-publisher-python` 提供发布适配。包内静态资源与可写工作目录分离。
 

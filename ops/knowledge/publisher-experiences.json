@@ -1,0 +1,65 @@
+[
+  {
+    "title": "视频号封面：等待组件就绪并跨框架点击直接编辑",
+    "content": "视频号编辑分享卡片时出现“使用此素材作为封面”，界面有“直接编辑”和“使用素材”。若封面组件尚未就绪，打开编辑后选项会立即消失。发布脚本等待 Vue 封面组件就绪，再遍历实际 frames 并使用 pierce 选择器定位 .btn-directly-edit，执行确定性点击，进入对应比例编辑流程。不要由 LLM 识别或手工代替脚本点击，不反复无条件重开弹层。修复后 2026-11-28 和 29 的财经视频完成封面处理并成功官方预约。",
+    "metadata": {
+      "business_line": "finance",
+      "platform": "wechat_channels",
+      "stage": "cover",
+      "verified": true,
+      "error_summary": "封面编辑入口打开后选项秒消失，脚本未点到直接编辑",
+      "root_cause": "封面组件尚未就绪及内容处于独立 iframe 或 Shadow DOM，原定位范围不足",
+      "solution_steps": ["等待 Vue 封面组件初始化完成", "遍历页面 frames，以 pierce 选择器定位 .btn-directly-edit", "由脚本点击并核对个人主页 3:4 与分享卡片 4:3 编辑及封面结果"],
+      "applicability": "适用于项目视频号上传器 sphCover.js 所支持的 iframe 或无界 Shadow DOM 页面；页面结构变化时重新核对。提交结果不明时先核对回执，不能直接重发。",
+      "verified_at": "2026-11-27T11:11:13+08:00",
+      "code_revision": "1376510956071394900c3c03cfebdaf95c1801a3",
+      "source": "integrations/media-publisher/src/main/services/upLoad/sphCover.js",
+      "evidence": [
+        {"type": "receipt", "reference": "D1 publication_records 2386、2387：wechat_channels，2026-11-28/29，scheduled，publish_at 为各日18:00+08:00"},
+        {"type": "log", "reference": "cache/output/finance/run-20261128/wechat-final-execution.log 及 run-20261129 同名日志：status=true，scheduled=true，officialScheduled=true，CLI退出码0；平台回执id=null"}
+      ]
+    }
+  },
+  {
+    "title": "视频号官方预约：在 iframe 实际文档内定位日期时间控件",
+    "content": "视频号官方定时发表控件位于 wujie iframe 或 Shadow DOM 内容区，仅在顶层 document 寻找日期时间会失败。项目 officialSchedule/dialog.js 与 shipinhao.js 按实际内容文档定位日期时间、设置目标时间并核验官方定时状态。修复后 2026-11-27、28、29 财经视频均取得 scheduled 与 officialScheduled 成功回执，预约各日北京时间18:00。平台未返回作品ID，不能虚构ID。",
+    "metadata": {
+      "business_line": "finance",
+      "platform": "wechat_channels",
+      "stage": "schedule",
+      "verified": true,
+      "error_summary": "视频号预约日期时间在顶层文档定位失败",
+      "root_cause": "预约控件存在于 iframe 的实际 document 或无界 Shadow DOM",
+      "solution_steps": ["通过项目官方预约模块选择实际内容文档", "设置并核验带时区预约时间", "提交后核对 scheduled、officialScheduled 及独立发布记录"],
+      "applicability": "仅为视频号官方预约经验，不适用于头条文章或微头条；账号需先通过真实登录预检。",
+      "verified_at": "2026-11-27T11:11:13+08:00",
+      "code_revision": "648d96f99d891c56722560a58af527e19afc1ba2",
+      "source": "integrations/media-publisher/src/main/services/upLoad/officialSchedule/shipinhao.js",
+      "evidence": [
+        {"type": "receipt", "reference": "D1 publication_records 2385、2386、2387：wechat_channels，2026-11-27/28/29，scheduled，预约北京时间18:00"},
+        {"type": "log", "reference": "cache/wechat-finance-20261127-script-schedule.log 及 28/29 wechat-final-execution.log：status=true，scheduled=true，officialScheduled=true，id=null"}
+      ]
+    }
+  },
+  {
+    "title": "头条文章无封面发布：以实际发布接口成功回执确认结果",
+    "content": "当前财经文章按用户要求不上传封面，正文及插图保留，选择无封面。发布页出现保存失败提示不能直接认定文章发布失败，也不能因提示不停点击。以 /mp/agw/article/publish 返回 HTTP200、statusCode0、提交成功及实际作品ID判断，必要时核对作品管理页，避免重发。27、28、29三篇无封面文章已有独立成功回执。此经验仅验证立即发布，没有验证头条文章官方预约。",
+    "metadata": {
+      "business_line": "finance",
+      "platform": "toutiao",
+      "stage": "submit",
+      "verified": true,
+      "error_summary": "头条文章页面反复提示保存失败，不能据此判定实际发布结果",
+      "root_cause": "页面草稿保存提示与实际发布接口回执是不同信号，上传封面流程也不符合本次无封面要求",
+      "solution_steps": ["按本次授权选择无封面，不上传封面", "关闭文章创作者助手并执行发布脚本", "观察实际发布接口回执与作品ID，结果不明时先核对作品管理页"],
+      "applicability": "适用于本项目头条文章无封面立即发布；不代表官方预约已验证。不能把保存失败当作无条件重复提交的理由。",
+      "verified_at": "2026-11-26T18:37:19.622Z",
+      "code_revision": "648d96f99d891c56722560a58af527e19afc1ba2",
+      "source": "integrations/media-publisher/src/main/services/upLoad/ttArticle.js",
+      "evidence": [
+        {"type": "receipt", "reference": "cache/output/finance/run-20261127/article-no-cover-republish/toutiao-article-publication.json：作品7712550707420791334，cover_mode=none，HTTP200，statusCode0"},
+        {"type": "receipt", "reference": "2026-11-28/29同目录回执：作品7712550868385612298、7712551062560948786，status=true，cover_mode=none；D1 publication_records 2382、2383、2384"}
+      ]
+    }
+  }
+]

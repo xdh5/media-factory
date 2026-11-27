@@ -1,0 +1,35 @@
+{
+  "profiles": {
+    "publisher-default": {
+      "provider": "openai-compatible",
+      "endpoint": "https://api.cloudflare.com/client/v4/accounts/6c9ea4b716d00c55c0afbcc94c4d95a8/ai/v1/embeddings",
+      "model": "@cf/baai/bge-m3",
+      "dimensions": 1024,
+      "index_name": "media-knowledge-v1",
+      "batch_size": 8,
+      "request_dimensions": false,
+      "credential_file_env": "MEDIA_FACTORY_WRANGLER_CONFIG"
+    },
+    "publisher-next": {
+      "provider": "openai-compatible",
+      "endpoint": "https://api.cloudflare.com/client/v4/accounts/6c9ea4b716d00c55c0afbcc94c4d95a8/ai/v1/embeddings",
+      "model": "@cf/baai/bge-m3",
+      "dimensions": 1024,
+      "index_name": "media-knowledge-v2",
+      "batch_size": 8,
+      "request_dimensions": false,
+      "credential_file_env": "MEDIA_FACTORY_WRANGLER_CONFIG",
+      "chunk_size": 640,
+      "chunk_overlap": 96
+    },
+    "dashscope-example": {
+      "provider": "openai-compatible",
+      "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings",
+      "model": "text-embedding-v4",
+      "dimensions": 1024,
+      "index_name": "media-knowledge-v2",
+      "api_key_env": "DASHSCOPE_API_KEY_FINANCE",
+      "batch_size": 8
+    }
+  }
+}

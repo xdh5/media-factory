@@ -5,6 +5,8 @@ description: 发布或预约指定计划日期的财经内容，默认覆盖五�
 
 # 发布财经成片
 
+未知发布异常与验证后经验保存遵循 [发布异常经验](../publisher-error-knowledge.md)。
+
 业务线、内容类型及默认账号组均为 `finance`。本技能仅负责本机发布到抖音、快手、视频号、B站、头条。YouTube 由 GitHub Actions 发布，并保留账号组配置及看板展示；本技能不检查 YouTube 登录、不上传、不补发，也不触发其发布 Action。日期有歧义时询问；指定标题时先预览定位 `production_id`。仅制作或预览的请求不运行发布命令，不触发发布 Action。
 
 ## 默认发布范围

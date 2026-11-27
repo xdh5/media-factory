@@ -5,6 +5,8 @@ description: 发布或预约指定计划日期的韩语学习成片，包含原�
 
 # 发布韩语成片
 
+未知发布异常与验证后经验保存遵循 [发布异常经验](../publisher-error-knowledge.md)。
+
 业务线用 `language_learning`，内容类型 `en-ko`（原版和问答版），默认账号组 `korean`。日期缺失或有歧义时询问。默认北京时间 16:00，未到则预约，已过则立即发布；用户指定时刻和时区优先。
 
 1. 用 `publishing_list_account_groups` 选择启用平台，按用户要求限缩范围。按发布 MCP 的规则完成真实登录预检及提示后再继续。

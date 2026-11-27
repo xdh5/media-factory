@@ -1,5 +1,6 @@
 import { jsonResponse, errorResponse, requiredText, positiveInteger, productionDate, cutoffTimestamp } from "./api-common.mjs";
 import { handleDashboard } from "./dashboard.mjs";
+import { handleKnowledge } from './knowledge.mjs';
 import { cleanupExpiredScriptReservations, releaseScriptReservation, renewScriptReservation } from './finance-script-reservations.mjs';
 import { listPublicationRecords, deletePublicationRecords, listPublishingAccountGroups, commitPublicationRecords, listProductionOutputs, deleteProductionOutputs, commitProductionOutputs } from "./publication-records.mjs";
 import { listFinanceGeneratedImages, commitFinanceGeneratedImages, listFinanceSourceAuthors, addFinanceSourceAuthor, removeFinanceSourceAuthor, listFinanceRejectedAwemes, rejectFinanceAweme, listDouyinResearchIds, getDouyinResearchScriptStats, reserveDouyinResearchScript, markDouyinResearchScriptUsed, commitDouyinResearch } from "./finance-data.mjs";
@@ -292,6 +293,8 @@ export default {
       return errorResponse("UNAUTHORIZED", "鉴权失败", 401);
     }
     try {
+      const knowledge = await handleKnowledge(request, env, url);
+      if (knowledge) return knowledge;
       if (url.pathname === "/v1/finance-storyboard-images" && request.method === "GET") return await listStoryboardImages(request, env);
       if (url.pathname === "/v1/finance-storyboard-images" && request.method === "POST") return await saveStoryboardImages(request, env);
       if (url.pathname === "/v1/finance-storyboard-images/bind" && request.method === "POST") return await bindStoryboardImages(request, env);

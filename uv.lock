@@ -1392,8 +1392,8 @@ name = "httpcore2"
 version = "2.16.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11", marker = "(sys_platform != 'emscripten' and extra == 'extra-13-media-factory-desktop') or extra == 'extra-13-media-factory-agent'" },
-    { name = "truststore", marker = "(sys_platform != 'emscripten' and extra == 'extra-13-media-factory-desktop') or extra == 'extra-13-media-factory-agent'" },
+    { name = "h11" },
+    { name = "truststore" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/92/9d/df40b41f7db0370f82019820709244e7b660c52aa3da3c9e5c4e8141f6e6/httpcore2-2.16.2.tar.gz", hash = "sha256:6c519d0f7b44f7269fa9bbb4d2763db395a4a2370f046d8e8e0a4b38227815d2", size = 70064, upload-time = "2026-11-16T10:12:19.491Z" }
 wheels = [
@@ -1790,17 +1790,18 @@ name = "langchain-core"
 version = "1.8.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "certifi", marker = "extra == 'extra-13-media-factory-agent'" },
-    { name = "httpx", marker = "extra == 'extra-13-media-factory-agent'" },
-    { name = "jsonpatch", marker = "extra == 'extra-13-media-factory-agent'" },
-    { name = "langchain-protocol", marker = "extra == 'extra-13-media-factory-agent'" },
-    { name = "langsmith", marker = "extra == 'extra-13-media-factory-agent'" },
-    { name = "packaging", marker = "extra == 'extra-13-media-factory-agent'" },
-    { name = "pydantic", marker = "extra == 'extra-13-media-factory-agent'" },
-    { name = "pyyaml", marker = "extra == 'extra-13-media-factory-agent'" },
+    { name = "certifi", marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
+    { name = "httpx", marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
+    { name = "jsonpatch", marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
+    { name = "langchain-protocol", marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
+    { name = "langsmith", marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
+    { name = "packaging", marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
+    { name = "pydantic", marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
+    { name = "pyyaml", marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
     { name = "tenacity", version = "9.1.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-13-media-factory-agent'" },
-    { name = "typing-extensions", marker = "extra == 'extra-13-media-factory-agent'" },
-    { name = "uuid-utils", marker = "extra == 'extra-13-media-factory-agent'" },
+    { name = "tenacity", version = "9.2.1", source = { registry = "https://pypi.org/simple" }, marker = "(extra != 'extra-13-media-factory-agent' and extra != 'extra-13-media-factory-desktop') or (extra == 'extra-13-media-factory-agent' and extra == 'extra-13-media-factory-desktop')" },
+    { name = "typing-extensions", marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
+    { name = "uuid-utils", marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/75/ba/281e953ec491deda5c9ef8633b47647c41836c6b6fe1395e9d99567dbb44/langchain_core-1.8.4.tar.gz", hash = "sha256:af8976d6df0b3338dc7c830ebf1c505c0fc05a0e3eb564f4901ed7546a418ab6", size = 1025230, upload-time = "2026-11-19T22:35:43.367Z" }
 wheels = [
@@ -1855,7 +1856,7 @@ version = "1.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain-core", version = "1.4.8", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-13-media-factory-desktop'" },
-    { name = "langchain-core", version = "1.8.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-13-media-factory-agent'" },
+    { name = "langchain-core", version = "1.8.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/26/9f/6c545900fefb7b00ddfa3f16b80d61338a0ec68c31c5451eeeab99082760/langchain_text_splitters-1.1.2.tar.gz", hash = "sha256:782a723db0a4746ac91e251c7c1d57fd23636e4f38ed733074e28d7a86f41627", size = 293580, upload-time = "2026-04-16T14:20:39.162Z" }
 wheels = [
@@ -2167,6 +2168,12 @@ mcp = [
 publishing = [
     { name = "media-publisher-python" },
 ]
+rag = [
+    { name = "langchain-core", version = "1.4.8", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-13-media-factory-desktop'" },
+    { name = "langchain-core", version = "1.8.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-13-media-factory-agent' or extra != 'extra-13-media-factory-desktop'" },
+    { name = "langchain-text-splitters" },
+    { name = "mcp" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -2188,13 +2195,16 @@ requires-dist = [
     { name = "jsonschema", marker = "extra == 'agent'", specifier = ">=4.23,<5" },
     { name = "langchain", marker = "extra == 'agent'", specifier = ">=1,<2" },
     { name = "langchain-core", marker = "extra == 'agent'", specifier = ">=1,<2" },
+    { name = "langchain-core", marker = "extra == 'rag'", specifier = ">=1,<2" },
     { name = "langchain-openai", marker = "extra == 'agent'", specifier = ">=1.7.3,<2" },
     { name = "langchain-text-splitters", marker = "extra == 'agent'", specifier = ">=1,<2" },
+    { name = "langchain-text-splitters", marker = "extra == 'rag'", specifier = ">=1,<2" },
     { name = "langgraph", marker = "extra == 'agent'", specifier = ">=1.0,<2" },
     { name = "langgraph-checkpoint-sqlite", marker = "extra == 'agent'", specifier = ">=3.1.2,<4" },
     { name = "langsmith", marker = "extra == 'agent'", specifier = ">=0.14.16,<1" },
     { name = "lxml", marker = "extra == 'mcp'", specifier = ">=5.3" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.26,<2" },
+    { name = "mcp", marker = "extra == 'rag'", specifier = ">=1.26,<2" },
     { name = "media-factory", extras = ["mcp", "publishing"], marker = "extra == 'agent'" },
     { name = "media-factory", extras = ["publishing"], marker = "extra == 'desktop'" },
     { name = "media-publisher-python", marker = "extra == 'publishing'", editable = "integrations/media-publisher/python" },
@@ -2212,7 +2222,7 @@ requires-dist = [
     { name = "yt-dlp", marker = "extra == 'anime'", specifier = ">=2024.0.0" },
     { name = "yt-dlp", marker = "extra == 'mcp'", specifier = ">=2024.0.0" },
 ]
-provides-extras = ["publishing", "mcp", "anime", "agent", "desktop"]
+provides-extras = ["rag", "publishing", "mcp", "anime", "agent", "desktop"]
 
 [[package]]
 name = "media-publisher-python"
@@ -4157,9 +4167,10 @@ name = "tenacity"
 version = "9.2.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "sys_platform == 'win32'",
-    "sys_platform == 'emscripten'",
-    "sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "sys_platform == 'win32' and extra != 'extra-13-media-factory-agent' and extra == 'extra-13-media-factory-desktop'",
+    "sys_platform == 'emscripten' and extra != 'extra-13-media-factory-agent' and extra == 'extra-13-media-factory-desktop'",
+    "sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-13-media-factory-agent' and extra == 'extra-13-media-factory-desktop'",
+    "extra != 'extra-13-media-factory-agent' and extra != 'extra-13-media-factory-desktop'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/82/9e/497c1c8ebe5a5b5d1d4a7511aea22c0bb1a97e3170d98abdef0e1b34265a/tenacity-9.2.1.tar.gz", hash = "sha256:a606b5c808d0cded4a359d5b9932d867ff2a6a6b64d37350260fd01bbdf83839", size = 58261, upload-time = "2026-10-07T12:13:01.633Z" }
 wheels = [
