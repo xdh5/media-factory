@@ -170,6 +170,10 @@ export async function runSphCliLogin({
   }
 
   const part = normalizeSphPartition(partition);
+  if (force) {
+    await electronSession.fromPartition(part).clearStorageData({ storages: ["cookies", "localstorage"] });
+    console.log("[sph-cli-login] 已清除本次视频号分区登录状态");
+  }
   console.log(
     "[sph-cli-login] 原始 partition:",
     partition,
