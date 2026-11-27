@@ -7,29 +7,40 @@ export async function uploadSphCover(page, filename, share = false) {
   const heading = share ? "编辑分享卡片" : "编辑个人主页卡片";
   setPublishStage(page, `打开视频号${heading}封面编辑器`);
   console.log(`[sph] 正在打开${heading}`);
-  const edit = await page.waitForSelector(`wujie-app.wujie_iframe >>> ${selector} .edit-btn`, { visible: true, timeout: 30000 });
-  await edit.evaluate(element => element.click());
-  await page.waitForFunction(title => {
-    const root = document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document;
-    const dialogReady = [...root.querySelectorAll(".edit-cover-dialog h3"), ...document.querySelectorAll(".edit-cover-dialog h3")].some(element =>
-      element.textContent.trim() === title && element.getBoundingClientRect().width > 0);
-    const recommendation = [...root.querySelectorAll("button,div,span"), ...document.querySelectorAll("button,div,span")].some(element =>
-      element.childElementCount === 0 && element.textContent.trim() === "直接编辑" && element.getBoundingClientRect().width > 0);
-    return dialogReady || recommendation;
-  }, { timeout: 30000, polling: 100 }, heading).catch(() => {
-    throw new Error(`视频号${heading}入口已点击，但编辑弹窗未打开，尚未提交`);
+  const edit = await page.waitForSelector(`wujie-app.wujie_iframe >>> ${selector}`, { visible: true, timeout: 30000 });
+  await edit.evaluate(element => {
+    // 卡片点击后阻止事件冒泡，避免平台的外部点击监听立即关闭推荐菜单。
+    element.addEventListener("click", event => event.stopPropagation(), { once: true });
+    element.click();
   });
-  await page.evaluate(() => {
-    const root = (document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document);
-    const direct = [...root.querySelectorAll("button,div,span"), ...document.querySelectorAll("button,div,span")].find(element =>
-      element.childElementCount === 0 && element.textContent.trim() === "直接编辑" && element.getBoundingClientRect().width > 0);
-    if (direct) direct.click();
-  });
-  await page.waitForFunction(title => {
-    const root = (document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document);
-    return [...root.querySelectorAll(".edit-cover-dialog h3"), ...document.querySelectorAll(".edit-cover-dialog h3")].some(element =>
-      element.textContent.trim() === title && element.getBoundingClientRect().width > 0);
-  }, { timeout: 15000, polling: 100 }, heading);
+  let editorReady = false;
+  let directClicked = false;
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    const titles = await page.$$("pierce/.edit-cover-dialog h3");
+    for (const title of titles) {
+      if (await title.evaluate((node, expected) => node.textContent.trim() === expected &&
+        node.getBoundingClientRect().width > 0, heading)) editorReady = true;
+      await title.dispose();
+    }
+    if (editorReady) break;
+    if (!directClicked) {
+      const buttons = await page.$$("pierce/.btn-directly-edit");
+      for (const button of buttons) {
+        const visible = await button.evaluate(node => node.textContent.trim() === "直接编辑" &&
+          node.getBoundingClientRect().width > 0 && getComputedStyle(node).visibility !== "hidden");
+        if (visible && !directClicked) {
+          setPublishStage(page, `点击视频号${heading}直接编辑`);
+          await button.click();
+          directClicked = true;
+          console.log(`[sph] 已点击${heading}直接编辑`);
+        }
+        await button.dispose();
+      }
+    }
+    await page.waitForTimeout(250);
+  }
+  if (!editorReady) throw new Error(`视频号${heading}未进入封面编辑器，直接编辑已点击=${directClicked}，尚未提交`);
   const previousRemote = await page.evaluate(isShare => {
     const video = (document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document).querySelector(".cover-preview-wrap").__vue__.video;
     return isShare ? video.shareCoverUrl : video.coverUrl;

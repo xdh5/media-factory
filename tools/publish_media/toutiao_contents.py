@@ -11,7 +11,7 @@ from .toutiao_payload import build_toutiao_publication_payload
 
 
 def publish_finance_toutiao_contents(publish_date: str, account_group: str, production_id: str,
-                                    content_types: list[str], progress) -> dict:
+                                    content_types: list[str], progress, publish_mode: str = "immediate", publish_at: str = "now") -> dict:
     from publishing.runner import run_browser_publish
 
     preview = preview_publication('finance', publish_date, account_group, ['toutiao'],
@@ -47,7 +47,7 @@ def publish_finance_toutiao_contents(publish_date: str, account_group: str, prod
         try:
             if kind == 'video':
                 sent = publish_local_outputs('finance', publish_date, account_group, ['toutiao'],
-                                             'immediate', 'now', content_kind='finance',
+                                             publish_mode, publish_at, content_kind='finance',
                                              production_id=production_id, progress=progress)
                 result['published'].extend(sent['published'])
             else:
@@ -57,12 +57,14 @@ def publish_finance_toutiao_contents(publish_date: str, account_group: str, prod
                 if kind == 'micro':
                     progress(f"微头条配图已指定：{payload['micro_image_path']}")
                 arguments = [f'publish-toutiao-{kind}', '--phone', task['route']['account_ref'], '--file', str(payload_path)]
-                receipt = run_browser_publish(arguments)
+                if publish_mode == "scheduled":
+                    arguments.extend(["--publish-at", datetime.fromisoformat(publish_at).strftime("%Y-%m-%d %H:%M:%S")])
+                receipt = run_browser_publish(arguments, log_path=output / f"toutiao-{kind}-execution.log")
                 if receipt.get('status') is not True or not receipt.get('id'):
                     raise RuntimeError(receipt.get('message') or f'头条{kind}未返回成功状态和作品ID，禁止登记成功')
                 saved = _save_publication({'item': {**item, 'production_id': publication_id}, 'route': task['route']},
-                                         {'result': receipt, 'publish_mode': 'immediate',
-                                          'publish_at': datetime.now().astimezone().isoformat()}, 'finance')
+                                         {'result': receipt, 'publish_mode': publish_mode,
+                                          'publish_at': publish_at if publish_mode == 'scheduled' else datetime.now().astimezone().isoformat()}, 'finance')
                 result['published'].append(saved)
         except Exception as error:
             result['failed'].append({'kind': kind, 'message': str(error)})

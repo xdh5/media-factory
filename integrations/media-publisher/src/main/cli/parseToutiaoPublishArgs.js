@@ -18,9 +18,11 @@ export function parseToutiaoPublishArgs(args, kind) {
   if (kind === 'micro' && !manifest.micro_image_path) return { ok: false, error: '发布业务必须指定微头条配图 micro_image_path' };
   const normalized = [...args];
   normalized[index + 1] = kind === "video" ? manifest.video_path : filename;
+  const coverArgs = kind === "article" ? [] : ["--cover", kind === "micro" ? manifest.micro_image_path : manifest.cover_path];
   const parsed = parsePublishArgs([...normalized, "-p", "tt", "--creative-statement", manifest.creative_statement, "--title", manifest.title,
-    "--description", manifest.description, "--tags", manifest.tags, "--cover", kind === 'micro' ? manifest.micro_image_path : manifest.cover_path]);
-  if (parsed.ok && (parsed.value.publishAt || parsed.value.draft)) return { ok: false, error: "头条专用命令仅支持立即发布；预约视频使用 cli publish" };
+    "--description", manifest.description, "--tags", manifest.tags, ...coverArgs]);
+  if (parsed.ok && parsed.value.draft) return { ok: false, error: "头条专用命令不支持保存草稿" };
+  if (parsed.ok && parsed.value.publishAt && kind === "micro") return { ok: false, error: "当前账号微头条没有官方定时发布入口" };
   if (parsed.ok) parsed.value.publishOptions = { ...parsed.value.publishOptions, ...manifest.publish_options, toutiaoContentType: kind, toutiaoManifestPath: filename };
   return parsed;
 }

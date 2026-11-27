@@ -11,7 +11,7 @@ def publishing_start_batch(
     """一次提交多日期发布，后台独立执行，不保持模型轮询。先核验全部账号并向用户报告通过后调用。
 
     publications 每项包含 publish_date，可选 content_kind、production_id、publish_mode、publish_at、publish_at_by_platform。
-    财经头条立即发布可传 toutiao_content_types，选择 video、article、micro，各类独立去重和入库。
+    财经头条发布可传 toutiao_content_types，选择 video、article、micro，各类独立去重和入库。
     财经省略时间每天一篇，预约北京时间18点；韩语传明确的16点预约时间。prepare_only只准备成片，不上传或发布。
     """
     if not account_group or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for character in account_group):
@@ -32,8 +32,10 @@ def publishing_start_batch(
                 raise ValueError('头条内容类型仅用于财经头条批次')
             if not kinds or len(set(kinds)) != len(kinds) or set(kinds) - {'video', 'article', 'micro'}:
                 raise ValueError('头条内容类型必须从 video、article、micro 中选择且不能重复')
-            if not publication.get('production_id') or publication.get('publish_mode') != 'immediate' or publication.get('publish_at') != 'now':
-                raise ValueError('头条三类发布需要指定 production_id，且使用 immediate、now 立即发布')
+            if not publication.get('production_id'):
+                raise ValueError('头条内容发布需要指定 production_id')
+            if publication.get('publish_mode') == 'scheduled' and 'micro' in kinds:
+                raise ValueError('当前账号微头条没有官方预约入口，尚未支持本机定时发布')
         normalized.append({
             **publication,
             "publish_date": normalize_publish_date(publication.get("publish_date")),

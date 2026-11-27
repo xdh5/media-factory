@@ -69,7 +69,15 @@ export async function submitToutiaoContent(page, data, kind, action) {
   const match = receipt.responseText.match(new RegExp(`"(?:${idField})"\\s*:\\s*"?([1-9]\\d*)"?`));
   if (!match) throw new Error(`头条${kind}提交未返回作品ID，结果待核对，禁止自动重发`);
   const id = match[1];
-  const result = { status: true, id, kind, published_at: new Date().toISOString(),
+  let timing;
+  if (data.officialScheduledPublish && kind === "article") {
+    const posted = new URLSearchParams(receipt.request.postData());
+    timing = { timer_status: posted.get("timer_status"), timer_time: posted.get("timer_time") };
+    if (timing.timer_status !== "1" || timing.timer_time !== data.publishAt.slice(0, 16)) {
+      throw new Error(`头条文章提交的预约时间不一致，结果待核对：${JSON.stringify(timing)}`);
+    }
+  }
+  const result = { status: true, id, kind, ...(timing ? { scheduled: true, officialScheduled: true, publishAt: data.publishAt, timing } : {}), published_at: new Date().toISOString(),
     url: kind === "micro" ? `https://www.toutiao.com/w/${id}/` : `https://www.toutiao.com/${kind === "article" ? "article" : "video"}/${id}/`,
     apiReceipt: { requestPath: receipt.requestPath, httpStatus: receipt.httpStatus,
       statusCode: body.status ?? body.code ?? body.err_no ?? body.errno, code: body.data?.Code, message: body.data?.Message || body.message } };

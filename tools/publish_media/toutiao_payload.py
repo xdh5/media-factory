@@ -18,6 +18,7 @@ def build_toutiao_publication_payload(manifest: dict, kind: str) -> dict:
         payload["micro_text"] = manifest["micro_summary"] + "\n\n" + " ".join(
             f"#{tag}#" for tag in manifest["hashtags"])
     elif kind == "article":
+        payload.pop("cover_path")
         payload["toutiao_article_path"] = manifest["toutiao_article_path"]
         payload["publish_options"].update(first_publish=True, sync_micro=False)
     else:

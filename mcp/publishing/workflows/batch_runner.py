@@ -31,24 +31,40 @@ def run_batch(path: Path) -> None:
                 arguments = {"business_line": request["business_line"],
                              "account_group": request["account_group"], "platforms": request["platforms"],
                              **publication}
-                if publication.get('toutiao_content_types'):
-                    from tools.publish_media.toutiao_contents import publish_finance_toutiao_contents
-                    result = publish_finance_toutiao_contents(publication['publish_date'], request['account_group'],
-                        publication['production_id'], publication['toutiao_content_types'], progress)
-                    data['duplicate_count'] += len(result['skipped'])
-                    if result['failed']:
-                        data['error'] = {'message': '部分头条内容发布失败', 'details': result['failed']}
-                else:
-                    prepared = preview_publication(**{key: value for key, value in arguments.items()
-                        if key not in {"publish_mode", "publish_at", "publish_at_by_platform"}})
-                    data["duplicate_count"] += prepared["duplicate_count"]
-                    if request["prepare_only"] or not prepared["publishable_count"]:
-                        result = {"prepared_count": len(prepared["items"]), "timings_seconds": prepared["timings_seconds"]}
+                try:
+                    if publication.get('toutiao_content_types'):
+                        from tools.publish_media.toutiao_contents import publish_finance_toutiao_contents
+                        result = publish_finance_toutiao_contents(publication['publish_date'], request['account_group'],
+                            publication['production_id'], publication['toutiao_content_types'], progress,
+                            publication.get('publish_mode', 'immediate'), publication.get('publish_at', 'now'))
+                        data['duplicate_count'] += len(result['skipped'])
+                        data['scheduled_count'] += sum(row['record']['status'] == 'scheduled' for row in result['published'])
+                        if result['failed']:
+                            data['error'] = {'message': '部分头条内容发布失败', 'details': result['failed']}
                     else:
-                        result = publish_local_outputs(
-                            **{**arguments, "publish_mode": publication.get("publish_mode"),
-                               "publish_at": publication.get("publish_at")}, progress=progress)
-                        data["scheduled_count"] += sum(row["record"]["status"] == "scheduled" for row in result["published"])
+                        prepared = preview_publication(**{key: value for key, value in arguments.items()
+                            if key not in {"publish_mode", "publish_at", "publish_at_by_platform"}})
+                        data["duplicate_count"] += prepared["duplicate_count"]
+                        if request["prepare_only"] or not prepared["publishable_count"]:
+                            result = {"prepared_count": len(prepared["items"]), "timings_seconds": prepared["timings_seconds"]}
+                        else:
+                            result = publish_local_outputs(
+                                **{**arguments, "publish_mode": publication.get("publish_mode"),
+                                   "publish_at": publication.get("publish_at")}, progress=progress)
+                            data["scheduled_count"] += sum(row["record"]["status"] == "scheduled" for row in result["published"])
+                except Exception as error:
+                    details = getattr(error, "details", {})
+                    failure = {"publish_date": publication["publish_date"], "type": type(error).__name__,
+                               "message": str(error), "details": details}
+                    failures = data.setdefault("failed_publications", [])
+                    failures.append(failure)
+                    data["error"] = {"message": "部分发布失败", "details": failures}
+                    data["scheduled_count"] += sum(row["record"]["status"] == "scheduled"
+                                                   for row in details.get("published", []))
+                    with reports.open("a", encoding="utf-8") as report:
+                        report.write(json.dumps(failure, ensure_ascii=False) + "\n")
+                    progress(f"{publication['publish_date']}存在失败，继续处理其余日期")
+                    continue
                 with reports.open("a", encoding="utf-8") as report:
                     report.write(json.dumps({"publish_date": publication["publish_date"], "result": result}, ensure_ascii=False) + "\n")
                 if publication["publish_date"] not in data["completed_dates"]:

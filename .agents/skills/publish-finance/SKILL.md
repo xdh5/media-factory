@@ -16,7 +16,7 @@ description: 发布或预约指定计划日期的财经内容，默认覆盖五�
 | 抖音、快手、视频号、B站 | 本期长视频 | 统一发布 MCP |
 | 头条 | 视频、文章、微头条各一条 | 视频用统一发布 MCP 或视频 CLI，文章和微头条分别用对应 CLI |
 
-普通统一发布 MCP 只处理视频，不会自动发布文章或微头条。头条三类立即发布可使用后台批次的 toutiao_content_types；同一内容的两种入口只选一个，已发布的长视频不再次调用长视频入口。
+普通统一发布 MCP 只处理视频，不会自动发布文章或微头条。头条内容可使用后台批次的 toutiao_content_types；同一内容的两种入口只选一个，已发布的长视频不再次调用长视频入口。
 
 ## 发布流程
 
@@ -47,6 +47,10 @@ description: 发布或预约指定计划日期的财经内容，默认覆盖五�
 
 三类内容独立发布、独立预检和记录，互不触发。默认发布财经时三类都执行；用户限定类型时只执行对应项。业务 MCP 生成独立执行请求，包含完整文案、素材路径、AI 声明、首发和同步选项。在 `integrations/media-publisher` 构建后执行，`--file` 指向对应的执行请求：
 
+文章发布页先模拟鼠标点击 `.ai-assistant-panel .close-btn`，核验创作助手收起；微头条不执行此步骤。
+
+文章支持官方预约，传 `publish_mode=scheduled`、带时区的 `publish_at`，`toutiao_content_types=["article"]`；CLI 对应 `--publish-at "YYYY-MM-DD HH:mm:ss"`。微头条当前账号没有官方定时入口，直接发布，与文章预约分开提交。
+
 优先用 `publishing_start_batch` 后台执行：platforms 选 toutiao，publications 条目传本期 publish_date、production_id、publish_mode=immediate、publish_at=now、toutiao_content_types=["video","article","micro"]。后台恢复本期定稿、依次发布、按类型去重并立即入库，无需宿主持续轮询。只发部分类型时缩小列表。预约视频沿用普通统一发布；需要单独诊断某类时使用下列独立 CLI。
 
 ```powershell
@@ -58,7 +62,7 @@ description: 发布或预约指定计划日期的财经内容，默认覆盖五�
 | 类型 | 内容与设置 | 独立回执 |
 | --- | --- | --- |
 | 视频 | 16:9封面，关闭“生成图文” | `toutiao-video-publication.json` |
-| 文章 | 完整正文、三张预制插图、4:3封面；勾选“头条首发”，关闭“同时发布微头条” | `toutiao-article-publication.json` |
+| 文章 | 完整正文、三张预制插图；选择“无封面”，不上传封面；勾选“头条首发”，关闭“同时发布微头条” | `toutiao-article-publication.json` |
 | 微头条 | 定稿 `micro_summary`（约150字），发布业务MCP从本期三张预制插图随机指定一张，重试复用选图 | `toutiao-micro-publication.json` |
 
 插图由生产代码将正文对应镜头分三等份，每份随机选一张并保存选择结果。清单、正文、摘要、插图及封面随生产上传 R2，GitHub 同样生成；跨机器先恢复所需资产并更新清单路径，文章和微头条无需恢复视频。

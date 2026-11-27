@@ -28,7 +28,7 @@ export async function waitToutiaoArticleImagesReady(page, imageCount) {
   console.log('[tt-article] 三张正文图片已加载，上传网络请求已完成');
 }
 
-export async function clickToutiaoText(page, text) {
+export async function clickToutiaoText(page, text, clickCount = 1) {
   await page.waitForFunction(value => [...document.querySelectorAll("button,a,div,span,li")].some(element =>
     element.textContent.trim() === value && element.getBoundingClientRect().width > 0 && !element.disabled),
   { timeout: 15000, polling: 100 }, text);
@@ -36,7 +36,8 @@ export async function clickToutiaoText(page, text) {
     element.textContent.trim() === value && (element.tagName === "BUTTON" || ![...element.children].some(child => child.textContent.trim() === value)) &&
     element.getBoundingClientRect().width > 0 && !element.disabled), text);
   if (!handle.asElement()) throw new Error(`未找到头条按钮：${text}`);
-  await handle.asElement().evaluate(element => element.click());
+  if (clickCount === 1) await handle.asElement().evaluate(element => element.click());
+  else await handle.asElement().click({ clickCount, delay: 200 });
 }
 
 export async function setToutiaoCheckbox(page, label, checked) {
@@ -163,13 +164,14 @@ export async function fillToutiaoArticle(page, manifestPath) {
 }
 
 export async function clearToutiaoEditor(page) {
-  await page.$eval('.ProseMirror[contenteditable="true"]', editor => {
-    editor.focus();
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(editor);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    document.execCommand("delete");
-  });
+  await page.focus('.ProseMirror[contenteditable="true"]');
+  await page.keyboard.down("Control");
+  await page.keyboard.press("KeyA");
+  await page.keyboard.up("Control");
+  await page.keyboard.press("Backspace");
+  await page.waitForFunction(() => {
+    const editor = document.querySelector('.ProseMirror[contenteditable="true"]');
+    return editor.querySelectorAll("img").length === 0 &&
+      !editor.innerText.replace(/请输入正文|有什么新鲜事想告诉大家？/g, "").trim();
+  }, { timeout: 10000, polling: 100 });
 }

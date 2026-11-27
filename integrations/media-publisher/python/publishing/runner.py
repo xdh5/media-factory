@@ -87,12 +87,12 @@ def _last_log_json(text: str):
     return None
 
 
-def run_browser_publish(arguments: list[str]) -> dict:
+def run_browser_publish(arguments: list[str], *, log_path: Path | None = None) -> dict:
     with tempfile.TemporaryDirectory(prefix="media-publisher-") as result_directory:
-        return _run_browser_publish(arguments, Path(result_directory) / "result.json")
+        return _run_browser_publish(arguments, Path(result_directory) / "result.json", execution_log_path=log_path)
 
 
-def _run_browser_publish(arguments: list[str], result_path: Path) -> dict:
+def _run_browser_publish(arguments: list[str], result_path: Path, *, execution_log_path: Path | None = None) -> dict:
     prefix, cwd = electron_command()
     env = dict(os.environ)
     env.pop("ELECTRON_RUN_AS_NODE", None)
@@ -125,6 +125,8 @@ def _run_browser_publish(arguments: list[str], result_path: Path) -> dict:
         result = subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
     except (OSError, subprocess.SubprocessError) as exc:
         raise RuntimeError(f"运行 media-publisher CLI 失败：{exc}") from exc
+    if execution_log_path is not None:
+        execution_log_path.write_text(result.stdout + "\n" + result.stderr, encoding="utf-8")
     payload = (json.loads(result_path.read_text(encoding="utf-8")) if result_path.is_file()
                else _last_json(result.stdout) or _last_json(result.stderr))
     latest = _latest_log()
