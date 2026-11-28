@@ -109,7 +109,7 @@ def list_publisher_login_states(*, rows: list | None = None) -> list[dict]:
 def review_publish_session(account_ref: str, platform: str, screenshot_path: str, ready: bool, reason: str) -> dict:
     """宿主查看真实发布页截图后提交判断，仅接纳近期自动检测不确定的页面。"""
     if platform == "wechat_channels":
-        raise PublishAccountGroupError("视频号必须通过个人信息接口并匹配已绑定唯一 ID，不能用页面截图放行")
+        raise PublishAccountGroupError("视频号必须通过个人信息接口检测，不能用页面截图放行")
     if not reason.strip():
         raise PublishAccountGroupError("必须说明页面可用或异常的可见依据")
     matches = []
