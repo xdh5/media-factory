@@ -29,7 +29,7 @@ python -m media_factory_mcp.publishing
 
 `publishing_batch_status` 仅在用户查询、登录恢复或核对结果时按需调用。完成、失败、需要登录、进程中断分别返回对应状态；完整结果在本地批次日志中。后台不会主动唤醒这条聊天，不承诺无通知通道时的自动消息。用户处理登录后重新提交剩余批次，由数据库去重已成功项。相同账号组不同时启动普通单日发布和后台批次。
 
-财经头条的后台批次可在 publications 条目中传 `toutiao_content_types=["video","article","micro"]`，同时指定 production_id、publish_mode=immediate、publish_at=now，platforms 仅选 toutiao。三类内容依次执行，各自查询重复记录、读取本期定稿素材、取得平台接口成功响应及作品ID后独立入库；一类失败会记录错误并继续其他类，批次最终返回 failed。该模式不支持 prepare_only。视频和图片上传保留页面进度检查，封面、正文插图、配图上传及正式提交均监听接口响应，提交结果不明不自动重发。
+财经头条的后台批次可在 publications 条目中传 `toutiao_content_types=["video","article","micro"]`，同时指定 production_id、publish_mode=immediate、publish_at=now，platforms 仅选 toutiao。三类内容依次执行，各自查询重复记录、读取本期定稿素材、取得平台提交接口成功响应后独立入库；一类失败会记录错误并继续其他类，批次最终返回 failed。该模式不支持 prepare_only。视频和图片上传保留页面进度检查，封面、正文插图、配图上传及正式提交均监听接口响应。提交接口明确返回业务成功即完成，不再等待作品管理页或查询作品ID；响应有作品ID时保存，没有则留空。提交结果不明不自动重发。
 
 微头条配图由发布业务从本期三张预制插图随机选择，保存 `toutiao-micro-image.json` 并在交给publisher的清单中写入 `micro_image_path`；重试复用选择。publisher只上传指定图片，不承担选图职责，缺少指定路径时直接报错。
 
