@@ -233,9 +233,6 @@ def _target(item: dict, route: dict) -> dict:
         for field in required_covers:
             if not target.get(field) or not Path(target[field]).is_file():
                 raise ValueError(f"财经 {platform} 发布缺少封面文件：{field}")
-    if platform == "xiaohongshu":
-        target["title"] = target["title"][:20]
-        target["tags"] = " ".join(target["tags"].split()[:10])
     if platform == "youtube":
         target["title"] = target["title"][:100]
         target["youtube_options"] = {"privacy_status": "public", "category_id": "24",

@@ -18,7 +18,6 @@ SUPPORTED_PLATFORMS = (
     "tiktok",
     "kuaishou",
     "douyin",
-    "baijiahao",
     "toutiao",
     "wechat_channels",
 )
@@ -41,9 +40,6 @@ PLATFORM_ALIASES = {
     "douyin": "douyin",
     "dy": "douyin",
     "抖音": "douyin",
-    "baijiahao": "baijiahao",
-    "bjh": "baijiahao",
-    "百家号": "baijiahao",
     "toutiao": "toutiao",
     "tt": "toutiao",
     "头条": "toutiao",
@@ -55,7 +51,6 @@ PLATFORM_ALIASES = {
 MEDIA_PUBLISHER_PLATFORM_CODES = {
     "bilibili": "blbl",
     "douyin": "dy",
-    "baijiahao": "bjh",
     "kuaishou": "ks",
     "toutiao": "tt",
     "wechat_channels": "sph",
@@ -64,7 +59,6 @@ MEDIA_PUBLISHER_CODE_PLATFORMS = {
     **{value: key for key, value in MEDIA_PUBLISHER_PLATFORM_CODES.items()},
     "哔哩哔哩": "bilibili",
     "抖音": "douyin",
-    "百家号": "baijiahao",
     "快手": "kuaishou",
     "头条": "toutiao",
     "头条号": "toutiao",
