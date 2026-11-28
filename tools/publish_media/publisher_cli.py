@@ -135,7 +135,7 @@ def _run_official_python(arguments: list[str]) -> dict | list:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=MEDIA_PUBLISHER_TIMEOUT_SECONDS,
+            timeout=None if arguments[0] == "publish" else MEDIA_PUBLISHER_TIMEOUT_SECONDS,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
@@ -176,7 +176,7 @@ def run_publisher_cli(arguments: list[str]) -> dict | list:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=MEDIA_PUBLISHER_TIMEOUT_SECONDS,
+            timeout=None if arguments[0] == "publish" else MEDIA_PUBLISHER_TIMEOUT_SECONDS,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
