@@ -71,7 +71,7 @@ def _last_json(text: str):
 
 
 def _latest_publisher_log() -> Path | None:
-    log_dir = Path(os.getenv("APPDATA", "")) / "media-publisher" / "logs"
+    log_dir = media_publisher_root() / "logs"
     if not log_dir.is_dir():
         return None
     files = [item for item in log_dir.glob("*.log") if item.is_file()]
